@@ -84,6 +84,7 @@ async function processOutboxBatch() {
     return pendingEvents.length;
   } catch (err: any) {
     logger.error(`Error in outbox polling batch: ${err.message}`);
+    await new Promise((resolve) => setTimeout(resolve, 3000));
     return 0;
   }
 }

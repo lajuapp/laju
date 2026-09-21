@@ -30,7 +30,7 @@ FROM node:20-alpine AS runner
 
 WORKDIR /app
 
-RUN apk add --no-cache openssl
+RUN apk add --no-cache openssl curl
 RUN corepack enable && corepack prepare pnpm@8.15.3 --activate
 
 ENV NODE_ENV=production
@@ -49,5 +49,8 @@ WORKDIR /app/apps/api
 USER node
 
 EXPOSE 3000
+
+HEALTHCHECK --interval=10s --timeout=5s --start-period=30s --retries=5 \
+  CMD curl -f http://localhost:3000/health || exit 1
 
 CMD ["sh", "-c", "npx prisma db push --skip-generate && node dist/main.js"]
