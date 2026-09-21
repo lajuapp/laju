@@ -122,7 +122,10 @@ services:
     container_name: laju-seaweedfs-master
     image: chrislusf/seaweedfs:latest
     restart: unless-stopped
-    command: ["master", "-mdir=/data/mdata"]
+    user: "0:0"
+    command: ["master", "-port=9333", "-ip=seaweedfs-master", "-mdir=/data/mdata"]
+    environment:
+      PORT: ""
     volumes:
       - seaweedfs_mdata:/data/mdata
     networks: [internal]
@@ -131,7 +134,10 @@ services:
     container_name: laju-seaweedfs-volume
     image: chrislusf/seaweedfs:latest
     restart: unless-stopped
-    command: ["volume", "-mserver=seaweedfs-master:9333", "-dir=/data/vdata"]
+    user: "0:0"
+    command: ["volume", "-port=8080", "-ip=seaweedfs-volume", "-mserver=seaweedfs-master:9333", "-dir=/data/vdata"]
+    environment:
+      PORT: ""
     volumes:
       - seaweedfs_vdata:/data/vdata
     depends_on: [seaweedfs-master]
@@ -141,7 +147,10 @@ services:
     container_name: laju-seaweedfs-filer
     image: chrislusf/seaweedfs:latest
     restart: unless-stopped
-    command: ["filer", "-master=seaweedfs-master:9333"]
+    user: "0:0"
+    command: ["filer", "-port=8888", "-ip=seaweedfs-filer", "-master=seaweedfs-master:9333"]
+    environment:
+      PORT: ""
     depends_on: [seaweedfs-master]
     networks: [internal]
 
