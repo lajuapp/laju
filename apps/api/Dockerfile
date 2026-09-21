@@ -24,7 +24,7 @@ RUN pnpm build
 # Build API & Worker
 WORKDIR /app/apps/api
 RUN rm -f tsconfig.tsbuildinfo && npx prisma generate && pnpm build
-RUN test -f dist/main.js && test -f dist/worker/main.js
+RUN test -s dist/main.js && test -s dist/worker/main.js
 
 FROM node:20-alpine AS runner
 
@@ -35,14 +35,14 @@ RUN corepack enable && corepack prepare pnpm@8.15.3 --activate
 
 ENV NODE_ENV=production
 
-# Copy built application and dependencies
-COPY --from=builder /app/package.json /app/pnpm-workspace.yaml ./
-COPY --from=builder /app/packages/shared-types ./packages/shared-types
-COPY --from=builder /app/apps/api/dist ./apps/api/dist
-COPY --from=builder /app/apps/api/prisma ./apps/api/prisma
-COPY --from=builder /app/apps/api/package.json ./apps/api/package.json
-COPY --from=builder /app/apps/api/node_modules ./apps/api/node_modules
-COPY --from=builder /app/node_modules ./node_modules
+# Copy built application and dependencies with proper ownership
+COPY --chown=node:node --from=builder /app/package.json /app/pnpm-workspace.yaml ./
+COPY --chown=node:node --from=builder /app/packages/shared-types ./packages/shared-types
+COPY --chown=node:node --from=builder /app/apps/api/dist ./apps/api/dist
+COPY --chown=node:node --from=builder /app/apps/api/prisma ./apps/api/prisma
+COPY --chown=node:node --from=builder /app/apps/api/package.json ./apps/api/package.json
+COPY --chown=node:node --from=builder /app/apps/api/node_modules ./apps/api/node_modules
+COPY --chown=node:node --from=builder /app/node_modules ./node_modules
 
 WORKDIR /app/apps/api
 
