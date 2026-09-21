@@ -1,0 +1,20 @@
+# Environment
+
+Example variables:
+
+```text
+DATABASE_URL
+REDIS_URL
+GOTIFY_URL
+GOTIFY_TOKEN
+SEAWEEDFS_MASTER_URL
+SEAWEEDFS_FILER_URL
+SESSION_SECRET
+ADMIN_SESSION_SECRET
+KMS_*
+TURN_*
+```
+
+Never commit real values.
+
+Never use `NEXT_PUBLIC_*` for secrets.

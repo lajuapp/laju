@@ -1,0 +1,98 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks: [internal, edge]
+
+  worker:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    command: ["node", "dist/worker/main.js"]
+    env_file:
+      - .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks: [internal]
+
+  backoffice:
+    build: ./apps/backoffice
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_started
+    networks: [internal, edge]
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: [internal]
+
+  redis:
+    image: redis:8-alpine
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks: [internal]
+
+  gotify:
+    image: gotify/server:latest
+    restart: unless-stopped
+    networks: [internal, edge]
+
+  seaweedfs-master:
+    image: chrislusf/seaweedfs:latest
+    restart: unless-stopped
+    command: ["master"]
+    networks: [internal]
+
+  seaweedfs-volume:
+    image: chrislusf/seaweedfs:latest
+    restart: unless-stopped
+    command: ["volume", "-mserver=seaweedfs-master:9333"]
+    depends_on: [seaweedfs-master]
+    networks: [internal]
+
+  seaweedfs-filer:
+    image: chrislusf/seaweedfs:latest
+    restart: unless-stopped
+    command: ["filer", "-master=seaweedfs-master:9333"]
+    depends_on: [seaweedfs-master]
+    networks: [internal]
+
+networks:
+  internal:
+    internal: true
+  edge:
+
+volumes:
+  postgres_data:

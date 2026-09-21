@@ -1,0 +1,23 @@
+# Backoffice Security Checklist
+
+- Next.js production build
+- no secrets in client bundle
+- no direct DB access
+- server-side authorization
+- MFA
+- WebAuthn
+- secure cookies
+- CSRF
+- CSP
+- HSTS
+- XSS protection
+- SSRF protection
+- upload restrictions
+- rate limiting
+- audit
+- session revocation
+- least privilege
+- dual approval for high-risk access
+- dependency scanning
+- SAST
+- secret scanning
