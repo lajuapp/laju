@@ -1,16 +1,19 @@
 import {
   Injectable,
   NotFoundException,
-  ForbiddenException
+  ForbiddenException,
+  Optional
 } from '@nestjs/common';
 import { PrismaService } from '../../infrastructure/prisma/prisma.service';
 import { RedisService } from '../../infrastructure/redis/redis.service';
+import { GotifyService } from '../../infrastructure/gotify/gotify.service';
 
 @Injectable()
 export class CallsService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly redis: RedisService
+    private readonly redis: RedisService,
+    @Optional() private readonly gotifyService?: GotifyService
   ) {}
 
   async createCall(callerUserId: string, callerDeviceId: string, calleeUserId: string) {
@@ -48,15 +51,32 @@ export class CallsService {
         });
       }
 
+      const caller = await tx.user.findUnique({
+        where: { id: callerUserId },
+        select: { username: true }
+      });
+
       await this.redis.publish(
         `user:${calleeUserId}`,
         JSON.stringify({
           type: 'CALL_INCOMING',
           callId: call.id,
           initiatorId: callerUserId,
+          initiatorName: caller?.username || 'Kontak',
           callerDeviceId
         })
       );
+
+      // Trigger high-priority push notification (Priority 8 - Call Wakeup)
+      if (this.gotifyService) {
+        this.gotifyService.sendPushNotification({
+          targetToken: calleeDevice?.pushToken || undefined,
+          title: `Panggilan Masuk dari ${caller?.username || 'Kontak'}`,
+          message: 'Panggilan Suara Masuk',
+          conversationId: call.id,
+          priority: 8
+        }).catch(() => {});
+      }
 
       return call;
     });
@@ -150,5 +170,37 @@ export class CallsService {
     );
 
     return { success: true };
+  }
+
+  async getIncomingCall(userId: string) {
+    const participant = await this.prisma.callParticipant.findFirst({
+      where: {
+        userId,
+        state: 'RINGING',
+        call: {
+          state: 'INITIATED'
+        }
+      },
+      include: {
+        call: true
+      },
+      orderBy: { joinedAt: 'desc' }
+    });
+
+    if (!participant) {
+      return null;
+    }
+
+    const initiator = await this.prisma.user.findUnique({
+      where: { id: participant.call.initiatorId },
+      select: { id: true, username: true }
+    });
+
+    return {
+      callId: participant.callId,
+      initiatorId: participant.call.initiatorId,
+      initiatorName: initiator?.username || 'Kontak',
+      createdAt: participant.call.startedAt
+    };
   }
 }

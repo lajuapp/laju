@@ -18,6 +18,8 @@ import '../../../settings/presentation/screens/my_qr_code_screen.dart';
 import '../../../lock/presentation/screens/app_lock_screen.dart';
 import '../../../conversations/presentation/screens/locked_chats_screen.dart';
 import '../../../calls/presentation/screens/new_call_contact_picker_screen.dart';
+import '../../../calls/domain/call_session_controller.dart';
+import '../../../settings/domain/account_controller.dart';
 
 class HomeScreen extends StatefulWidget {
   static final ValueNotifier<int> activeTabNotifier = ValueNotifier<int>(0);
@@ -43,16 +45,19 @@ class _HomeScreenState extends State<HomeScreen> {
     _currentBottomNavIndex = HomeScreen.activeTabNotifier.value;
     HomeScreen.activeTabNotifier.addListener(_onTabChanged);
     _loadConversations();
-    // Periodically fetch conversations in background so new incoming messages appear automatically
-    _homePollingTimer = Timer.periodic(const Duration(seconds: 5), (_) {
-      if (mounted && _currentBottomNavIndex == 0 && !_isSearchExpanded) {
-        ConversationService.instance.fetchConversations().then((apiConvs) {
-          if (mounted && apiConvs.isNotEmpty) {
-            setState(() {
-              _conversations = apiConvs;
-            });
-          }
-        }).catchError((_) {});
+    // Periodically fetch conversations & check for incoming calls in background
+    _homePollingTimer = Timer.periodic(const Duration(seconds: 4), (_) {
+      if (mounted) {
+        CallSessionController.instance.checkForIncomingCalls();
+        if (_currentBottomNavIndex == 0 && !_isSearchExpanded) {
+          ConversationService.instance.fetchConversations().then((apiConvs) {
+            if (mounted && apiConvs.isNotEmpty) {
+              setState(() {
+                _conversations = apiConvs;
+              });
+            }
+          }).catchError((_) {});
+        }
       }
     });
   }
@@ -106,7 +111,14 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _isLoadingConversations = false;
 
   List<ConversationModel> get _filteredConversations {
-    var list = _conversations.where((c) => (c.isLocked != true) && (c.isArchived != true)).toList();
+    final blocked = AccountController.instance.blockedContacts;
+    var list = _conversations
+        .where((c) =>
+            (c.isLocked != true) &&
+            (c.isArchived != true) &&
+            !blocked.contains(c.title) &&
+            !blocked.contains(c.id))
+        .toList();
     switch (_selectedFilter) {
       case 'Unread':
         list = list.where((c) => c.unreadCount > 0).toList();
@@ -186,8 +198,9 @@ class _HomeScreenState extends State<HomeScreen> {
           LajuToast.info(context, 'Anda telah keluar dari grup');
           break;
         case ConversationActionType.blockContact:
+          AccountController.instance.addBlockedContact(conv.title);
           _conversations.removeAt(index);
-          LajuToast.info(context, 'Kontak telah diblokir');
+          LajuToast.info(context, 'Kontak ${conv.title} telah diblokir');
           break;
         case ConversationActionType.reportContact:
           showReportUserSheet(

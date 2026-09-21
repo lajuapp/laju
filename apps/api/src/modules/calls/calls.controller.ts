@@ -1,5 +1,6 @@
 import {
   Controller,
+  Get,
   Post,
   Body,
   Param,
@@ -13,6 +14,11 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 @UseGuards(JwtAuthGuard)
 export class CallsController {
   constructor(private readonly callsService: CallsService) {}
+
+  @Get('incoming')
+  getIncomingCall(@CurrentUser('userId') userId: string) {
+    return this.callsService.getIncomingCall(userId);
+  }
 
   @Post()
   createCall(

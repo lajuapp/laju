@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import '../../../../core/core.dart';
 import '../domain/models/conversation_model.dart';
@@ -293,11 +294,41 @@ class ConversationService {
                     .toList()
                 : <String>[];
 
+            final rawCiphertext = (m['ciphertext'] ?? '') as String;
+            final msgType = (m['messageType'] ?? 'TEXT') as String;
+
+            MessageContentType contentType = MessageContentType.text;
+            String contentText = rawCiphertext;
+            String? mediaData;
+            String? attName;
+            String? attSize;
+
+            if (msgType == 'IMAGE' || rawCiphertext.startsWith('data:image')) {
+              contentType = MessageContentType.attachment;
+              mediaData = rawCiphertext;
+              attName = 'Foto.jpg';
+              contentText = '📷 Foto';
+            } else if (msgType == 'AUDIO' || rawCiphertext.startsWith('data:audio')) {
+              contentType = MessageContentType.voiceNote;
+              mediaData = rawCiphertext;
+              attName = 'Voice Note';
+              contentText = '🎤 Pesan Suara';
+              attSize = '0:15';
+            } else if (msgType == 'DOCUMENT') {
+              contentType = MessageContentType.attachment;
+              attName = 'Dokumen';
+              contentText = rawCiphertext.startsWith('📄') ? rawCiphertext : '📄 Berkas Dokumen';
+            }
+
             return MessageModel(
               id: m['id'],
               conversationId: conversationId,
               senderName: isOutgoing ? 'You' : (m['senderUser']?['username'] ?? 'Contact'),
-              content: m['ciphertext'] ?? '',
+              content: contentText,
+              attachmentPath: mediaData,
+              attachmentName: attName,
+              attachmentSize: attSize,
+              contentType: contentType,
               timestamp: DateTime.tryParse(m['createdAt'] ?? '') ?? DateTime.now(),
               isOutgoing: isOutgoing,
               status: MessageDeliveryStatus.delivered,
@@ -316,34 +347,61 @@ class ConversationService {
     return [];
   }
 
-  /// Send message to conversation
+  /// Send message to conversation (supports text, images, audio voice notes, and documents)
   Future<MessageModel?> sendMessage({
     required String conversationId,
     required String text,
     String? clientMessageId,
+    String? messageType, // 'TEXT', 'IMAGE', 'AUDIO', 'DOCUMENT'
+    String? attachmentPath,
+    String? attachmentName,
+    String? attachmentSize,
   }) async {
     final id = clientMessageId ?? 'msg-${DateTime.now().millisecondsSinceEpoch}';
+    final type = messageType ?? 'TEXT';
+    String payloadCiphertext = text;
+
+    // Convert local media files to base64 data URI for instant cross-device transfer
+    if (attachmentPath != null && (type == 'IMAGE' || type == 'AUDIO' || type == 'DOCUMENT')) {
+      try {
+        final file = File(attachmentPath);
+        if (file.existsSync()) {
+          final bytes = file.readAsBytesSync();
+          final b64 = base64Encode(bytes);
+          final mime = type == 'IMAGE'
+              ? 'image/jpeg'
+              : (type == 'AUDIO' ? 'audio/m4a' : 'application/octet-stream');
+          payloadCiphertext = 'data:$mime;base64,$b64';
+        }
+      } catch (_) {}
+    }
+
     try {
       final response = await ApiClient.instance.post(
         ApiEndpoints.conversationMessages(conversationId),
         body: {
           'clientMessageId': id,
-          'ciphertext': text,
+          'ciphertext': payloadCiphertext,
           'nonce': base64Encode(List.generate(12, (i) => i)),
-          'messageType': 'TEXT',
+          'messageType': type,
         },
       );
 
       if (response.isSuccess && response.rawJson is Map) {
         final m = response.rawJson;
         final confirmedId = m['id'] ?? id;
-        // Update status to sent in local cache
         LocalDatabase.instance.updateMessageStatus(id, MessageDeliveryStatus.sent);
         return MessageModel(
           id: confirmedId,
           conversationId: conversationId,
           senderName: 'You',
           content: text,
+          attachmentPath: attachmentPath,
+          attachmentName: attachmentName,
+          attachmentSize: attachmentSize,
+          contentType: type == 'AUDIO'
+              ? MessageContentType.voiceNote
+              : (type == 'IMAGE' || type == 'DOCUMENT' ? MessageContentType.attachment : MessageContentType.text),
           timestamp: DateTime.now(),
           isOutgoing: true,
           status: MessageDeliveryStatus.sent,
@@ -351,20 +409,31 @@ class ConversationService {
       }
     } catch (e) {
       debugPrint('[ConversationService] sendMessage error: $e');
-      // Mark as failed in local cache
       LocalDatabase.instance.updateMessageStatus(id, MessageDeliveryStatus.failed);
     }
 
-    // Return message marked failed if not successfully delivered to backend
     return MessageModel(
       id: id,
       conversationId: conversationId,
       senderName: 'You',
       content: text,
+      attachmentPath: attachmentPath,
+      attachmentName: attachmentName,
+      attachmentSize: attachmentSize,
+      contentType: type == 'AUDIO'
+          ? MessageContentType.voiceNote
+          : (type == 'IMAGE' || type == 'DOCUMENT' ? MessageContentType.attachment : MessageContentType.text),
       timestamp: DateTime.now(),
       isOutgoing: true,
       status: MessageDeliveryStatus.failed,
     );
+  }
+
+  /// Mark message as read on backend (Read Receipts / Blue Ticks)
+  Future<void> markMessageRead(String messageId) async {
+    try {
+      await ApiClient.instance.post(ApiEndpoints.messageRead(messageId));
+    } catch (_) {}
   }
 
   /// Delete a message for everyone

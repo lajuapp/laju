@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
@@ -153,8 +155,23 @@ class VoiceNoteService {
 
   Future<void> play(String filePath) async {
     try {
+      String actualPath = filePath;
+      if (filePath.startsWith('data:audio')) {
+        try {
+          final b64 = filePath.split(',').last;
+          final bytes = base64Decode(b64);
+          final tempFile = File('${Directory.systemTemp.path}/vn_${filePath.hashCode}.m4a');
+          if (!tempFile.existsSync()) {
+            tempFile.writeAsBytesSync(bytes);
+          }
+          actualPath = tempFile.path;
+        } catch (e) {
+          debugPrint('Error decoding base64 voice note: $e');
+        }
+      }
+
       final res = await _channel.invokeMapMethod<String, dynamic>('playAudio', {
-        'filePath': filePath,
+        'filePath': actualPath,
       });
       if (res != null) {
         final durationMs = (res['durationMs'] as num?)?.toInt() ?? 0;

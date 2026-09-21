@@ -189,4 +189,58 @@ class CallSessionController extends ChangeNotifier {
       }
     } catch (_) {}
   }
+
+  String? _lastRingingCallId;
+
+  /// Checks for any incoming calls targeting this user on the backend
+  Future<void> checkForIncomingCalls() async {
+    if (_isActive || ApiClient.instance.authToken == null) return;
+    try {
+      final resp = await ApiClient.instance.get(ApiEndpoints.callIncoming);
+      if (resp.isSuccess && resp.rawJson is Map) {
+        final data = resp.rawJson;
+        final incomingCallId = data['callId'] as String?;
+        final callerName = data['initiatorName'] as String? ?? 'Kontak';
+        if (incomingCallId != null && incomingCallId != _lastRingingCallId) {
+          _lastRingingCallId = incomingCallId;
+          AppNotificationService.instance.showIncomingCall(
+            callerName: callerName,
+            isVideo: false,
+            onAccept: () async {
+              _callId = incomingCallId;
+              _title = callerName;
+              _isActive = true;
+              _durationSeconds = 0;
+              _startTimer();
+              notifyListeners();
+
+              try {
+                await ApiClient.instance.post(ApiEndpoints.callAccept(incomingCallId));
+              } catch (_) {}
+
+              AppNavigation.navigatorKey.currentState?.push(
+                MaterialPageRoute(
+                  builder: (_) => ActiveCallScreen(
+                    contactName: callerName,
+                    isVideo: false,
+                    returnToCallsScreen: false,
+                  ),
+                ),
+              );
+            },
+            onDecline: () async {
+              try {
+                await ApiClient.instance.post(ApiEndpoints.callReject(incomingCallId));
+              } catch (_) {}
+            },
+          );
+        }
+      } else {
+        if (_lastRingingCallId != null) {
+          _lastRingingCallId = null;
+          AppNotificationService.instance.dismiss();
+        }
+      }
+    } catch (_) {}
+  }
 }

@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -564,6 +565,41 @@ class ChatBubble extends StatelessWidget {
         ? (isOut ? AppColors.primary.withValues(alpha: 0.3) : Colors.white.withValues(alpha: 0.1))
         : (isOut ? AppColors.primary.withValues(alpha: 0.35) : const Color(0xFFE2E8F0));
 
+    final isImage = ext == 'JPG' || ext == 'JPEG' || ext == 'PNG' || ext == 'WEBP' || ext == 'GIF' || (message.attachmentPath != null && message.attachmentPath!.startsWith('data:image'));
+
+    if (isImage && message.attachmentPath != null) {
+      Widget? imageWidget;
+      if (message.attachmentPath!.startsWith('data:image')) {
+        try {
+          final b64 = message.attachmentPath!.split(',').last;
+          final bytes = base64Decode(b64);
+          imageWidget = Image.memory(
+            bytes,
+            fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) => Center(child: Icon(Icons.broken_image_rounded, color: iconColor, size: 36)),
+          );
+        } catch (_) {}
+      } else if (File(message.attachmentPath!).existsSync()) {
+        imageWidget = Image.file(
+          File(message.attachmentPath!),
+          fit: BoxFit.cover,
+        );
+      }
+
+      if (imageWidget != null) {
+        return Container(
+          margin: const EdgeInsets.only(bottom: 6),
+          constraints: const BoxConstraints(maxHeight: 240, maxWidth: 280),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: cardBorder, width: 1.2),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: imageWidget,
+        );
+      }
+    }
+
     return InkWell(
       onTap: () {
         LajuToast.info(context, 'Membuka $fileName');
@@ -596,14 +632,19 @@ class ChatBubble extends StatelessWidget {
                 border: Border.all(color: iconColor.withValues(alpha: 0.25), width: 1),
               ),
               clipBehavior: Clip.antiAlias,
-              child: message.attachmentPath != null && File(message.attachmentPath!).existsSync()
-                  ? Image.file(
-                      File(message.attachmentPath!),
+              child: message.attachmentPath != null && message.attachmentPath!.startsWith('data:image')
+                  ? Image.memory(
+                      base64Decode(message.attachmentPath!.split(',').last),
                       fit: BoxFit.cover,
                     )
-                  : Center(
-                      child: Icon(fileIcon, color: iconColor, size: 24),
-                    ),
+                  : (message.attachmentPath != null && File(message.attachmentPath!).existsSync()
+                      ? Image.file(
+                          File(message.attachmentPath!),
+                          fit: BoxFit.cover,
+                        )
+                      : Center(
+                          child: Icon(fileIcon, color: iconColor, size: 24),
+                        )),
             ),
             const SizedBox(width: 11),
 

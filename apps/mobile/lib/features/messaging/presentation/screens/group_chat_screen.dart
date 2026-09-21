@@ -46,12 +46,13 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
   }
 
   void _loadMessages() async {
-    // Step 1: Load from SQLite cache instantly
+    // Step 1: Load from SQLite cache instantly (offline-ready)
     final cached = await ConversationService.instance.getMessagesFromCache(widget.groupId);
     if (mounted && cached.isNotEmpty) {
       setState(() {
         _messages = cached;
       });
+      _markIncomingAsRead(cached);
     }
 
     // Step 2: Fetch fresh messages from API in background
@@ -61,8 +62,17 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
         setState(() {
           _messages = msgs;
         });
+        _markIncomingAsRead(msgs);
       }
     } catch (_) {}
+  }
+
+  void _markIncomingAsRead(List<MessageModel> msgs) {
+    for (final m in msgs) {
+      if (!m.isOutgoing && m.status != MessageDeliveryStatus.read) {
+        ConversationService.instance.markMessageRead(m.id);
+      }
+    }
   }
 
   void _startPolling() {
@@ -72,6 +82,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
       try {
         final msgs = await ConversationService.instance.fetchMessages(widget.groupId);
         if (mounted && msgs.isNotEmpty) {
+          _markIncomingAsRead(msgs);
           if (msgs.length != _messages.length ||
               (msgs.isNotEmpty && _messages.isNotEmpty && msgs.last.id != _messages.last.id)) {
             setState(() {
@@ -147,6 +158,10 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
       conversationId: widget.groupId,
       text: '🎤 Voice Message (${result.formattedDuration})',
       clientMessageId: voiceMsg.id,
+      messageType: 'AUDIO',
+      attachmentPath: result.filePath,
+      attachmentName: voiceMsg.attachmentName,
+      attachmentSize: result.formattedDuration,
     );
 
     if (mounted && sent != null) {
@@ -244,6 +259,10 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
           conversationId: widget.groupId,
           text: '📄 ${result.title} (${result.fileSize ?? ""})',
           clientMessageId: docMsg.id,
+          messageType: 'DOCUMENT',
+          attachmentPath: filePath,
+          attachmentName: result.title,
+          attachmentSize: result.fileSize,
         );
       } else if (result.type == AttachmentType.camera || result.type == AttachmentType.gallery) {
         final imgMsg = MessageModel(
@@ -266,6 +285,10 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
           conversationId: widget.groupId,
           text: '📷 ${result.title} (${result.fileSize ?? ""})',
           clientMessageId: imgMsg.id,
+          messageType: 'IMAGE',
+          attachmentPath: filePath,
+          attachmentName: result.title,
+          attachmentSize: result.fileSize,
         );
       } else if (result.type == AttachmentType.audio) {
         final audMsg = MessageModel(
@@ -288,6 +311,10 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
           conversationId: widget.groupId,
           text: '🎵 ${result.title} (${result.fileSize ?? ""})',
           clientMessageId: audMsg.id,
+          messageType: 'AUDIO',
+          attachmentPath: filePath,
+          attachmentName: result.title,
+          attachmentSize: result.fileSize,
         );
       } else if (result.type == AttachmentType.contact) {
         _sendMessage(result.title);

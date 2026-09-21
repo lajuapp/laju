@@ -52,6 +52,7 @@ class _ChatScreenState extends State<ChatScreen> {
       try {
         final apiMsgs = await ConversationService.instance.fetchMessages(widget.conversationId);
         if (mounted && apiMsgs.isNotEmpty) {
+          _markIncomingAsRead(apiMsgs);
           if (apiMsgs.length != _messages.length ||
               (apiMsgs.isNotEmpty && _messages.isNotEmpty && apiMsgs.last.id != _messages.last.id)) {
             setState(() {
@@ -62,6 +63,14 @@ class _ChatScreenState extends State<ChatScreen> {
         }
       } catch (_) {}
     });
+  }
+
+  void _markIncomingAsRead(List<MessageModel> msgs) {
+    for (final m in msgs) {
+      if (!m.isOutgoing && m.status != MessageDeliveryStatus.read) {
+        ConversationService.instance.markMessageRead(m.id);
+      }
+    }
   }
 
   @override
@@ -78,6 +87,7 @@ class _ChatScreenState extends State<ChatScreen> {
       setState(() {
         _messages = cached;
       });
+      _markIncomingAsRead(cached);
       Future.delayed(const Duration(milliseconds: 100), _scrollToBottom);
     }
 
@@ -88,6 +98,7 @@ class _ChatScreenState extends State<ChatScreen> {
         setState(() {
           _messages = apiMsgs;
         });
+        _markIncomingAsRead(apiMsgs);
         Future.delayed(const Duration(milliseconds: 100), _scrollToBottom);
       }
     } catch (_) {}
@@ -168,6 +179,10 @@ class _ChatScreenState extends State<ChatScreen> {
       conversationId: widget.conversationId,
       text: '🎤 Voice Message (${result.formattedDuration})',
       clientMessageId: voiceMsg.id,
+      messageType: 'AUDIO',
+      attachmentPath: result.filePath,
+      attachmentName: voiceMsg.attachmentName,
+      attachmentSize: result.formattedDuration,
     );
 
     if (mounted && sentMsg != null) {
@@ -276,6 +291,10 @@ class _ChatScreenState extends State<ChatScreen> {
           conversationId: widget.conversationId,
           text: '📄 ${result.title} (${result.fileSize ?? ""})',
           clientMessageId: docMsg.id,
+          messageType: 'DOCUMENT',
+          attachmentPath: filePath,
+          attachmentName: result.title,
+          attachmentSize: result.fileSize,
         );
         _scrollToBottom();
       } else if (result.type == AttachmentType.camera || result.type == AttachmentType.gallery) {
@@ -300,6 +319,10 @@ class _ChatScreenState extends State<ChatScreen> {
           conversationId: widget.conversationId,
           text: '📷 ${result.title} (${result.fileSize ?? ""})',
           clientMessageId: imgMsg.id,
+          messageType: 'IMAGE',
+          attachmentPath: filePath,
+          attachmentName: result.title,
+          attachmentSize: result.fileSize,
         );
         _scrollToBottom();
       } else if (result.type == AttachmentType.audio) {
@@ -324,6 +347,10 @@ class _ChatScreenState extends State<ChatScreen> {
           conversationId: widget.conversationId,
           text: '🎵 ${result.title} (${result.fileSize ?? ""})',
           clientMessageId: audMsg.id,
+          messageType: 'AUDIO',
+          attachmentPath: filePath,
+          attachmentName: result.title,
+          attachmentSize: result.fileSize,
         );
         _scrollToBottom();
       } else if (result.type == AttachmentType.contact) {
