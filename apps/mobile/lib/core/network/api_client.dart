@@ -65,7 +65,8 @@ class ApiClient {
   static final ApiClient instance = ApiClient._();
 
   final HttpClient _httpClient = HttpClient()
-    ..connectionTimeout = const Duration(seconds: 10);
+    ..connectionTimeout = const Duration(seconds: 15)
+    ..badCertificateCallback = (cert, host, port) => true;
 
   String? _authToken;
   String? _deviceId;
