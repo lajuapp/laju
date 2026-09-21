@@ -73,17 +73,9 @@ class EnvConfig {
     return defaultPlatformBaseUrl;
   }
 
-  /// Default loopback URL based on execution platform
+  /// Default API URL pointing to the live server
   static String get defaultPlatformBaseUrl {
-    if (kIsWeb) return 'http://localhost:3000';
-    try {
-      if (Platform.isAndroid) {
-        return 'http://10.0.2.2:3000';
-      }
-    } catch (_) {
-      // Platform check may fail in some unit test runners
-    }
-    return 'http://localhost:3000';
+    return 'https://api-laju.rogatekno.my.id';
   }
 
   /// HTTP request timeout duration
