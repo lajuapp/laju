@@ -23,8 +23,8 @@ RUN pnpm build
 
 # Build API & Worker
 WORKDIR /app/apps/api
-RUN npx prisma generate
-RUN npx tsc
+RUN rm -f tsconfig.tsbuildinfo && npx prisma generate && pnpm build
+RUN test -f dist/main.js && test -f dist/worker/main.js
 
 FROM node:20-alpine AS runner
 
