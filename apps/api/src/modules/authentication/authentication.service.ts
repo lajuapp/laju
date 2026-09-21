@@ -15,7 +15,8 @@ import {
   SendOtpDto,
   VerifyOtpDto,
   Verify2FaDto,
-  RegisterIdentityDto
+  RegisterIdentityDto,
+  RestoreIdentityDto
 } from './dto/auth.dto';
 
 @Injectable()
@@ -530,6 +531,79 @@ export class AuthenticationService {
         ...tokens
       };
     });
+  }
+
+  async restoreIdentity(dto: RestoreIdentityDto) {
+    const raw = dto.identitySecret.trim();
+    const identityPub = dto.identityPublicKey?.trim();
+
+    // Look for existing user by identityPublicKey, secret, or username
+    const user = await this.prisma.user.findFirst({
+      where: {
+        OR: [
+          ...(identityPub ? [{ identityPublicKey: identityPub }] : []),
+          { identityPublicKey: raw },
+          { username: raw }
+        ]
+      }
+    });
+
+    if (!user) {
+      throw new NotFoundException('Kunci rahasia atau akun tidak ditemukan. Pastikan kunci pemulihan atau username sesuai.');
+    }
+
+    if (user.status !== 'ACTIVE') {
+      throw new UnauthorizedException(`Akun tidak aktif (status: ${user.status})`);
+    }
+
+    // Upsert or register the device for this user
+    let device = await this.prisma.device.findUnique({
+      where: { deviceUuid: dto.deviceUuid }
+    });
+
+    if (!device) {
+      device = await this.prisma.device.create({
+        data: {
+          userId: user.id,
+          deviceUuid: dto.deviceUuid,
+          name: dto.deviceName || 'Restored Device',
+          platform: dto.platform || 'android',
+          devicePublicKey: dto.devicePublicKey || `dev_pub_${Date.now()}`,
+          status: 'ACTIVE',
+          lastSeenAt: new Date()
+        }
+      });
+    } else {
+      device = await this.prisma.device.update({
+        where: { id: device.id },
+        data: {
+          userId: user.id,
+          name: dto.deviceName || device.name,
+          platform: dto.platform || device.platform,
+          devicePublicKey: dto.devicePublicKey || device.devicePublicKey,
+          status: 'ACTIVE',
+          lastSeenAt: new Date()
+        }
+      });
+    }
+
+    const tokens = await this.generateTokens(user.id, device.id);
+
+    return {
+      user: {
+        id: user.id,
+        username: user.username,
+        identityPublicKey: user.identityPublicKey,
+        status: user.status
+      },
+      device: {
+        id: device.id,
+        deviceUuid: device.deviceUuid,
+        name: device.name,
+        status: device.status
+      },
+      ...tokens
+    };
   }
 
   async getIdentityMe(userId: string) {

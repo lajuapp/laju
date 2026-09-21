@@ -166,3 +166,29 @@ export class RefreshDto {
   @IsNotEmpty()
   refreshToken: string;
 }
+
+export class RestoreIdentityDto {
+  @IsString()
+  @IsNotEmpty()
+  identitySecret: string;
+
+  @IsString()
+  @IsOptional()
+  identityPublicKey?: string;
+
+  @IsString()
+  @IsNotEmpty()
+  deviceUuid: string;
+
+  @IsString()
+  @IsOptional()
+  deviceName?: string;
+
+  @IsString()
+  @IsOptional()
+  devicePublicKey?: string;
+
+  @IsString()
+  @IsOptional()
+  platform?: string;
+}

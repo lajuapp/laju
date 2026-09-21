@@ -52,6 +52,7 @@ class ApiEndpoints {
   static const String devicePushToken = '/devices/push-token';
   static String deviceRevoke(String id) => '/devices/$id/revoke';
   static const String identityRegister = '/identity/register';
+  static const String identityRestore = '/identity/restore';
   static const String identityMe = '/identity/me';
 
   // Migration

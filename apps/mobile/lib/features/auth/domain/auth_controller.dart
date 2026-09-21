@@ -513,8 +513,16 @@ class AuthController extends ChangeNotifier {
           }
         }
       }
-    } catch (_) {
-      // Backend challenge failed or device not registered
+
+      // Fallback: If device has saved identity secret from previous registration, restore it!
+      final prefs = await SharedPreferences.getInstance();
+      final savedSecret = prefs.getString('laju_identity_secret');
+      if (savedSecret != null && savedSecret.isNotEmpty) {
+        final restored = await restoreWithIdentitySecretAsync(savedSecret);
+        if (restored) return true;
+      }
+    } catch (e) {
+      _lastAuthError = e.toString();
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -618,22 +626,16 @@ class AuthController extends ChangeNotifier {
 
     try {
       final deviceUuid = await getOrCreateLocalDeviceUuid();
-      final alias = (username != null && username.isNotEmpty) ? username.trim() : null;
+      final identityPub = 'id_pub_${secretOrSeed.hashCode.abs()}';
 
       final response = await ApiClient.instance.post(
-        ApiEndpoints.identityRegister,
+        ApiEndpoints.identityRestore,
         body: {
-          'identityPublicKey': 'id_pub_${secretOrSeed.hashCode.abs()}',
-          if (alias != null) 'username': alias,
+          'identitySecret': secretOrSeed,
+          'identityPublicKey': identityPub,
           'deviceUuid': deviceUuid,
-          'devicePublicKey': 'dev_pub_${DateTime.now().millisecondsSinceEpoch}',
           'deviceName': 'Restored Device',
           'platform': Platform.isIOS ? 'ios' : 'android',
-          'signedPreKey': {
-            'keyId': 1,
-            'publicKey': 'spk_pub_1',
-            'signature': 'spk_sig_1',
-          },
         },
       );
 

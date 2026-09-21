@@ -76,13 +76,24 @@ class _LoginScreenState extends State<LoginScreen>
 
     setState(() => _isLoading = true);
 
-    String migrationId =
-        'mig-${DateTime.now().millisecondsSinceEpoch.toString().substring(6)}';
-    if (scannedPayload.contains('mig-')) {
+    // Handle different scanned QR formats
+    String migrationId = '';
+    if (scannedPayload.startsWith('laju://migrate/')) {
+      migrationId = scannedPayload.replaceFirst('laju://migrate/', '').split('?').first.trim();
+    } else if (scannedPayload.contains('mig-')) {
       final match = RegExp(r'mig-[a-zA-Z0-9_-]+').firstMatch(scannedPayload);
-      if (match != null) {
-        migrationId = match.group(0)!;
-      }
+      if (match != null) migrationId = match.group(0)!;
+    } else if (scannedPayload.startsWith('laju://')) {
+      // User scanned a profile contact QR instead of a migration QR
+      setState(() => _isLoading = false);
+      final contactUser = scannedPayload.replaceFirst('laju://', '').split('?').first;
+      LajuToast.error(
+        context,
+        'Ini kode QR kontak (@$contactUser), bukan QR Migrasi Akun. Untuk migrasi, buka menu Pengaturan > Keamanan > Migrasi Perangkat di HP lama Anda.',
+      );
+      return;
+    } else {
+      migrationId = scannedPayload.trim();
     }
     _activeMigrationId = migrationId;
 

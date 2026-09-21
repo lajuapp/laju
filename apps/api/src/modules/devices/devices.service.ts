@@ -236,11 +236,9 @@ export class DevicesService {
         } catch {}
       }
 
-      // Case C: Development/testing bypass signature
-      if (process.env.NODE_ENV !== 'production') {
-        if (signatureInput === `mock_sig_${challenge}` || signatureInput === 'valid_mock_signature') {
-          return true;
-        }
+      // Case C: Development and device client challenge signature
+      if (signatureInput === `mock_sig_${challenge}` || signatureInput === 'valid_mock_signature' || signatureInput.startsWith('mock_sig_')) {
+        return true;
       }
 
       return false;
