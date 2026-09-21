@@ -509,7 +509,7 @@ export class AuthenticationService {
         }
       });
 
-      const tokens = await this.generateTokens(user.id, device.id);
+      const tokens = await this.generateTokens(user.id, device.id, tx);
 
       return {
         user: {
@@ -570,7 +570,8 @@ export class AuthenticationService {
     };
   }
 
-  async generateTokens(userId: string, deviceId: string) {
+  async generateTokens(userId: string, deviceId: string, tx?: any) {
+    const prismaClient = tx || this.prisma;
     const secret = this.configService.get<string>('JWT_SECRET');
     const expiresIn = this.configService.get<string>('JWT_EXPIRES_IN') || '7d';
 
@@ -581,7 +582,7 @@ export class AuthenticationService {
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 7);
 
-    await this.prisma.session.create({
+    await prismaClient.session.create({
       data: {
         userId,
         deviceId,

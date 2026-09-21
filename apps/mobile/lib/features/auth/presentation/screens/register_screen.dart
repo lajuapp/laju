@@ -89,7 +89,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
             (route) => false,
           );
         } else {
-          LajuToast.error(context, context.tr('authFailed'));
+          final errorMsg = AuthController.instance.lastAuthError;
+          LajuToast.error(
+            context,
+            (errorMsg != null && errorMsg.isNotEmpty)
+                ? errorMsg
+                : context.tr('authFailed'),
+          );
         }
       }
     } catch (e) {

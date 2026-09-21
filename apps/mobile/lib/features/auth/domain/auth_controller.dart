@@ -50,6 +50,7 @@ class AuthController extends ChangeNotifier {
   DateTime? _otpExpiresAt;
   String? _temp2FaToken;
   bool _isLoading = false;
+  String? _lastAuthError;
 
   // Getters
   bool get isAuthenticated => _isAuthenticated;
@@ -62,6 +63,7 @@ class AuthController extends ChangeNotifier {
   String get activeOtpCode => _activeOtpCode;
   DateTime? get otpExpiresAt => _otpExpiresAt;
   bool get isLoading => _isLoading;
+  String? get lastAuthError => _lastAuthError;
 
   bool get isIdentifierEmail {
     if (_pendingIdentifier == null) return false;
@@ -651,12 +653,16 @@ class AuthController extends ChangeNotifier {
             AccountController.instance.updateProfile(name: _currentUser!.username);
           }
         }
+        _lastAuthError = null;
         _isAuthenticated = true;
         _requiresTwoFactor = false;
         await _saveSessionToPrefs();
         return true;
+      } else {
+        _lastAuthError = response.errorMessage;
       }
-    } catch (_) {
+    } catch (e) {
+      _lastAuthError = e.toString();
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -838,13 +844,17 @@ class AuthController extends ChangeNotifier {
           );
         }
 
+        _lastAuthError = null;
         AccountController.instance.updateProfile(name: cleanUsername);
         _isAuthenticated = true;
         _requiresTwoFactor = false;
         await _saveSessionToPrefs();
         return true;
+      } else {
+        _lastAuthError = response.errorMessage;
       }
-    } catch (_) {
+    } catch (e) {
+      _lastAuthError = e.toString();
     } finally {
       _isLoading = false;
       notifyListeners();

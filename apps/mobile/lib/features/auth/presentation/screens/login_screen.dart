@@ -301,7 +301,13 @@ class _LoginScreenState extends State<LoginScreen>
           (route) => false,
         );
       } else {
-        LajuToast.error(context, context.tr('authFailed'));
+        final errorMsg = AuthController.instance.lastAuthError;
+        LajuToast.error(
+          context,
+          (errorMsg != null && errorMsg.isNotEmpty)
+              ? errorMsg
+              : context.tr('authFailed'),
+        );
       }
     } catch (e) {
       if (mounted) {
