@@ -9,8 +9,8 @@ services:
     restart: unless-stopped
     env_file:
       - .env
-    ports:
-      - "${HOST_API_PORT:-3000}:3000"
+    expose:
+      - "3000"
     depends_on:
       postgres:
         condition: service_healthy
@@ -38,8 +38,8 @@ services:
     container_name: laju-backoffice
     build: ./apps/backoffice
     restart: unless-stopped
-    ports:
-      - "${HOST_BACKOFFICE_PORT:-3001}:3000"
+    expose:
+      - "3000"
     depends_on:
       api:
         condition: service_started
