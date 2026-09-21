@@ -10,6 +10,7 @@ import '../widgets/attachment_bottom_sheet.dart';
 import 'disappearing_messages_screen.dart';
 import '../../../conversations/presentation/screens/user_profile_screen.dart';
 import '../../../../core/services/voice_note_service.dart';
+import '../../../../core/services/local_database.dart';
 
 class ChatScreen extends StatefulWidget {
   final String conversationId;
@@ -43,20 +44,28 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _loadMessagesFromApi() async {
+    // Step 1: Load from SQLite cache instantly (offline-ready)
+    final cached = await ConversationService.instance.getMessagesFromCache(widget.conversationId);
+    if (mounted && cached.isNotEmpty) {
+      setState(() {
+        _messages = cached;
+      });
+      Future.delayed(const Duration(milliseconds: 100), _scrollToBottom);
+    }
+
+    // Step 2: Fetch fresh messages from API in background
     try {
       final apiMsgs = await ConversationService.instance.fetchMessages(widget.conversationId);
-      if (mounted) {
+      if (mounted && apiMsgs.isNotEmpty) {
         setState(() {
           _messages = apiMsgs;
         });
-        if (apiMsgs.isNotEmpty) {
-          Future.delayed(const Duration(milliseconds: 100), _scrollToBottom);
-        }
+        Future.delayed(const Duration(milliseconds: 100), _scrollToBottom);
       }
     } catch (_) {}
   }
 
-  void _sendMessage(String text) {
+  void _sendMessage(String text) async {
     LajuSoundService.playOutgoingTone();
     final localMsg = MessageModel(
       id: 'msg-${DateTime.now().millisecondsSinceEpoch}',
@@ -65,7 +74,7 @@ class _ChatScreenState extends State<ChatScreen> {
       content: text,
       timestamp: DateTime.now(),
       isOutgoing: true,
-      status: MessageDeliveryStatus.sent,
+      status: MessageDeliveryStatus.sending,
       replyTo: _replyingTo,
     );
 
@@ -74,19 +83,34 @@ class _ChatScreenState extends State<ChatScreen> {
       _replyingTo = null;
     });
 
+    // Save optimistically to SQLite
+    await LocalDatabase.instance.insertSentMessage(localMsg);
+
+    Future.delayed(const Duration(milliseconds: 100), () {
+      _scrollToBottom();
+    });
+
     // Send to backend
-    ConversationService.instance.sendMessage(
+    final sentMsg = await ConversationService.instance.sendMessage(
       conversationId: widget.conversationId,
       text: text,
       clientMessageId: localMsg.id,
     );
 
-    Future.delayed(const Duration(milliseconds: 100), () {
-      _scrollToBottom();
-    });
+    if (mounted && sentMsg != null) {
+      setState(() {
+        final idx = _messages.indexWhere((m) => m.id == localMsg.id);
+        if (idx != -1) {
+          _messages[idx] = _messages[idx].copyWith(
+            id: sentMsg.id,
+            status: sentMsg.status,
+          );
+        }
+      });
+    }
   }
 
-  void _handleSendVoiceNote(VoiceRecordResult result) {
+  void _handleSendVoiceNote(VoiceRecordResult result) async {
     final voiceMsg = MessageModel(
       id: 'voice-${DateTime.now().millisecondsSinceEpoch}',
       conversationId: widget.conversationId,
@@ -98,22 +122,37 @@ class _ChatScreenState extends State<ChatScreen> {
       attachmentName: 'Voice Note (${result.formattedDuration})',
       attachmentSize: result.formattedDuration,
       attachmentPath: result.filePath,
-      status: MessageDeliveryStatus.sent,
+      status: MessageDeliveryStatus.sending,
     );
 
     setState(() {
       _messages.add(voiceMsg);
     });
 
-    ConversationService.instance.sendMessage(
+    // Save optimistically to SQLite
+    await LocalDatabase.instance.insertSentMessage(voiceMsg);
+
+    Future.delayed(const Duration(milliseconds: 100), () {
+      _scrollToBottom();
+    });
+
+    final sentMsg = await ConversationService.instance.sendMessage(
       conversationId: widget.conversationId,
       text: '🎤 Voice Message (${result.formattedDuration})',
       clientMessageId: voiceMsg.id,
     );
 
-    Future.delayed(const Duration(milliseconds: 100), () {
-      _scrollToBottom();
-    });
+    if (mounted && sentMsg != null) {
+      setState(() {
+        final idx = _messages.indexWhere((m) => m.id == voiceMsg.id);
+        if (idx != -1) {
+          _messages[idx] = _messages[idx].copyWith(
+            id: sentMsg.id,
+            status: sentMsg.status,
+          );
+        }
+      });
+    }
   }
 
   void _handleReaction(MessageModel message, String emoji) {
@@ -193,11 +232,12 @@ class _ChatScreenState extends State<ChatScreen> {
           timestamp: DateTime.now(),
           isOutgoing: true,
           contentType: MessageContentType.attachment,
-          status: MessageDeliveryStatus.sent,
+          status: MessageDeliveryStatus.sending,
         );
         setState(() {
           _messages.add(docMsg);
         });
+        await LocalDatabase.instance.insertSentMessage(docMsg);
         ConversationService.instance.sendMessage(
           conversationId: widget.conversationId,
           text: '📄 ${result.title} (${result.fileSize ?? ""})',
@@ -216,11 +256,12 @@ class _ChatScreenState extends State<ChatScreen> {
           timestamp: DateTime.now(),
           isOutgoing: true,
           contentType: MessageContentType.attachment,
-          status: MessageDeliveryStatus.sent,
+          status: MessageDeliveryStatus.sending,
         );
         setState(() {
           _messages.add(imgMsg);
         });
+        await LocalDatabase.instance.insertSentMessage(imgMsg);
         ConversationService.instance.sendMessage(
           conversationId: widget.conversationId,
           text: '📷 ${result.title} (${result.fileSize ?? ""})',
@@ -239,11 +280,12 @@ class _ChatScreenState extends State<ChatScreen> {
           timestamp: DateTime.now(),
           isOutgoing: true,
           contentType: MessageContentType.attachment,
-          status: MessageDeliveryStatus.sent,
+          status: MessageDeliveryStatus.sending,
         );
         setState(() {
           _messages.add(audMsg);
         });
+        await LocalDatabase.instance.insertSentMessage(audMsg);
         ConversationService.instance.sendMessage(
           conversationId: widget.conversationId,
           text: '🎵 ${result.title} (${result.fileSize ?? ""})',

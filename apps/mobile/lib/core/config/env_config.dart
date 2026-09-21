@@ -99,7 +99,7 @@ class EnvConfig {
     if (_env.containsKey('ENABLE_MOCK_FALLBACK')) {
       return _env['ENABLE_MOCK_FALLBACK']!.toLowerCase() == 'true';
     }
-    return true;
+    return false;
   }
 
   /// WebSocket URL for real-time events

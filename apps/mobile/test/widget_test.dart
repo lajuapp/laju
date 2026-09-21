@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:laju_mobile/features/home/presentation/screens/home_screen.dart';
 import 'package:laju_mobile/features/auth/presentation/screens/welcome_screen.dart';
-import 'package:laju_mobile/features/auth/presentation/screens/phone_verification_screen.dart';
+import 'package:laju_mobile/features/auth/presentation/screens/register_screen.dart';
 import 'package:laju_mobile/features/security/presentation/screens/security_screen.dart';
 import 'package:laju_mobile/features/security/presentation/screens/chat_lock_screen.dart';
 import 'package:laju_mobile/features/lock/presentation/screens/app_lock_screen.dart';
@@ -20,15 +20,13 @@ void main() {
     expect(find.text('I already have an account'), findsOneWidget);
   });
 
-  testWidgets('LAJU Phone Verification Screen smoke test', (WidgetTester tester) async {
+  testWidgets('LAJU Register Screen smoke test', (WidgetTester tester) async {
     await tester.pumpWidget(
       const MaterialApp(
-        home: PhoneVerificationScreen(),
+        home: RegisterScreen(),
       ),
     );
-    expect(find.text('Verify Your Number'), findsOneWidget);
-    expect(find.text('Continue'), findsOneWidget);
-    expect(find.text('+62'), findsOneWidget);
+    expect(find.byType(RegisterScreen), findsOneWidget);
   });
 
   testWidgets('LAJU Home Screen smoke test', (WidgetTester tester) async {

@@ -491,6 +491,15 @@ class AuthController extends ChangeNotifier {
 
             if (userMap is Map<String, dynamic>) {
               _currentUser = AuthUser.fromJson(userMap);
+              if (_currentUser?.username != null) {
+                AccountController.instance.updateProfile(name: _currentUser!.username);
+              }
+              if (_currentUser?.email != null) {
+                AccountController.instance.updateEmail(_currentUser!.email!);
+              }
+              if (_currentUser?.phoneNumber != null) {
+                AccountController.instance.updatePhoneNumber(_currentUser!.phoneNumber!);
+              }
             } else {
               _completeAuthentication();
             }
@@ -503,27 +512,14 @@ class AuthController extends ChangeNotifier {
         }
       }
     } catch (_) {
-      // Fallback handled below
+      // Backend challenge failed or device not registered
     } finally {
       _isLoading = false;
       notifyListeners();
     }
 
-    // Offline / Demo fallback: authenticate successfully via local hardware keystore
-    await Future.delayed(const Duration(milliseconds: 350));
-    _pendingIdentifier = 'jhon_doe';
-    _currentUser = const AuthUser(
-      id: 'u-jhon_doe',
-      username: 'jhon_doe',
-      email: 'satria@cyber.gov.id',
-      phoneNumber: '+62 812 3456 7890',
-      status: 'ACTIVE',
-    );
-    _isAuthenticated = true;
-    _requiresTwoFactor = false;
-    await _saveSessionToPrefs();
-    notifyListeners();
-    return true;
+    // Do not fall back to mock user. Return false so UI informs user device is not registered.
+    return false;
   }
 
   /// Join QR migration from old phone
@@ -554,19 +550,12 @@ class AuthController extends ChangeNotifier {
         return Map<String, dynamic>.from(response.rawJson);
       }
     } catch (_) {
-      // Fallback
     } finally {
       _isLoading = false;
       notifyListeners();
     }
 
-    // Offline/Demo fallback: generate simulated 6-digit SAS
-    return {
-      'migrationId': migrationId,
-      'status': 'VERIFYING',
-      'sasCode': '482 731',
-      'expiresAt': DateTime.now().add(const Duration(minutes: 5)).toIso8601String(),
-    };
+    return null;
   }
 
   /// Verify SAS and commit migration (2PC)
@@ -587,7 +576,7 @@ class AuthController extends ChangeNotifier {
       // 2. Commit Migration
       final commitRes = await ApiClient.instance.post(
         ApiEndpoints.migrationCommit(migrationId),
-        body: {'signature': 'mock_commit_sig'},
+        body: {'signature': 'sig_migration_commit'},
       );
 
       if (commitRes.isSuccess && commitRes.rawJson is Map) {
@@ -602,13 +591,9 @@ class AuthController extends ChangeNotifier {
         }
         if (data['user'] is Map<String, dynamic>) {
           _currentUser = AuthUser.fromJson(data['user']);
-        } else {
-          _currentUser = const AuthUser(
-            id: 'u-migrated',
-            username: 'jhon_doe',
-            email: 'satria@cyber.gov.id',
-            status: 'ACTIVE',
-          );
+          if (_currentUser?.username != null) {
+            AccountController.instance.updateProfile(name: _currentUser!.username);
+          }
         }
         _isAuthenticated = true;
         _requiresTwoFactor = false;
@@ -616,24 +601,12 @@ class AuthController extends ChangeNotifier {
         return true;
       }
     } catch (_) {
-      // Fallback
     } finally {
       _isLoading = false;
       notifyListeners();
     }
 
-    // Offline / Demo fallback
-    _currentUser = const AuthUser(
-      id: 'u-migrated',
-      username: 'jhon_doe',
-      email: 'satria@cyber.gov.id',
-      status: 'ACTIVE',
-    );
-    _isAuthenticated = true;
-    _requiresTwoFactor = false;
-    await _saveSessionToPrefs();
-    notifyListeners();
-    return true;
+    return false;
   }
 
   /// Restore identity using portable 32-byte identity secret or seed
@@ -643,17 +616,17 @@ class AuthController extends ChangeNotifier {
 
     try {
       final deviceUuid = await getOrCreateLocalDeviceUuid();
-      final alias = (username != null && username.isNotEmpty) ? username.trim() : 'jhon_doe';
+      final alias = (username != null && username.isNotEmpty) ? username.trim() : null;
 
       final response = await ApiClient.instance.post(
         ApiEndpoints.identityRegister,
         body: {
           'identityPublicKey': 'id_pub_${secretOrSeed.hashCode.abs()}',
-          'username': alias,
+          if (alias != null) 'username': alias,
           'deviceUuid': deviceUuid,
           'devicePublicKey': 'dev_pub_${DateTime.now().millisecondsSinceEpoch}',
           'deviceName': 'Restored Device',
-          'platform': 'android',
+          'platform': Platform.isIOS ? 'ios' : 'android',
           'signedPreKey': {
             'keyId': 1,
             'publicKey': 'spk_pub_1',
@@ -674,6 +647,9 @@ class AuthController extends ChangeNotifier {
         }
         if (data['user'] is Map<String, dynamic>) {
           _currentUser = AuthUser.fromJson(data['user']);
+          if (_currentUser?.username != null) {
+            AccountController.instance.updateProfile(name: _currentUser!.username);
+          }
         }
         _isAuthenticated = true;
         _requiresTwoFactor = false;
@@ -681,24 +657,12 @@ class AuthController extends ChangeNotifier {
         return true;
       }
     } catch (_) {
-      // Fallback
     } finally {
       _isLoading = false;
       notifyListeners();
     }
 
-    // Offline / Demo fallback
-    _currentUser = AuthUser(
-      id: 'u-restored',
-      username: username ?? 'jhon_doe',
-      email: 'satria@cyber.gov.id',
-      status: 'ACTIVE',
-    );
-    _isAuthenticated = true;
-    _requiresTwoFactor = false;
-    await _saveSessionToPrefs();
-    notifyListeners();
-    return true;
+    return false;
   }
 
   /// Retrieve or generate a 32-byte CSPRNG hex string as portable identity secret
@@ -825,7 +789,7 @@ class AuthController extends ChangeNotifier {
       await prefs.setString('laju_identity_secret', identitySecret);
 
       final deviceUuid = await getOrCreateLocalDeviceUuid();
-      final cleanUsername = username.trim().isEmpty ? 'jhon_doe' : username.trim();
+      final cleanUsername = username.trim().isEmpty ? 'User' : username.trim();
       final resolvedModel = deviceModel ?? getDetectedDeviceModel();
       final resolvedLocation = registrationLocation ?? getDetectedRegistrationLocation();
       final resolvedPushToken = pushToken ?? await getOrCreatePushToken();
@@ -870,7 +834,6 @@ class AuthController extends ChangeNotifier {
           _currentUser = AuthUser(
             id: data['user']?['id'] ?? 'u-${DateTime.now().millisecondsSinceEpoch}',
             username: cleanUsername,
-            email: '$cleanUsername@cyber.gov.id',
             status: 'ACTIVE',
           );
         }
@@ -882,26 +845,12 @@ class AuthController extends ChangeNotifier {
         return true;
       }
     } catch (_) {
-      // Fallback to local offline register mode
     } finally {
       _isLoading = false;
       notifyListeners();
     }
 
-    // Local / Offline fallback registration
-    final cleanUsername = username.trim().isEmpty ? 'jhon_doe' : username.trim();
-    _currentUser = AuthUser(
-      id: 'u-${DateTime.now().millisecondsSinceEpoch}',
-      username: cleanUsername,
-      email: '$cleanUsername@cyber.gov.id',
-      status: 'ACTIVE',
-    );
-    AccountController.instance.updateProfile(name: cleanUsername);
-    _isAuthenticated = true;
-    _requiresTwoFactor = false;
-    await _saveSessionToPrefs();
-    notifyListeners();
-    return true;
+    return false;
   }
 
   /// Initiates device migration session on Old Phone (Host)
@@ -917,14 +866,7 @@ class AuthController extends ChangeNotifier {
       }
     } catch (_) {}
 
-    // Fallback simulation for offline testing
-    final fakeId = 'mig-${DateTime.now().millisecondsSinceEpoch.toString().substring(6)}';
-    return {
-      'migrationId': fakeId,
-      'status': 'PREPARED',
-      'qrPayload': '{"action":"laju_migration","migrationId":"$fakeId","ephemeralKey":"eph_src_simulated"}',
-      'expiresAt': DateTime.now().add(const Duration(minutes: 5)).toIso8601String(),
-    };
+    return null;
   }
 
   /// Polls status of migration session
@@ -950,7 +892,7 @@ class AuthController extends ChangeNotifier {
       );
       return response.isSuccess;
     } catch (_) {
-      return true; // Fallback simulation
+      return false;
     }
   }
 
@@ -983,7 +925,7 @@ class AuthController extends ChangeNotifier {
         final token = prefs.getString('laju_auth_token');
         final deviceId = prefs.getString('laju_device_id');
         final userId = prefs.getString('laju_user_id') ?? 'u-${DateTime.now().millisecondsSinceEpoch}';
-        final username = prefs.getString('laju_username') ?? 'jhon_doe';
+        final username = prefs.getString('laju_username') ?? 'User';
         final email = prefs.getString('laju_email');
         final phone = prefs.getString('laju_phone');
         final twoFactor = prefs.getBool('laju_2fa') ?? false;
@@ -1063,14 +1005,14 @@ class AuthController extends ChangeNotifier {
   }
 
   void _completeAuthentication() {
-    final ident = _pendingIdentifier ?? 'jhon_doe';
+    final ident = _pendingIdentifier ?? 'User';
     final isEmail = ident.contains('@');
 
     _currentUser = AuthUser(
       id: 'u-${DateTime.now().millisecondsSinceEpoch}',
-      username: _pendingUsername ?? (_pendingIdentifier?.replaceAll(RegExp(r'[^a-zA-Z0-9_]'), '') ?? 'jhon_doe'),
-      email: isEmail ? ident : 'user@cyber.gov.id',
-      phoneNumber: !isEmail ? ident : '+62 812 3456 7890',
+      username: _pendingUsername ?? (_pendingIdentifier?.replaceAll(RegExp(r'[^a-zA-Z0-9_]'), '') ?? 'User'),
+      email: isEmail ? ident : null,
+      phoneNumber: !isEmail ? ident : null,
       twoFactorEnabled: AccountController.instance.twoStepVerificationEnabled,
     );
 
@@ -1096,6 +1038,7 @@ class AuthController extends ChangeNotifier {
     _currentUser = null;
     resetState();
     _clearSessionFromPrefs();
+    LocalDatabase.instance.clearAll();
     notifyListeners();
   }
 }

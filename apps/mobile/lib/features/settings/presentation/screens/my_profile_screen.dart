@@ -208,7 +208,7 @@ class MyProfileScreen extends StatelessWidget {
     final controller = TextEditingController(text: AccountController.instance.about);
 
     final presets = [
-      'Available • High-Assurance Protocol 🔒',
+      'Available',
       'Busy',
       'At work',
       'Battery about to die',

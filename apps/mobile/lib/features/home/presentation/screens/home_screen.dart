@@ -41,14 +41,23 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _loadConversations() async {
-    setState(() {
-      _isLoadingConversations = true;
-    });
+    // Step 1: Show cached data instantly (no spinner)
+    final cached = await ConversationService.instance.getConversationsFromCache();
+    if (mounted && cached.isNotEmpty) {
+      setState(() {
+        _conversations = cached;
+        _isLoadingConversations = false;
+      });
+    } else if (mounted) {
+      setState(() => _isLoadingConversations = true);
+    }
+
+    // Step 2: Fetch from server in background silently
     try {
       final apiConvs = await ConversationService.instance.fetchConversations();
       if (mounted) {
         setState(() {
-          _conversations = apiConvs;
+          if (apiConvs.isNotEmpty) _conversations = apiConvs;
           _isLoadingConversations = false;
         });
       }

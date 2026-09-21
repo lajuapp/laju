@@ -29,6 +29,7 @@ export 'security/app_permission_service.dart';
 export 'services/device_media_service.dart';
 export 'services/biometric_service.dart';
 export 'services/laju_sound_service.dart';
+export 'services/local_database.dart';
 
 export 'config/env_config.dart';
 export 'network/api_client.dart';

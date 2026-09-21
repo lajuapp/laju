@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class ChatStorageItem {
   final String id;
@@ -69,6 +70,29 @@ class DataStorageController extends ChangeNotifier {
   String _proxySecret = '';
   String _proxyStatus = 'disconnected'; // 'disconnected', 'connecting', 'connected', 'error'
   int? _proxyPingMs;
+
+  /// Load saved settings from SharedPreferences on app start
+  Future<void> init() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      _useProxy = prefs.getBool('laju_use_proxy') ?? false;
+      _proxyHost = prefs.getString('laju_proxy_host') ?? 'proxy.laju.internal';
+      _proxyPort = prefs.getInt('laju_proxy_port') ?? 1080;
+      _proxySecret = prefs.getString('laju_proxy_secret') ?? '';
+      _proxyStatus = _useProxy ? 'connected' : 'disconnected';
+
+      final mobileList = prefs.getStringList('laju_mobile_data_types');
+      if (mobileList != null) _mobileDataTypes = Set.from(mobileList);
+
+      final wifiList = prefs.getStringList('laju_wifi_types');
+      if (wifiList != null) _wifiTypes = Set.from(wifiList);
+
+      final roamingList = prefs.getStringList('laju_roaming_types');
+      if (roamingList != null) _roamingTypes = Set.from(roamingList);
+
+      notifyListeners();
+    } catch (_) {}
+  }
 
   // Getters - Storage
   int get lajuDatabaseBytes => _lajuDatabaseBytes;
@@ -160,23 +184,35 @@ class DataStorageController extends ChangeNotifier {
   }
 
   // Actions - Auto-Download
-  void setMobileDataTypes(Set<String> types) {
+  Future<void> setMobileDataTypes(Set<String> types) async {
     _mobileDataTypes = Set.from(types);
     notifyListeners();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList('laju_mobile_data_types', types.toList());
+    } catch (_) {}
   }
 
-  void setWifiTypes(Set<String> types) {
+  Future<void> setWifiTypes(Set<String> types) async {
     _wifiTypes = Set.from(types);
     notifyListeners();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList('laju_wifi_types', types.toList());
+    } catch (_) {}
   }
 
-  void setRoamingTypes(Set<String> types) {
+  Future<void> setRoamingTypes(Set<String> types) async {
     _roamingTypes = Set.from(types);
     notifyListeners();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList('laju_roaming_types', types.toList());
+    } catch (_) {}
   }
 
   // Actions - Proxy
-  void setUseProxy(bool value) {
+  Future<void> setUseProxy(bool value) async {
     _useProxy = value;
     if (!value) {
       _proxyStatus = 'disconnected';
@@ -186,9 +222,13 @@ class DataStorageController extends ChangeNotifier {
       _proxyPingMs = 38;
     }
     notifyListeners();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('laju_use_proxy', value);
+    } catch (_) {}
   }
 
-  void updateProxyConfig({required String host, required int port, required String secret}) {
+  Future<void> updateProxyConfig({required String host, required int port, required String secret}) async {
     _proxyHost = host;
     _proxyPort = port;
     _proxySecret = secret;
@@ -197,6 +237,12 @@ class DataStorageController extends ChangeNotifier {
       _proxyPingMs = 42;
     }
     notifyListeners();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('laju_proxy_host', host);
+      await prefs.setInt('laju_proxy_port', port);
+      await prefs.setString('laju_proxy_secret', secret);
+    } catch (_) {}
   }
 
   Future<bool> testProxyConnection() async {

@@ -6,10 +6,16 @@ import 'features/auth/presentation/screens/splash_screen.dart';
 import 'features/calls/presentation/widgets/floating_call_overlay.dart';
 import 'features/home/presentation/screens/home_screen.dart';
 import 'features/settings/domain/account_controller.dart';
+import 'features/settings/domain/data_storage_controller.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await EnvConfig.instance.init();
+  await LocalDatabase.instance.init();
+  await ThemeModeController.instance.init();
+  await LocaleController.instance.init();
+  await ChatAppearanceController.instance.init();
+  await DataStorageController.instance.init();
   await AppLockController.instance.init();
   await AccountController.instance.init();
   await AuthController.instance.initSession();

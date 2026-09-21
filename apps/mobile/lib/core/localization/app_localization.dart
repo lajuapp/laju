@@ -1,14 +1,32 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class LocaleController extends ValueNotifier<Locale> {
   LocaleController._() : super(const Locale('en'));
 
   static final LocaleController instance = LocaleController._();
 
-  void setLocale(Locale newLocale) {
+  /// Load saved locale from SharedPreferences on app start
+  Future<void> init() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final saved = prefs.getString('laju_locale') ?? 'en';
+      final locale = Locale(saved);
+      if (value != locale) {
+        value = locale;
+        notifyListeners();
+      }
+    } catch (_) {}
+  }
+
+  Future<void> setLocale(Locale newLocale) async {
     if (value != newLocale) {
       value = newLocale;
       notifyListeners();
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('laju_locale', newLocale.languageCode);
+      } catch (_) {}
     }
   }
 
@@ -81,8 +99,20 @@ class AppStrings {
       'dataAndStorage': 'Data and Storage',
       'appearance': 'Appearance',
       'language': 'Language',
-      'help': 'Help',
       'aboutLaju': 'About LAJU',
+      'aboutVersion': 'Version 1.0.0 (Open Source Edition)',
+      'aboutBadge': 'Open Source & End-to-End Encrypted',
+      'aboutOpenSourceTitle': 'Open Source Project',
+      'aboutOpenSourceDesc': 'LAJU is a free and open-source communication platform. The source code is publicly accessible, transparent, and verifiable by the global community.',
+      'aboutLegalDisclaimerTitle': 'Legal Disclaimer & Limitation of Liability',
+      'aboutLegalDisclaimerDesc': 'LAJU is provided "AS IS" without warranty of any kind. The developers, contributors, and maintainers of LAJU shall NOT be held responsible or liable for any unlawful conduct, illegal activities, damages, or consequences arising from the use of this application. Users bear full and sole responsibility for their actions, messages, and legal compliance.',
+      'aboutDisclaimerBanner': 'Users are solely responsible for compliance with all applicable laws.',
+      'aboutCryptoSpecsTitle': 'CRYPTOGRAPHIC SPECIFICATIONS',
+      'aboutLegalAuditsTitle': 'LEGAL & OPEN SOURCE',
+      'aboutLicenses': 'Open Source Licenses',
+      'aboutAuditReport': 'Cryptographic Audit Report',
+      'aboutAuditPassed': 'Audit status: 0 critical findings • Passed',
+      'aboutCopyright': '© 2026 LAJU Open Source Project. Built for privacy, transparency, and freedom.',
       'currentLanguage': 'English',
 
       // Account screen
@@ -498,6 +528,7 @@ class AppStrings {
       'restoreAccountButton': 'Restore Account',
       'verifyingDevice': 'Verifying device challenge...',
       'deviceAuthSuccess': 'Device authenticated successfully!',
+      'deviceNotRegistered': 'Device is not registered on the server. Please register a new account or restore using your Identity Key.',
       'migrationSuccess': 'Account migrated successfully to this device!',
       'readyToScan': 'Ready to Scan',
       'hardwareKeypairLabel': 'Hardware-Backed Keypair (Ed25519)',
@@ -871,6 +902,19 @@ class AppStrings {
       'language': 'Bahasa',
       'help': 'Bantuan',
       'aboutLaju': 'Tentang LAJU',
+      'aboutVersion': 'Versi 1.0.0 (Edisi Sumber Terbuka / Open Source)',
+      'aboutBadge': 'Sumber Terbuka & Terenkripsi Ujung-ke-Ujung',
+      'aboutOpenSourceTitle': 'Proyek Sumber Terbuka (Open Source)',
+      'aboutOpenSourceDesc': 'LAJU adalah platform komunikasi bebas dan bersumber terbuka (open source). Seluruh kode sumber bersifat publik, transparan, dan dapat diaudit secara independen oleh komunitas keamanan global.',
+      'aboutLegalDisclaimerTitle': 'Penafian Tanggung Jawab Hukum (Disclaimer)',
+      'aboutLegalDisclaimerDesc': 'LAJU disediakan apa adanya ("AS IS") tanpa jaminan dalam bentuk apa pun. Pengembang, kontributor, dan pengelola LAJU TIDAK BERTANGGUNG JAWAB atas segala tindakan yang melanggar hukum, kejahatan, sengketa, kerugian, atau dampak apa pun yang timbul dari penggunaan aplikasi ini. Setiap pengguna bertanggung jawab penuh secara mandiri atas segala aktivitas, isi pesan, dan kepatuhan hukum yang berlaku.',
+      'aboutDisclaimerBanner': 'Pengguna bertanggung jawab penuh atas segala tindakan dan kepatuhan hukum.',
+      'aboutCryptoSpecsTitle': 'SPESIFIKASI KRIPTOGRAFI',
+      'aboutLegalAuditsTitle': 'HUKUM & LISENSI TERBUKA',
+      'aboutLicenses': 'Lisensi Sumber Terbuka (Open Source)',
+      'aboutAuditReport': 'Laporan Audit Kriptografi',
+      'aboutAuditPassed': 'Status audit: 0 temuan kritis • Lolos Uji',
+      'aboutCopyright': '© 2026 Proyek Open Source LAJU. Dibangun untuk privasi, transparansi, dan kebebasan.',
       'currentLanguage': 'Bahasa Indonesia',
 
       // Account screen
@@ -1286,6 +1330,7 @@ class AppStrings {
       'restoreAccountButton': 'Pulihkan Identitas Kriptografis',
       'verifyingDevice': 'Memverifikasi challenge perangkat...',
       'deviceAuthSuccess': 'Perangkat berhasil diautentikasi!',
+      'deviceNotRegistered': 'Perangkat belum terdaftar di server. Silakan buat akun baru atau gunakan Kunci Pemulihan.',
       'migrationSuccess': 'Akun berhasil dipindahkan ke perangkat ini!',
       'readyToScan': 'Siap Memindai',
       'hardwareKeypairLabel': 'Pasangan Kunci Berbasis Hardware (Ed25519)',
@@ -1659,6 +1704,19 @@ class AppStrings {
       'language': 'Язык',
       'help': 'Помощь',
       'aboutLaju': 'О приложении LAJU',
+      'aboutVersion': 'Версия 1.0.0 (Версия с открытым исходным кодом)',
+      'aboutBadge': 'Открытый исходный код и сквозное шифрование',
+      'aboutOpenSourceTitle': 'Проект с открытым исходным кодом (Open Source)',
+      'aboutOpenSourceDesc': 'LAJU — это свободная платформа для защищенного общения с открытым исходным кодом. Код общедоступен, прозрачен и проверяем мировым сообществом.',
+      'aboutLegalDisclaimerTitle': 'Отказ от ответственности (Дисклеймер)',
+      'aboutLegalDisclaimerDesc': 'LAJU предоставляется на условиях «КАК ЕСТЬ» (AS IS) без каких-либо гарантий. Разработчики и авторы LAJU НЕ НЕСУТ ОТВЕТСТВЕННОСТИ за любые противоправные действия, нарушения закона, убытки или последствия использования приложения пользователями. Пользователи несут полную личную ответственность за свои действия и отправляемые сообщения.',
+      'aboutDisclaimerBanner': 'Пользователи несут личную ответственность за соблюдение законодательства.',
+      'aboutCryptoSpecsTitle': 'КРИПТОГРАФИЧЕСКИЕ СПЕЦИФИКАЦИИ',
+      'aboutLegalAuditsTitle': 'ЮРИДИЧЕСКАЯ ИНФОРМАЦИЯ И ЛИЦЕНЗИИ',
+      'aboutLicenses': 'Лицензии открытого ПО',
+      'aboutAuditReport': 'Отчет о криптографическом аудите',
+      'aboutAuditPassed': 'Статус аудита: 0 критических уязвимостей • Пройдено',
+      'aboutCopyright': '© 2026 Проект LAJU с открытым исходным кодом. Создано для конфиденциальности и свободы.',
       'currentLanguage': 'Русский',
 
       // Account screen
@@ -1919,6 +1977,7 @@ class AppStrings {
       'restoreAccountButton': 'Восстановить аккаунт',
       'verifyingDevice': 'Проверка вызова устройства...',
       'deviceAuthSuccess': 'Устройство успешно авторизовано!',
+      'deviceNotRegistered': 'Устройство не зарегистрировано на сервере. Создайте новый аккаунт или восстановите доступ по ключу.',
       'migrationSuccess': 'Аккаунт успешно перенесен на это устройство!',
       'readyToScan': 'Готов к сканированию',
       'hardwareKeypairLabel': 'Аппаратная пара ключей (Ed25519)',
@@ -2130,6 +2189,19 @@ class AppStrings {
       'language': '语言',
       'help': '帮助',
       'aboutLaju': '关于 LAJU',
+      'aboutVersion': '版本 1.0.0 (开源社区版)',
+      'aboutBadge': '完全开源与端到端加密',
+      'aboutOpenSourceTitle': '开源软件项目 (Open Source)',
+      'aboutOpenSourceDesc': 'LAJU 是一个自由且开源的端到端安全即时通讯平台。全部源代码公开透明，全球开发者与安全社区可随时独立审计与验证。',
+      'aboutLegalDisclaimerTitle': '法律免责声明与责任限制',
+      'aboutLegalDisclaimerDesc': 'LAJU 严格按“原样 (AS IS)”提供，不附带任何明示或暗示的担保。LAJU 的开发者与贡献者对用户利用本应用实施的任何违法违规行为、纠纷、侵权或任何后果概不承担任何法律责任。用户对自己的行为、通信内容及遵守适用法律负全部且独立的法律责任。',
+      'aboutDisclaimerBanner': '用户对其全部通信行为与法律合规性独立负全责。',
+      'aboutCryptoSpecsTitle': '密码学协议规格',
+      'aboutLegalAuditsTitle': '法律条款与开源许可',
+      'aboutLicenses': '开源软件许可证',
+      'aboutAuditReport': '密码学安全审计报告',
+      'aboutAuditPassed': '审计状态：0 项严重缺陷 • 审计通过',
+      'aboutCopyright': '© 2026 LAJU 开源项目。专为隐私保护、透明透明与沟通自由而打造。',
       'currentLanguage': '中文',
 
       // Account screen
@@ -2390,6 +2462,7 @@ class AppStrings {
       'restoreAccountButton': '恢复加密身份',
       'verifyingDevice': '正在验证设备挑战...',
       'deviceAuthSuccess': '设备认证成功！',
+      'deviceNotRegistered': '该设备未在服务器注册。请创建新账号或使用身份密钥恢复。',
       'migrationSuccess': '账户已成功迁移至此设备！',
       'readyToScan': '准备扫描',
       'hardwareKeypairLabel': '硬件背书密钥对 (Ed25519)',
@@ -2600,6 +2673,19 @@ class AppStrings {
       'language': '言語',
       'help': 'ヘルプ',
       'aboutLaju': 'LAJUについて',
+      'aboutVersion': 'バージョン 1.0.0 (オープンソース版)',
+      'aboutBadge': 'オープンソース＆エンドツーエンド暗号化',
+      'aboutOpenSourceTitle': 'オープンソースプロジェクト (Open Source)',
+      'aboutOpenSourceDesc': 'LAJUは、自由でオープンソースの安全な通信プラットフォームです。すべてのソースコードは公開されており、世界中のコミュニティによる透明性と検証が保証されています。',
+      'aboutLegalDisclaimerTitle': '免責事項および責任の制限',
+      'aboutLegalDisclaimerDesc': 'LAJUは「現状有姿 (AS IS)」で提供され、いかなる保証もありません。本アプリの利用を通じて行われた違法行為、犯罪、法的紛争、損害、またはいかなる結果についても、LAJUの開発者および貢献者は一切の責任を負いません。ユーザーは自らの送信内容および法令遵守に対して単独で全責任を負うものとします。',
+      'aboutDisclaimerBanner': 'ユーザーは自身の行動および法令遵守に対してすべての責任を負います。',
+      'aboutCryptoSpecsTitle': '暗号仕様およびプロトコル',
+      'aboutLegalAuditsTitle': '法的情報およびオープンソースライセンス',
+      'aboutLicenses': 'オープンソースライセンス一覧',
+      'aboutAuditReport': '暗号セキュリティ監査レポート',
+      'aboutAuditPassed': '監査ステータス: 重大な脆弱性 0 件 • 合格',
+      'aboutCopyright': '© 2026 LAJU Open Source Project. プライバシー、透明性、自由のために。',
       'currentLanguage': '日本語',
 
       // Account screen
@@ -2860,6 +2946,7 @@ class AppStrings {
       'restoreAccountButton': '暗号身元を復旧',
       'verifyingDevice': 'デバイスチャレンジ検証中...',
       'deviceAuthSuccess': 'デバイス認証に成功しました！',
+      'deviceNotRegistered': 'この端末はサーバーに登録されていません。新規アカウントを作成するか、本人確認キーで復元してください。',
       'migrationSuccess': 'アカウントがこのデバイスに正常に移行されました！',
       'readyToScan': 'スキャン準備完了',
       'hardwareKeypairLabel': 'ハードウェア保護キーペア (Ed25519)',

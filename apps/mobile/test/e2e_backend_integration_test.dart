@@ -11,7 +11,7 @@ void main() {
       final config = EnvConfig.instance;
       expect(config.apiBaseUrl, isNotEmpty);
       expect(config.apiTimeout.inSeconds, greaterThan(0));
-      expect(config.enableMockFallback, isTrue);
+      expect(config.enableMockFallback, isFalse);
     });
 
     test('EnvConfig transforms HTTP base URL to WebSocket URL', () {

@@ -17,7 +17,6 @@ class _LoginScreenState extends State<LoginScreen>
   late final TabController _tabController;
   final TextEditingController _recoveryKeyController = TextEditingController();
   bool _isLoading = false;
-  String? _simulatedSasCode;
   String? _activeMigrationId;
 
   @override
@@ -52,7 +51,7 @@ class _LoginScreenState extends State<LoginScreen>
           (route) => false,
         );
       } else {
-        LajuToast.error(context, context.tr('invalidOtp'));
+        LajuToast.error(context, context.tr('deviceNotRegistered'));
       }
     } catch (e) {
       if (mounted) {
@@ -63,26 +62,23 @@ class _LoginScreenState extends State<LoginScreen>
   }
 
   /// Flow 2: QR Migration Handshake (Move from Old Phone)
-  Future<void> _startMigrationHandshake({bool isSimulated = false}) async {
-    String? scannedPayload;
-    if (!isSimulated) {
-      scannedPayload = await Navigator.push<String>(
-        context,
-        MaterialPageRoute(
-          builder: (context) => const LajuQrScannerScreen(
-            title: 'Pindai Kode QR Migrasi',
-            promptText: 'Arahkan kamera ke kode QR pada HP lama Anda',
-          ),
+  Future<void> _startMigrationHandshake() async {
+    final scannedPayload = await Navigator.push<String>(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const LajuQrScannerScreen(
+          title: 'Pindai Kode QR Migrasi',
+          promptText: 'Arahkan kamera ke kode QR pada HP lama Anda',
         ),
-      );
-      if (scannedPayload == null) return;
-    }
+      ),
+    );
+    if (scannedPayload == null) return;
 
     setState(() => _isLoading = true);
 
     String migrationId =
         'mig-${DateTime.now().millisecondsSinceEpoch.toString().substring(6)}';
-    if (scannedPayload != null && scannedPayload.contains('mig-')) {
+    if (scannedPayload.contains('mig-')) {
       final match = RegExp(r'mig-[a-zA-Z0-9_-]+').firstMatch(scannedPayload);
       if (match != null) {
         migrationId = match.group(0)!;
@@ -97,8 +93,12 @@ class _LoginScreenState extends State<LoginScreen>
     if (!mounted) return;
     setState(() => _isLoading = false);
 
-    final sasCode = joinRes?['sasCode'] ?? '482 731';
-    _simulatedSasCode = sasCode;
+    if (joinRes == null || joinRes['sasCode'] == null) {
+      LajuToast.error(context, context.tr('migrationCommitFailed'));
+      return;
+    }
+
+    final sasCode = joinRes['sasCode'].toString();
 
     // Show Mutual SAS Verification Bottom Sheet
     _showSasVerificationBottomSheet(sasCode, migrationId);
@@ -300,9 +300,14 @@ class _LoginScreenState extends State<LoginScreen>
           MaterialPageRoute(builder: (context) => const HomeScreen()),
           (route) => false,
         );
+      } else {
+        LajuToast.error(context, context.tr('authFailed'));
       }
-    } catch (_) {
-      if (mounted) setState(() => _isLoading = false);
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoading = false);
+        LajuToast.error(context, '${context.tr('authFailed')}: $e');
+      }
     }
   }
 
@@ -711,38 +716,7 @@ class _LoginScreenState extends State<LoginScreen>
               ),
               onPressed: _isLoading
                   ? null
-                  : () => _startMigrationHandshake(isSimulated: false),
-            ),
-          ),
-          const SizedBox(height: 10),
-
-          // Secondary Quick Handshake / Demo Button
-          SizedBox(
-            width: double.infinity,
-            height: 46,
-            child: OutlinedButton.icon(
-              style: OutlinedButton.styleFrom(
-                side: BorderSide(
-                  color: isDark
-                      ? AppColors.darkSurfaceBorder
-                      : const Color(0xFFD1D5DB),
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-              ),
-              icon: const Icon(Icons.devices_other_rounded, size: 18),
-              label: Text(
-                context.tr('demoMigrationScan'),
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: textPrimary,
-                ),
-              ),
-              onPressed: _isLoading
-                  ? null
-                  : () => _startMigrationHandshake(isSimulated: true),
+                  : _startMigrationHandshake,
             ),
           ),
         ],

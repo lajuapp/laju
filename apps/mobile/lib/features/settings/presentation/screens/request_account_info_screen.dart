@@ -353,25 +353,6 @@ class _RequestAccountInfoScreenState extends State<RequestAccountInfoScreen> {
                                   ),
                                 ),
                               ),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: ElevatedButton(
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: const Color(0xFF10B981),
-                                    foregroundColor: Colors.white,
-                                    padding: const EdgeInsets.symmetric(vertical: 12),
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                  ),
-                                  onPressed: () {
-                                    AccountController.instance.setAccountReportReady();
-                                    LajuToast.success(context, context.tr('reportReady'));
-                                  },
-                                  child: Text(
-                                    context.tr('simulateReady'),
-                                    style: const TextStyle(fontWeight: FontWeight.w700),
-                                  ),
-                                ),
-                              ),
                             ],
                           ),
                         ] else ...[

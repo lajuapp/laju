@@ -55,7 +55,7 @@ class AboutScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'Version 1.0.0 (Enterprise Build 2026.09)',
+                      context.tr('aboutVersion'),
                       style: TextStyle(
                         fontSize: 13,
                         color: isDark ? AppColors.darkTextSecondary : const Color(0xFF64748B),
@@ -72,14 +72,14 @@ class AboutScreen extends StatelessWidget {
                           color: AppColors.primary.withValues(alpha: 0.35),
                         ),
                       ),
-                      child: const Row(
+                      child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(Icons.verified_rounded, size: 14, color: AppColors.primary),
-                          SizedBox(width: 6),
+                          const Icon(Icons.code_rounded, size: 14, color: AppColors.primary),
+                          const SizedBox(width: 6),
                           Text(
-                            'High-Assurance Secure Communications',
-                            style: TextStyle(
+                            context.tr('aboutBadge'),
+                            style: const TextStyle(
                               fontSize: 11.5,
                               fontWeight: FontWeight.w700,
                               color: AppColors.primaryDark,
@@ -93,13 +93,133 @@ class AboutScreen extends StatelessWidget {
               ),
             ),
 
+            const SizedBox(height: 16),
+
+            // Open Source Project Info Card
+            LajuGlassCard(
+              padding: const EdgeInsets.all(16),
+              borderRadius: 20,
+              blurSigma: 16,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: AppColors.primary.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Icon(Icons.public_rounded, size: 20, color: AppColors.primary),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          context.tr('aboutOpenSourceTitle'),
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                            color: isDark ? Colors.white : const Color(0xFF0F172A),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    context.tr('aboutOpenSourceDesc'),
+                    style: TextStyle(
+                      fontSize: 13.5,
+                      color: isDark ? AppColors.darkTextSecondary : const Color(0xFF475569),
+                      height: 1.5,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 16),
+
+            // Legal Disclaimer & Limitation of Liability Card
+            LajuGlassCard(
+              padding: const EdgeInsets.all(16),
+              borderRadius: 20,
+              blurSigma: 16,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.amber.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Icon(Icons.gavel_rounded, size: 20, color: Colors.amber),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          context.tr('aboutLegalDisclaimerTitle'),
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                            color: isDark ? Colors.white : const Color(0xFF0F172A),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    context.tr('aboutLegalDisclaimerDesc'),
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: isDark ? AppColors.darkTextSecondary : const Color(0xFF475569),
+                      height: 1.5,
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.amber.withValues(alpha: isDark ? 0.12 : 0.08),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: Colors.amber.withValues(alpha: 0.3),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.info_outline_rounded, size: 16, color: Colors.amber),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            context.tr('aboutDisclaimerBanner'),
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: isDark ? const Color(0xFFFDE68A) : const Color(0xFF92400E),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
             const SizedBox(height: 18),
 
             // Cryptographic Protocol Specs
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
               child: Text(
-                'CRYPTOGRAPHIC SPECIFICATIONS',
+                context.tr('aboutCryptoSpecsTitle'),
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w800,
@@ -155,11 +275,11 @@ class AboutScreen extends StatelessWidget {
 
             const SizedBox(height: 18),
 
-            // Legal & Credits
+            // Legal & Open Source
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
               child: Text(
-                'LEGAL & AUDITS',
+                context.tr('aboutLegalAuditsTitle'),
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w800,
@@ -184,7 +304,7 @@ class AboutScreen extends StatelessWidget {
                       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                       leading: Icon(Icons.menu_book_rounded, color: isDark ? AppColors.primaryLight : const Color(0xFF2563EB)),
                       title: Text(
-                        'Open Source Licenses',
+                        context.tr('aboutLicenses'),
                         style: TextStyle(
                           fontWeight: FontWeight.w600,
                           fontSize: 15,
@@ -211,7 +331,7 @@ class AboutScreen extends StatelessWidget {
                       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                       leading: const Icon(Icons.verified_user_outlined, color: AppColors.cyan),
                       title: Text(
-                        'Cryptographic Audit Report',
+                        context.tr('aboutAuditReport'),
                         style: TextStyle(
                           fontWeight: FontWeight.w600,
                           fontSize: 15,
@@ -220,7 +340,7 @@ class AboutScreen extends StatelessWidget {
                       ),
                       trailing: Icon(Icons.arrow_forward_ios_rounded, size: 14, color: isDark ? AppColors.darkTextSecondary : const Color(0xFF9CA3AF)),
                       onTap: () {
-                        LajuToast.success(context, 'Audit status: 0 critical findings • Passed');
+                        LajuToast.success(context, context.tr('aboutAuditPassed'));
                       },
                     ),
                   ),
@@ -232,7 +352,7 @@ class AboutScreen extends StatelessWidget {
 
             Center(
               child: Text(
-                '© 2026 LAJU Systems. Built for people who protect what matters.',
+                context.tr('aboutCopyright'),
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 12,

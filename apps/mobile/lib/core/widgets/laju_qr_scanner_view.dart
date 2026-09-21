@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import '../core.dart';
+import '../../features/conversations/domain/conversation_service.dart';
+import '../../features/messaging/presentation/screens/chat_screen.dart';
 
 /// Reusable QR Scanner widget that embeds a real-time live camera stream,
 /// professional viewfinder overlay, torch & flip controls, and gallery picker.
@@ -219,9 +221,29 @@ class _LajuQrScannerViewState extends State<LajuQrScannerView>
                           ),
                           icon: const Icon(Icons.person_add_outlined, size: 18),
                           label: const Text('Tambah Kontak', style: TextStyle(fontWeight: FontWeight.w700)),
-                          onPressed: () {
+                          onPressed: () async {
                             Navigator.pop(ctx);
-                            LajuToast.success(context, 'Berhasil menambahkan $displayName ke kontak!');
+                            final targetUsername = username ?? displayName;
+                            try {
+                              final users = await ConversationService.instance.searchUsers(targetUsername);
+                              final match = users.where((u) =>
+                                u.username.toLowerCase() == targetUsername.toLowerCase()
+                              ).toList();
+                              if (match.isNotEmpty) {
+                                await ConversationService.instance.createPersonalConversation(match.first.id);
+                                if (context.mounted) {
+                                  LajuToast.success(context, '$targetUsername berhasil ditambahkan!');
+                                }
+                              } else {
+                                if (context.mounted) {
+                                  LajuToast.error(context, 'Pengguna $targetUsername tidak ditemukan');
+                                }
+                              }
+                            } catch (_) {
+                              if (context.mounted) {
+                                LajuToast.error(context, 'Gagal menambahkan kontak');
+                              }
+                            }
                           },
                         ),
                       ),
@@ -237,10 +259,40 @@ class _LajuQrScannerViewState extends State<LajuQrScannerView>
                           ),
                           icon: const Icon(Icons.chat_bubble_outline_rounded, size: 18),
                           label: const Text('Kirim Pesan', style: TextStyle(fontWeight: FontWeight.w700)),
-                          onPressed: () {
+                          onPressed: () async {
                             Navigator.pop(ctx);
-                            Navigator.pop(context);
-                            LajuToast.success(context, 'Membuka obrolan dengan $displayName...');
+                            final targetUsername = username ?? displayName;
+                            try {
+                              final users = await ConversationService.instance.searchUsers(targetUsername);
+                              final match = users.where((u) =>
+                                u.username.toLowerCase() == targetUsername.toLowerCase()
+                              ).toList();
+                              if (match.isNotEmpty) {
+                                final convId = await ConversationService.instance
+                                    .createPersonalConversation(match.first.id);
+                                if (context.mounted) {
+                                  Navigator.pop(context);
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => ChatScreen(
+                                        conversationId: convId ?? 'conv-${match.first.id}',
+                                        title: targetUsername,
+                                        isGroup: false,
+                                      ),
+                                    ),
+                                  );
+                                }
+                              } else {
+                                if (context.mounted) {
+                                  LajuToast.error(context, 'Pengguna $targetUsername tidak ditemukan');
+                                }
+                              }
+                            } catch (_) {
+                              if (context.mounted) {
+                                LajuToast.error(context, 'Gagal membuka obrolan');
+                              }
+                            }
                           },
                         ),
                       ),

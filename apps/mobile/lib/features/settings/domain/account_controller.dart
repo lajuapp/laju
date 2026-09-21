@@ -21,20 +21,20 @@ class AccountController extends ChangeNotifier {
   static final AccountController instance = AccountController._();
 
   // User Profile
-  String _userName = 'jhon_doe';
+  String _userName = 'User';
   String _phoneNumber = '';
-  String _about = 'Available • High-Assurance Protocol 🔒';
+  String _about = 'Available';
   String _avatarUrl = '';
   int _trustScore = 100;
 
   // Account Security
   String _email = '';
-  bool _isEmailVerified = true;
+  bool _isEmailVerified = false;
   bool _securityNotificationsEnabled = true;
 
-  bool _twoStepVerificationEnabled = true;
-  String _twoStepPin = '123456';
-  String _twoStepRecoveryEmail = 'satria@cyber.gov.id';
+  bool _twoStepVerificationEnabled = false;
+  String _twoStepPin = '';
+  String _twoStepRecoveryEmail = '';
 
   // Passkeys
   final List<PasskeyItem> _passkeys = [];
@@ -246,7 +246,7 @@ class AccountController extends ChangeNotifier {
   void resetAccount() {
     _userName = 'User';
     _phoneNumber = '';
-    _about = 'Available • High-Assurance Protocol 🔒';
+    _about = 'Available';
     _avatarUrl = '';
     _email = '';
     _isEmailVerified = false;

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 enum LajuFontSize {
   small(0.9, 'Small', 'Kecil'),
@@ -27,17 +28,39 @@ class ChatAppearanceController extends ChangeNotifier {
   LajuFontSize get fontSize => _fontSize;
   double get fontScale => _fontSize.scale;
 
-  void setWallpaper(String wallpaperId) {
+  /// Load saved appearance settings from SharedPreferences on app start
+  Future<void> init() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      _selectedWallpaper = prefs.getString('laju_wallpaper') ?? 'default';
+      final savedFont = prefs.getString('laju_font_size') ?? 'medium';
+      _fontSize = LajuFontSize.values.firstWhere(
+        (f) => f.name == savedFont,
+        orElse: () => LajuFontSize.medium,
+      );
+      notifyListeners();
+    } catch (_) {}
+  }
+
+  Future<void> setWallpaper(String wallpaperId) async {
     if (_selectedWallpaper != wallpaperId) {
       _selectedWallpaper = wallpaperId;
       notifyListeners();
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('laju_wallpaper', wallpaperId);
+      } catch (_) {}
     }
   }
 
-  void setFontSize(LajuFontSize size) {
+  Future<void> setFontSize(LajuFontSize size) async {
     if (_fontSize != size) {
       _fontSize = size;
       notifyListeners();
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('laju_font_size', size.name);
+      } catch (_) {}
     }
   }
 }

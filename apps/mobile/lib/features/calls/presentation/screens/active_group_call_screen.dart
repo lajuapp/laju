@@ -59,7 +59,6 @@ class _ActiveGroupCallScreenState extends State<ActiveGroupCallScreen>
   late bool _isSelfVideoOn;
   int _callDurationSeconds = 0;
   Timer? _tickerTimer;
-  Timer? _speechCycleTimer;
 
   late final AnimationController _pulseController;
   late final AnimationController _equalizerController;
@@ -132,10 +131,7 @@ class _ActiveGroupCallScreenState extends State<ActiveGroupCallScreen>
       setState(() {
         _callDurationSeconds++;
 
-        // Auto-answer simulation:
-        // Participant 1 answers at 3 seconds
-        // Participant 2 answers at 7 seconds (if more than 2)
-        // Others keep ringing up to 60s timeout
+        // 60-second timeout: unanswered participants are removed
         for (int i = 0; i < _participants.length; i++) {
           final p = _participants[i];
           if (p.isSelf) continue;
@@ -143,30 +139,10 @@ class _ActiveGroupCallScreenState extends State<ActiveGroupCallScreen>
           if (p.status == ParticipantCallStatus.ringing) {
             p.ringingSeconds++;
 
-            // Dynamic realistic answer for demonstration
-            if (i == 1 && p.ringingSeconds >= 3) {
-              p.status = ParticipantCallStatus.connected;
-            } else if (i == 2 && _participants.length > 3 && p.ringingSeconds >= 7) {
-              p.status = ParticipantCallStatus.connected;
-            }
-
             // 60-second timeout check
             if (p.ringingSeconds >= 60) {
               _handleTimeout(p);
             }
-          }
-        }
-      });
-    });
-
-    // Simulated speech activity for connected participants
-    _speechCycleTimer = Timer.periodic(const Duration(milliseconds: 2500), (timer) {
-      if (!mounted) return;
-      setState(() {
-        for (final p in _participants) {
-          if (p.status == ParticipantCallStatus.connected && !p.isSelf && !p.isMuted) {
-            // Alternate speaking state
-            p.isSpeaking = !p.isSpeaking;
           }
         }
       });
@@ -210,26 +186,6 @@ class _ActiveGroupCallScreenState extends State<ActiveGroupCallScreen>
     });
   }
 
-  void _simulateFastForwardTimeout() {
-    setState(() {
-      for (final p in _participants) {
-        if (!p.isSelf && p.status == ParticipantCallStatus.ringing) {
-          p.ringingSeconds = 59; // Will trigger next second
-        }
-      }
-    });
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          context.tr('simulateTimeout'),
-          style: const TextStyle(fontSize: 12),
-        ),
-        duration: const Duration(seconds: 1),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
-  }
 
   void _reinviteParticipant(GroupCallParticipant participant) {
     setState(() {
@@ -261,7 +217,6 @@ class _ActiveGroupCallScreenState extends State<ActiveGroupCallScreen>
   @override
   void dispose() {
     _tickerTimer?.cancel();
-    _speechCycleTimer?.cancel();
     _pulseController.dispose();
     _equalizerController.dispose();
     super.dispose();
@@ -393,36 +348,6 @@ class _ActiveGroupCallScreenState extends State<ActiveGroupCallScreen>
               ],
             ),
           ),
-
-          // Simulation Button: 60s Fast Forward for immediate demonstration
-          InkWell(
-            onTap: _simulateFastForwardTimeout,
-            borderRadius: BorderRadius.circular(20),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-              decoration: BoxDecoration(
-                color: Colors.amber.withValues(alpha: isDark ? 0.2 : 0.12),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: Colors.amber.withValues(alpha: 0.4)),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.bolt_rounded, color: isDark ? Colors.amber : Colors.amber.shade800, size: 14),
-                  const SizedBox(width: 3),
-                  Text(
-                    '60s',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      color: isDark ? Colors.amber : Colors.amber.shade800,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(width: 6),
 
           // Add Participant Button
             IconButton(

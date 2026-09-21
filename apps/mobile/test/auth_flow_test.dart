@@ -3,7 +3,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:laju_mobile/core/core.dart';
 import 'package:laju_mobile/features/auth/domain/auth_controller.dart';
 import 'package:laju_mobile/features/auth/presentation/screens/login_screen.dart';
-import 'package:laju_mobile/features/auth/presentation/screens/otp_verification_screen.dart';
 import 'package:laju_mobile/features/auth/presentation/screens/register_screen.dart';
 import 'package:laju_mobile/features/auth/presentation/screens/two_factor_verify_screen.dart';
 import 'package:laju_mobile/features/settings/domain/account_controller.dart';
@@ -168,21 +167,6 @@ void main() {
       expect(find.text('Password'), findsOneWidget);
     });
 
-    testWidgets('OtpVerificationScreen displays 6 digit cells and demo quick-fill', (tester) async {
-      await tester.pumpWidget(
-        _buildTestApp(
-          const OtpVerificationScreen(
-            identifier: 'satria@cyber.gov.id',
-            isRegister: false,
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      expect(find.text('Verify Code (OTP)'), findsOneWidget);
-      expect(find.text('satria@cyber.gov.id'), findsOneWidget);
-      expect(find.text('Demo OTP Code: 123456'), findsOneWidget);
-    });
 
     testWidgets('TwoFactorVerifyScreen renders 6 PIN dots, keypad, and biometric button', (tester) async {
       await tester.pumpWidget(_buildTestApp(const TwoFactorVerifyScreen()));

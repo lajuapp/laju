@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import '../../../../core/core.dart';
+import '../../../../core/services/local_database.dart';
 import '../domain/models/conversation_model.dart';
 import '../../messaging/domain/models/message_model.dart';
 
@@ -56,6 +57,11 @@ class ConversationService {
     return [];
   }
 
+  /// Return conversations from local SQLite cache (offline-safe, instant).
+  Future<List<ConversationModel>> getConversationsFromCache() {
+    return LocalDatabase.instance.getConversations();
+  }
+
   /// Fetch conversations for the current authenticated user
   Future<List<ConversationModel>> fetchConversations() async {
     try {
@@ -63,7 +69,7 @@ class ConversationService {
 
       if (response.isSuccess && response.rawJson is List) {
         final list = response.rawJson as List;
-        return list.map((item) {
+        final conversations = list.map((item) {
           final isGroup = item['type'] == 'GROUP';
           final title = item['title'] ?? (isGroup ? 'Group Chat' : 'Direct Chat');
           final lastMsg = (item['messages'] is List && (item['messages'] as List).isNotEmpty)
@@ -81,6 +87,10 @@ class ConversationService {
             isKeyVerified: true,
           );
         }).toList();
+
+        // Persist to local cache
+        LocalDatabase.instance.upsertConversations(conversations);
+        return conversations;
       }
     } catch (e) {
       debugPrint('[ConversationService] fetchConversations error: $e');
@@ -206,6 +216,11 @@ class ConversationService {
     }
   }
 
+  /// Return messages from local SQLite cache for a conversation (offline-safe, instant).
+  Future<List<MessageModel>> getMessagesFromCache(String conversationId) {
+    return LocalDatabase.instance.getMessages(conversationId);
+  }
+
   /// Fetch message history for a conversation
   Future<List<MessageModel>> fetchMessages(String conversationId, {int limit = 50, int? cursor}) async {
     try {
@@ -223,7 +238,7 @@ class ConversationService {
         final messagesList = response.rawJson['messages'];
         if (messagesList is List) {
           final currentUserId = ApiClient.instance.userId;
-          return messagesList.map((m) {
+          final messages = messagesList.map((m) {
             final isOutgoing = m['senderUserId'] == currentUserId;
             return MessageModel(
               id: m['id'],
@@ -235,6 +250,10 @@ class ConversationService {
               status: MessageDeliveryStatus.delivered,
             );
           }).toList();
+
+          // Persist to local cache
+          LocalDatabase.instance.upsertMessages(conversationId, messages);
+          return messages;
         }
       }
     } catch (e) {
@@ -249,8 +268,8 @@ class ConversationService {
     required String text,
     String? clientMessageId,
   }) async {
+    final id = clientMessageId ?? 'msg-${DateTime.now().millisecondsSinceEpoch}';
     try {
-      final id = clientMessageId ?? 'msg-${DateTime.now().millisecondsSinceEpoch}';
       final response = await ApiClient.instance.post(
         ApiEndpoints.conversationMessages(conversationId),
         body: {
@@ -263,8 +282,11 @@ class ConversationService {
 
       if (response.isSuccess && response.rawJson is Map) {
         final m = response.rawJson;
+        final confirmedId = m['id'] ?? id;
+        // Update status to sent in local cache
+        LocalDatabase.instance.updateMessageStatus(id, MessageDeliveryStatus.sent);
         return MessageModel(
-          id: m['id'] ?? id,
+          id: confirmedId,
           conversationId: conversationId,
           senderName: 'You',
           content: text,
@@ -275,11 +297,13 @@ class ConversationService {
       }
     } catch (e) {
       debugPrint('[ConversationService] sendMessage error: $e');
+      // Mark as failed in local cache
+      LocalDatabase.instance.updateMessageStatus(id, MessageDeliveryStatus.failed);
     }
 
     // Fallback: return local message model
     return MessageModel(
-      id: clientMessageId ?? 'msg-${DateTime.now().millisecondsSinceEpoch}',
+      id: id,
       conversationId: conversationId,
       senderName: 'You',
       content: text,
