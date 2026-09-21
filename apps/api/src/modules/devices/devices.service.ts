@@ -4,7 +4,8 @@ import {
   ForbiddenException,
   UnauthorizedException,
   BadRequestException,
-  Logger
+  Logger,
+  Optional
 } from '@nestjs/common';
 import * as crypto from 'crypto';
 import { PrismaService } from '../../infrastructure/prisma/prisma.service';
@@ -32,7 +33,7 @@ export class DevicesService {
     private readonly prisma: PrismaService,
     private readonly redisService: RedisService,
     private readonly authService: AuthenticationService,
-    private readonly gotifyService: GotifyService
+    @Optional() private readonly gotifyService?: GotifyService
   ) {}
 
   /**

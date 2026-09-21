@@ -3,7 +3,8 @@ import {
   NotFoundException,
   ForbiddenException,
   BadRequestException,
-  Logger
+  Logger,
+  Optional
 } from '@nestjs/common';
 import { PrismaService } from '../../infrastructure/prisma/prisma.service';
 import { GotifyService } from '../../infrastructure/gotify/gotify.service';
@@ -15,7 +16,7 @@ export class MessagingService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly gotifyService: GotifyService
+    @Optional() private readonly gotifyService?: GotifyService
   ) {}
 
   async sendMessage(

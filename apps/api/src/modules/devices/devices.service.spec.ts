@@ -85,11 +85,12 @@ describe('DevicesService', () => {
         deviceKeys: []
       });
 
-      // 3. Verify with mock signature in non-production
+      // 3. Verify with real HMAC signature
+      const sig = crypto.createHmac('sha256', 'mock_pub_key').update(challenge).digest('base64');
       const verifyRes = await service.verifyChallenge({
         deviceUuid: 'dev-1',
         challenge,
-        signature: `mock_sig_${challenge}`
+        signature: sig
       });
 
       expect(verifyRes.accessToken).toBe('mock_jwt_token');
