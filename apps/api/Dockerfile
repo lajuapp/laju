@@ -6,13 +6,16 @@ RUN apk add --no-cache openssl
 
 RUN corepack enable && corepack prepare pnpm@8.15.3 --activate
 
+# Explicitly ensure NODE_ENV is development during build so devDependencies (tsc, prisma, etc.) are installed
+ENV NODE_ENV=development
+
 # Copy workspace configuration
-COPY package.json pnpm-workspace.yaml ./
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml* ./
 COPY packages/shared-types ./packages/shared-types
 COPY apps/api ./apps/api
 
-# Install dependencies across monorepo
-RUN pnpm install
+# Install all dependencies including devDependencies
+RUN pnpm install --frozen-lockfile=false --prod=false
 
 # Build shared types
 WORKDIR /app/packages/shared-types
