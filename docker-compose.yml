@@ -1,5 +1,8 @@
+name: laju
+
 services:
   api:
+    container_name: laju-api
     build:
       context: .
       dockerfile: apps/api/Dockerfile
@@ -7,7 +10,7 @@ services:
     env_file:
       - .env
     ports:
-      - "3000:3000"
+      - "${HOST_API_PORT:-3000}:3000"
     depends_on:
       postgres:
         condition: service_healthy
@@ -16,6 +19,7 @@ services:
     networks: [internal, edge]
 
   worker:
+    container_name: laju-worker
     build:
       context: .
       dockerfile: apps/api/Dockerfile
@@ -31,14 +35,18 @@ services:
     networks: [internal]
 
   backoffice:
+    container_name: laju-backoffice
     build: ./apps/backoffice
     restart: unless-stopped
+    ports:
+      - "${HOST_BACKOFFICE_PORT:-3001}:3000"
     depends_on:
       api:
         condition: service_started
     networks: [internal, edge]
 
   postgres:
+    container_name: laju-postgres
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
@@ -55,34 +63,67 @@ services:
     networks: [internal]
 
   redis:
+    container_name: laju-redis
     image: redis:8-alpine
     restart: unless-stopped
+    command: >
+      sh -c "
+        if [ -n \"$$REDIS_PASSWORD\" ]; then
+          exec redis-server --requirepass \"$$REDIS_PASSWORD\" --appendonly yes
+        else
+          exec redis-server --appendonly yes
+        fi
+      "
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+    volumes:
+      - redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: >
+        sh -c "
+          if [ -n \"$$REDIS_PASSWORD\" ]; then
+            redis-cli -a \"$$REDIS_PASSWORD\" ping
+          else
+            redis-cli ping
+          fi
+        "
       interval: 5s
       timeout: 3s
       retries: 5
     networks: [internal]
 
   gotify:
+    container_name: laju-gotify
     image: gotify/server:latest
     restart: unless-stopped
-    networks: [internal, edge]
+    environment:
+      GOTIFY_DEFAULTUSER_NAME: ${GOTIFY_DEFAULTUSER_NAME:-lajuadmin}
+      GOTIFY_DEFAULTUSER_PASS: ${GOTIFY_DEFAULTUSER_PASS:-laju_gotify_secure_pass_123}
+    volumes:
+      - gotify_data:/app/data
+    networks: [internal]
 
   seaweedfs-master:
+    container_name: laju-seaweedfs-master
     image: chrislusf/seaweedfs:latest
     restart: unless-stopped
-    command: ["master"]
+    command: ["master", "-mdir=/data/mdata"]
+    volumes:
+      - seaweedfs_mdata:/data/mdata
     networks: [internal]
 
   seaweedfs-volume:
+    container_name: laju-seaweedfs-volume
     image: chrislusf/seaweedfs:latest
     restart: unless-stopped
-    command: ["volume", "-mserver=seaweedfs-master:9333"]
+    command: ["volume", "-mserver=seaweedfs-master:9333", "-dir=/data/vdata"]
+    volumes:
+      - seaweedfs_vdata:/data/vdata
     depends_on: [seaweedfs-master]
     networks: [internal]
 
   seaweedfs-filer:
+    container_name: laju-seaweedfs-filer
     image: chrislusf/seaweedfs:latest
     restart: unless-stopped
     command: ["filer", "-master=seaweedfs-master:9333"]
@@ -96,3 +137,7 @@ networks:
 
 volumes:
   postgres_data:
+  redis_data:
+  gotify_data:
+  seaweedfs_mdata:
+  seaweedfs_vdata:
