@@ -172,6 +172,25 @@ class LocalDatabase {
     );
   }
 
+  /// Delete a single message from local cache.
+  Future<void> deleteMessage(String messageId) async {
+    await _database.delete(
+      'messages',
+      where: 'id = ?',
+      whereArgs: [messageId],
+    );
+  }
+
+  /// Update content of an edited message in local cache.
+  Future<void> updateMessageContent(String messageId, String newContent) async {
+    await _database.update(
+      'messages',
+      {'content': newContent, 'is_edited': 1},
+      where: 'id = ?',
+      whereArgs: [messageId],
+    );
+  }
+
   // ── Cleanup ───────────────────────────────────────────────────────────────
 
   /// Delete all cached data. Call on logout.

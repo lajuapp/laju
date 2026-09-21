@@ -2,14 +2,21 @@ import {
   Injectable,
   NotFoundException,
   ForbiddenException,
-  BadRequestException
+  BadRequestException,
+  Logger
 } from '@nestjs/common';
 import { PrismaService } from '../../infrastructure/prisma/prisma.service';
+import { GotifyService } from '../../infrastructure/gotify/gotify.service';
 import { SendMessageDto } from './dto/message.dto';
 
 @Injectable()
 export class MessagingService {
-  constructor(private readonly prisma: PrismaService) {}
+  private readonly logger = new Logger(MessagingService.name);
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly gotifyService: GotifyService
+  ) {}
 
   async sendMessage(
     userId: string,
@@ -39,7 +46,7 @@ export class MessagingService {
     }
 
     // 3. Single PostgreSQL transaction writes: message + conversation event + outbox event
-    return this.prisma.$transaction(async (tx) => {
+    const createdMessage = await this.prisma.$transaction(async (tx) => {
       let expiresAt: Date | null = null;
       if (dto.expiresInSeconds && dto.expiresInSeconds > 0) {
         expiresAt = new Date(Date.now() + dto.expiresInSeconds * 1000);
@@ -96,6 +103,87 @@ export class MessagingService {
 
       return message;
     });
+
+    // Asynchronously dispatch high-priority push notification (killed-state wakeups)
+    this.dispatchPushNotifications(userId, conversationId, createdMessage).catch((err) => {
+      this.logger.warn(`Failed to dispatch push notification: ${err.message}`);
+    });
+
+    return createdMessage;
+  }
+
+  private async dispatchPushNotifications(
+    senderUserId: string,
+    conversationId: string,
+    message: any
+  ) {
+    try {
+      const sender = await this.prisma.user.findUnique({
+        where: { id: senderUserId },
+        select: { username: true }
+      });
+      const senderName = sender?.username || 'Seseorang';
+
+      const recipientMembers = await this.prisma.conversationMember.findMany({
+        where: {
+          conversationId,
+          userId: { not: senderUserId },
+          leftAt: null
+        },
+        include: {
+          user: {
+            include: {
+              devices: {
+                where: { status: 'ACTIVE' },
+                include: {
+                  pushDevices: true
+                }
+              }
+            }
+          }
+        }
+      });
+
+      const messagePreview = message.messageType === 'TEXT'
+        ? 'Pesan baru terenkripsi'
+        : `Mengirim ${message.messageType.toLowerCase()}`;
+
+      for (const member of recipientMembers) {
+        for (const device of member.user.devices) {
+          const tokens: string[] = [];
+          if (device.pushDevices && device.pushDevices.length > 0) {
+            for (const pd of device.pushDevices) {
+              if (pd.clientToken) tokens.push(pd.clientToken);
+            }
+          }
+          if (device.pushToken && !tokens.includes(device.pushToken)) {
+            tokens.push(device.pushToken);
+          }
+
+          if (tokens.length === 0) {
+            // Fallback to conversation wakeup via default Gotify channel
+            await this.gotifyService.sendPushNotification({
+              title: senderName,
+              message: messagePreview,
+              conversationId,
+              priority: 6
+            });
+          } else {
+            for (const token of tokens) {
+              await this.gotifyService.sendPushNotification({
+                targetToken: token,
+                title: senderName,
+                message: messagePreview,
+                conversationId,
+                priority: 6
+              });
+            }
+          }
+        }
+      }
+    } catch (err: any) {
+      this.logger.warn(`dispatchPushNotifications error: ${err.message}`);
+    }
   }
 
   async deleteForEveryone(userId: string, messageId: string) {
@@ -154,6 +242,55 @@ export class MessagingService {
     });
   }
 
+  async editMessage(userId: string, messageId: string, ciphertext: string) {
+    const message = await this.prisma.message.findUnique({
+      where: { id: messageId }
+    });
+
+    if (!message) {
+      throw new NotFoundException('Message not found');
+    }
+
+    if (message.senderUserId !== userId) {
+      throw new ForbiddenException('Only the sender can edit this message');
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.message.update({
+        where: { id: messageId },
+        data: {
+          ciphertext
+        }
+      });
+
+      const convEvent = await tx.conversationEvent.create({
+        data: {
+          conversationId: message.conversationId,
+          eventType: 'MESSAGE_EDITED',
+          payload: JSON.stringify({ messageId, editedBy: userId, ciphertext })
+        }
+      });
+
+      await tx.outboxEvent.create({
+        data: {
+          aggregateType: 'CONVERSATION',
+          aggregateId: message.conversationId,
+          eventType: 'MESSAGE_EDITED',
+          payload: JSON.stringify({
+            conversationId: message.conversationId,
+            messageId,
+            ciphertext,
+            editedBy: userId,
+            eventId: convEvent.id
+          }),
+          status: 'PENDING'
+        }
+      });
+
+      return updated;
+    });
+  }
+
   async acknowledgeDelivery(deviceId: string, messageId: string) {
     return this.prisma.messageDelivery.upsert({
       where: {
@@ -190,4 +327,47 @@ export class MessagingService {
       }
     });
   }
+
+  async addReaction(userId: string, messageId: string, emoji: string) {
+    const message = await this.prisma.message.findUnique({
+      where: { id: messageId }
+    });
+    if (!message) {
+      throw new NotFoundException('Message not found');
+    }
+
+    const member = await this.prisma.conversationMember.findFirst({
+      where: { conversationId: message.conversationId, userId, leftAt: null }
+    });
+    if (!member) {
+      throw new ForbiddenException('Not a member of this conversation');
+    }
+
+    return this.prisma.messageReaction.upsert({
+      where: {
+        messageId_userId_emoji: {
+          messageId,
+          userId,
+          emoji
+        }
+      },
+      update: {},
+      create: {
+        messageId,
+        userId,
+        emoji
+      }
+    });
+  }
+
+  async removeReaction(userId: string, messageId: string, emoji: string) {
+    return this.prisma.messageReaction.deleteMany({
+      where: {
+        messageId,
+        userId,
+        emoji
+      }
+    });
+  }
 }
+

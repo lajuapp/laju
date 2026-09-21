@@ -1,7 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import '../../../../core/core.dart';
-import '../../../../core/services/local_database.dart';
 import '../domain/models/conversation_model.dart';
 import '../../messaging/domain/models/message_model.dart';
 
@@ -69,9 +68,27 @@ class ConversationService {
 
       if (response.isSuccess && response.rawJson is List) {
         final list = response.rawJson as List;
+        final currentUserId = ApiClient.instance.userId;
         final conversations = list.map((item) {
           final isGroup = item['type'] == 'GROUP';
-          final title = item['title'] ?? (isGroup ? 'Group Chat' : 'Direct Chat');
+          String title = item['title'] ?? '';
+          if (title.isEmpty) {
+            if (isGroup) {
+              title = 'Group Chat';
+            } else {
+              final members = item['members'];
+              if (members is List) {
+                final otherMember = members.firstWhere(
+                  (m) => m is Map && m['userId'] != currentUserId,
+                  orElse: () => null,
+                );
+                if (otherMember != null && otherMember['user'] is Map) {
+                  title = otherMember['user']['username'] ?? '';
+                }
+              }
+              if (title.isEmpty) title = 'Direct Chat';
+            }
+          }
           final lastMsg = (item['messages'] is List && (item['messages'] as List).isNotEmpty)
               ? item['messages'][0]['ciphertext'] ?? 'Encrypted Message'
               : 'No messages yet';
@@ -216,6 +233,34 @@ class ConversationService {
     }
   }
 
+  /// Leave a group conversation
+  Future<bool> leaveGroup(String conversationId) async {
+    try {
+      final response = await ApiClient.instance.post(
+        ApiEndpoints.conversationLeave(conversationId),
+      );
+      return response.isSuccess;
+    } catch (e) {
+      debugPrint('[ConversationService] leaveGroup error: $e');
+      return false;
+    }
+  }
+
+  /// Fetch full details of a conversation (including all members and roles)
+  Future<Map<String, dynamic>?> getConversationDetails(String conversationId) async {
+    try {
+      final response = await ApiClient.instance.get(
+        ApiEndpoints.conversationById(conversationId),
+      );
+      if (response.isSuccess && response.rawJson is Map) {
+        return Map<String, dynamic>.from(response.rawJson);
+      }
+    } catch (e) {
+      debugPrint('[ConversationService] getConversationDetails error: $e');
+    }
+    return null;
+  }
+
   /// Return messages from local SQLite cache for a conversation (offline-safe, instant).
   Future<List<MessageModel>> getMessagesFromCache(String conversationId) {
     return LocalDatabase.instance.getMessages(conversationId);
@@ -240,6 +285,14 @@ class ConversationService {
           final currentUserId = ApiClient.instance.userId;
           final messages = messagesList.map((m) {
             final isOutgoing = m['senderUserId'] == currentUserId;
+            final reactionsRaw = m['reactions'] as List?;
+            final reactionsList = reactionsRaw != null
+                ? reactionsRaw
+                    .where((r) => r is Map && r['emoji'] != null)
+                    .map((r) => r['emoji'] as String)
+                    .toList()
+                : <String>[];
+
             return MessageModel(
               id: m['id'],
               conversationId: conversationId,
@@ -248,6 +301,7 @@ class ConversationService {
               timestamp: DateTime.tryParse(m['createdAt'] ?? '') ?? DateTime.now(),
               isOutgoing: isOutgoing,
               status: MessageDeliveryStatus.delivered,
+              reactions: reactionsList,
             );
           }).toList();
 
@@ -301,7 +355,7 @@ class ConversationService {
       LocalDatabase.instance.updateMessageStatus(id, MessageDeliveryStatus.failed);
     }
 
-    // Fallback: return local message model
+    // Return message marked failed if not successfully delivered to backend
     return MessageModel(
       id: id,
       conversationId: conversationId,
@@ -309,7 +363,75 @@ class ConversationService {
       content: text,
       timestamp: DateTime.now(),
       isOutgoing: true,
-      status: MessageDeliveryStatus.sent,
+      status: MessageDeliveryStatus.failed,
     );
   }
+
+  /// Delete a message for everyone
+  Future<bool> deleteMessage(String messageId) async {
+    try {
+      final response = await ApiClient.instance.delete(
+        ApiEndpoints.messageById(messageId),
+      );
+      await LocalDatabase.instance.deleteMessage(messageId);
+      return response.isSuccess;
+    } catch (e) {
+      debugPrint('[ConversationService] deleteMessage error: $e');
+      await LocalDatabase.instance.deleteMessage(messageId);
+      return false;
+    }
+  }
+
+  /// Edit an existing message
+  Future<bool> editMessage(String messageId, String newText) async {
+    try {
+      final response = await ApiClient.instance.patch(
+        ApiEndpoints.messageById(messageId),
+        body: {'ciphertext': newText},
+      );
+      await LocalDatabase.instance.updateMessageContent(messageId, newText);
+      return response.isSuccess;
+    } catch (e) {
+      debugPrint('[ConversationService] editMessage error: $e');
+      await LocalDatabase.instance.updateMessageContent(messageId, newText);
+      return false;
+    }
+  }
+
+  /// Delete an entire conversation
+  Future<bool> deleteConversation(String conversationId) async {
+    try {
+      final response = await ApiClient.instance.delete(
+        ApiEndpoints.conversationById(conversationId),
+      );
+      await LocalDatabase.instance.deleteConversation(conversationId);
+      return response.isSuccess;
+    } catch (e) {
+      debugPrint('[ConversationService] deleteConversation error: $e');
+      await LocalDatabase.instance.deleteConversation(conversationId);
+      return false;
+    }
+  }
+
+  /// Toggle a reaction on a message
+  Future<bool> toggleReaction(String messageId, String emoji, bool isAdding) async {
+    try {
+      if (isAdding) {
+        final response = await ApiClient.instance.post(
+          ApiEndpoints.messageReactions(messageId),
+          body: {'emoji': emoji},
+        );
+        return response.isSuccess;
+      } else {
+        final response = await ApiClient.instance.delete(
+          ApiEndpoints.messageReactionDelete(messageId, Uri.encodeComponent(emoji)),
+        );
+        return response.isSuccess;
+      }
+    } catch (e) {
+      debugPrint('[ConversationService] toggleReaction error: $e');
+      return false;
+    }
+  }
 }
+

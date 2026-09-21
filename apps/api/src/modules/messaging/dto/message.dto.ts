@@ -22,3 +22,16 @@ export class SendMessageDto {
   @IsOptional()
   expiresInSeconds?: number;
 }
+
+export class EditMessageDto {
+  @IsString()
+  @IsNotEmpty()
+  ciphertext: string;
+}
+
+export class AddReactionDto {
+  @IsString()
+  @IsNotEmpty()
+  emoji: string;
+}
+

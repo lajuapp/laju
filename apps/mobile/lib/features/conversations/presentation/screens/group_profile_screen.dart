@@ -5,6 +5,7 @@ import '../../../calls/presentation/screens/active_group_call_screen.dart';
 import '../../../messaging/presentation/screens/disappearing_messages_screen.dart';
 import '../../../messaging/presentation/screens/chat_screen.dart';
 import '../../domain/group_controller.dart';
+import '../../domain/conversation_service.dart';
 import 'group_settings_screen.dart';
 import 'user_profile_screen.dart';
 
@@ -26,6 +27,84 @@ class GroupProfileScreen extends StatefulWidget {
 
 class _GroupProfileScreenState extends State<GroupProfileScreen> {
   bool _isMuted = false;
+
+  @override
+  void initState() {
+    super.initState();
+    GroupController.instance.fetchGroupFromBackend(widget.groupId);
+  }
+
+  void _showAddMemberSheet() async {
+    final isDark = ThemeModeController.instance.isDarkMode(context);
+    final users = await ConversationService.instance.searchUsers('');
+    final currentGroup = GroupController.instance.getGroup(widget.groupId);
+    final existingIds = currentGroup?.members.map((m) => m.id).toSet() ?? {};
+    final candidates = users.where((u) => !existingIds.contains(u.id)).toList();
+
+    if (!mounted) return;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: isDark ? AppColors.darkSurface : Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (bCtx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Text(
+                  'Pilih Kontak untuk Ditambahkan',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: isDark ? Colors.white : const Color(0xFF111827),
+                  ),
+                ),
+              ),
+              if (candidates.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.all(24),
+                  child: Text('Semua kontak sudah bergabung ke dalam grup'),
+                )
+              else
+                ...candidates.map((u) => ListTile(
+                      leading: ModernAvatar(name: u.username, radius: 20),
+                      title: Text(
+                        u.username,
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          color: isDark ? Colors.white : const Color(0xFF111827),
+                        ),
+                      ),
+                      subtitle: Text(u.status ?? 'LAJU Verified User 🔒'),
+                      onTap: () async {
+                        Navigator.pop(bCtx);
+                        await GroupController.instance.addMembers(widget.groupId, [
+                          GroupMemberItem(
+                            id: u.id,
+                            name: u.username,
+                            phone: u.phoneNumber ?? u.email ?? '',
+                            role: 'Anggota',
+                            isAdmin: false,
+                            isOnline: true,
+                          ),
+                        ]);
+                        if (mounted) {
+                          LajuToast.success(context, '${u.username} ditambahkan ke grup');
+                        }
+                      },
+                    )),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 
   void _editGroupName(String currentName) {
     final isDark = ThemeModeController.instance.isDarkMode(context);
@@ -266,11 +345,14 @@ class _GroupProfileScreenState extends State<GroupProfileScreen> {
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: AppColors.danger),
-            onPressed: () {
+            onPressed: () async {
               Navigator.pop(dialogCtx);
-              Navigator.pop(context); // Exit group profile
-              Navigator.pop(context); // Exit group chat screen back to home
-              LajuToast.info(context, 'Anda telah keluar dari $groupName');
+              await ConversationService.instance.leaveGroup(widget.groupId);
+              if (mounted) {
+                Navigator.pop(context); // Exit group profile
+                Navigator.pop(context); // Exit group chat screen back to home
+                LajuToast.info(context, 'Anda telah keluar dari $groupName');
+              }
             },
             child: const Text('Keluar', style: TextStyle(color: Colors.white)),
           ),
@@ -280,7 +362,8 @@ class _GroupProfileScreenState extends State<GroupProfileScreen> {
   }
 
   void _showMemberActions(GroupMemberItem member, bool isUserAdmin) {
-    if (member.id == 'm-you') return;
+    final curUserId = ApiClient.instance.userId;
+    if (member.id == 'm-you' || (curUserId != null && member.id == curUserId)) return;
 
     final isDark = ThemeModeController.instance.isDarkMode(context);
 
@@ -302,13 +385,19 @@ class _GroupProfileScreenState extends State<GroupProfileScreen> {
                   'Kirim pesan ke ${member.name}',
                   style: TextStyle(color: isDark ? Colors.white : const Color(0xFF111827)),
                 ),
-                onTap: () {
+                onTap: () async {
                   Navigator.pop(sheetCtx);
+                  String convId = 'conv-${member.id}';
+                  try {
+                    final backendId = await ConversationService.instance.createPersonalConversation(member.id);
+                    if (backendId != null) convId = backendId;
+                  } catch (_) {}
+                  if (!mounted) return;
                   Navigator.push(
                     context,
                     MaterialPageRoute(
                       builder: (context) => ChatScreen(
-                        conversationId: 'conv-${member.id}',
+                        conversationId: convId,
                         title: member.name,
                       ),
                     ),
@@ -609,9 +698,7 @@ class _GroupProfileScreenState extends State<GroupProfileScreen> {
                             icon: Icons.person_add_rounded,
                             label: 'Tambah',
                             isDark: isDark,
-                            onTap: () {
-                              LajuToast.info(context, 'Pilih kontak untuk ditambahkan ke grup');
-                            },
+                            onTap: _showAddMemberSheet,
                           ),
                           _buildQuickAction(
                             icon: _isMuted ? Icons.notifications_off_rounded : Icons.notifications_rounded,
@@ -861,9 +948,7 @@ class _GroupProfileScreenState extends State<GroupProfileScreen> {
                             'Tambah Peserta',
                             style: TextStyle(fontWeight: FontWeight.w600, color: textPrimary, fontSize: 15),
                           ),
-                          onTap: () {
-                            LajuToast.info(context, 'Pilih kontak untuk ditambahkan');
-                          },
+                          onTap: _showAddMemberSheet,
                         ),
 
                       // Invite via link

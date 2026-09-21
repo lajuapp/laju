@@ -47,6 +47,12 @@ export class DevicesController {
     return this.devicesService.updatePushToken(userId, dto);
   }
 
+  @Post('test-push')
+  @UseGuards(JwtAuthGuard)
+  testPush(@CurrentUser('userId') userId: string) {
+    return this.devicesService.testPushNotification(userId);
+  }
+
   @Get()
   @UseGuards(JwtAuthGuard)
   list(@CurrentUser('userId') userId: string) {

@@ -126,6 +126,9 @@ model User {
   migrations           DeviceMigration[]    @relation("UserMigrations")
   reportsMade          UserReport[]         @relation("ReporterUser")
   reportsReceived      UserReport[]         @relation("ReportedUser")
+  statusStories        UserStatusStory[]
+  statusStoryViews     StatusStoryView[]
+  messageReactions     MessageReaction[]
 
   @@map("users")
 }
@@ -291,6 +294,7 @@ model Message {
   senderDevice    Device            @relation(fields: [senderDeviceId], references: [id], onDelete: Cascade)
   deliveries      MessageDelivery[]
   attachments     Attachment[]
+  reactions       MessageReaction[]
 
   @@unique([senderDeviceId, clientMessageId])
   @@index([conversationId, sequence])
@@ -588,3 +592,56 @@ model UserReport {
   @@index([status])
   @@map("user_reports")
 }
+
+enum StatusType {
+  TEXT
+  IMAGE
+  VIDEO
+}
+
+model UserStatusStory {
+  id              String         @id @default(uuid())
+  userId          String         @map("user_id")
+  type            StatusType     @default(TEXT)
+  content         String         // text body or image/media URL or base64
+  caption         String?
+  backgroundColor String?        @map("background_color")
+  fontStyle       String?        @map("font_style")
+  createdAt       DateTime       @default(now()) @map("created_at")
+  expiresAt       DateTime       @map("expires_at")
+
+  user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  views           StatusStoryView[]
+
+  @@index([userId, expiresAt])
+  @@map("user_status_stories")
+}
+
+model StatusStoryView {
+  id        String          @id @default(uuid())
+  storyId   String          @map("story_id")
+  viewerId  String          @map("viewer_id")
+  viewedAt  DateTime        @default(now()) @map("viewed_at")
+
+  story     UserStatusStory @relation(fields: [storyId], references: [id], onDelete: Cascade)
+  viewer    User            @relation(fields: [viewerId], references: [id], onDelete: Cascade)
+
+  @@unique([storyId, viewerId])
+  @@map("status_story_views")
+}
+
+model MessageReaction {
+  id        String   @id @default(uuid())
+  messageId String   @map("message_id")
+  userId    String   @map("user_id")
+  emoji     String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  message   Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId, emoji])
+  @@index([messageId])
+  @@map("message_reactions")
+}
+

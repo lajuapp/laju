@@ -1,8 +1,11 @@
 import 'dart:io';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import '../../../../core/core.dart';
+import '../domain/status_service.dart';
 
 class StatusStoryItem {
+  final String? id;
   final String text;
   final String time;
   final Color backgroundColor;
@@ -10,6 +13,7 @@ class StatusStoryItem {
   final bool isPhoto;
 
   const StatusStoryItem({
+    this.id,
     required this.text,
     required this.time,
     this.backgroundColor = const Color(0xFF0F3E37),
@@ -51,8 +55,19 @@ class _StatusViewScreenState extends State<StatusViewScreen>
       }
     });
 
+    _markCurrentViewed();
     _animController.forward();
   }
+
+  void _markCurrentViewed() {
+    if (_currentIndex < widget.stories.length) {
+      final story = widget.stories[_currentIndex];
+      if (story.id != null) {
+        StatusService.instance.markStatusViewed(story.id!);
+      }
+    }
+  }
+
 
   @override
   void dispose() {
@@ -65,6 +80,7 @@ class _StatusViewScreenState extends State<StatusViewScreen>
       setState(() {
         _currentIndex++;
       });
+      _markCurrentViewed();
       _animController.reset();
       _animController.forward();
     } else {
@@ -77,12 +93,86 @@ class _StatusViewScreenState extends State<StatusViewScreen>
       setState(() {
         _currentIndex--;
       });
+      _markCurrentViewed();
       _animController.reset();
       _animController.forward();
     } else {
       _animController.reset();
       _animController.forward();
     }
+  }
+
+  Widget _buildStoryImage(StatusStoryItem story) {
+    final asset = story.imageAsset;
+    if (asset != null && asset.startsWith('data:image')) {
+      try {
+        final b64 = asset.contains(',') ? asset.split(',').last : asset;
+        return Image.memory(
+          base64Decode(b64),
+          fit: BoxFit.cover,
+        );
+      } catch (_) {}
+    }
+    if (asset != null && (asset.startsWith('http://') || asset.startsWith('https://'))) {
+      return Image.network(
+        asset,
+        fit: BoxFit.cover,
+      );
+    }
+    if (asset != null && File(asset).existsSync()) {
+      return Image.file(
+        File(asset),
+        fit: BoxFit.cover,
+      );
+    }
+    if (asset != null && asset.startsWith('assets/')) {
+      return Image.asset(
+        asset,
+        fit: BoxFit.cover,
+      );
+    }
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            story.backgroundColor,
+            const Color(0xFF0F172A),
+          ],
+        ),
+      ),
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 120,
+              height: 120,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: AppColors.primary.withValues(alpha: 0.15),
+                border: Border.all(color: AppColors.primary, width: 2),
+              ),
+              child: const Icon(
+                Icons.camera_alt_rounded,
+                size: 56,
+                color: AppColors.primary,
+              ),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Tangkapan Kamera Terenkripsi',
+              style: TextStyle(
+                color: Colors.white70,
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -102,16 +192,18 @@ class _StatusViewScreenState extends State<StatusViewScreen>
         },
         onLongPressStart: (_) => _animController.stop(),
         onLongPressEnd: (_) => _animController.forward(),
-        child: SafeArea(
-          child: Stack(
-            children: [
-              // Background Ambient Gradient
-              Container(
+        child: Stack(
+          children: [
+            // Dark Gradient Scrim to ensure overlays and text are legible
+            Positioned.fill(
+              child: Container(
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
+                    stops: const [0.0, 0.25, 0.7, 1.0],
                     colors: [
+                      Colors.black.withValues(alpha: 0.55),
                       Colors.black.withValues(alpha: 0.4),
                       Colors.transparent,
                       Colors.black.withValues(alpha: 0.6),
@@ -124,61 +216,8 @@ class _StatusViewScreenState extends State<StatusViewScreen>
               if (story.isPhoto) ...[
                 // Photo Background Visual
                 Positioned.fill(
-                  child: story.imageAsset != null && File(story.imageAsset!).existsSync()
-                      ? Image.file(
-                          File(story.imageAsset!),
-                          fit: BoxFit.cover,
-                        )
-                      : (story.imageAsset != null && story.imageAsset!.startsWith('assets/')
-                          ? Image.asset(
-                              story.imageAsset!,
-                              fit: BoxFit.cover,
-                            )
-                          : Container(
-                              decoration: BoxDecoration(
-                                gradient: LinearGradient(
-                                  begin: Alignment.topLeft,
-                                  end: Alignment.bottomRight,
-                                  colors: [
-                                    story.backgroundColor,
-                                    const Color(0xFF0F172A),
-                                  ],
-                                ),
-                              ),
-                              child: Center(
-                                child: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Container(
-                                      width: 120,
-                                      height: 120,
-                                      decoration: BoxDecoration(
-                                        shape: BoxShape.circle,
-                                        color: AppColors.primary.withValues(alpha: 0.15),
-                                        border: Border.all(color: AppColors.primary, width: 2),
-                                      ),
-                                      child: const Icon(
-                                        Icons.camera_alt_rounded,
-                                        size: 56,
-                                        color: AppColors.primary,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 16),
-                                    const Text(
-                                      'Tangkapan Kamera Terenkripsi',
-                                      style: TextStyle(
-                                        color: Colors.white70,
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            )),
+                  child: _buildStoryImage(story),
                 ),
-
-                // Bottom Caption overlay
                 if (story.text.isNotEmpty)
                   Positioned(
                     bottom: 84,

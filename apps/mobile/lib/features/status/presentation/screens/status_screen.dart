@@ -1,13 +1,16 @@
 // ignore_for_file: deprecated_member_use
 import 'dart:io';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../../../core/core.dart';
 import '../../../settings/domain/account_controller.dart';
 import '../../../settings/presentation/screens/settings_screen.dart';
+import '../domain/status_service.dart';
 import 'status_view_screen.dart';
 import 'status_privacy_contact_picker_screen.dart';
 import 'text_status_composer_screen.dart';
 import 'camera_status_screen.dart';
+
 
 class StatusContactGroup {
   final String name;
@@ -45,6 +48,43 @@ class StatusScreenState extends State<StatusScreen> {
   final TextEditingController _searchController = TextEditingController();
   String _selectedPrivacy = 'contacts'; // 'contacts', 'contacts_except', 'only_share'
   final List<StatusStoryItem> _myStories = [];
+  final List<StatusContactGroup> _recentUpdates = [];
+  final List<StatusContactGroup> _viewedUpdates = [];
+  Timer? _pollingTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadStatuses();
+    // Background polling every 8 seconds for live updates from contacts
+    _pollingTimer = Timer.periodic(const Duration(seconds: 8), (_) => _loadStatuses());
+  }
+
+  Future<void> _loadStatuses() async {
+    try {
+      final myStatuses = await StatusService.instance.getMyStatuses();
+      final contactGroups = await StatusService.instance.getContactsStatuses();
+
+      if (!mounted) return;
+      setState(() {
+        _myStories
+          ..clear()
+          ..addAll(myStatuses);
+
+        _recentUpdates.clear();
+        _viewedUpdates.clear();
+        for (final group in contactGroups) {
+          if (group.isViewed) {
+            _viewedUpdates.add(group);
+          } else {
+            _recentUpdates.add(group);
+          }
+        }
+      });
+    } catch (e) {
+      debugPrint('[StatusScreen] _loadStatuses error: $e');
+    }
+  }
 
   Future<void> _openTextStatusComposer() async {
     final result = await Navigator.push<StatusStoryItem>(
@@ -52,11 +92,17 @@ class StatusScreenState extends State<StatusScreen> {
       MaterialPageRoute(builder: (_) => const TextStatusComposerScreen()),
     );
     if (result != null) {
-      setState(() {
-        _myStories.insert(0, result);
-      });
+      final posted = await StatusService.instance.postStatus(
+        type: 'TEXT',
+        content: result.text,
+        backgroundColor: result.backgroundColor,
+      );
       if (mounted) {
+        setState(() {
+          _myStories.insert(0, posted ?? result);
+        });
         LajuToast.success(context, 'Status teks berhasil dibagikan');
+        _loadStatuses();
       }
     }
   }
@@ -73,10 +119,17 @@ class StatusScreenState extends State<StatusScreen> {
         ),
       );
       if (result != null && mounted) {
+        final posted = await StatusService.instance.postStatus(
+          type: 'IMAGE',
+          content: result.imageAsset ?? path,
+          caption: result.text,
+          backgroundColor: result.backgroundColor,
+        );
         setState(() {
-          _myStories.insert(0, result);
+          _myStories.insert(0, posted ?? result);
         });
         LajuToast.success(context, 'Status foto berhasil dibagikan');
+        _loadStatuses();
       }
     }
   }
@@ -91,10 +144,17 @@ class StatusScreenState extends State<StatusScreen> {
         ),
       );
       if (result != null && mounted) {
+        final posted = await StatusService.instance.postStatus(
+          type: 'IMAGE',
+          content: result.imageAsset ?? path,
+          caption: result.text,
+          backgroundColor: result.backgroundColor,
+        );
         setState(() {
-          _myStories.insert(0, result);
+          _myStories.insert(0, posted ?? result);
         });
         LajuToast.success(context, 'Status foto berhasil dibagikan');
+        _loadStatuses();
       }
     }
   }
@@ -115,10 +175,17 @@ class StatusScreenState extends State<StatusScreen> {
         ),
       );
       if (result != null && mounted) {
+        final posted = await StatusService.instance.postStatus(
+          type: 'IMAGE',
+          content: result.imageAsset ?? path,
+          caption: result.text,
+          backgroundColor: result.backgroundColor,
+        );
         setState(() {
-          _myStories.insert(0, result);
+          _myStories.insert(0, posted ?? result);
         });
         LajuToast.success(context, 'Status foto berhasil dibagikan');
+        _loadStatuses();
       }
     }
   }
@@ -367,10 +434,19 @@ class StatusScreenState extends State<StatusScreen> {
             ListTile(
               leading: const Icon(Icons.delete_outline_rounded, color: AppColors.danger),
               title: const Text('Hapus Semua Status', style: TextStyle(color: AppColors.danger)),
-              onTap: () {
+              onTap: () async {
                 Navigator.pop(ctx);
+                final storiesToDelete = List<StatusStoryItem>.from(_myStories);
                 setState(() => _myStories.clear());
-                LajuToast.info(context, 'Status saya telah dihapus');
+                for (final story in storiesToDelete) {
+                  if (story.id != null) {
+                    await StatusService.instance.deleteStatus(story.id!);
+                  }
+                }
+                if (mounted) {
+                  LajuToast.info(context, 'Status saya telah dihapus');
+                  _loadStatuses();
+                }
               },
             ),
           ],
@@ -379,14 +455,12 @@ class StatusScreenState extends State<StatusScreen> {
     );
   }
 
-  final List<StatusContactGroup> _recentUpdates = [];
-  final List<StatusContactGroup> _viewedUpdates = [];
-
   Set<String> _excludedContactIds = {};
   Set<String> _onlyShareContactIds = {};
 
   @override
   void dispose() {
+    _pollingTimer?.cancel();
     _searchController.dispose();
     super.dispose();
   }
@@ -726,8 +800,10 @@ class StatusScreenState extends State<StatusScreen> {
         ],
       ),
       body: LajuGlassBackground(
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 140),
+        child: RefreshIndicator(
+          onRefresh: _loadStatuses,
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 140),
           children: [
             // My Status Tile (only shown when not filtering or when empty query)
             if (!_isSearching || query.isEmpty) ...[
@@ -1096,7 +1172,8 @@ class StatusScreenState extends State<StatusScreen> {
           ],
         ),
       ),
-    );
+    ),
+  );
   }
 
   Widget _buildStatusTile({

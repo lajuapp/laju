@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../../../core/core.dart';
 import '../../domain/models/message_model.dart';
@@ -29,17 +30,34 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
   MessageModel? _replyingTo;
   MessageModel? _editingMessage;
   List<MessageModel> _messages = [];
+  Timer? _pollTimer;
 
   @override
   void initState() {
     super.initState();
     _loadMessages();
+    _startPolling();
+  }
+
+  @override
+  void dispose() {
+    _pollTimer?.cancel();
+    super.dispose();
   }
 
   void _loadMessages() async {
+    // Step 1: Load from SQLite cache instantly
+    final cached = await ConversationService.instance.getMessagesFromCache(widget.groupId);
+    if (mounted && cached.isNotEmpty) {
+      setState(() {
+        _messages = cached;
+      });
+    }
+
+    // Step 2: Fetch fresh messages from API in background
     try {
       final msgs = await ConversationService.instance.fetchMessages(widget.groupId);
-      if (mounted) {
+      if (mounted && msgs.isNotEmpty) {
         setState(() {
           _messages = msgs;
         });
@@ -47,7 +65,25 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
     } catch (_) {}
   }
 
-  void _sendMessage(String text) {
+  void _startPolling() {
+    _pollTimer?.cancel();
+    _pollTimer = Timer.periodic(const Duration(seconds: 3), (_) async {
+      if (!mounted) return;
+      try {
+        final msgs = await ConversationService.instance.fetchMessages(widget.groupId);
+        if (mounted && msgs.isNotEmpty) {
+          if (msgs.length != _messages.length ||
+              (msgs.isNotEmpty && _messages.isNotEmpty && msgs.last.id != _messages.last.id)) {
+            setState(() {
+              _messages = msgs;
+            });
+          }
+        }
+      } catch (_) {}
+    });
+  }
+
+  void _sendMessage(String text) async {
     LajuSoundService.playOutgoingTone();
     final localMsg = MessageModel(
       id: 'g-${DateTime.now().millisecondsSinceEpoch}',
@@ -56,7 +92,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
       content: text,
       timestamp: DateTime.now(),
       isOutgoing: true,
-      status: MessageDeliveryStatus.sent,
+      status: MessageDeliveryStatus.sending,
       replyTo: _replyingTo,
     );
 
@@ -65,14 +101,28 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
       _replyingTo = null;
     });
 
-    ConversationService.instance.sendMessage(
+    await LocalDatabase.instance.insertSentMessage(localMsg);
+
+    final sent = await ConversationService.instance.sendMessage(
       conversationId: widget.groupId,
       text: text,
       clientMessageId: localMsg.id,
     );
+
+    if (mounted && sent != null) {
+      setState(() {
+        final idx = _messages.indexWhere((m) => m.id == localMsg.id);
+        if (idx != -1) {
+          _messages[idx] = _messages[idx].copyWith(
+            id: sent.id,
+            status: sent.status,
+          );
+        }
+      });
+    }
   }
 
-  void _handleSendVoiceNote(VoiceRecordResult result) {
+  void _handleSendVoiceNote(VoiceRecordResult result) async {
     final voiceMsg = MessageModel(
       id: 'voice-${DateTime.now().millisecondsSinceEpoch}',
       conversationId: widget.groupId,
@@ -84,32 +134,48 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
       attachmentName: 'Group Voice Note (${result.formattedDuration})',
       attachmentSize: result.formattedDuration,
       attachmentPath: result.filePath,
-      status: MessageDeliveryStatus.sent,
+      status: MessageDeliveryStatus.sending,
     );
 
     setState(() {
       _messages.add(voiceMsg);
     });
 
-    ConversationService.instance.sendMessage(
+    await LocalDatabase.instance.insertSentMessage(voiceMsg);
+
+    final sent = await ConversationService.instance.sendMessage(
       conversationId: widget.groupId,
       text: '🎤 Voice Message (${result.formattedDuration})',
       clientMessageId: voiceMsg.id,
     );
+
+    if (mounted && sent != null) {
+      setState(() {
+        final idx = _messages.indexWhere((m) => m.id == voiceMsg.id);
+        if (idx != -1) {
+          _messages[idx] = _messages[idx].copyWith(
+            id: sent.id,
+            status: sent.status,
+          );
+        }
+      });
+    }
   }
 
   void _handleReaction(MessageModel message, String emoji) {
+    final index = _messages.indexWhere((m) => m.id == message.id);
+    if (index == -1) return;
+    final existing = List<String>.from(_messages[index].reactions);
+    final isAdding = !existing.contains(emoji);
+    if (isAdding) {
+      existing.add(emoji);
+    } else {
+      existing.remove(emoji);
+    }
     setState(() {
-      final index = _messages.indexWhere((m) => m.id == message.id);
-      if (index == -1) return;
-      final existing = List<String>.from(_messages[index].reactions);
-      if (existing.contains(emoji)) {
-        existing.remove(emoji);
-      } else {
-        existing.add(emoji);
-      }
       _messages[index] = _messages[index].copyWith(reactions: existing);
     });
+    ConversationService.instance.toggleReaction(message.id, emoji, isAdding);
   }
 
   void _handleReply(MessageModel message) {
@@ -134,9 +200,10 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
     setState(() => _editingMessage = null);
   }
 
-  void _confirmEditMessage(String newText) {
+  void _confirmEditMessage(String newText) async {
     if (_editingMessage == null) return;
-    final index = _messages.indexWhere((m) => m.id == _editingMessage!.id);
+    final targetMsg = _editingMessage!;
+    final index = _messages.indexWhere((m) => m.id == targetMsg.id);
     if (index != -1) {
       setState(() {
         _messages[index] = _messages[index].copyWith(
@@ -145,7 +212,10 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
         );
         _editingMessage = null;
       });
-      LajuToast.info(context, 'Pesan grup berhasil diperbarui (diedit)');
+      await ConversationService.instance.editMessage(targetMsg.id, newText);
+      if (mounted) {
+        LajuToast.info(context, 'Pesan grup berhasil diperbarui (diedit)');
+      }
     }
   }
 
@@ -406,8 +476,10 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                             onReactionSelected: (emoji) => _handleReaction(msg, emoji),
                             onReply: _handleReply,
                             onEdit: _handleEditMessage,
-                            onDelete: () {
+                            onDelete: () async {
+                              final msgToDelete = _messages[index];
                               setState(() => _messages.removeAt(index));
+                              await ConversationService.instance.deleteMessage(msgToDelete.id);
                             },
                           );
                         },

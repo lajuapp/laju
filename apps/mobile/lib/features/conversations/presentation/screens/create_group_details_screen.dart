@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../../../core/core.dart';
 import '../../../messaging/presentation/screens/group_chat_screen.dart';
 import '../../domain/group_controller.dart';
+import '../../domain/models/conversation_model.dart';
 
 class CreateGroupDetailsScreen extends StatefulWidget {
   final List<GroupMemberItem> selectedMembers;
@@ -186,9 +187,7 @@ class _CreateGroupDetailsScreenState extends State<CreateGroupDetailsScreen> {
 
     setState(() => _isCreating = true);
 
-    await Future.delayed(const Duration(milliseconds: 500));
-
-    final newGroup = GroupController.instance.createGroup(
+    final newGroup = await GroupController.instance.createGroupAsync(
       name: name,
       description: _descriptionController.text.trim(),
       avatarPath: _avatarPath,
@@ -199,6 +198,20 @@ class _CreateGroupDetailsScreenState extends State<CreateGroupDetailsScreen> {
       canAddMembers: _canAddMembers,
       requireApprovalToJoin: _requireApproval,
     );
+
+    // Save to local SQLite database so group appears in home screen immediately
+    await LocalDatabase.instance.upsertConversations([
+      ConversationModel(
+        id: newGroup.id,
+        title: newGroup.name,
+        lastMessage: 'Grup dibuat',
+        lastMessageTime: DateTime.now(),
+        unreadCount: 0,
+        isGroup: true,
+        isOnline: true,
+        isKeyVerified: true,
+      ),
+    ]);
 
     if (!mounted) return;
 

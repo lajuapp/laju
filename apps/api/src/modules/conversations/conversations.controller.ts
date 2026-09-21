@@ -90,6 +90,14 @@ export class ConversationsController {
     return this.conversationsService.leaveGroup(userId, conversationId);
   }
 
+  @Delete(':id')
+  delete(
+    @CurrentUser('userId') userId: string,
+    @Param('id') conversationId: string
+  ) {
+    return this.conversationsService.deleteConversation(userId, conversationId);
+  }
+
   @Get(':id/messages')
   listMessages(
     @CurrentUser('userId') userId: string,

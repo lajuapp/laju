@@ -1,4 +1,5 @@
 import 'dart:ui' as ui;
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../../../core/core.dart';
@@ -15,6 +16,7 @@ import '../../../conversations/presentation/screens/new_chat_screen.dart';
 import '../../../security/presentation/screens/key_verification_screen.dart';
 import '../../../settings/presentation/screens/my_qr_code_screen.dart';
 import '../../../lock/presentation/screens/app_lock_screen.dart';
+import '../../../conversations/presentation/screens/locked_chats_screen.dart';
 import '../../../calls/presentation/screens/new_call_contact_picker_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -29,6 +31,9 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   int _currentBottomNavIndex = 0;
   String _selectedFilter = 'All';
+  bool _isSearchExpanded = false;
+  final TextEditingController _searchController = TextEditingController();
+  Timer? _homePollingTimer;
 
   final List<String> _filters = ['All', 'Unread', 'Groups', 'Favorites'];
 
@@ -38,6 +43,18 @@ class _HomeScreenState extends State<HomeScreen> {
     _currentBottomNavIndex = HomeScreen.activeTabNotifier.value;
     HomeScreen.activeTabNotifier.addListener(_onTabChanged);
     _loadConversations();
+    // Periodically fetch conversations in background so new incoming messages appear automatically
+    _homePollingTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+      if (mounted && _currentBottomNavIndex == 0 && !_isSearchExpanded) {
+        ConversationService.instance.fetchConversations().then((apiConvs) {
+          if (mounted && apiConvs.isNotEmpty) {
+            setState(() {
+              _conversations = apiConvs;
+            });
+          }
+        }).catchError((_) {});
+      }
+    });
   }
 
   Future<void> _loadConversations() async {
@@ -80,6 +97,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
+    _homePollingTimer?.cancel();
     HomeScreen.activeTabNotifier.removeListener(_onTabChanged);
     super.dispose();
   }
@@ -128,7 +146,9 @@ class _HomeScreenState extends State<HomeScreen> {
           LajuToast.info(context, newPinned ? 'Chat disematkan ke posisi paling atas' : 'Sematan chat dilepas');
           break;
         case ConversationActionType.lockChat:
-          _conversations[index] = _conversations[index].copyWith(isLocked: true);
+          final updated = _conversations[index].copyWith(isLocked: true);
+          _conversations[index] = updated;
+          LocalDatabase.instance.upsertConversations([updated]);
           LajuToast.info(context, 'Chat dikunci dan dipindahkan ke Locked Chats');
           break;
         case ConversationActionType.toggleArchive:
@@ -154,13 +174,15 @@ class _HomeScreenState extends State<HomeScreen> {
           LajuToast.info(context, 'Riwayat pesan obrolan dibersihkan');
           break;
         case ConversationActionType.deleteChat:
-          if (!_conversations[index].isGroup) {
-            _conversations.removeAt(index);
-            LajuToast.info(context, 'Obrolan telah dihapus');
-          }
+          final targetConv = _conversations[index];
+          _conversations.removeAt(index);
+          ConversationService.instance.deleteConversation(targetConv.id);
+          LajuToast.info(context, 'Obrolan telah dihapus');
           break;
         case ConversationActionType.exitGroup:
+          final targetGroup = _conversations[index];
           _conversations.removeAt(index);
+          ConversationService.instance.leaveGroup(targetGroup.id);
           LajuToast.info(context, 'Anda telah keluar dari grup');
           break;
         case ConversationActionType.blockContact:
@@ -627,7 +649,17 @@ class _HomeScreenState extends State<HomeScreen> {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (context) => const AppLockScreen(),
+                      builder: (context) => AppLockScreen(
+                        onUnlocked: () {
+                          Navigator.pop(context);
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const LockedChatsScreen(),
+                            ),
+                          ).then((_) => _loadConversations());
+                        },
+                      ),
                     ),
                   );
                 },

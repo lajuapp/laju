@@ -116,7 +116,7 @@ export class ConversationsService {
       include: {
         members: {
           include: {
-            user: { select: { id: true, username: true } }
+            user: { select: { id: true, username: true, phoneNumber: true, status: true } }
           }
         }
       }
@@ -336,6 +336,14 @@ export class ConversationsService {
       include: {
         senderUser: {
           select: { id: true, username: true }
+        },
+        reactions: {
+          select: {
+            id: true,
+            userId: true,
+            emoji: true,
+            createdAt: true
+          }
         }
       }
     });
@@ -345,5 +353,28 @@ export class ConversationsService {
       messages,
       count: messages.length
     };
+  }
+
+  async deleteConversation(userId: string, conversationId: string) {
+    const member = await this.prisma.conversationMember.findFirst({
+      where: { conversationId, userId, leftAt: null }
+    });
+    if (!member) {
+      throw new ForbiddenException('Not a member of this conversation');
+    }
+
+    const conv = await this.prisma.conversation.findUnique({
+      where: { id: conversationId }
+    });
+
+    if (conv?.type === 'GROUP' && member.role !== 'OWNER') {
+      throw new ForbiddenException('Only group owner can delete this group');
+    }
+
+    await this.prisma.conversation.delete({
+      where: { id: conversationId }
+    });
+
+    return { success: true };
   }
 }

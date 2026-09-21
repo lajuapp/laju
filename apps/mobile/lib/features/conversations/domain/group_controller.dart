@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import '../../../../core/network/api_client.dart';
 import 'conversation_service.dart';
 
 class GroupMemberItem {
@@ -97,14 +98,16 @@ class GroupController extends ChangeNotifier {
   bool isCurrentUserAdmin(String groupId) {
     final group = _groups[groupId];
     if (group == null) return false;
+    final curUserId = ApiClient.instance.userId;
     final user = group.members.firstWhere(
-      (m) => m.id == 'm-you',
+      (m) => (curUserId != null && m.id == curUserId) || m.id == 'm-you',
       orElse: () => const GroupMemberItem(id: '', name: '', phone: '', role: ''),
     );
     return user.isAdmin;
   }
 
   GroupModel createGroup({
+    String? id,
     required String name,
     required String description,
     String? avatarPath,
@@ -115,14 +118,15 @@ class GroupController extends ChangeNotifier {
     bool canAddMembers = true,
     bool requireApprovalToJoin = false,
   }) {
-    final newId = 'grp-${DateTime.now().millisecondsSinceEpoch}';
+    final newId = id ?? 'grp-${DateTime.now().millisecondsSinceEpoch}';
+    final curUserId = ApiClient.instance.userId ?? 'm-you';
 
     // Current user is always owner & admin of created groups
     final initialMembers = <GroupMemberItem>[
-      const GroupMemberItem(
-        id: 'm-you',
+      GroupMemberItem(
+        id: curUserId,
         name: 'Anda',
-        phone: '+62 812-0000-1111',
+        phone: '',
         role: 'Admin Grup • Owner',
         isAdmin: true,
         isOnline: true,
@@ -130,7 +134,7 @@ class GroupController extends ChangeNotifier {
     ];
 
     for (final m in members) {
-      if (m.id != 'm-you') {
+      if (m.id != 'm-you' && m.id != curUserId) {
         initialMembers.add(m);
       }
     }
@@ -140,7 +144,7 @@ class GroupController extends ChangeNotifier {
       name: name.trim().isEmpty ? 'New Group' : name.trim(),
       description: description.trim(),
       avatarPath: avatarPath,
-      creatorId: 'm-you',
+      creatorId: curUserId,
       createdAt: DateTime.now(),
       disappearingSeconds: disappearingSeconds,
       canEditGroupInfo: canEditGroupInfo,
@@ -155,12 +159,12 @@ class GroupController extends ChangeNotifier {
     return newGroup;
   }
 
-  void updateGroupInfo(
+  Future<void> updateGroupInfo(
     String groupId, {
     String? name,
     String? description,
     String? avatarPath,
-  }) {
+  }) async {
     final group = _groups[groupId];
     if (group != null) {
       if (name != null && name.trim().isNotEmpty) {
@@ -174,6 +178,11 @@ class GroupController extends ChangeNotifier {
       }
       notifyListeners();
     }
+    await ConversationService.instance.updateGroup(
+      conversationId: groupId,
+      title: name,
+      description: description,
+    );
   }
 
   void updatePermissions(
@@ -193,7 +202,7 @@ class GroupController extends ChangeNotifier {
     }
   }
 
-  void toggleAdmin(String groupId, String memberId) {
+  Future<void> toggleAdmin(String groupId, String memberId) async {
     final group = _groups[groupId];
     if (group != null) {
       final index = group.members.indexWhere((m) => m.id == memberId);
@@ -205,28 +214,80 @@ class GroupController extends ChangeNotifier {
           role: newIsAdmin ? 'Admin Grup' : 'Anggota',
         );
         notifyListeners();
+        await ConversationService.instance.changeMemberRole(groupId, memberId, newIsAdmin);
       }
     }
   }
 
-  void removeMember(String groupId, String memberId) {
+  Future<void> removeMember(String groupId, String memberId) async {
     final group = _groups[groupId];
     if (group != null) {
       group.members.removeWhere((m) => m.id == memberId);
       notifyListeners();
+      await ConversationService.instance.removeMember(groupId, memberId);
     }
   }
 
-  void addMembers(String groupId, List<GroupMemberItem> newMembers) {
+  Future<void> addMembers(String groupId, List<GroupMemberItem> newMembers) async {
     final group = _groups[groupId];
     if (group != null) {
       for (final m in newMembers) {
         if (!group.members.any((existing) => existing.id == m.id)) {
           group.members.add(m);
+          await ConversationService.instance.addMember(groupId, m.id);
         }
       }
       notifyListeners();
     }
+  }
+
+  /// Fetch and update group details and members directly from backend
+  Future<GroupModel?> fetchGroupFromBackend(String groupId) async {
+    try {
+      final details = await ConversationService.instance.getConversationDetails(groupId);
+      if (details != null) {
+        final curUserId = ApiClient.instance.userId;
+        final membersList = details['members'];
+        final groupMembers = <GroupMemberItem>[];
+
+        if (membersList is List) {
+          for (final m in membersList) {
+            if (m is Map) {
+              final user = m['user'] as Map?;
+              final uId = (m['userId'] ?? user?['id'] ?? '').toString();
+              final isCurrentUser = uId == curUserId;
+              final role = (m['role'] ?? 'MEMBER').toString();
+              final isAdmin = role == 'OWNER' || role == 'ADMIN';
+
+              groupMembers.add(GroupMemberItem(
+                id: uId,
+                name: isCurrentUser ? 'Anda' : (user?['username'] ?? 'User'),
+                phone: (user?['phoneNumber'] ?? '').toString(),
+                role: role == 'OWNER' ? 'Admin Grup • Owner' : (isAdmin ? 'Admin Grup' : 'Anggota'),
+                isAdmin: isAdmin,
+                isOnline: true,
+              ));
+            }
+          }
+        }
+
+        final model = GroupModel(
+          id: groupId,
+          name: details['title'] ?? 'Group Chat',
+          description: details['description'] ?? '',
+          creatorId: curUserId ?? '',
+          createdAt: DateTime.tryParse(details['createdAt'] ?? '') ?? DateTime.now(),
+          members: groupMembers,
+        );
+
+        _groups[groupId] = model;
+        notifyListeners();
+        return model;
+      }
+    } catch (e) {
+      debugPrint('[GroupController] fetchGroupFromBackend error: $e');
+    }
+    return _groups[groupId];
   }
 
   Future<GroupModel> createGroupAsync({
@@ -240,7 +301,25 @@ class GroupController extends ChangeNotifier {
     bool canAddMembers = true,
     bool requireApprovalToJoin = false,
   }) async {
+    String? backendConvId;
+    final participantIds = members
+        .map((m) => m.id)
+        .where((id) => id != 'm-you' && !id.startsWith('m-'))
+        .toList();
+
+    try {
+      backendConvId = await ConversationService.instance.createGroupConversation(
+        title: name,
+        participantUserIds: participantIds,
+        description: description,
+      );
+    } catch (e) {
+      debugPrint('[GroupController] createGroupConversation error: $e');
+    }
+
+    final newId = backendConvId ?? 'grp-${DateTime.now().millisecondsSinceEpoch}';
     final group = createGroup(
+      id: newId,
       name: name,
       description: description,
       avatarPath: avatarPath,
@@ -251,22 +330,6 @@ class GroupController extends ChangeNotifier {
       canAddMembers: canAddMembers,
       requireApprovalToJoin: requireApprovalToJoin,
     );
-
-    try {
-      final participantIds = members
-          .map((m) => m.id)
-          .where((id) => id != 'm-you' && !id.startsWith('m-'))
-          .toList();
-      if (participantIds.isNotEmpty) {
-        await ConversationService.instance.createGroupConversation(
-          title: name,
-          participantUserIds: participantIds,
-          description: description,
-        );
-      }
-    } catch (_) {
-      // Graceful fallback
-    }
 
     return group;
   }

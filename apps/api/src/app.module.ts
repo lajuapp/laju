@@ -17,6 +17,7 @@ import { IncidentsModule } from './modules/incidents/incidents.module';
 import { AdminModule } from './modules/admin/admin.module';
 import { UsersModule } from './modules/users/users.module';
 import { MigrationModule } from './modules/migration/migration.module';
+import { StatusModule } from './modules/status/status.module';
 
 @Module({
   imports: [
@@ -40,7 +41,8 @@ import { MigrationModule } from './modules/migration/migration.module';
     CallsModule,
     IncidentsModule,
     AdminModule,
-    MigrationModule
+    MigrationModule,
+    StatusModule
   ]
 })
 export class AppModule {}

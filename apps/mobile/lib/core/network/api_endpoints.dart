@@ -50,6 +50,7 @@ class ApiEndpoints {
   static const String deviceChallenge = '/devices/challenge';
   static const String deviceVerify = '/devices/verify';
   static const String devicePushToken = '/devices/push-token';
+  static const String deviceTestPush = '/devices/test-push';
   static String deviceRevoke(String id) => '/devices/$id/revoke';
   static const String identityRegister = '/identity/register';
   static const String identityRestore = '/identity/restore';
@@ -62,5 +63,18 @@ class ApiEndpoints {
   static String migrationCommit(String id) => '/migration/$id/commit';
   static String migrationCancel(String id) => '/migration/$id/cancel';
   static String migrationStatus(String id) => '/migration/$id/status';
+
+  // Status (Stories)
+  static const String status = '/status';
+  static const String statusMe = '/status/me';
+  static const String statusContacts = '/status/contacts';
+  static String statusView(String id) => '/status/$id/view';
+  static String statusById(String id) => '/status/$id';
+
+  // Message Reactions
+  static String messageReactions(String messageId) => '/messages/$messageId/reactions';
+  static String messageReactionDelete(String messageId, String emoji) =>
+      '/messages/$messageId/reactions/$emoji';
 }
+
 

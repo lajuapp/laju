@@ -17,6 +17,8 @@ import {
   UpdatePushTokenDto
 } from './dto/devices.dto';
 
+import { GotifyService } from '../../infrastructure/gotify/gotify.service';
+
 @Injectable()
 export class DevicesService {
   private readonly logger = new Logger(DevicesService.name);
@@ -29,7 +31,8 @@ export class DevicesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly redisService: RedisService,
-    private readonly authService: AuthenticationService
+    private readonly authService: AuthenticationService,
+    private readonly gotifyService: GotifyService
   ) {}
 
   /**
@@ -444,6 +447,51 @@ export class DevicesService {
     });
 
     return { success: true, message: 'Push token updated successfully' };
+  }
+
+  async testPushNotification(userId: string) {
+    const devices = await this.prisma.device.findMany({
+      where: { userId, status: 'ACTIVE' },
+      include: { pushDevices: true }
+    });
+
+    let sentCount = 0;
+    for (const device of devices) {
+      const tokens: string[] = [];
+      if (device.pushDevices && device.pushDevices.length > 0) {
+        for (const pd of device.pushDevices) {
+          if (pd.clientToken) tokens.push(pd.clientToken);
+        }
+      }
+      if (device.pushToken && !tokens.includes(device.pushToken)) {
+        tokens.push(device.pushToken);
+      }
+
+      if (tokens.length === 0) {
+        await this.gotifyService.sendPushNotification({
+          title: 'LAJU Push Test',
+          message: 'Notifikasi uji coba berhasil dikirim (Global Wakeup)',
+          priority: 6
+        });
+        sentCount++;
+      } else {
+        for (const token of tokens) {
+          await this.gotifyService.sendPushNotification({
+            targetToken: token,
+            title: 'LAJU Push Test',
+            message: 'Notifikasi uji coba berhasil diterima pada perangkat ini (Killed-State Active)',
+            priority: 6
+          });
+          sentCount++;
+        }
+      }
+    }
+
+    return {
+      success: true,
+      sentCount,
+      message: `Uji coba push notification dikirim ke ${sentCount} target token.`
+    };
   }
 
   async revokeDevice(userId: string, deviceId: string) {

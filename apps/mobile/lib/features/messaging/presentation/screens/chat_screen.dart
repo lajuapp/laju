@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../../../core/core.dart';
 import '../../domain/models/message_model.dart';
@@ -10,7 +11,6 @@ import '../widgets/attachment_bottom_sheet.dart';
 import 'disappearing_messages_screen.dart';
 import '../../../conversations/presentation/screens/user_profile_screen.dart';
 import '../../../../core/services/voice_note_service.dart';
-import '../../../../core/services/local_database.dart';
 
 class ChatScreen extends StatefulWidget {
   final String conversationId;
@@ -35,12 +35,40 @@ class _ChatScreenState extends State<ChatScreen> {
   late List<MessageModel> _messages;
   MessageModel? _replyingTo;
   MessageModel? _editingMessage;
+  Timer? _pollTimer;
 
   @override
   void initState() {
     super.initState();
     _messages = [];
     _loadMessagesFromApi();
+    _startPolling();
+  }
+
+  void _startPolling() {
+    _pollTimer?.cancel();
+    _pollTimer = Timer.periodic(const Duration(seconds: 3), (_) async {
+      if (!mounted) return;
+      try {
+        final apiMsgs = await ConversationService.instance.fetchMessages(widget.conversationId);
+        if (mounted && apiMsgs.isNotEmpty) {
+          if (apiMsgs.length != _messages.length ||
+              (apiMsgs.isNotEmpty && _messages.isNotEmpty && apiMsgs.last.id != _messages.last.id)) {
+            setState(() {
+              _messages = apiMsgs;
+            });
+            Future.delayed(const Duration(milliseconds: 100), _scrollToBottom);
+          }
+        }
+      } catch (_) {}
+    });
+  }
+
+  @override
+  void dispose() {
+    _pollTimer?.cancel();
+    _scrollController.dispose();
+    super.dispose();
   }
 
   void _loadMessagesFromApi() async {
@@ -156,17 +184,19 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _handleReaction(MessageModel message, String emoji) {
+    final index = _messages.indexWhere((m) => m.id == message.id);
+    if (index == -1) return;
+    final existing = List<String>.from(_messages[index].reactions);
+    final isAdding = !existing.contains(emoji);
+    if (isAdding) {
+      existing.add(emoji);
+    } else {
+      existing.remove(emoji);
+    }
     setState(() {
-      final index = _messages.indexWhere((m) => m.id == message.id);
-      if (index == -1) return;
-      final existing = List<String>.from(_messages[index].reactions);
-      if (existing.contains(emoji)) {
-        existing.remove(emoji);
-      } else {
-        existing.add(emoji);
-      }
       _messages[index] = _messages[index].copyWith(reactions: existing);
     });
+    ConversationService.instance.toggleReaction(message.id, emoji, isAdding);
   }
 
   void _handleReply(MessageModel message) {
@@ -191,9 +221,10 @@ class _ChatScreenState extends State<ChatScreen> {
     setState(() => _editingMessage = null);
   }
 
-  void _confirmEditMessage(String newText) {
+  void _confirmEditMessage(String newText) async {
     if (_editingMessage == null) return;
-    final index = _messages.indexWhere((m) => m.id == _editingMessage!.id);
+    final targetMsg = _editingMessage!;
+    final index = _messages.indexWhere((m) => m.id == targetMsg.id);
     if (index != -1) {
       setState(() {
         _messages[index] = _messages[index].copyWith(
@@ -202,7 +233,10 @@ class _ChatScreenState extends State<ChatScreen> {
         );
         _editingMessage = null;
       });
-      LajuToast.info(context, 'Pesan berhasil diperbarui (diedit)');
+      await ConversationService.instance.editMessage(targetMsg.id, newText);
+      if (mounted) {
+        LajuToast.info(context, 'Pesan berhasil diperbarui (diedit)');
+      }
     }
   }
 
@@ -525,8 +559,10 @@ class _ChatScreenState extends State<ChatScreen> {
                                 onReactionSelected: (emoji) => _handleReaction(msg, emoji),
                                 onReply: _handleReply,
                                 onEdit: _handleEditMessage,
-                                onDelete: () {
+                                onDelete: () async {
+                                  final msgToDelete = _messages[index];
                                   setState(() => _messages.removeAt(index));
+                                  await ConversationService.instance.deleteMessage(msgToDelete.id);
                                 },
                               );
                             },
