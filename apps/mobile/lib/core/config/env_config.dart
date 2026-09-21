@@ -91,16 +91,8 @@ class EnvConfig {
     return const Duration(seconds: 15);
   }
 
-  /// Whether to gracefully fallback to mock data when backend is unreachable
-  bool get enableMockFallback {
-    if (_defineMockFallback.isNotEmpty) {
-      return _defineMockFallback.toLowerCase() == 'true';
-    }
-    if (_env.containsKey('ENABLE_MOCK_FALLBACK')) {
-      return _env['ENABLE_MOCK_FALLBACK']!.toLowerCase() == 'true';
-    }
-    return false;
-  }
+  /// Mock fallback is permanently disabled for production
+  bool get enableMockFallback => false;
 
   /// WebSocket URL for real-time events
   String get websocketUrl {

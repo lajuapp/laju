@@ -1,5 +1,7 @@
+import 'dart:convert' show utf8;
 import 'dart:io' show Platform;
 import 'dart:math' show Random;
+import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../../../core/core.dart';
@@ -447,6 +449,20 @@ class AuthController extends ChangeNotifier {
     }
   }
 
+  Future<String> getOrCreateLocalDeviceKey() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      var key = prefs.getString('laju_local_device_key');
+      if (key == null || key.isEmpty) {
+        key = _generateRandomHexSecret();
+        await prefs.setString('laju_local_device_key', key);
+      }
+      return key;
+    } catch (_) {
+      return _generateRandomHexSecret();
+    }
+  }
+
   /// Authenticates using Hardware Keystore cryptographic challenge-response (passwordless & phone-less)
   Future<bool> authenticateDeviceKeystoreAsync({String? customUuid}) async {
     _isLoading = true;
@@ -464,8 +480,10 @@ class AuthController extends ChangeNotifier {
       if (challengeRes.isSuccess && challengeRes.rawJson is Map) {
         final challenge = challengeRes.rawJson['challenge']?.toString() ?? '';
         if (challenge.isNotEmpty) {
-          // 2. Sign challenge using Hardware Keystore private key (Ed25519)
-          final signature = 'mock_sig_$challenge';
+          // 2. Sign challenge using HMAC-SHA256 with actual device key
+          final deviceKey = await getOrCreateLocalDeviceKey();
+          final hmac = Hmac(sha256, utf8.encode(deviceKey));
+          final signature = hmac.convert(utf8.encode(challenge)).toString();
 
           // 3. Submit signature for cryptographic verification
           final verifyRes = await ApiClient.instance.post(
@@ -626,6 +644,7 @@ class AuthController extends ChangeNotifier {
 
     try {
       final deviceUuid = await getOrCreateLocalDeviceUuid();
+      final deviceKey = await getOrCreateLocalDeviceKey();
       final identityPub = 'id_pub_${secretOrSeed.hashCode.abs()}';
 
       final response = await ApiClient.instance.post(
@@ -634,6 +653,7 @@ class AuthController extends ChangeNotifier {
           'identitySecret': secretOrSeed,
           'identityPublicKey': identityPub,
           'deviceUuid': deviceUuid,
+          'devicePublicKey': deviceKey,
           'deviceName': 'Restored Device',
           'platform': Platform.isIOS ? 'ios' : 'android',
         },
@@ -797,11 +817,16 @@ class AuthController extends ChangeNotifier {
       await prefs.setString('laju_identity_secret', identitySecret);
 
       final deviceUuid = await getOrCreateLocalDeviceUuid();
+      final deviceKey = await getOrCreateLocalDeviceKey();
       final cleanUsername = username.trim().isEmpty ? 'User' : username.trim();
       final resolvedModel = deviceModel ?? getDetectedDeviceModel();
       final resolvedLocation = registrationLocation ?? getDetectedRegistrationLocation();
       final resolvedPushToken = pushToken ?? await getOrCreatePushToken();
       final resolvedOs = getDetectedOsVersion();
+
+      // Compute actual cryptographic PreKey and signature using HMAC-SHA256
+      final preKeyPub = sha256.convert(utf8.encode('spk_${deviceKey}_1')).toString();
+      final preKeySig = Hmac(sha256, utf8.encode(deviceKey)).convert(utf8.encode(preKeyPub)).toString();
 
       final response = await ApiClient.instance.post(
         ApiEndpoints.identityRegister,
@@ -809,7 +834,7 @@ class AuthController extends ChangeNotifier {
           'identityPublicKey': 'id_pub_${identitySecret.hashCode.abs()}',
           'username': cleanUsername,
           'deviceUuid': deviceUuid,
-          'devicePublicKey': 'dev_pub_${DateTime.now().millisecondsSinceEpoch}',
+          'devicePublicKey': deviceKey,
           'deviceName': deviceName ?? resolvedModel,
           'platform': Platform.isIOS ? 'ios' : 'android',
           'deviceModel': resolvedModel,
@@ -819,8 +844,8 @@ class AuthController extends ChangeNotifier {
           'pushToken': resolvedPushToken,
           'signedPreKey': {
             'keyId': 1,
-            'publicKey': 'spk_pub_${DateTime.now().millisecondsSinceEpoch}',
-            'signature': 'spk_sig_${DateTime.now().millisecondsSinceEpoch}',
+            'publicKey': preKeyPub,
+            'signature': preKeySig,
           },
         },
       );

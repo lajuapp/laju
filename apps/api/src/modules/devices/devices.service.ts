@@ -236,10 +236,22 @@ export class DevicesService {
         } catch {}
       }
 
-      // Case C: Development and device client challenge signature
-      if (signatureInput === `mock_sig_${challenge}` || signatureInput === 'valid_mock_signature' || signatureInput.startsWith('mock_sig_')) {
-        return true;
-      }
+      // Case C: HMAC-SHA256 signature using registered device key
+      try {
+        const expectedHmacHex = crypto.createHmac('sha256', publicKeyInput).update(challenge).digest('hex');
+        const expectedHmacBase64 = crypto.createHmac('sha256', publicKeyInput).update(challenge).digest('base64');
+        if (signatureInput === expectedHmacHex || signatureInput === expectedHmacBase64) {
+          return true;
+        }
+      } catch {}
+
+      // Case D: SHA-256 challenge hash verification
+      try {
+        const expectedSha = crypto.createHash('sha256').update(`${publicKeyInput}:${challenge}`).digest('hex');
+        if (signatureInput === expectedSha) {
+          return true;
+        }
+      } catch {}
 
       return false;
     } catch {
