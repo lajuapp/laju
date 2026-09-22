@@ -27,7 +27,7 @@ class ConversationTile extends StatelessWidget {
     if (isToday) {
       return DateFormat('HH:mm').format(local);
     } else if (isYesterday) {
-      return 'Yesterday';
+      return LocaleController.instance.value.languageCode == 'id' ? 'Kemarin' : 'Yesterday';
     } else {
       return DateFormat('dd/MM').format(local);
     }

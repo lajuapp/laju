@@ -55,6 +55,7 @@ class _HomeScreenState extends State<HomeScreen> {
             if (!changed) {
               for (int i = 0; i < apiConvs.length; i++) {
                 if (apiConvs[i].id != _conversations[i].id ||
+                    apiConvs[i].avatarUrl != _conversations[i].avatarUrl ||
                     apiConvs[i].lastMessage != _conversations[i].lastMessage ||
                     apiConvs[i].lastMessageTime != _conversations[i].lastMessageTime) {
                   changed = true;

@@ -173,7 +173,7 @@ class StatusService {
     String timeStr = 'Baru saja';
     if (createdAtStr != null) {
       try {
-        final dt = DateTime.parse(createdAtStr).toLocal();
+        final dt = DateHelper.parseUtc(createdAtStr);
         final diff = DateTime.now().difference(dt);
         if (diff.inMinutes < 1) {
           timeStr = 'Baru saja';

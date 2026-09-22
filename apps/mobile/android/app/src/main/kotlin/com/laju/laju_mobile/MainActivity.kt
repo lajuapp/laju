@@ -6,6 +6,7 @@ import android.content.ClipData
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.media.MediaPlayer
 import android.media.MediaRecorder
 import android.net.Uri
@@ -130,13 +131,15 @@ class MainActivity : FlutterFragmentActivity() {
                         try {
                             val srcFile = File(srcPath)
                             if (srcFile.exists()) {
+                                val optimized = compressAndDownsampleImage(srcFile.absolutePath, maxDimension = 512, quality = 85)
+                                val optFile = File(optimized)
                                 val destFile = File(filesDir, "user_avatar_${System.currentTimeMillis()}.jpg")
                                 filesDir.listFiles()?.forEach { f ->
                                     if (f.name.startsWith("user_avatar_")) {
                                         f.delete()
                                     }
                                 }
-                                srcFile.copyTo(destFile, overwrite = true)
+                                optFile.copyTo(destFile, overwrite = true)
                                 result.success(destFile.absolutePath)
                             } else {
                                 result.error("FILE_NOT_FOUND", "Source file does not exist", null)
@@ -144,6 +147,17 @@ class MainActivity : FlutterFragmentActivity() {
                         } catch (e: Exception) {
                             result.error("SAVE_AVATAR_FAILED", e.message, null)
                         }
+                    } else {
+                        result.error("INVALID_ARGS", "Path argument missing", null)
+                    }
+                }
+                "compressImage" -> {
+                    val path = call.argument<String>("path")
+                    val maxDim = call.argument<Int>("maxDimension") ?: 1280
+                    val quality = call.argument<Int>("quality") ?: 82
+                    if (path != null) {
+                        val compressed = compressAndDownsampleImage(path, maxDimension = maxDim, quality = quality)
+                        result.success(compressed)
                     } else {
                         result.error("INVALID_ARGS", "Path argument missing", null)
                     }
@@ -828,6 +842,60 @@ class MainActivity : FlutterFragmentActivity() {
         return buffer
     }
 
+    private fun compressAndDownsampleImage(sourcePath: String, maxDimension: Int = 1280, quality: Int = 82): String {
+        return try {
+            val sourceFile = File(sourcePath)
+            if (!sourceFile.exists() || sourceFile.length() == 0L) return sourcePath
+
+            val options = BitmapFactory.Options().apply {
+                inJustDecodeBounds = true
+            }
+            BitmapFactory.decodeFile(sourceFile.absolutePath, options)
+            val width = options.outWidth
+            val height = options.outHeight
+
+            if (width <= 0 || height <= 0) return sourcePath
+
+            var inSampleSize = 1
+            while (width / inSampleSize > maxDimension * 1.5 || height / inSampleSize > maxDimension * 1.5) {
+                inSampleSize *= 2
+            }
+
+            val decodeOptions = BitmapFactory.Options().apply {
+                this.inSampleSize = inSampleSize
+            }
+            val decodedBitmap = BitmapFactory.decodeFile(sourceFile.absolutePath, decodeOptions)
+                ?: return sourcePath
+
+            val scale = Math.min(
+                maxDimension.toFloat() / decodedBitmap.width.toFloat(),
+                maxDimension.toFloat() / decodedBitmap.height.toFloat()
+            )
+            val finalBitmap = if (scale < 1.0f) {
+                val targetW = Math.max(1, (decodedBitmap.width * scale).toInt())
+                val targetH = Math.max(1, (decodedBitmap.height * scale).toInt())
+                Bitmap.createScaledBitmap(decodedBitmap, targetW, targetH, true)
+            } else {
+                decodedBitmap
+            }
+
+            val compressedFile = File(externalCacheDir ?: cacheDir, "img_optimized_${System.currentTimeMillis()}.jpg")
+            val fos = FileOutputStream(compressedFile)
+            finalBitmap.compress(Bitmap.CompressFormat.JPEG, quality, fos)
+            fos.flush()
+            fos.close()
+
+            if (finalBitmap != decodedBitmap) {
+                decodedBitmap.recycle()
+            }
+            finalBitmap.recycle()
+
+            compressedFile.absolutePath
+        } catch (e: Exception) {
+            sourcePath
+        }
+    }
+
     private fun launchSystemCamera() {
         try {
             val storageDir = externalCacheDir ?: cacheDir
@@ -909,17 +977,19 @@ class MainActivity : FlutterFragmentActivity() {
             if (resultCode == Activity.RESULT_OK) {
                 val capturedFile = capturedPath?.let { File(it) }
                 if (capturedFile != null && capturedFile.exists() && capturedFile.length() > 0) {
-                    pendingCameraResult?.success(capturedFile.absolutePath)
+                    val optimized = compressAndDownsampleImage(capturedFile.absolutePath, maxDimension = 1280, quality = 82)
+                    pendingCameraResult?.success(optimized)
                 } else {
                     val imageBitmap = data?.extras?.get("data") as? Bitmap
                     if (imageBitmap != null) {
                         try {
                             val file = File(externalCacheDir ?: cacheDir, "camera_capture_${System.currentTimeMillis()}.jpg")
                             val out = FileOutputStream(file)
-                            imageBitmap.compress(Bitmap.CompressFormat.JPEG, 92, out)
+                            imageBitmap.compress(Bitmap.CompressFormat.JPEG, 82, out)
                             out.flush()
                             out.close()
-                            pendingCameraResult?.success(file.absolutePath)
+                            val optimized = compressAndDownsampleImage(file.absolutePath, maxDimension = 1280, quality = 82)
+                            pendingCameraResult?.success(optimized)
                         } catch (e: Exception) {
                             pendingCameraResult?.error("SAVE_FAILED", e.message, null)
                         }
@@ -931,7 +1001,8 @@ class MainActivity : FlutterFragmentActivity() {
                                     input.copyTo(output)
                                 }
                             }
-                            pendingCameraResult?.success(file.absolutePath)
+                            val optimized = compressAndDownsampleImage(file.absolutePath, maxDimension = 1280, quality = 82)
+                            pendingCameraResult?.success(optimized)
                         } catch (e: Exception) {
                             pendingCameraResult?.error("SAVE_FAILED", e.message, null)
                         }
@@ -973,7 +1044,8 @@ class MainActivity : FlutterFragmentActivity() {
                             input.copyTo(output)
                         }
                     }
-                    pendingCameraResult?.success(file.absolutePath)
+                    val optimized = compressAndDownsampleImage(file.absolutePath, maxDimension = 1280, quality = 82)
+                    pendingCameraResult?.success(optimized)
                 } catch (e: Exception) {
                     pendingCameraResult?.error("GALLERY_READ_FAILED", e.message, null)
                 }

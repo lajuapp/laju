@@ -18,7 +18,7 @@ class SecurityAuthHelper {
   }) async {
     final lockCtrl = AppLockController.instance;
 
-    // Try Biometric authentication first if available and enabled
+    // Try Biometric authentication if available and enabled (strictly prioritized)
     if (!forcePin && lockCtrl.isBiometricEnabled) {
       final canBio = await BiometricService.instance.canAuthenticate();
       if (canBio) {
@@ -26,13 +26,12 @@ class SecurityAuthHelper {
           title: title,
           subtitle: subtitle,
         );
-        if (bioSuccess) {
-          return true;
-        }
+        // If biometric is active, its result is definitive (no unwanted PIN sheet if cancelled)
+        return bioSuccess;
       }
     }
 
-    // Fallback to PIN verification if PIN has been set
+    // Only fallback to PIN verification if biometric is not enabled or not supported by hardware
     if (lockCtrl.hasSetPin) {
       if (!context.mounted) return false;
       return await promptVerifyPin(

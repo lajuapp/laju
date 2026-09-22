@@ -89,13 +89,16 @@ class _RegisterScreenState extends State<RegisterScreen> {
       setState(() => _configuredPin = pin);
     }
 
-    // Save PIN locally in AppLockController
+    // Save PIN locally in AppLockController and arm App Lock
     await AppLockController.instance.setPinCode(pin);
+    await AppLockController.instance.setAppLockEnabled(true);
 
-    // Auto-enable biometric if hardware supports it
+    // Auto-enable biometric if hardware supports it (prioritizing biometric over PIN)
     final bioAvailability = await BiometricService.instance.checkAvailability();
     if (bioAvailability.isAvailable) {
       await AppLockController.instance.setBiometricEnabled(true);
+    } else {
+      await AppLockController.instance.setBiometricEnabled(false);
     }
 
     setState(() => _isLoading = true);

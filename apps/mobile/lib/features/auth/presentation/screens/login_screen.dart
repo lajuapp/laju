@@ -48,8 +48,7 @@ class _LoginScreenState extends State<LoginScreen>
     // 1. Check biometric / device credentials availability
     final availability = _biometricInfo ?? await BiometricService.instance.checkAvailability();
 
-    bool authenticated = false;
-
+    // 1. If device supports biometric, use biometric exclusively!
     if (availability.isAvailable) {
       final bioLabel = availability.biometricLabel.isNotEmpty
           ? availability.biometricLabel
@@ -60,21 +59,26 @@ class _LoginScreenState extends State<LoginScreen>
         subtitle: 'Pindai $bioLabel atau kunci layar HP ini',
         description: 'Autentikasi biometrik diperlukan untuk memastikan Anda adalah pemilik sah HP ini sebelum masuk.',
         allowDeviceCredential: true,
-        negativeButtonText: 'Gunakan PIN',
+        negativeButtonText: 'Batal',
       );
-    }
 
-    // 2. If device has NO biometric support, or user chose "Gunakan PIN" / biometric failed:
-    // Prompt for 6-digit PIN directly!
-    if (!authenticated) {
+      if (!authenticated) {
+        if (mounted) {
+          LajuToast.error(
+            context,
+            'Autentikasi biometrik tidak berhasil atau dibatalkan. Akses masuk ditolak.',
+          );
+        }
+        return;
+      }
+    } else {
+      // 2. Only if device has NO biometric hardware or biometrics is disabled, fallback to 6-digit PIN!
       if (AppLockController.instance.hasSetPin) {
         if (mounted) {
           authenticated = await SecurityAuthHelper.promptVerifyPin(
             context,
             title: 'Verifikasi PIN Keamanan',
-            subtitle: availability.isAvailable
-                ? 'Masukkan 6-digit PIN keamanan Anda'
-                : 'HP tidak mendukung biometrik. Masukkan 6-digit PIN Anda untuk masuk',
+            subtitle: 'HP tidak mendukung biometrik. Masukkan 6-digit PIN Anda untuk masuk',
           );
         }
       } else {
@@ -86,21 +90,21 @@ class _LoginScreenState extends State<LoginScreen>
           );
           if (newPin != null && newPin.length == 6) {
             await AppLockController.instance.setPinCode(newPin);
+            await AppLockController.instance.setAppLockEnabled(true);
             authenticated = true;
           }
         }
       }
-    }
 
-    // 3. If neither biometric nor PIN succeeded, reject login completely
-    if (!authenticated) {
-      if (mounted) {
-        LajuToast.error(
-          context,
-          'Autentikasi biometrik atau PIN tidak berhasil. Akses login perangkat ditolak.',
-        );
+      if (!authenticated) {
+        if (mounted) {
+          LajuToast.error(
+            context,
+            'Autentikasi PIN tidak berhasil. Akses login perangkat ditolak.',
+          );
+        }
+        return;
       }
-      return;
     }
 
     if (!mounted) return;
@@ -330,6 +334,7 @@ class _LoginScreenState extends State<LoginScreen>
                             );
                             if (newPin != null && newPin.length == 6) {
                               await AppLockController.instance.setPinCode(newPin);
+                              await AppLockController.instance.setAppLockEnabled(true);
                             }
                           }
                           if (mounted) {
@@ -393,6 +398,7 @@ class _LoginScreenState extends State<LoginScreen>
           );
           if (newPin != null && newPin.length == 6) {
             await AppLockController.instance.setPinCode(newPin);
+            await AppLockController.instance.setAppLockEnabled(true);
           }
         }
         if (mounted) {

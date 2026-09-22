@@ -216,7 +216,7 @@ class ConversationService {
             id: item['id'],
             title: title,
             lastMessage: lastMsg,
-            lastMessageTime: (DateTime.tryParse(item['updatedAt'] ?? '') ?? DateTime.now()).toLocal(),
+            lastMessageTime: DateHelper.parseUtc(item['updatedAt']),
             unreadCount: 0,
             isGroup: isGroup,
             isOnline: true,
@@ -448,8 +448,6 @@ class ConversationService {
               contentText = rawCiphertext;
             }
 
-            final parsedDate = DateTime.tryParse(m['createdAt'] ?? '');
-
             return MessageModel(
               id: m['id'],
               clientMessageId: m['clientMessageId'] as String?,
@@ -460,7 +458,7 @@ class ConversationService {
               attachmentName: attName,
               attachmentSize: attSize,
               contentType: contentType,
-              timestamp: (parsedDate != null ? parsedDate.toLocal() : DateTime.now()),
+              timestamp: DateHelper.parseUtc(m['createdAt']),
               isOutgoing: isOutgoing,
               status: MessageDeliveryStatus.delivered,
               reactions: reactionsList,
@@ -496,9 +494,13 @@ class ConversationService {
     // Convert local media files to base64 data URI for instant cross-device transfer
     if (attachmentPath != null && (type == 'IMAGE' || type == 'AUDIO' || type == 'DOCUMENT')) {
       try {
-        final file = File(attachmentPath);
-        if (file.existsSync()) {
-          final bytes = file.readAsBytesSync();
+        String effectivePath = attachmentPath;
+        if (type == 'IMAGE') {
+          effectivePath = await DeviceMediaService.compressImage(attachmentPath);
+        }
+        final file = File(effectivePath);
+        if (await file.exists()) {
+          final bytes = await file.readAsBytes();
           final b64 = base64Encode(bytes);
           final mime = type == 'IMAGE'
               ? 'image/jpeg'

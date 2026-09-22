@@ -222,20 +222,29 @@ class AccountController extends ChangeNotifier {
           }
         }
 
-        await ApiClient.instance.patch(
+        final body = <String, dynamic>{
+          'username': _userName,
+          'twoFactorEnabled': _twoStepVerificationEnabled,
+        };
+        if (_email.trim().isNotEmpty) body['email'] = _email.trim();
+        if (_phoneNumber.trim().isNotEmpty) body['phoneNumber'] = _phoneNumber.trim();
+        if (_about.trim().isNotEmpty) body['status'] = _about.trim();
+        if (_twoStepPin.trim().isNotEmpty) body['twoFactorPin'] = _twoStepPin.trim();
+        if (avatarPayload != null && avatarPayload.isNotEmpty) body['avatarUrl'] = avatarPayload;
+
+        final res = await ApiClient.instance.patch(
           ApiEndpoints.currentUser,
-          body: {
-            'username': _userName,
-            'email': _email,
-            'phoneNumber': _phoneNumber,
-            'status': _about,
-            'twoFactorEnabled': _twoStepVerificationEnabled,
-            'twoFactorPin': _twoStepPin,
-            if (avatarPayload != null) 'avatarUrl': avatarPayload,
-          },
+          body: body,
         );
+        if (res.isSuccess) {
+          debugPrint('[AccountController] profile successfully synced to backend');
+        } else {
+          debugPrint('[AccountController] profile sync failed: ${res.statusCode} ${res.message}');
+        }
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[AccountController] _syncWithBackend error: $e');
+    }
   }
 
   void addPasskey(String name, String device) {

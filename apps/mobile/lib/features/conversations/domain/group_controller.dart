@@ -281,7 +281,7 @@ class GroupController extends ChangeNotifier {
           name: details['title'] ?? 'Group Chat',
           description: details['description'] ?? '',
           creatorId: curUserId ?? '',
-          createdAt: DateTime.tryParse(details['createdAt'] ?? '') ?? DateTime.now(),
+          createdAt: DateHelper.parseUtc(details['createdAt']),
           members: groupMembers,
         );
 

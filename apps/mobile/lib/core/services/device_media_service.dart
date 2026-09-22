@@ -68,6 +68,24 @@ class DeviceMediaService {
     return sourcePath;
   }
 
+  /// Compresses and downsamples an image file to standard messaging resolution.
+  static Future<String> compressImage(String path, {int maxDimension = 1280, int quality = 82}) async {
+    try {
+      final String? compressed = await _channel.invokeMethod<String>(
+        'compressImage',
+        {
+          'path': path,
+          'maxDimension': maxDimension,
+          'quality': quality,
+        },
+      );
+      if (compressed != null && File(compressed).existsSync()) {
+        return compressed;
+      }
+    } catch (_) {}
+    return path;
+  }
+
   /// Checks whether native camera hardware permission is granted.
   static Future<bool> hasCameraPermission() async {
     try {
