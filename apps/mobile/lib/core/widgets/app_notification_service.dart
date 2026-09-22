@@ -61,6 +61,9 @@ class AppNotificationService extends ChangeNotifier {
     Color iconColor = AppColors.primary,
     VoidCallback? onTap,
     Duration duration = const Duration(seconds: 4),
+    String? senderName,
+    String? avatarUrl,
+    String? conversationId,
   }) {
     _dismissTimer?.cancel();
     _currentNotification = InAppNotificationItem(
@@ -70,6 +73,9 @@ class AppNotificationService extends ChangeNotifier {
       icon: icon,
       iconColor: iconColor,
       onTap: onTap,
+      senderName: senderName,
+      avatarUrl: avatarUrl,
+      conversationId: conversationId,
     );
     notifyListeners();
 
@@ -114,6 +120,9 @@ class AppNotificationService extends ChangeNotifier {
       showNotification(
         title: senderName,
         message: message,
+        senderName: senderName,
+        avatarUrl: avatarUrl,
+        conversationId: conversationId,
         icon: isGroup ? Icons.group_rounded : Icons.chat_bubble_outline_rounded,
         iconColor: AppColors.primary,
         onTap: onOpenChat,

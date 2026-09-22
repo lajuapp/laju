@@ -20,6 +20,7 @@ void main() async {
   await AccountController.instance.init();
   await AuthController.instance.initSession();
   await PushNotificationService.instance.init();
+  ForegroundSyncService.instance.init();
   runApp(const LajuApp());
 }
 

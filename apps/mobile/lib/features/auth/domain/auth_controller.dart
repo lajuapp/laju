@@ -1027,6 +1027,7 @@ class AuthController extends ChangeNotifier {
         }
         await prefs.setBool('laju_2fa', _currentUser!.twoFactorEnabled);
       }
+      ForegroundSyncService.instance.start();
     } catch (_) {}
   }
 
@@ -1069,10 +1070,12 @@ class AuthController extends ChangeNotifier {
     _isAuthenticated = true;
     _requiresTwoFactor = false;
     _saveSessionToPrefs();
+    ForegroundSyncService.instance.start();
     notifyListeners();
   }
 
   void logout() {
+    ForegroundSyncService.instance.stop();
     ApiClient.instance.clearAuth();
     _isAuthenticated = false;
     _currentUser = null;

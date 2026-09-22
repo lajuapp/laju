@@ -49,6 +49,7 @@ class MainActivity : FlutterFragmentActivity() {
     private val SOUND_CHANNEL = "com.laju/sound"
     private val CALL_AUDIO_CHANNEL = "com.laju/call_audio"
     private var currentAudioTrack: AudioTrack? = null
+    private var currentSystemRingtone: Ringtone? = null
 
     private var callAudioRecord: AudioRecord? = null
     private var callAudioTrack: AudioTrack? = null
@@ -698,6 +699,8 @@ class MainActivity : FlutterFragmentActivity() {
 
     private fun stopCurrentRingtone() {
         try {
+            currentSystemRingtone?.stop()
+            currentSystemRingtone = null
             currentAudioTrack?.apply {
                 if (playState == AudioTrack.PLAYSTATE_PLAYING) {
                     stop()
@@ -745,6 +748,21 @@ class MainActivity : FlutterFragmentActivity() {
         Thread {
             try {
                 stopCurrentRingtone()
+                if (name.contains("Hening", ignoreCase = true) || name.contains("Mute", ignoreCase = true)) {
+                    return@Thread
+                }
+                if (name.contains("Panggilan", ignoreCase = true) || name.contains("Call", ignoreCase = true)) {
+                    val ringtoneUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
+                        ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+                    val ringtone = RingtoneManager.getRingtone(applicationContext, ringtoneUri)
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                        ringtone?.isLooping = true
+                    }
+                    ringtone?.play()
+                    currentSystemRingtone = ringtone
+                    return@Thread
+                }
+
                 val sampleRate = 44100
                 val pcmData: ShortArray = when {
                     name.contains("Quantum", ignoreCase = true) -> generateArpeggio(sampleRate, doubleArrayOf(523.25, 659.25, 783.99, 1046.50), 0.12)
@@ -754,11 +772,11 @@ class MainActivity : FlutterFragmentActivity() {
                     name.contains("Cyber", ignoreCase = true) -> generateBeep(sampleRate, 987.77, 0.20)
                     name.contains("Aurora", ignoreCase = true) -> generateWarmPad(sampleRate, doubleArrayOf(329.63, 493.88, 659.25), 0.75)
                     name.contains("Celestial", ignoreCase = true) -> generateArpeggio(sampleRate, doubleArrayOf(587.33, 880.0, 1174.66, 1760.0), 0.14)
-                    name.contains("Hening", ignoreCase = true) || name.contains("Mute", ignoreCase = true) -> return@Thread
                     else -> {
                         val notificationUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
                         val ringtone = RingtoneManager.getRingtone(applicationContext, notificationUri)
                         ringtone?.play()
+                        currentSystemRingtone = ringtone
                         return@Thread
                     }
                 }

@@ -46,9 +46,12 @@ class ConversationService {
 
   /// Keeps track of latest known message ID per conversation to detect new arrivals
   final Map<String, String> _lastKnownMessageIds = {};
+  bool _isInitialSyncComplete = false;
+  final Set<String> _seenMessageIds = {};
 
   /// In-memory cache for TanStack Query-style instantaneous hydration
   List<ConversationModel>? inMemoryConversations;
+  final ValueNotifier<List<ConversationModel>> conversationsNotifier = ValueNotifier<List<ConversationModel>>([]);
   final Map<String, List<MessageModel>> _inMemoryMessages = {};
 
   List<MessageModel>? getMemoryMessages(String conversationId) {
@@ -156,6 +159,7 @@ class ConversationService {
     final cached = await LocalDatabase.instance.getConversations();
     if (cached.isNotEmpty) {
       inMemoryConversations = cached;
+      conversationsNotifier.value = cached;
     }
     return cached;
   }
@@ -181,12 +185,14 @@ class ConversationService {
             final senderId = latest['senderUserId'] as String?;
 
             if (latestMsgId != null && senderId != null && senderId != currentUserId) {
-              final previousMsgId = _lastKnownMessageIds[convId];
-              // If new message from contact arrived while user is not currently in that conversation
-              if (previousMsgId != null && previousMsgId != latestMsgId && currentActiveConversationId != convId) {
-                final isGroup = item['type'] == 'GROUP';
-                String notifTitle = item['title'] ?? '';
-                if (notifTitle.isEmpty) {
+              if (!_seenMessageIds.contains(latestMsgId)) {
+                _seenMessageIds.add(latestMsgId);
+
+                // If initial sync is complete and user is not currently in this chat, trigger notification!
+                if (_isInitialSyncComplete && currentActiveConversationId != convId) {
+                  final isGroup = item['type'] == 'GROUP';
+                  String notifTitle = item['title'] ?? '';
+                  String? avatarUrl;
                   final members = item['members'];
                   if (members is List) {
                     final otherMember = members.firstWhere(
@@ -194,51 +200,56 @@ class ConversationService {
                       orElse: () => null,
                     );
                     if (otherMember != null && otherMember['user'] is Map) {
-                      notifTitle = otherMember['user']['username'] ?? '';
+                      if (notifTitle.isEmpty || !isGroup) {
+                        notifTitle = otherMember['user']['username'] ?? notifTitle;
+                      }
+                      avatarUrl = otherMember['user']['avatarUrl'];
                     }
                   }
                   if (notifTitle.isEmpty) notifTitle = isGroup ? 'Group Chat' : 'Pesan Baru';
-                }
 
-                String preview = (latest['ciphertext'] ?? '') as String;
-                if (preview.startsWith('data:image')) {
-                  preview = '📷 Foto';
-                } else if (preview.startsWith('data:audio')) {
-                  preview = '🎤 Pesan Suara';
-                } else if (preview.startsWith('data:') || preview.startsWith('📄')) {
-                  preview = '📄 Berkas Dokumen';
-                }
+                  String preview = (latest['ciphertext'] ?? '') as String;
+                  if (preview.startsWith('data:image')) {
+                    preview = '📷 Foto';
+                  } else if (preview.startsWith('data:audio')) {
+                    preview = '🎤 Pesan Suara';
+                  } else if (preview.startsWith('data:') || preview.startsWith('📄')) {
+                    preview = '📄 Berkas Dokumen';
+                  }
 
-                AppNotificationService.instance.showIncomingMessage(
-                  conversationId: convId,
-                  senderName: notifTitle,
-                  message: preview,
-                  isGroup: isGroup,
-                  onOpenChat: () {
-                    AppNavigation.navigatorKey.currentState?.push(
-                      MaterialPageRoute(
-                        builder: (_) => ChatScreen(
-                          conversationId: convId,
-                          title: notifTitle,
-                          isGroup: isGroup,
+                  AppNotificationService.instance.showIncomingMessage(
+                    conversationId: convId,
+                    senderName: notifTitle,
+                    message: preview,
+                    isGroup: isGroup,
+                    avatarUrl: avatarUrl,
+                    onOpenChat: () {
+                      AppNavigation.navigatorKey.currentState?.push(
+                        MaterialPageRoute(
+                          builder: (_) => ChatScreen(
+                            conversationId: convId,
+                            title: notifTitle,
+                            isGroup: isGroup,
+                            avatarUrl: avatarUrl,
+                          ),
                         ),
-                      ),
-                    );
-                  },
-                  onQuickReply: (replyText) {
-                    sendMessage(
-                      conversationId: convId,
-                      text: replyText,
-                    );
-                  },
-                );
+                      );
+                    },
+                    onQuickReply: (replyText) {
+                      sendMessage(
+                        conversationId: convId,
+                        text: replyText,
+                      );
+                    },
+                  );
+                }
               }
-              _lastKnownMessageIds[convId] = latestMsgId;
             } else if (latestMsgId != null) {
-              _lastKnownMessageIds[convId] = latestMsgId;
+              _seenMessageIds.add(latestMsgId);
             }
           }
         }
+        _isInitialSyncComplete = true;
 
         final conversations = list.map((item) {
           final isGroup = item['type'] == 'GROUP';
@@ -306,6 +317,7 @@ class ConversationService {
 
         // Persist to local cache and memory cache
         inMemoryConversations = conversations;
+        conversationsNotifier.value = conversations;
         LocalDatabase.instance.upsertConversations(conversations);
         return conversations;
       }
@@ -313,6 +325,11 @@ class ConversationService {
       debugPrint('[ConversationService] fetchConversations error: $e');
     }
     return [];
+  }
+
+  /// Fast foreground poll to check for any new messages
+  Future<void> syncForegroundMessages() async {
+    await fetchConversations();
   }
 
   /// Create a 1-on-1 personal conversation

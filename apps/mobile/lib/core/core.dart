@@ -32,6 +32,7 @@ export 'services/biometric_service.dart';
 export 'services/laju_sound_service.dart';
 export 'services/local_database.dart';
 export 'services/push_notification_service.dart';
+export 'services/foreground_sync_service.dart';
 
 export 'config/env_config.dart';
 export 'utils/date_helper.dart';

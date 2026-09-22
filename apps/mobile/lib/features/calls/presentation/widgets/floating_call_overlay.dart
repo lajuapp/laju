@@ -298,51 +298,77 @@ class _FloatingCallOverlayState extends State<FloatingCallOverlay> with SingleTi
       key: Key(item.id),
       direction: DismissDirection.up,
       onDismissed: (_) => AppNotificationService.instance.dismiss(),
-      child: LajuGlassCard(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        borderRadius: 18,
-        blurSigma: 20,
-        tintColor: isDark ? const Color(0xFF1E293B) : Colors.white,
-        borderColor: isDark ? Colors.white.withValues(alpha: 0.15) : AppColors.surfaceBorder,
-        customShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: isDark ? 0.35 : 0.14),
-            blurRadius: 18,
-            offset: const Offset(0, 5),
-          ),
-        ],
-        child: Row(
-          children: [
-            Container(
-              width: 38,
-              height: 38,
-              decoration: BoxDecoration(
-                color: item.iconColor.withValues(alpha: 0.15),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(item.icon, color: item.iconColor, size: 20),
+      child: GestureDetector(
+        onTap: () {
+          AppNotificationService.instance.dismiss();
+          item.onTap?.call();
+        },
+        child: LajuGlassCard(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          borderRadius: 20,
+          blurSigma: 22,
+          tintColor: isDark ? const Color(0xFF0F172A) : Colors.white,
+          borderColor: AppColors.primary.withValues(alpha: 0.35),
+          borderWidth: 1.2,
+          customShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: isDark ? 0.45 : 0.16),
+              blurRadius: 20,
+              offset: const Offset(0, 6),
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: InkWell(
-                onTap: item.onTap,
+          ],
+          child: Row(
+            children: [
+              ModernAvatar(
+                name: item.senderName ?? item.title,
+                radius: 20,
+                imagePath: item.avatarUrl,
+                isVerified: true,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(
-                      item.title,
-                      style: TextStyle(
-                        fontSize: 13.5,
-                        fontWeight: FontWeight.bold,
-                        color: textPrimary,
-                      ),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            item.title,
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                              color: textPrimary,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: AppColors.primary.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: const Text(
+                            'Sekarang',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.primary,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 2),
+                    const SizedBox(height: 3),
                     Text(
                       item.message,
                       style: TextStyle(
-                        fontSize: 12,
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w500,
                         color: textSecondary,
                       ),
                       maxLines: 1,
@@ -351,14 +377,15 @@ class _FloatingCallOverlayState extends State<FloatingCallOverlay> with SingleTi
                   ],
                 ),
               ),
-            ),
-            IconButton(
-              icon: Icon(Icons.close_rounded, color: textSecondary, size: 18),
-              onPressed: () => AppNotificationService.instance.dismiss(),
-              constraints: const BoxConstraints(),
-              padding: const EdgeInsets.all(6),
-            ),
-          ],
+              const SizedBox(width: 8),
+              IconButton(
+                icon: Icon(Icons.close_rounded, color: textSecondary, size: 18),
+                onPressed: () => AppNotificationService.instance.dismiss(),
+                constraints: const BoxConstraints(),
+                padding: const EdgeInsets.all(6),
+              ),
+            ],
+          ),
         ),
       ),
     );

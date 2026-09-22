@@ -138,10 +138,16 @@ export class CallsService {
   }
 
   async rejectCall(userId: string, callId: string) {
-    await this.prisma.call.update({
-      where: { id: callId },
-      data: { state: 'REJECTED', endedAt: new Date() }
-    });
+    await this.prisma.$transaction([
+      this.prisma.call.update({
+        where: { id: callId },
+        data: { state: 'REJECTED', endedAt: new Date() }
+      }),
+      this.prisma.callParticipant.updateMany({
+        where: { callId, userId },
+        data: { state: 'REJECTED', leftAt: new Date() }
+      })
+    ]);
 
     await this.redis.publish(
       `call:${callId}`,
@@ -156,10 +162,16 @@ export class CallsService {
   }
 
   async endCall(userId: string, callId: string) {
-    await this.prisma.call.update({
-      where: { id: callId },
-      data: { state: 'ENDED', endedAt: new Date() }
-    });
+    await this.prisma.$transaction([
+      this.prisma.call.update({
+        where: { id: callId },
+        data: { state: 'ENDED', endedAt: new Date() }
+      }),
+      this.prisma.callParticipant.updateMany({
+        where: { callId, userId },
+        data: { leftAt: new Date() }
+      })
+    ]);
 
     await this.redis.publish(
       `call:${callId}`,

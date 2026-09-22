@@ -37,8 +37,6 @@ class _HomeScreenState extends State<HomeScreen> {
   String _selectedFilter = 'All';
   bool _isSearchExpanded = false;
   final TextEditingController _searchController = TextEditingController();
-  Timer? _homePollingTimer;
-
   final List<String> _filters = ['All', 'Unread', 'Groups', 'Favorites'];
 
   List<Map<String, dynamic>> _callLogs = [];
@@ -48,35 +46,27 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     _currentBottomNavIndex = HomeScreen.activeTabNotifier.value;
     HomeScreen.activeTabNotifier.addListener(_onTabChanged);
+    ConversationService.instance.conversationsNotifier.addListener(_onConversationsSync);
+    CallSessionController.instance.addListener(_onCallSessionChanged);
     _loadConversations();
     _loadCallLogs();
-    // Periodically fetch conversations & check for incoming calls in background
-    _homePollingTimer = Timer.periodic(const Duration(seconds: 2), (_) {
-      if (mounted) {
-        CallSessionController.instance.checkForIncomingCalls();
-        ConversationService.instance.fetchConversations().then((apiConvs) {
-          if (mounted && apiConvs.isNotEmpty && _currentBottomNavIndex == 0 && !_isSearchExpanded) {
-            bool changed = apiConvs.length != _conversations.length;
-            if (!changed) {
-              for (int i = 0; i < apiConvs.length; i++) {
-                if (apiConvs[i].id != _conversations[i].id ||
-                    apiConvs[i].avatarUrl != _conversations[i].avatarUrl ||
-                    apiConvs[i].lastMessage != _conversations[i].lastMessage ||
-                    apiConvs[i].lastMessageTime != _conversations[i].lastMessageTime) {
-                  changed = true;
-                  break;
-                }
-              }
-            }
-            if (changed) {
-              setState(() {
-                _conversations = apiConvs;
-              });
-            }
-          }
-        }).catchError((_) {});
+  }
+
+  void _onConversationsSync() {
+    if (mounted && _currentBottomNavIndex == 0 && !_isSearchExpanded) {
+      final apiConvs = ConversationService.instance.conversationsNotifier.value;
+      if (apiConvs.isNotEmpty) {
+        setState(() {
+          _conversations = apiConvs;
+        });
       }
-    });
+    }
+  }
+
+  void _onCallSessionChanged() {
+    if (mounted && _currentBottomNavIndex == 2) {
+      _loadCallLogs();
+    }
   }
 
   Future<void> _loadCallLogs() async {
@@ -135,7 +125,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
-    _homePollingTimer?.cancel();
+    ConversationService.instance.conversationsNotifier.removeListener(_onConversationsSync);
+    CallSessionController.instance.removeListener(_onCallSessionChanged);
     HomeScreen.activeTabNotifier.removeListener(_onTabChanged);
     super.dispose();
   }
