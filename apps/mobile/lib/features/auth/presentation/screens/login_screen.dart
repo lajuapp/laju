@@ -43,7 +43,7 @@ class _LoginScreenState extends State<LoginScreen>
     super.dispose();
   }
 
-  /// Flow 1: Device Cryptographic Authentication (Challenge-Response + Biometrics)
+  /// Flow 1: Device Cryptographic Authentication (Biometrics or 6-digit PIN)
   Future<void> _handleDeviceKeystoreAuth() async {
     // 1. Check biometric / device credentials availability
     final availability = _biometricInfo ?? await BiometricService.instance.checkAvailability();
@@ -60,35 +60,45 @@ class _LoginScreenState extends State<LoginScreen>
         subtitle: 'Pindai $bioLabel atau kunci layar HP ini',
         description: 'Autentikasi biometrik diperlukan untuk memastikan Anda adalah pemilik sah HP ini sebelum masuk.',
         allowDeviceCredential: true,
-        negativeButtonText: AppLockController.instance.hasSetPin ? 'Gunakan PIN' : 'Batal',
+        negativeButtonText: 'Gunakan PIN',
       );
     }
 
-    // 2. Fallback to in-app PIN if biometric failed/cancelled and user has configured in-app PIN
-    if (!authenticated && AppLockController.instance.hasSetPin) {
-      if (mounted) {
-        authenticated = await SecurityAuthHelper.promptVerifyPin(
-          context,
-          title: 'Verifikasi PIN Pemilik',
-          subtitle: 'Masukkan 6-digit PIN keamanan akun Anda',
-        );
+    // 2. If device has NO biometric support, or user chose "Gunakan PIN" / biometric failed:
+    // Prompt for 6-digit PIN directly!
+    if (!authenticated) {
+      if (AppLockController.instance.hasSetPin) {
+        if (mounted) {
+          authenticated = await SecurityAuthHelper.promptVerifyPin(
+            context,
+            title: 'Verifikasi PIN Keamanan',
+            subtitle: availability.isAvailable
+                ? 'Masukkan 6-digit PIN keamanan Anda'
+                : 'HP tidak mendukung biometrik. Masukkan 6-digit PIN Anda untuk masuk',
+          );
+        }
+      } else {
+        // If device has no PIN set yet, prompt to set one now
+        if (mounted) {
+          final newPin = await SecurityAuthHelper.promptSetupPin(
+            context,
+            title: 'Atur PIN Keamanan (6-Digit)',
+          );
+          if (newPin != null && newPin.length == 6) {
+            await AppLockController.instance.setPinCode(newPin);
+            authenticated = true;
+          }
+        }
       }
     }
 
-    // 3. If neither biometric nor in-app PIN succeeded, reject login completely!
+    // 3. If neither biometric nor PIN succeeded, reject login completely
     if (!authenticated) {
       if (mounted) {
-        if (!availability.isAvailable && !AppLockController.instance.hasSetPin) {
-          LajuToast.error(
-            context,
-            'Perangkat belum memiliki sensor biometrik atau kunci layar aktif. Demi keamanan, aktifkan kunci layar HP atau gunakan login via Kode Pemulihan.',
-          );
-        } else {
-          LajuToast.error(
-            context,
-            'Verifikasi biometrik tidak berhasil. Akses login perangkat ditolak demi keamanan pemilik HP.',
-          );
-        }
+        LajuToast.error(
+          context,
+          'Autentikasi biometrik atau PIN tidak berhasil. Akses login perangkat ditolak.',
+        );
       }
       return;
     }
@@ -804,14 +814,18 @@ class _LoginScreenState extends State<LoginScreen>
   /// Widget for Tab 2: Hardware Keystore Device Auth
   Widget _buildDeviceKeystoreTab(
       bool isDark, Color textPrimary, Color textSecondary) {
+    final isBioAvailable = _biometricInfo?.isAvailable == true;
     final hasFace = _biometricInfo?.hasFace == true && _biometricInfo?.hasFingerprint != true;
-    final bioLabel = _biometricInfo?.biometricLabel ?? 'Biometrik / Sidik Jari';
+    final bioLabel = isBioAvailable ? (_biometricInfo?.biometricLabel ?? 'Biometrik') : 'PIN Keamanan';
+    final mainIcon = isBioAvailable
+        ? (hasFace ? Icons.face_rounded : Icons.fingerprint_rounded)
+        : Icons.lock_outline_rounded;
 
     return SingleChildScrollView(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
       child: Column(
         children: [
-          // Hardware TEE / StrongBox & Biometric Protection Badge
+          // Hardware TEE / StrongBox & Biometric/PIN Protection Badge
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(16),
@@ -849,7 +863,9 @@ class _LoginScreenState extends State<LoginScreen>
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'Proteksi Biometrik Pemilik Perangkat',
+                            isBioAvailable
+                                ? 'Proteksi Biometrik Pemilik Perangkat'
+                                : 'Proteksi PIN Keamanan Pemilik',
                             style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w600,
@@ -857,9 +873,9 @@ class _LoginScreenState extends State<LoginScreen>
                             ),
                           ),
                           Text(
-                            _biometricInfo?.isAvailable == true
+                            isBioAvailable
                                 ? '$bioLabel Aktif'
-                                : context.tr('keystoreActive'),
+                                : 'PIN 6-Digit Aktif',
                             style: const TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.w800,
@@ -873,7 +889,9 @@ class _LoginScreenState extends State<LoginScreen>
                 ),
                 const SizedBox(height: 12),
                 Text(
-                  'Wajib memverifikasi sidik jari, wajah, atau kunci layar HP ini untuk membuktikan Anda adalah pemilik sah sebelum masuk ke akun.',
+                  isBioAvailable
+                      ? 'Wajib memverifikasi sidik jari, wajah, atau kunci layar HP ini untuk membuktikan Anda adalah pemilik sah sebelum masuk ke akun.'
+                      : 'Perangkat ini tidak mendukung sensor biometrik. Verifikasi 6-digit PIN keamanan pemilik diperlukan untuk membuka akun.',
                   style: TextStyle(
                     fontSize: 13,
                     color: textSecondary,
@@ -885,7 +903,7 @@ class _LoginScreenState extends State<LoginScreen>
           ),
           const SizedBox(height: 36),
 
-          // Big Biometric Sensor Tactile Center Button
+          // Big Sensor / Keypad Tactile Center Button
           GestureDetector(
             onTap: _isLoading ? null : _handleDeviceKeystoreAuth,
             child: Container(
@@ -918,7 +936,7 @@ class _LoginScreenState extends State<LoginScreen>
                         strokeWidth: 3,
                       )
                     : Icon(
-                        hasFace ? Icons.face_rounded : Icons.fingerprint_rounded,
+                        mainIcon,
                         color: AppColors.primary,
                         size: 64,
                       ),
@@ -928,9 +946,11 @@ class _LoginScreenState extends State<LoginScreen>
           const SizedBox(height: 20),
 
           Text(
-            _biometricInfo?.deviceModel.isNotEmpty == true
-                ? 'Sensor: $bioLabel (${_biometricInfo!.deviceModel})'
-                : 'Sentuh sensor untuk verifikasi biometrik',
+            isBioAvailable
+                ? (_biometricInfo?.deviceModel.isNotEmpty == true
+                    ? 'Sensor: $bioLabel (${_biometricInfo!.deviceModel})'
+                    : 'Sentuh sensor untuk verifikasi biometrik')
+                : 'Sentuh tombol untuk verifikasi PIN 6-digit',
             style: TextStyle(
               fontSize: 12.5,
               fontWeight: FontWeight.w600,
@@ -953,11 +973,11 @@ class _LoginScreenState extends State<LoginScreen>
                   borderRadius: BorderRadius.circular(16),
                 ),
               ),
-              icon: Icon(hasFace ? Icons.face_rounded : Icons.fingerprint_rounded, size: 20),
+              icon: Icon(mainIcon, size: 20),
               label: Text(
                 _isLoading
                     ? context.tr('verifyingDevice')
-                    : 'Buka dengan $bioLabel',
+                    : (isBioAvailable ? 'Buka dengan $bioLabel' : 'Buka dengan PIN Keamanan'),
                 style: const TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.w700,

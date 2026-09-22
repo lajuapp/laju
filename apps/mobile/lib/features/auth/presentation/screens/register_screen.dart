@@ -18,6 +18,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   String _deviceModel = '';
   String _registrationLocation = '';
   String _pushToken = '';
+  String? _configuredPin;
   bool _isSavedConfirmed = false;
   bool _isLoading = false;
 
@@ -65,6 +66,36 @@ class _RegisterScreenState extends State<RegisterScreen> {
     if (!_isSavedConfirmed) {
       LajuToast.warning(context, context.tr('identityKeySavedConfirmation'));
       return;
+    }
+
+    // Step PIN: Mandatorily set 6-digit security PIN during registration!
+    String? pin = _configuredPin;
+    if (pin == null || pin.length != 6) {
+      pin = await SecurityAuthHelper.promptSetupPin(
+        context,
+        title: 'Atur PIN Keamanan (6-Digit)',
+      );
+
+      if (pin == null || pin.length != 6) {
+        if (mounted) {
+          LajuToast.warning(
+            context,
+            'Pengaturan PIN 6-digit wajib diselesaikan untuk mengamankan akun Anda.',
+          );
+        }
+        return;
+      }
+
+      setState(() => _configuredPin = pin);
+    }
+
+    // Save PIN locally in AppLockController
+    await AppLockController.instance.setPinCode(pin);
+
+    // Auto-enable biometric if hardware supports it
+    final bioAvailability = await BiometricService.instance.checkAvailability();
+    if (bioAvailability.isAvailable) {
+      await AppLockController.instance.setBiometricEnabled(true);
     }
 
     setState(() => _isLoading = true);
@@ -329,6 +360,105 @@ class _RegisterScreenState extends State<RegisterScreen> {
                             fontSize: 13,
                             fontWeight: FontWeight.w700,
                           ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 18),
+
+              // PIN Security Setup Card
+              Container(
+                padding: const EdgeInsets.all(18),
+                decoration: BoxDecoration(
+                  color: cardColor,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: _configuredPin != null
+                        ? const Color(0xFF10B981).withValues(alpha: 0.4)
+                        : AppColors.primary.withValues(alpha: 0.25),
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          _configuredPin != null ? Icons.check_circle_rounded : Icons.lock_outline_rounded,
+                          color: _configuredPin != null ? const Color(0xFF10B981) : AppColors.primary,
+                          size: 20,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'PIN Keamanan Akun (6-Digit)',
+                            style: TextStyle(
+                              fontSize: 13.5,
+                              fontWeight: FontWeight.w700,
+                              color: textPrimary,
+                            ),
+                          ),
+                        ),
+                        if (_configuredPin != null)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF10B981).withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Text(
+                              'Sudah Diatur',
+                              style: TextStyle(
+                                color: Color(0xFF10B981),
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'PIN 6-digit wajib diatur untuk mengamankan akun dan digunakan saat login jika perangkat tidak mendukung atau gagal verifikasi biometrik.',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: textSecondary,
+                        height: 1.4,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 42,
+                      child: OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: _configuredPin != null ? const Color(0xFF10B981) : AppColors.primary,
+                          side: BorderSide(
+                            color: _configuredPin != null
+                                ? const Color(0xFF10B981).withValues(alpha: 0.5)
+                                : AppColors.primary.withValues(alpha: 0.5),
+                          ),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                        onPressed: () async {
+                          final pin = await SecurityAuthHelper.promptSetupPin(
+                            context,
+                            title: 'Atur PIN Keamanan (6-Digit)',
+                          );
+                          if (pin != null && pin.length == 6) {
+                            setState(() => _configuredPin = pin);
+                            await AppLockController.instance.setPinCode(pin);
+                            if (mounted) {
+                              LajuToast.success(context, 'PIN 6-digit berhasil dibuat');
+                            }
+                          }
+                        },
+                        icon: Icon(_configuredPin != null ? Icons.edit_rounded : Icons.pin_rounded, size: 18),
+                        label: Text(
+                          _configuredPin != null ? 'Ubah PIN Keamanan' : 'Atur PIN Keamanan Sekarang',
+                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
                         ),
                       ),
                     ),
