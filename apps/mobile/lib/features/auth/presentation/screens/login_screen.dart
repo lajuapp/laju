@@ -323,17 +323,28 @@ class _LoginScreenState extends State<LoginScreen>
                         setState(() => _isLoading = false);
 
                         if (success) {
-                          LajuToast.success(
-                            context,
-                            context.tr('migrationSuccess'),
-                          );
-                          Navigator.pushAndRemoveUntil(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => const HomeScreen(),
-                            ),
-                            (route) => false,
-                          );
+                          if (!AppLockController.instance.hasSetPin) {
+                            final newPin = await SecurityAuthHelper.promptSetupPin(
+                              context,
+                              title: 'Atur PIN Keamanan (6-Digit)',
+                            );
+                            if (newPin != null && newPin.length == 6) {
+                              await AppLockController.instance.setPinCode(newPin);
+                            }
+                          }
+                          if (mounted) {
+                            LajuToast.success(
+                              context,
+                              context.tr('migrationSuccess'),
+                            );
+                            Navigator.pushAndRemoveUntil(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => const HomeScreen(),
+                              ),
+                              (route) => false,
+                            );
+                          }
                         } else {
                           LajuToast.error(context, context.tr('migrationCommitFailed'));
                         }
@@ -375,12 +386,23 @@ class _LoginScreenState extends State<LoginScreen>
       setState(() => _isLoading = false);
 
       if (success) {
-        LajuToast.success(context, context.tr('deviceAuthSuccess'));
-        Navigator.pushAndRemoveUntil(
-          context,
-          MaterialPageRoute(builder: (context) => const HomeScreen()),
-          (route) => false,
-        );
+        if (!AppLockController.instance.hasSetPin) {
+          final newPin = await SecurityAuthHelper.promptSetupPin(
+            context,
+            title: 'Atur PIN Keamanan (6-Digit)',
+          );
+          if (newPin != null && newPin.length == 6) {
+            await AppLockController.instance.setPinCode(newPin);
+          }
+        }
+        if (mounted) {
+          LajuToast.success(context, context.tr('deviceAuthSuccess'));
+          Navigator.pushAndRemoveUntil(
+            context,
+            MaterialPageRoute(builder: (context) => const HomeScreen()),
+            (route) => false,
+          );
+        }
       } else {
         final errorMsg = AuthController.instance.lastAuthError;
         LajuToast.error(
