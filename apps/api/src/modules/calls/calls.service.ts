@@ -158,6 +158,23 @@ export class CallsService {
       })
     );
 
+    try {
+      const participants = await this.prisma.callParticipant.findMany({
+        where: { callId },
+        select: { userId: true }
+      });
+      for (const p of participants) {
+        await this.redis.publish(
+          `user:${p.userId}`,
+          JSON.stringify({
+            type: 'CALL_REJECTED',
+            callId,
+            userId
+          })
+        );
+      }
+    } catch (_) {}
+
     return { success: true };
   }
 
@@ -181,6 +198,23 @@ export class CallsService {
         userId
       })
     );
+
+    try {
+      const participants = await this.prisma.callParticipant.findMany({
+        where: { callId },
+        select: { userId: true }
+      });
+      for (const p of participants) {
+        await this.redis.publish(
+          `user:${p.userId}`,
+          JSON.stringify({
+            type: 'CALL_ENDED',
+            callId,
+            userId
+          })
+        );
+      }
+    } catch (_) {}
 
     return { success: true };
   }

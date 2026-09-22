@@ -7,6 +7,7 @@ import {
   Optional
 } from '@nestjs/common';
 import { PrismaService } from '../../infrastructure/prisma/prisma.service';
+import { RedisService } from '../../infrastructure/redis/redis.service';
 import { GotifyService } from '../../infrastructure/gotify/gotify.service';
 import { SendMessageDto } from './dto/message.dto';
 
@@ -16,6 +17,7 @@ export class MessagingService {
 
   constructor(
     private readonly prisma: PrismaService,
+    @Optional() private readonly redisService?: RedisService,
     @Optional() private readonly gotifyService?: GotifyService
   ) {}
 
@@ -150,6 +152,21 @@ export class MessagingService {
         : `Mengirim ${message.messageType.toLowerCase()}`;
 
       for (const member of recipientMembers) {
+        if (this.redisService) {
+          try {
+            await this.redisService.getClient().publish(
+              `user:${member.userId}`,
+              JSON.stringify({
+                type: 'NEW_MESSAGE',
+                conversationId,
+                senderName,
+                preview: messagePreview,
+                messageId: message.id
+              })
+            );
+          } catch (_) {}
+        }
+
         for (const device of member.user.devices) {
           const tokens: string[] = [];
           if (device.pushDevices && device.pushDevices.length > 0) {

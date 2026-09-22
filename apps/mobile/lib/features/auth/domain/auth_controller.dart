@@ -995,6 +995,7 @@ class AuthController extends ChangeNotifier {
         }
 
         _isAuthenticated = true;
+        PushNotificationService.instance.syncPushTokenToBackend();
         notifyListeners();
       } else {
         _isAuthenticated = false;
@@ -1028,6 +1029,7 @@ class AuthController extends ChangeNotifier {
         await prefs.setBool('laju_2fa', _currentUser!.twoFactorEnabled);
       }
       ForegroundSyncService.instance.start();
+      PushNotificationService.instance.syncPushTokenToBackend();
     } catch (_) {}
   }
 

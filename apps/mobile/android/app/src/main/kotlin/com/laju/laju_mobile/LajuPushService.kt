@@ -199,7 +199,8 @@ class LajuPushService : Service() {
 
                 try {
                     val cleanBase = if (baseUrl.endsWith("/")) baseUrl.substring(0, baseUrl.length - 1) else baseUrl
-                    val streamUrl = "$cleanBase/api/v1/devices/push-stream"
+                    val rawBase = if (cleanBase.endsWith("/api/v1")) cleanBase.substring(0, cleanBase.length - 7) else cleanBase
+                    val streamUrl = "$rawBase/devices/push-stream"
                     val url = URL(streamUrl)
 
                     conn = (url.openConnection() as HttpURLConnection).apply {
@@ -378,7 +379,7 @@ class LajuPushService : Service() {
                 val token = prefs.getString(KEY_TOKEN, "") ?: ""
                 if (baseUrl.isNotEmpty() && token.isNotEmpty()) {
                     val cleanBase = if (baseUrl.endsWith("/")) baseUrl.substring(0, baseUrl.length - 1) else baseUrl
-                    val url = URL("$cleanBase/api/v1/calls/$callId/reject")
+                    val url = URL("$cleanBase/calls/$callId/reject")
                     val conn = (url.openConnection() as HttpURLConnection).apply {
                         requestMethod = "POST"
                         setRequestProperty("Authorization", "Bearer $token")
@@ -390,6 +391,27 @@ class LajuPushService : Service() {
                 }
             } catch (_: Exception) {}
         }
+    }
+
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        super.onTaskRemoved(rootIntent)
+        try {
+            val restartIntent = Intent(applicationContext, LajuPushService::class.java).apply {
+                action = ACTION_START
+            }
+            val restartPendingIntent = PendingIntent.getService(
+                applicationContext,
+                1001,
+                restartIntent,
+                PendingIntent.FLAG_ONE_SHOT or PendingIntent.FLAG_IMMUTABLE
+            )
+            val alarmManager = getSystemService(Context.ALARM_SERVICE) as? android.app.AlarmManager
+            alarmManager?.set(
+                android.app.AlarmManager.ELAPSED_REALTIME,
+                android.os.SystemClock.elapsedRealtime() + 2000,
+                restartPendingIntent
+            )
+        } catch (_: Exception) {}
     }
 
     override fun onDestroy() {

@@ -749,8 +749,11 @@ class MainActivity : FlutterFragmentActivity() {
                     val localPort = call.argument<Int>("localPort") ?: 50005
                     val isSpeaker = call.argument<Boolean>("isSpeaker") ?: false
                     val isVideo = call.argument<Boolean>("isVideo") ?: false
+                    val baseUrl = call.argument<String>("baseUrl") ?: ""
+                    val callId = call.argument<String>("callId") ?: ""
+                    val token = call.argument<String>("token") ?: ""
 
-                    startRealtimeCallAudio(remoteIp, remotePort, localPort, isSpeaker || isVideo)
+                    startRealtimeCallAudio(remoteIp, remotePort, localPort, isSpeaker || isVideo, baseUrl, callId, token)
                     result.success(true)
                 }
                 "updatePeerAddress" -> {
@@ -1505,7 +1508,15 @@ class MainActivity : FlutterFragmentActivity() {
         }.start()
     }
 
-    private fun startRealtimeCallAudio(remoteIp: String, remotePort: Int, localPort: Int, isSpeaker: Boolean) {
+    private fun startRealtimeCallAudio(
+        remoteIp: String,
+        remotePort: Int,
+        localPort: Int,
+        isSpeaker: Boolean,
+        baseUrl: String = "",
+        callId: String = "",
+        token: String = ""
+    ) {
         stopCallTone()
         stopRealtimeCallAudio()
 
@@ -1519,6 +1530,9 @@ class MainActivity : FlutterFragmentActivity() {
         val channelIn = AudioFormat.CHANNEL_IN_MONO
         val channelOut = AudioFormat.CHANNEL_OUT_MONO
         val encoding = AudioFormat.ENCODING_PCM_16BIT
+
+        val cleanBase = if (baseUrl.endsWith("/")) baseUrl.substring(0, baseUrl.length - 1) else baseUrl
+        val hasHttpRelay = cleanBase.isNotEmpty() && callId.isNotEmpty() && token.isNotEmpty()
 
         Thread {
             try {
@@ -1588,19 +1602,21 @@ class MainActivity : FlutterFragmentActivity() {
                 track.play()
                 recorder.startRecording()
 
-                // Sender thread
-                if (socket != null) {
-                    Thread {
-                        val sendBuffer = ByteArray(640)
+                // 1. UDP + HTTP Sender thread
+                Thread {
+                    val sendBuffer = ByteArray(640)
+                    val httpStream = java.io.ByteArrayOutputStream()
+                    var lastHttpTime = System.currentTimeMillis()
 
-                        while (isCallAudioActive && !socket.isClosed) {
-                            try {
-                                val read = recorder.read(sendBuffer, 0, sendBuffer.size)
-                                if (read > 0 && !isCallAudioMuted) {
-                                    val targetIp = callRemoteIp
-                                    val targetPort = callRemotePort
+                    while (isCallAudioActive) {
+                        try {
+                            val read = recorder.read(sendBuffer, 0, sendBuffer.size)
+                            if (read > 0 && !isCallAudioMuted) {
+                                val targetIp = callRemoteIp
+                                val targetPort = callRemotePort
 
-                                    // 1. Send unicast if peer IP is known
+                                // Send UDP unicast if peer IP is known
+                                if (socket != null && !socket.isClosed) {
                                     if (targetIp.isNotEmpty() && targetIp != "255.255.255.255") {
                                         try {
                                             val target = InetAddress.getByName(targetIp)
@@ -1609,23 +1625,57 @@ class MainActivity : FlutterFragmentActivity() {
                                         } catch (_: Exception) {}
                                     }
 
-                                    // 2. Also send broadcast to local subnet
+                                    // Broadcast to local subnet
                                     try {
                                         val bcast = InetAddress.getByName("255.255.255.255")
                                         val bcastPacket = DatagramPacket(sendBuffer, read, bcast, targetPort)
                                         socket.send(bcastPacket)
                                     } catch (_: Exception) {}
-                                } else if (read <= 0) {
-                                    Thread.sleep(10)
                                 }
-                            } catch (_: Exception) {
-                                Thread.sleep(20)
-                            }
-                        }
-                    }.start()
-                }
 
-                // Receiver thread
+                                // Accumulate for HTTP relay fallback (transmits over internet/cellular)
+                                if (hasHttpRelay) {
+                                    httpStream.write(sendBuffer, 0, read)
+                                    val now = System.currentTimeMillis()
+                                    if (now - lastHttpTime >= 220 && httpStream.size() > 0) {
+                                        val payloadBytes = httpStream.toByteArray()
+                                        httpStream.reset()
+                                        lastHttpTime = now
+
+                                        Thread {
+                                            try {
+                                                val b64 = android.util.Base64.encodeToString(payloadBytes, android.util.Base64.NO_WRAP)
+                                                val postObj = org.json.JSONObject().apply {
+                                                    put("chunk", b64)
+                                                }
+                                                val url = URL("$cleanBase/calls/$callId/audio-chunk")
+                                                val conn = (url.openConnection() as HttpURLConnection).apply {
+                                                    requestMethod = "POST"
+                                                    setRequestProperty("Authorization", "Bearer $token")
+                                                    setRequestProperty("Content-Type", "application/json")
+                                                    connectTimeout = 3000
+                                                    readTimeout = 3000
+                                                    doOutput = true
+                                                }
+                                                conn.outputStream.use { os ->
+                                                    os.write(postObj.toString().toByteArray())
+                                                }
+                                                conn.responseCode
+                                                conn.disconnect()
+                                            } catch (_: Exception) {}
+                                        }.start()
+                                    }
+                                }
+                            } else if (read <= 0) {
+                                Thread.sleep(10)
+                            }
+                        } catch (_: Exception) {
+                            Thread.sleep(20)
+                        }
+                    }
+                }.start()
+
+                // 2. UDP Receiver thread
                 if (socket != null) {
                     Thread {
                         val recvBuffer = ByteArray(1024)
@@ -1637,6 +1687,42 @@ class MainActivity : FlutterFragmentActivity() {
                                 if (recvPacket.length > 0) {
                                     track.write(recvPacket.data, recvPacket.offset, recvPacket.length)
                                 }
+                            } catch (_: Exception) {}
+                        }
+                    }.start()
+                }
+
+                // 3. HTTP Relay Receiver thread (poll chunks from server)
+                if (hasHttpRelay) {
+                    Thread {
+                        while (isCallAudioActive) {
+                            try {
+                                val url = URL("$cleanBase/calls/$callId/audio-chunks")
+                                val conn = (url.openConnection() as HttpURLConnection).apply {
+                                    requestMethod = "GET"
+                                    setRequestProperty("Authorization", "Bearer $token")
+                                    connectTimeout = 3000
+                                    readTimeout = 3000
+                                }
+                                if (conn.responseCode == 200) {
+                                    val body = conn.inputStream.bufferedReader().use { it.readText() }
+                                    val obj = org.json.JSONObject(body)
+                                    val chunks = obj.optJSONArray("chunks")
+                                    if (chunks != null) {
+                                        for (i in 0 until chunks.length()) {
+                                            val b64 = chunks.getString(i)
+                                            if (b64.isNotEmpty()) {
+                                                val bytes = android.util.Base64.decode(b64, android.util.Base64.NO_WRAP)
+                                                track.write(bytes, 0, bytes.size)
+                                            }
+                                        }
+                                    }
+                                }
+                                conn.disconnect()
+                            } catch (_: Exception) {}
+
+                            try {
+                                Thread.sleep(180)
                             } catch (_: Exception) {}
                         }
                     }.start()

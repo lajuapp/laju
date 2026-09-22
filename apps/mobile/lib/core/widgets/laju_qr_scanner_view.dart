@@ -86,6 +86,7 @@ class _LajuQrScannerViewState extends State<LajuQrScannerView>
     if (_hasDetected) return;
     _hasDetected = true;
     HapticFeedback.heavyImpact();
+    LajuSoundService.triggerVibrate('Pendek');
 
     if (widget.onScan != null) {
       widget.onScan!(rawData);
@@ -132,26 +133,55 @@ class _LajuQrScannerViewState extends State<LajuQrScannerView>
     String? targetPhone;
     bool isLajuContact = false;
 
-    if (rawData.startsWith('laju://contact')) {
+    final trimmed = rawData.trim();
+
+    if (trimmed.startsWith('laju://contact')) {
       isLajuContact = true;
-      final uri = Uri.tryParse(rawData);
+      final uri = Uri.tryParse(trimmed);
       if (uri != null) {
-        targetUsername = uri.queryParameters['u'];
-        targetUserId = uri.queryParameters['id'];
-        targetPhone = uri.queryParameters['phone'];
+        targetUsername = uri.queryParameters['u'] ?? uri.queryParameters['username'];
+        targetUserId = uri.queryParameters['id'] ?? uri.queryParameters['userId'];
+        targetPhone = uri.queryParameters['phone'] ?? uri.queryParameters['phoneNumber'];
       }
-    } else if (rawData.startsWith('laju://verify-key/')) {
-      final uri = Uri.tryParse(rawData);
-      targetUsername = uri?.pathSegments.isNotEmpty == true ? uri!.pathSegments.last : rawData;
+    } else if (trimmed.startsWith('laju://verify-key/')) {
+      final uri = Uri.tryParse(trimmed);
+      targetUsername = uri?.pathSegments.isNotEmpty == true ? uri!.pathSegments.last : trimmed;
       isLajuContact = true;
-    } else if (rawData.startsWith('laju://')) {
-      final clean = rawData.replaceFirst('laju://', '');
+    } else if (trimmed.startsWith('laju://')) {
+      final clean = trimmed.replaceFirst('laju://', '');
       final parts = clean.split('?');
       final hostOrPath = parts.first.replaceAll('/', '').trim();
       if (hostOrPath.isNotEmpty) {
         targetUsername = hostOrPath;
         isLajuContact = true;
       }
+    } else if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+      final uri = Uri.tryParse(trimmed);
+      if (uri != null) {
+        if (uri.queryParameters.containsKey('u') || uri.queryParameters.containsKey('username')) {
+          targetUsername = uri.queryParameters['u'] ?? uri.queryParameters['username'];
+          targetUserId = uri.queryParameters['id'] ?? uri.queryParameters['userId'];
+          targetPhone = uri.queryParameters['phone'];
+          isLajuContact = true;
+        } else if (uri.path.contains('/contact') || uri.path.contains('/u/')) {
+          final segments = uri.pathSegments;
+          if (segments.isNotEmpty) {
+            targetUsername = segments.last;
+            isLajuContact = true;
+          }
+        }
+      }
+    } else if (trimmed.startsWith('@')) {
+      targetUsername = trimmed.substring(1).trim();
+      isLajuContact = true;
+    } else if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+      // JSON format QR code
+      try {
+        final uri = Uri.tryParse(trimmed);
+        if (trimmed.contains('"u"') || trimmed.contains('"username"') || trimmed.contains('"id"')) {
+          isLajuContact = true;
+        }
+      } catch (_) {}
     }
 
     showModalBottomSheet(
@@ -163,7 +193,7 @@ class _LajuQrScannerViewState extends State<LajuQrScannerView>
       ),
       builder: (ctx) {
         return _ScannedResultBottomSheet(
-          rawData: rawData,
+          rawData: trimmed,
           isLajuContact: isLajuContact,
           targetUsername: targetUsername,
           targetUserId: targetUserId,
@@ -509,7 +539,7 @@ class _ScannerOverlayPainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
-enum _SheetStep { loading, selfScan, success, error, generic }
+enum _SheetStep { resolving, selfScan, userFound, success, invalidQr, generic }
 
 class _ScannedResultBottomSheet extends StatefulWidget {
   final String rawData;
@@ -533,28 +563,28 @@ class _ScannedResultBottomSheet extends StatefulWidget {
 }
 
 class _ScannedResultBottomSheetState extends State<_ScannedResultBottomSheet> {
-  _SheetStep _step = _SheetStep.loading;
+  _SheetStep _step = _SheetStep.resolving;
   String? _resolvedUserId;
   String? _resolvedUsername;
+  String? _resolvedDisplayName;
   String? _resolvedAvatarUrl;
+  String? _resolvedPhone;
   String? _conversationId;
   String _errorMessage = '';
+  bool _isAdding = false;
 
   @override
   void initState() {
     super.initState();
-    if (!widget.isLajuContact) {
-      _step = _SheetStep.generic;
-    } else {
-      _processContact();
-    }
+    _resolveContactProfile();
   }
 
-  Future<void> _processContact() async {
+  Future<void> _resolveContactProfile() async {
     final myId = AuthController.instance.currentUser?.id;
     final myUsername = AccountController.instance.userName.trim().toLowerCase();
     final targetUser = widget.targetUsername?.trim();
     final targetId = widget.targetUserId?.trim();
+    final targetPhone = widget.targetPhone?.trim();
 
     // 1. Detect if self-scan
     if ((targetId != null && targetId.isNotEmpty && targetId == myId) ||
@@ -569,74 +599,143 @@ class _ScannedResultBottomSheetState extends State<_ScannedResultBottomSheet> {
 
     if (mounted) {
       setState(() {
-        _step = _SheetStep.loading;
+        _step = _SheetStep.resolving;
       });
     }
 
     try {
       String? foundUserId = (targetId != null && targetId.isNotEmpty) ? targetId : null;
-      String displayName = targetUser ?? 'Teman LAJU';
+      String? foundUsername = targetUser;
+      String? foundAvatar;
+      String? foundPhone = targetPhone;
 
-      String? resolvedAvatar;
-      // 2. Search user by username if no direct userId
+      // Check if direct userId profile can be fetched
+      if (foundUserId != null && foundUserId.isNotEmpty) {
+        final profile = await ConversationService.instance.fetchUserProfile(foundUserId);
+        if (profile != null) {
+          foundUsername = profile['username'] ?? foundUsername;
+          foundAvatar = profile['avatarUrl'] ?? profile['avatar'];
+          foundPhone = profile['phoneNumber'] ?? foundPhone;
+        }
+      }
+
+      // If no direct userId or username missing, search by username
       if (foundUserId == null && targetUser != null && targetUser.isNotEmpty) {
         final users = await ConversationService.instance.searchUsers(targetUser);
-        final match = users.where((u) => u.username.toLowerCase() == targetUser.toLowerCase()).toList();
-        if (match.isNotEmpty) {
-          foundUserId = match.first.id;
-          displayName = match.first.username;
-          resolvedAvatar = match.first.avatarUrl;
+        final exactMatch = users.where((u) => u.username.toLowerCase() == targetUser.toLowerCase()).toList();
+        if (exactMatch.isNotEmpty) {
+          foundUserId = exactMatch.first.id;
+          foundUsername = exactMatch.first.username;
+          foundAvatar = exactMatch.first.avatarUrl;
+          foundPhone = exactMatch.first.phoneNumber ?? foundPhone;
         } else if (users.isNotEmpty) {
           foundUserId = users.first.id;
-          displayName = users.first.username;
-          resolvedAvatar = users.first.avatarUrl;
+          foundUsername = users.first.username;
+          foundAvatar = users.first.avatarUrl;
+          foundPhone = users.first.phoneNumber ?? foundPhone;
         }
       }
 
-      // If still not found and phone is available in QR, search by phone
-      if (foundUserId == null && widget.targetPhone != null && widget.targetPhone!.isNotEmpty) {
-        final users = await ConversationService.instance.searchUsers(widget.targetPhone!);
+      // If still not found and phone is available, search by phone
+      if (foundUserId == null && targetPhone != null && targetPhone.isNotEmpty) {
+        final users = await ConversationService.instance.searchUsers(targetPhone);
         if (users.isNotEmpty) {
           foundUserId = users.first.id;
-          displayName = users.first.username;
-          resolvedAvatar = users.first.avatarUrl;
+          foundUsername = users.first.username;
+          foundAvatar = users.first.avatarUrl;
+          foundPhone = users.first.phoneNumber ?? foundPhone;
         }
       }
 
-      if (foundUserId == null) {
+      // If still not found but string could be plain username/phone
+      if (foundUserId == null && !widget.isLajuContact) {
+        final candidate = widget.rawData.replaceAll('@', '').trim();
+        if (candidate.isNotEmpty && !candidate.contains(' ') && candidate.length < 30) {
+          final users = await ConversationService.instance.searchUsers(candidate);
+          final match = users.where((u) => u.username.toLowerCase() == candidate.toLowerCase()).toList();
+          if (match.isNotEmpty) {
+            foundUserId = match.first.id;
+            foundUsername = match.first.username;
+            foundAvatar = match.first.avatarUrl;
+            foundPhone = match.first.phoneNumber ?? foundPhone;
+          }
+        }
+      }
+
+      // If self-scan detected after resolution
+      if (foundUserId != null && foundUserId == myId) {
         if (mounted) {
           setState(() {
-            _step = _SheetStep.error;
-            _errorMessage = 'Pengguna @${targetUser ?? ''} tidak ditemukan di server LAJU.';
+            _step = _SheetStep.selfScan;
           });
         }
         return;
       }
 
-      // 3. Create or fetch existing personal conversation (establishes friendship)
-      final convId = await ConversationService.instance.createPersonalConversation(foundUserId);
+      if (foundUserId != null) {
+        if (mounted) {
+          setState(() {
+            _resolvedUserId = foundUserId;
+            _resolvedUsername = foundUsername ?? 'Teman LAJU';
+            _resolvedDisplayName = foundUsername ?? 'Teman LAJU';
+            _resolvedAvatarUrl = foundAvatar;
+            _resolvedPhone = foundPhone;
+            _step = _SheetStep.userFound;
+          });
+        }
+      } else {
+        if (mounted) {
+          if (widget.isLajuContact || (targetUser != null && targetUser.isNotEmpty)) {
+            setState(() {
+              _step = _SheetStep.invalidQr;
+              _errorMessage = 'Pengguna @${targetUser ?? ''} tidak ditemukan pada server LAJU.';
+            });
+          } else {
+            setState(() {
+              _step = _SheetStep.invalidQr;
+              _errorMessage = 'Kode QR ini bukan merupakan profil kontak LAJU yang valid.';
+            });
+          }
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _step = _SheetStep.invalidQr;
+          _errorMessage = 'Gagal memvalidasi kode QR: $e';
+        });
+      }
+    }
+  }
 
-      // 4. Update conversations in background so chat list shows new friend immediately
+  Future<void> _addContactAction() async {
+    final uid = _resolvedUserId;
+    if (uid == null) return;
+
+    setState(() {
+      _isAdding = true;
+    });
+
+    try {
+      final convId = await ConversationService.instance.createPersonalConversation(uid);
       ConversationService.instance.fetchConversations();
 
-      // 5. Sound and haptics feedback
       HapticFeedback.mediumImpact();
       LajuSoundService.triggerVibrate('Pendek');
 
       if (mounted) {
         setState(() {
-          _step = _SheetStep.success;
-          _resolvedUserId = foundUserId;
-          _resolvedUsername = displayName;
-          _resolvedAvatarUrl = resolvedAvatar;
+          _isAdding = false;
           _conversationId = convId;
+          _step = _SheetStep.success;
         });
       }
     } catch (e) {
       if (mounted) {
         setState(() {
-          _step = _SheetStep.error;
-          _errorMessage = 'Gagal menambahkan teman: $e';
+          _isAdding = false;
+          _errorMessage = 'Gagal menambahkan kontak: $e';
+          _step = _SheetStep.invalidQr;
         });
       }
     }
@@ -689,7 +788,7 @@ class _ScannedResultBottomSheetState extends State<_ScannedResultBottomSheet> {
 
   Widget _buildContent(bool isDark) {
     switch (_step) {
-      case _SheetStep.loading:
+      case _SheetStep.resolving:
         return Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -705,7 +804,7 @@ class _ScannedResultBottomSheetState extends State<_ScannedResultBottomSheet> {
             const CircularProgressIndicator(color: AppColors.primary),
             const SizedBox(height: 24),
             Text(
-              'Memindai Kode QR...',
+              'Memvalidasi Kode QR...',
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.w800,
@@ -714,7 +813,7 @@ class _ScannedResultBottomSheetState extends State<_ScannedResultBottomSheet> {
             ),
             const SizedBox(height: 8),
             Text(
-              'Sedang menghubungkan dengan @${widget.targetUsername ?? 'teman'}...',
+              'Memverifikasi profil kontak pada sistem LAJU...',
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 13.5,
@@ -759,7 +858,7 @@ class _ScannedResultBottomSheetState extends State<_ScannedResultBottomSheet> {
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Text(
-                'Ini adalah kode QR profil Anda. Berikan kode ini ke teman Anda agar mereka dapat memindai dan menambahkan Anda sebagai teman.',
+                'Ini adalah kode QR profil Anda sendiri. Berikan kode ini kepada teman agar mereka dapat memindai dan menambahkan Anda.',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 13.5,
@@ -784,6 +883,169 @@ class _ScannedResultBottomSheetState extends State<_ScannedResultBottomSheet> {
               ),
             ),
             const SizedBox(height: 10),
+          ],
+        );
+
+      case _SheetStep.userFound:
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey.withValues(alpha: 0.3),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 18),
+            // Validity Badge
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+              decoration: BoxDecoration(
+                color: const Color(0xFF10B981).withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.35)),
+              ),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.check_circle_rounded, size: 16, color: Color(0xFF10B981)),
+                  SizedBox(width: 6),
+                  Text(
+                    'Kode QR Valid • Kontak Terverifikasi',
+                    style: TextStyle(
+                      color: Color(0xFF10B981),
+                      fontWeight: FontWeight.w700,
+                      fontSize: 12.5,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 18),
+            // User Profile Card
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(18),
+              decoration: BoxDecoration(
+                color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: isDark ? Colors.white12 : const Color(0xFFE2E8F0),
+                ),
+              ),
+              child: Row(
+                children: [
+                  ModernAvatar(
+                    name: _resolvedUsername ?? 'Teman',
+                    imagePath: _resolvedAvatarUrl,
+                    radius: 32,
+                    isVerified: true,
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          _resolvedDisplayName ?? _resolvedUsername ?? 'Teman LAJU',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w800,
+                            color: isDark ? Colors.white : const Color(0xFF111827),
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          '@${_resolvedUsername?.toLowerCase()}',
+                          style: TextStyle(
+                            fontSize: 13.5,
+                            fontWeight: FontWeight.w500,
+                            color: isDark ? AppColors.darkTextSecondary : const Color(0xFF6B7280),
+                          ),
+                        ),
+                        if (_resolvedPhone != null && _resolvedPhone!.isNotEmpty) ...[
+                          const SizedBox(height: 3),
+                          Text(
+                            _resolvedPhone!,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: isDark ? AppColors.darkTextSecondary : const Color(0xFF9CA3AF),
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: 6),
+                        Row(
+                          children: [
+                            const Icon(Icons.lock_outline_rounded, size: 13, color: AppColors.primary),
+                            const SizedBox(width: 4),
+                            Text(
+                              'Enkripsi E2EE Siap Aktif',
+                              style: TextStyle(
+                                fontSize: 11.5,
+                                color: AppColors.primary,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 22),
+            // Primary Button: Tambah ke Kontak
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  foregroundColor: Colors.black,
+                  padding: const EdgeInsets.symmetric(vertical: 15),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  elevation: 2,
+                ),
+                icon: _isAdding
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black),
+                      )
+                    : const Icon(Icons.person_add_rounded, size: 20),
+                label: Text(
+                  _isAdding ? 'Menambahkan Kontak...' : 'Tambah ke Kontak',
+                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
+                ),
+                onPressed: _isAdding ? null : _addContactAction,
+              ),
+            ),
+            const SizedBox(height: 10),
+            // Secondary Button: Batal
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton(
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  side: BorderSide(
+                    color: isDark ? Colors.white24 : const Color(0xFFD1D5DB),
+                  ),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                ),
+                child: Text(
+                  'Batal',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: isDark ? Colors.white70 : const Color(0xFF4B5563),
+                  ),
+                ),
+                onPressed: () => Navigator.pop(context),
+              ),
+            ),
+            const SizedBox(height: 8),
           ],
         );
 
@@ -818,97 +1080,19 @@ class _ScannedResultBottomSheetState extends State<_ScannedResultBottomSheet> {
             ),
             const SizedBox(height: 14),
             Text(
-              'Kode QR Berhasil Dipindai!',
+              'Berhasil Ditambahkan!',
               style: TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.w800,
                 color: isDark ? Colors.white : const Color(0xFF111827),
               ),
             ),
-            const SizedBox(height: 8),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
-              decoration: BoxDecoration(
-                color: const Color(0xFF10B981).withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.4)),
-              ),
-              child: const Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.verified_rounded, size: 16, color: Color(0xFF10B981)),
-                  SizedBox(width: 6),
-                  Text(
-                    'Sekarang Sudah Berteman',
-                    style: TextStyle(
-                      color: Color(0xFF10B981),
-                      fontWeight: FontWeight.w700,
-                      fontSize: 13,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 20),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(
-                  color: isDark ? Colors.white12 : const Color(0xFFE2E8F0),
-                ),
-              ),
-              child: Row(
-                children: [
-                  ModernAvatar(
-                    name: _resolvedUsername ?? 'Teman',
-                    imagePath: _resolvedAvatarUrl,
-                    radius: 28,
-                    isVerified: true,
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          _resolvedUsername ?? 'Teman LAJU',
-                          style: TextStyle(
-                            fontSize: 17,
-                            fontWeight: FontWeight.w700,
-                            color: isDark ? Colors.white : const Color(0xFF111827),
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          '@${_resolvedUsername?.toLowerCase()}',
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: isDark ? AppColors.darkTextSecondary : const Color(0xFF6B7280),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: AppColors.primary.withValues(alpha: 0.12),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(Icons.lock_rounded, size: 18, color: AppColors.primary),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 6),
             Text(
-              'Percakapan terenkripsi end-to-end telah siap digunakan.',
+              'Sekarang Anda sudah berteman dengan @${_resolvedUsername ?? 'kontak baru'}.',
               textAlign: TextAlign.center,
               style: TextStyle(
-                fontSize: 12.5,
+                fontSize: 13.5,
                 color: isDark ? AppColors.darkTextSecondary : const Color(0xFF6B7280),
               ),
             ),
@@ -957,7 +1141,7 @@ class _ScannedResultBottomSheetState extends State<_ScannedResultBottomSheet> {
           ],
         );
 
-      case _SheetStep.error:
+      case _SheetStep.invalidQr:
         return Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -976,11 +1160,11 @@ class _ScannedResultBottomSheetState extends State<_ScannedResultBottomSheet> {
                 color: const Color(0xFFEF4444).withValues(alpha: 0.15),
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.error_outline_rounded, color: Color(0xFFEF4444), size: 48),
+              child: const Icon(Icons.qr_code_scanner_rounded, color: Color(0xFFEF4444), size: 48),
             ),
             const SizedBox(height: 16),
             Text(
-              'Gagal Menambahkan Teman',
+              'Kode QR Tidak Valid',
               style: TextStyle(
                 fontSize: 19,
                 fontWeight: FontWeight.w800,
@@ -991,15 +1175,39 @@ class _ScannedResultBottomSheetState extends State<_ScannedResultBottomSheet> {
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Text(
-                _errorMessage.isNotEmpty ? _errorMessage : 'Terjadi kendala saat memproses kode QR.',
+                _errorMessage.isNotEmpty
+                    ? _errorMessage
+                    : 'Kode QR ini bukan profil kontak LAJU yang valid atau pengguna tidak ditemukan di server.',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 13.5,
+                  height: 1.4,
                   color: isDark ? AppColors.darkTextSecondary : const Color(0xFF6B7280),
                 ),
               ),
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 14),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF3F4F6),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: isDark ? Colors.white12 : const Color(0xFFE5E7EB),
+                ),
+              ),
+              child: SelectableText(
+                widget.rawData,
+                maxLines: 2,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontFamily: 'monospace',
+                  color: isDark ? Colors.white70 : const Color(0xFF4B5563),
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
             Row(
               children: [
                 Expanded(
@@ -1021,8 +1229,8 @@ class _ScannedResultBottomSheetState extends State<_ScannedResultBottomSheet> {
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                     ),
-                    child: const Text('Coba Lagi', style: TextStyle(fontWeight: FontWeight.w700)),
-                    onPressed: _processContact,
+                    child: const Text('Pindai Ulang', style: TextStyle(fontWeight: FontWeight.w700)),
+                    onPressed: () => Navigator.pop(context),
                   ),
                 ),
               ],

@@ -294,6 +294,9 @@ class CallSessionController extends ChangeNotifier {
         'localPort': localPort,
         'isSpeaker': _isSpeaker || _isVideo,
         'isVideo': _isVideo,
+        'baseUrl': EnvConfig.instance.apiBaseUrl,
+        'callId': _callId ?? '',
+        'token': ApiClient.instance.authToken ?? '',
       });
     } catch (_) {}
   }

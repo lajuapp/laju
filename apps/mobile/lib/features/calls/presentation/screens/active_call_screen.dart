@@ -31,6 +31,7 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
   late bool _isVideoEnabled;
   MobileScannerController? _cameraController;
   bool _isFrontCamera = true;
+  bool _isCameraInMainView = true;
 
   @override
   void initState() {
@@ -75,6 +76,12 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
       await _cameraController?.switchCamera();
     } catch (_) {}
     if (mounted) setState(() {});
+  }
+
+  void _swapViews() {
+    setState(() {
+      _isCameraInMainView = !_isCameraInMainView;
+    });
   }
 
   @override
@@ -273,7 +280,7 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
                         child: Stack(
                           clipBehavior: Clip.none,
                           children: [
-                            // Main Remote Video Frame
+                            // Main Stage Card (Either Local Live Camera or Remote Avatar)
                             LajuGlassCard(
                               padding: const EdgeInsets.all(3),
                               borderRadius: 28,
@@ -292,121 +299,219 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
                                 height: 320,
                                 decoration: BoxDecoration(
                                   borderRadius: BorderRadius.circular(25),
-                                  gradient: LinearGradient(
-                                    begin: Alignment.topLeft,
-                                    end: Alignment.bottomRight,
-                                    colors: isDark
-                                        ? [const Color(0xFF0F172A), const Color(0xFF1E293B)]
-                                        : [const Color(0xFFE2E8F0), const Color(0xFFCBD5E1)],
-                                  ),
+                                  color: Colors.black,
                                 ),
-                                child: Stack(
-                                  children: [
-                                    Center(
-                                      child: Column(
-                                        mainAxisAlignment: MainAxisAlignment.center,
-                                        children: [
-                                          ModernAvatar(
-                                            name: widget.contactName,
-                                            radius: 50,
-                                            isVerified: true,
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(25),
+                                  child: Stack(
+                                    children: [
+                                      if (_isCameraInMainView) ...[
+                                        if (_cameraController != null)
+                                          Positioned.fill(
+                                            child: MobileScanner(
+                                              controller: _cameraController!,
+                                              fit: BoxFit.cover,
+                                            ),
+                                          )
+                                        else
+                                          const Center(
+                                            child: CircularProgressIndicator(color: AppColors.primary),
                                           ),
-                                          const SizedBox(height: 14),
-                                          Text(
-                                            widget.contactName,
-                                            style: TextStyle(
-                                              fontSize: 17,
-                                              fontWeight: FontWeight.w700,
-                                              color: textPrimary,
+                                        // Camera label & flip button
+                                        Positioned(
+                                          top: 12,
+                                          left: 14,
+                                          child: Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                            decoration: BoxDecoration(
+                                              color: Colors.black54,
+                                              borderRadius: BorderRadius.circular(12),
+                                            ),
+                                            child: const Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                Icon(Icons.videocam_rounded, size: 14, color: AppColors.primary),
+                                                SizedBox(width: 5),
+                                                Text(
+                                                  'Kamera Anda (HD Live)',
+                                                  style: TextStyle(color: Colors.white, fontSize: 11.5, fontWeight: FontWeight.w600),
+                                                ),
+                                              ],
                                             ),
                                           ),
-                                          const SizedBox(height: 4),
-                                          Row(
-                                            mainAxisSize: MainAxisSize.min,
+                                        ),
+                                        Positioned(
+                                          bottom: 12,
+                                          left: 14,
+                                          child: GestureDetector(
+                                            onTap: _switchCamera,
+                                            child: Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                              decoration: BoxDecoration(
+                                                color: Colors.black60,
+                                                borderRadius: BorderRadius.circular(14),
+                                                border: Border.all(color: Colors.white24),
+                                              ),
+                                              child: const Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  Icon(Icons.flip_camera_ios_rounded, color: Colors.white, size: 16),
+                                                  SizedBox(width: 6),
+                                                  Text(
+                                                    'Putar Kamera',
+                                                    style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ] else ...[
+                                        // Remote contact view on main stage
+                                        Center(
+                                          child: Column(
+                                            mainAxisAlignment: MainAxisAlignment.center,
                                             children: [
-                                              Container(
-                                                width: 7,
-                                                height: 7,
-                                                decoration: const BoxDecoration(
-                                                  shape: BoxShape.circle,
-                                                  color: Color(0xFF10B981),
+                                              ModernAvatar(
+                                                name: widget.contactName,
+                                                radius: 50,
+                                                isVerified: true,
+                                              ),
+                                              const SizedBox(height: 14),
+                                              Text(
+                                                widget.contactName,
+                                                style: TextStyle(
+                                                  fontSize: 17,
+                                                  fontWeight: FontWeight.w700,
+                                                  color: textPrimary,
                                                 ),
                                               ),
-                                              const SizedBox(width: 6),
-                                              Text(
-                                                '1080p 60fps • Terenkripsi E2EE',
-                                                style: TextStyle(
-                                                  fontSize: 12,
-                                                  fontWeight: FontWeight.w600,
-                                                  color: textSecondary,
-                                                ),
+                                              const SizedBox(height: 4),
+                                              Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  Container(
+                                                    width: 7,
+                                                    height: 7,
+                                                    decoration: const BoxDecoration(
+                                                      shape: BoxShape.circle,
+                                                      color: Color(0xFF10B981),
+                                                    ),
+                                                  ),
+                                                  const SizedBox(width: 6),
+                                                  Text(
+                                                    '1080p 60fps • Terenkripsi E2EE',
+                                                    style: TextStyle(
+                                                      fontSize: 12,
+                                                      fontWeight: FontWeight.w600,
+                                                      color: textSecondary,
+                                                    ),
+                                                  ),
+                                                ],
                                               ),
                                             ],
                                           ),
-                                        ],
-                                      ),
-                                    ),
-                                  ],
+                                        ),
+                                      ],
+                                    ],
+                                  ),
                                 ),
                               ),
                             ),
 
-                            // Floating Self-Camera Picture-in-Picture (PiP) Window
+                            // Floating Picture-in-Picture (PiP) Window (Tap to swap!)
                             Positioned(
                               right: 14,
                               bottom: 14,
-                              child: Container(
-                                width: 110,
-                                height: 155,
-                                decoration: BoxDecoration(
-                                  color: Colors.black,
-                                  borderRadius: BorderRadius.circular(18),
-                                  border: Border.all(
-                                    color: AppColors.primary.withValues(alpha: 0.8),
-                                    width: 2,
-                                  ),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.black.withValues(alpha: 0.4),
-                                      blurRadius: 16,
-                                      spreadRadius: 2,
+                              child: GestureDetector(
+                                onTap: _swapViews,
+                                child: Container(
+                                  width: 110,
+                                  height: 155,
+                                  decoration: BoxDecoration(
+                                    color: Colors.black,
+                                    borderRadius: BorderRadius.circular(18),
+                                    border: Border.all(
+                                      color: AppColors.primary.withValues(alpha: 0.8),
+                                      width: 2,
                                     ),
-                                  ],
-                                ),
-                                child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(16),
-                                  child: Stack(
-                                    children: [
-                                      if (_cameraController != null)
-                                        MobileScanner(
-                                          controller: _cameraController!,
-                                          fit: BoxFit.cover,
-                                        )
-                                      else
-                                        const Center(
-                                          child: Icon(Icons.videocam_rounded, color: Colors.white54, size: 28),
-                                        ),
-                                      // Flip camera button
-                                      Positioned(
-                                        bottom: 6,
-                                        right: 6,
-                                        child: GestureDetector(
-                                          onTap: _switchCamera,
-                                          child: Container(
-                                            padding: const EdgeInsets.all(5),
-                                            decoration: BoxDecoration(
-                                              color: Colors.black.withValues(alpha: 0.6),
-                                              shape: BoxShape.circle,
-                                            ),
-                                            child: const Icon(
-                                              Icons.flip_camera_ios_rounded,
-                                              color: Colors.white,
-                                              size: 15,
-                                            ),
-                                          ),
-                                        ),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.black.withValues(alpha: 0.5),
+                                        blurRadius: 16,
+                                        spreadRadius: 2,
                                       ),
                                     ],
+                                  ),
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(16),
+                                    child: Stack(
+                                      children: [
+                                        if (!_isCameraInMainView) ...[
+                                          if (_cameraController != null)
+                                            MobileScanner(
+                                              controller: _cameraController!,
+                                              fit: BoxFit.cover,
+                                            )
+                                          else
+                                            const Center(
+                                              child: Icon(Icons.videocam_rounded, color: Colors.white54, size: 28),
+                                            ),
+                                          // Flip button
+                                          Positioned(
+                                            bottom: 6,
+                                            right: 6,
+                                            child: GestureDetector(
+                                              onTap: _switchCamera,
+                                              child: Container(
+                                                padding: const EdgeInsets.all(5),
+                                                decoration: BoxDecoration(
+                                                  color: Colors.black.withValues(alpha: 0.6),
+                                                  shape: BoxShape.circle,
+                                                ),
+                                                child: const Icon(
+                                                  Icons.flip_camera_ios_rounded,
+                                                  color: Colors.white,
+                                                  size: 15,
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ] else ...[
+                                          // Remote contact mini avatar
+                                          Container(
+                                            color: const Color(0xFF1E293B),
+                                            child: Center(
+                                              child: Column(
+                                                mainAxisAlignment: MainAxisAlignment.center,
+                                                children: [
+                                                  ModernAvatar(
+                                                    name: widget.contactName,
+                                                    radius: 26,
+                                                    isVerified: true,
+                                                  ),
+                                                  const SizedBox(height: 6),
+                                                  Padding(
+                                                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                                                    child: Text(
+                                                      widget.contactName,
+                                                      maxLines: 1,
+                                                      overflow: TextOverflow.ellipsis,
+                                                      style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+                                                    ),
+                                                  ),
+                                                  const SizedBox(height: 2),
+                                                  const Text(
+                                                    'Tukar (Ketuk)',
+                                                    style: TextStyle(color: AppColors.primary, fontSize: 9.5, fontWeight: FontWeight.w600),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ],
+                                    ),
                                   ),
                                 ),
                               ),
