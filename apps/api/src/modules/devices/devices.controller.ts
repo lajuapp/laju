@@ -1,4 +1,5 @@
-import { Controller, Get, Post, Body, Param, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, UseGuards, Req, Res } from '@nestjs/common';
+import { Request, Response } from 'express';
 import { DevicesService } from './devices.service';
 import {
   RegisterDeviceDto,
@@ -51,6 +52,53 @@ export class DevicesController {
   @UseGuards(JwtAuthGuard)
   testPush(@CurrentUser('userId') userId: string) {
     return this.devicesService.testPushNotification(userId);
+  }
+
+  @Get('gotify-config')
+  @UseGuards(JwtAuthGuard)
+  gotifyConfig() {
+    return this.devicesService.getGotifyConfig();
+  }
+
+  @Get('push-stream')
+  @UseGuards(JwtAuthGuard)
+  async pushStream(
+    @CurrentUser('userId') userId: string,
+    @Req() req: Request,
+    @Res() res: Response
+  ) {
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders?.();
+
+    res.write(`data: ${JSON.stringify({ type: 'CONNECTED', userId, timestamp: Date.now() })}\n\n`);
+
+    const channel = `user:${userId}`;
+    const subscriber = this.devicesService.getRedisSubscriber();
+
+    const onMessage = (chan: string, msg: string) => {
+      if (chan === channel) {
+        res.write(`data: ${msg}\n\n`);
+      }
+    };
+
+    if (subscriber) {
+      subscriber.subscribe(channel).catch(() => {});
+      subscriber.on('message', onMessage);
+    }
+
+    const heartbeat = setInterval(() => {
+      res.write(`: heartbeat\n\n`);
+    }, 20000);
+
+    req.on('close', () => {
+      clearInterval(heartbeat);
+      if (subscriber) {
+        subscriber.removeListener('message', onMessage);
+      }
+      res.end();
+    });
   }
 
   @Get()

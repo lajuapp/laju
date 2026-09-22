@@ -185,7 +185,7 @@ export class CallsService {
     return { success: true };
   }
 
-  async exchangeSignal(userId: string, deviceId: string, callId: string, signalData: any) {
+  async exchangeSignal(userId: string, deviceId: string, callId: string, signalData: any, clientIp?: string) {
     const participant = await this.prisma.callParticipant.findFirst({
       where: { callId, userId }
     });
@@ -193,18 +193,98 @@ export class CallsService {
       throw new ForbiddenException('Not a participant in this call');
     }
 
-    await this.redis.publish(
-      `call:${callId}`,
-      JSON.stringify({
-        type: 'CALL_SIGNAL',
-        callId,
-        fromUserId: userId,
-        fromDeviceId: deviceId,
-        signal: signalData
-      })
-    );
+    const payload = {
+      type: 'CALL_SIGNAL',
+      callId,
+      fromUserId: userId,
+      fromDeviceId: deviceId,
+      clientIp: clientIp || null,
+      signal: signalData,
+      createdAt: Date.now()
+    };
+
+    try {
+      const redisClient = this.redis.getClient();
+      if (redisClient) {
+        await redisClient.rpush(`call:${callId}:signals`, JSON.stringify(payload));
+        await redisClient.expire(`call:${callId}:signals`, 3600);
+      }
+    } catch (_) {}
+
+    await this.redis.publish(`call:${callId}`, JSON.stringify(payload));
 
     return { success: true };
+  }
+
+  async getSignals(userId: string, callId: string) {
+    const participant = await this.prisma.callParticipant.findFirst({
+      where: { callId, userId }
+    });
+    if (!participant) {
+      throw new ForbiddenException('Not a participant in this call');
+    }
+
+    try {
+      const redisClient = this.redis.getClient();
+      if (redisClient) {
+        const rawSignals = await redisClient.lrange(`call:${callId}:signals`, 0, -1);
+        return rawSignals.map((s) => {
+          try {
+            return JSON.parse(s);
+          } catch {
+            return null;
+          }
+        }).filter(Boolean);
+      }
+    } catch (_) {}
+
+    return [];
+  }
+
+  async pushAudioChunk(userId: string, callId: string, chunkBase64: string) {
+    const participant = await this.prisma.callParticipant.findFirst({
+      where: { callId, userId }
+    });
+    if (!participant) {
+      throw new ForbiddenException('Not a participant in this call');
+    }
+
+    try {
+      const redisClient = this.redis.getClient();
+      if (redisClient) {
+        const key = `call:${callId}:audio:${userId}`;
+        await redisClient.rpush(key, chunkBase64);
+        // Keep queue bounded to last 30 chunks
+        await redisClient.ltrim(key, -30, -1);
+        await redisClient.expire(key, 10);
+      }
+    } catch (_) {}
+
+    return { success: true };
+  }
+
+  async getAudioChunks(userId: string, callId: string) {
+    // Return audio chunks from the OTHER participant
+    const otherParticipant = await this.prisma.callParticipant.findFirst({
+      where: { callId, userId: { not: userId } }
+    });
+    if (!otherParticipant) {
+      return { chunks: [] };
+    }
+
+    try {
+      const redisClient = this.redis.getClient();
+      if (redisClient) {
+        const key = `call:${callId}:audio:${otherParticipant.userId}`;
+        const chunks = await redisClient.lrange(key, 0, -1);
+        if (chunks.length > 0) {
+          await redisClient.del(key);
+        }
+        return { chunks };
+      }
+    } catch (_) {}
+
+    return { chunks: [] };
   }
 
   async getIncomingCall(userId: string) {

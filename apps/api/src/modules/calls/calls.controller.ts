@@ -4,8 +4,10 @@ import {
   Post,
   Body,
   Param,
-  UseGuards
+  UseGuards,
+  Req
 } from '@nestjs/common';
+import { Request } from 'express';
 import { CallsService } from './calls.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -73,8 +75,35 @@ export class CallsController {
     @CurrentUser('userId') userId: string,
     @CurrentUser('deviceId') deviceId: string,
     @Param('id') callId: string,
-    @Body('signal') signalData: any
+    @Body('signal') signalData: any,
+    @Req() req: Request
   ) {
-    return this.callsService.exchangeSignal(userId, deviceId, callId, signalData);
+    const clientIp = (req.headers['x-forwarded-for'] as string)?.split(',')[0].trim() || req.ip;
+    return this.callsService.exchangeSignal(userId, deviceId, callId, signalData, clientIp);
+  }
+
+  @Get(':id/signals')
+  getSignals(
+    @CurrentUser('userId') userId: string,
+    @Param('id') callId: string
+  ) {
+    return this.callsService.getSignals(userId, callId);
+  }
+
+  @Post(':id/audio-chunk')
+  pushAudioChunk(
+    @CurrentUser('userId') userId: string,
+    @Param('id') callId: string,
+    @Body('chunk') chunk: string
+  ) {
+    return this.callsService.pushAudioChunk(userId, callId, chunk);
+  }
+
+  @Get(':id/audio-chunks')
+  getAudioChunks(
+    @CurrentUser('userId') userId: string,
+    @Param('id') callId: string
+  ) {
+    return this.callsService.getAudioChunks(userId, callId);
   }
 }

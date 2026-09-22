@@ -18,10 +18,12 @@ enum CallStatus {
 class CallSessionController extends ChangeNotifier {
   CallSessionController._() {
     _startIncomingCallPoller();
+    checkLaunchPayload();
   }
   static final CallSessionController instance = CallSessionController._();
 
   static const MethodChannel _audioChannel = MethodChannel('com.laju/call_audio');
+  static const MethodChannel _systemNotifChannel = MethodChannel('com.laju/system_notifications');
 
   String? _callId;
   String _title = '';
@@ -205,6 +207,28 @@ class CallSessionController extends ChangeNotifier {
               _initCallAudio();
               notifyListeners();
             }
+
+            // Fetch signals to discover remote peer's direct IP
+            try {
+              final sigResp = await ApiClient.instance.get(ApiEndpoints.callSignals(curCallId));
+              if (sigResp.isSuccess && sigResp.rawJson is List) {
+                for (final item in sigResp.rawJson) {
+                  if (item is Map && item['fromUserId'] != ApiClient.instance.userId) {
+                    final sig = item['signal'];
+                    if (sig is Map && sig['type'] == 'AUDIO_P2P') {
+                      final peerIp = (sig['ip'] as String?) ?? (item['clientIp'] as String?) ?? '';
+                      final peerPort = (sig['port'] as int?) ?? (_isOutgoing ? 50006 : 50005);
+                      if (peerIp.isNotEmpty && peerIp != '127.0.0.1' && !peerIp.contains('localhost')) {
+                        _audioChannel.invokeMethod('updatePeerAddress', {
+                          'ip': peerIp,
+                          'port': peerPort,
+                        }).catchError((_) {});
+                      }
+                    }
+                  }
+                }
+              }
+            } catch (_) {}
           } else if (callState == 'REJECTED') {
             if (_status != CallStatus.rejected) {
               _status = CallStatus.rejected;
@@ -366,6 +390,8 @@ class CallSessionController extends ChangeNotifier {
     _callId = null;
     notifyListeners();
 
+    _systemNotifChannel.invokeMethod('cancelNotification', {'id': 9999}).catchError((_) {});
+
     if (curCallId != null) {
       _dispatchEndCallToBackend(curCallId);
     }
@@ -435,10 +461,18 @@ class CallSessionController extends ChangeNotifier {
             incomingCallId != _declinedCallId) {
           _lastRingingCallId = incomingCallId;
 
+          // Trigger native Android system notification with ringing tone and full-screen heads-up
+          _systemNotifChannel.invokeMethod('showCallNotification', {
+            'callId': incomingCallId,
+            'callerName': callerName,
+            'isVideo': isVideo,
+          }).catchError((_) {});
+
           AppNotificationService.instance.showIncomingCall(
             callerName: callerName,
             isVideo: isVideo,
             onAccept: () async {
+              _systemNotifChannel.invokeMethod('cancelNotification', {'id': 9999}).catchError((_) {});
               _stopCallAudio();
               _callId = incomingCallId;
               _title = callerName;
@@ -471,6 +505,7 @@ class CallSessionController extends ChangeNotifier {
               );
             },
             onDecline: () async {
+              _systemNotifChannel.invokeMethod('cancelNotification', {'id': 9999}).catchError((_) {});
               _declinedCallId = incomingCallId;
               _lastRingingCallId = null;
               LocalDatabase.instance.insertCallLog(
@@ -493,6 +528,48 @@ class CallSessionController extends ChangeNotifier {
         if (_lastRingingCallId != null) {
           _lastRingingCallId = null;
           AppNotificationService.instance.dismiss();
+          _systemNotifChannel.invokeMethod('cancelNotification', {'id': 9999}).catchError((_) {});
+        }
+      }
+    } catch (_) {}
+  }
+
+  Future<void> checkLaunchPayload() async {
+    try {
+      final payload = await _systemNotifChannel.invokeMapMethod<String, dynamic>('getLaunchPayload');
+      if (payload != null && payload['type'] == 'call') {
+        final callId = payload['id'] as String?;
+        final isVideo = payload['isVideo'] == true;
+        final action = payload['action'] as String?;
+        if (callId != null && action == 'answer') {
+          _stopCallAudio();
+          _callId = callId;
+          _title = 'Panggilan';
+          _isActive = true;
+          _isOutgoing = false;
+          _isVideo = isVideo;
+          _isVideoOn = isVideo;
+          _isSpeaker = isVideo;
+          _durationSeconds = 0;
+          _status = CallStatus.connected;
+          _startTimer();
+          _initCallAudio();
+          _startCallStatusPoller();
+          notifyListeners();
+
+          try {
+            await ApiClient.instance.post(ApiEndpoints.callAccept(callId));
+          } catch (_) {}
+
+          AppNavigation.navigatorKey.currentState?.push(
+            MaterialPageRoute(
+              builder: (_) => ActiveCallScreen(
+                contactName: 'Panggilan',
+                isVideo: isVideo,
+                returnToCallsScreen: false,
+              ),
+            ),
+          );
         }
       }
     } catch (_) {}

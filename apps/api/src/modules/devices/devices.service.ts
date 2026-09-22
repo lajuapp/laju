@@ -531,5 +531,16 @@ export class DevicesService {
 
     return { success: true, message: 'Device revoked' };
   }
+
+  getRedisSubscriber() {
+    return this.redisService.getSubscriber();
+  }
+
+  async getGotifyConfig() {
+    return {
+      gotifyUrl: process.env.GOTIFY_URL || 'http://gotify:80',
+      clientToken: process.env.GOTIFY_CLIENT_TOKEN || ''
+    };
+  }
 }
 

@@ -315,6 +315,23 @@ class ConversationService {
           );
         }).toList();
 
+        // Detect newly arrived messages and trigger native system notification
+        if (inMemoryConversations != null && inMemoryConversations!.isNotEmpty) {
+          for (final conv in conversations) {
+            final old = inMemoryConversations!.firstWhere(
+              (c) => c.id == conv.id,
+              orElse: () => ConversationModel(id: '', title: '', lastMessage: '', lastMessageTime: DateTime.fromMillisecondsSinceEpoch(0)),
+            );
+            if (old.id.isNotEmpty && conv.lastMessageTime.isAfter(old.lastMessageTime) && conv.lastMessage != old.lastMessage) {
+              PushNotificationService.showMessageNotification(
+                conversationId: conv.id,
+                title: conv.title,
+                message: conv.lastMessage,
+              );
+            }
+          }
+        }
+
         // Persist to local cache and memory cache
         inMemoryConversations = conversations;
         conversationsNotifier.value = conversations;

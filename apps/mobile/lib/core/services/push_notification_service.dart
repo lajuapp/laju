@@ -1,5 +1,7 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../config/env_config.dart';
 import '../network/api_client.dart';
 import '../network/api_endpoints.dart';
 import '../../features/auth/domain/auth_controller.dart';
@@ -7,6 +9,8 @@ import '../../features/auth/domain/auth_controller.dart';
 class PushNotificationService {
   PushNotificationService._();
   static final PushNotificationService instance = PushNotificationService._();
+
+  static const MethodChannel _systemNotifChannel = MethodChannel('com.laju/system_notifications');
 
   static const String _kPushToken = 'laju_push_token';
   static const String _kPushEndpoint = 'laju_push_endpoint'; // 'gotify' or 'fcm'
@@ -16,22 +20,36 @@ class PushNotificationService {
 
   String _pushToken = '';
   String _pushEndpoint = 'gotify';
-  String _gotifyServerUrl = 'http://localhost:80';
+  String _gotifyServerUrl = '';
   String _gotifyAppToken = '';
   bool _isPushEnabled = true;
 
   String get pushToken => _pushToken;
   String get pushEndpoint => _pushEndpoint;
-  String get gotifyServerUrl => _gotifyServerUrl;
+  String get gotifyServerUrl => _gotifyServerUrl.isNotEmpty ? _gotifyServerUrl : EnvConfig.instance.apiBaseUrl;
   String get gotifyAppToken => _gotifyAppToken;
   bool get isPushEnabled => _isPushEnabled;
+
+  static Future<void> showMessageNotification({
+    required String conversationId,
+    required String title,
+    required String message,
+  }) async {
+    try {
+      await _systemNotifChannel.invokeMethod('showMessageNotification', {
+        'conversationId': conversationId,
+        'title': title,
+        'message': message,
+      });
+    } catch (_) {}
+  }
 
   Future<void> init() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       _pushToken = prefs.getString(_kPushToken) ?? '';
       _pushEndpoint = prefs.getString(_kPushEndpoint) ?? 'gotify';
-      _gotifyServerUrl = prefs.getString(_kGotifyServerUrl) ?? 'http://localhost:80';
+      _gotifyServerUrl = prefs.getString(_kGotifyServerUrl) ?? EnvConfig.instance.apiBaseUrl;
       _gotifyAppToken = prefs.getString(_kGotifyAppToken) ?? '';
       _isPushEnabled = prefs.getBool(_kPushEnabled) ?? true;
 
@@ -54,6 +72,15 @@ class PushNotificationService {
     try {
       final deviceUuid = await AuthController.instance.getOrCreateLocalDeviceUuid();
       final tokenToRegister = _gotifyAppToken.isNotEmpty ? _gotifyAppToken : _pushToken;
+
+      // Start Android native background push service
+      final authToken = ApiClient.instance.authToken;
+      if (authToken != null) {
+        _systemNotifChannel.invokeMethod('startBackgroundService', {
+          'baseUrl': EnvConfig.instance.apiBaseUrl,
+          'token': authToken,
+        }).catchError((_) {});
+      }
 
       final resp = await ApiClient.instance.post(
         ApiEndpoints.devicePushToken,

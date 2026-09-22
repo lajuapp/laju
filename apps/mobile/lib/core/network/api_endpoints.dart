@@ -43,6 +43,9 @@ class ApiEndpoints {
   static String callReject(String id) => '/calls/$id/reject';
   static String callEnd(String id) => '/calls/$id/end';
   static String callSignal(String id) => '/calls/$id/signal';
+  static String callSignals(String id) => '/calls/$id/signals';
+  static String callAudioChunk(String id) => '/calls/$id/audio-chunk';
+  static String callAudioChunks(String id) => '/calls/$id/audio-chunks';
 
   // Attachments
   static String attachmentUpload(String messageId) => '/attachments/$messageId';
@@ -54,6 +57,8 @@ class ApiEndpoints {
   static const String deviceVerify = '/devices/verify';
   static const String devicePushToken = '/devices/push-token';
   static const String deviceTestPush = '/devices/test-push';
+  static const String devicePushStream = '/devices/push-stream';
+  static const String deviceGotifyConfig = '/devices/gotify-config';
   static String deviceRevoke(String id) => '/devices/$id/revoke';
   static const String identityRegister = '/identity/register';
   static const String identityRestore = '/identity/restore';

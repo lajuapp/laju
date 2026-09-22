@@ -41,7 +41,12 @@ import java.io.FileOutputStream
 import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetAddress
+import java.net.InetSocketAddress
 import java.net.NetworkInterface
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import androidx.core.app.NotificationCompat
 
 class MainActivity : FlutterFragmentActivity() {
     private val CAMERA_CHANNEL = "com.laju/camera"
@@ -49,6 +54,10 @@ class MainActivity : FlutterFragmentActivity() {
     private val BIOMETRIC_CHANNEL = "com.laju/biometric"
     private val SOUND_CHANNEL = "com.laju/sound"
     private val CALL_AUDIO_CHANNEL = "com.laju/call_audio"
+    private val NOTIFICATION_CHANNEL = "com.laju/system_notifications"
+    private val CHANNEL_ID_CALLS = "laju_calls"
+    private val CHANNEL_ID_MESSAGES = "laju_messages"
+
     private var currentAudioTrack: AudioTrack? = null
     private var currentSystemRingtone: Ringtone? = null
 
@@ -58,6 +67,10 @@ class MainActivity : FlutterFragmentActivity() {
     @Volatile private var isCallAudioActive = false
     @Volatile private var isCallAudioMuted = false
     @Volatile private var isCallAudioSpeaker = false
+    @Volatile private var callRemoteIp: String = ""
+    @Volatile private var callRemotePort: Int = 50005
+    private var launchPayload: Map<String, Any?>? = null
+
     private var aecEffect: AcousticEchoCanceler? = null
     private var nsEffect: NoiseSuppressor? = null
     private var ringbackToneTrack: AudioTrack? = null
@@ -84,6 +97,72 @@ class MainActivity : FlutterFragmentActivity() {
     private var mediaPlayer: MediaPlayer? = null
     private var currentPlayingPath: String? = null
     private var voiceMethodChannel: MethodChannel? = null
+
+    override fun onCreate(savedInstanceState: android.os.Bundle?) {
+        super.onCreate(savedInstanceState)
+        createNotificationChannels()
+        handleIntent(intent)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handleIntent(intent)
+    }
+
+    private fun handleIntent(intent: Intent?) {
+        if (intent == null) return
+        val type = intent.getStringExtra("laju_type")
+        val id = intent.getStringExtra("laju_id")
+        val isVideo = intent.getBooleanExtra("laju_is_video", false)
+        val action = intent.getStringExtra("laju_action")
+        if (type != null && id != null) {
+            launchPayload = mapOf("type" to type, "id" to id, "isVideo" to isVideo, "action" to action)
+        }
+    }
+
+    private fun createNotificationChannels() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+
+            val ringtoneUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
+            val callAttrs = AudioAttributes.Builder()
+                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                .setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
+                .build()
+
+            val callChannel = NotificationChannel(
+                CHANNEL_ID_CALLS,
+                "Panggilan Masuk LAJU",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Notifikasi panggilan suara dan video masuk"
+                setSound(ringtoneUri, callAttrs)
+                enableVibration(true)
+                vibrationPattern = longArrayOf(0, 800, 400, 800, 400, 800)
+                lockscreenVisibility = NotificationCompat.VISIBILITY_PUBLIC
+            }
+            nm.createNotificationChannel(callChannel)
+
+            val msgUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+            val msgAttrs = AudioAttributes.Builder()
+                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                .setUsage(AudioAttributes.USAGE_NOTIFICATION_COMMUNICATION_INSTANT)
+                .build()
+
+            val msgChannel = NotificationChannel(
+                CHANNEL_ID_MESSAGES,
+                "Pesan Masuk LAJU",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Notifikasi pesan baru terenkripsi"
+                setSound(msgUri, msgAttrs)
+                enableVibration(true)
+                vibrationPattern = longArrayOf(0, 250, 150, 250)
+                lockscreenVisibility = NotificationCompat.VISIBILITY_PUBLIC
+            }
+            nm.createNotificationChannel(msgChannel)
+        }
+    }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -674,6 +753,25 @@ class MainActivity : FlutterFragmentActivity() {
                     startRealtimeCallAudio(remoteIp, remotePort, localPort, isSpeaker || isVideo)
                     result.success(true)
                 }
+                "updatePeerAddress" -> {
+                    val ip = call.argument<String>("ip") ?: ""
+                    val port = call.argument<Int>("port") ?: 50005
+                    if (ip.isNotEmpty()) {
+                        callRemoteIp = ip
+                        callRemotePort = port
+                    }
+                    result.success(true)
+                }
+                "playAudioChunk" -> {
+                    val chunkBase64 = call.argument<String>("chunk") ?: ""
+                    if (chunkBase64.isNotEmpty()) {
+                        try {
+                            val bytes = android.util.Base64.decode(chunkBase64, android.util.Base64.NO_WRAP)
+                            callAudioTrack?.write(bytes, 0, bytes.size)
+                        } catch (_: Exception) {}
+                    }
+                    result.success(true)
+                }
                 "stopCallAudio" -> {
                     stopRealtimeCallAudio()
                     result.success(true)
@@ -691,6 +789,53 @@ class MainActivity : FlutterFragmentActivity() {
                 "playCallTone" -> {
                     val type = call.argument<String>("type") ?: "stop"
                     handleCallTone(type)
+                    result.success(true)
+                }
+                else -> result.notImplemented()
+            }
+        }
+
+        // Native System Notifications MethodChannel
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, NOTIFICATION_CHANNEL).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "showCallNotification" -> {
+                    val callId = call.argument<String>("callId") ?: ""
+                    val callerName = call.argument<String>("callerName") ?: "Kontak"
+                    val isVideo = call.argument<Boolean>("isVideo") ?: false
+                    showSystemCallNotification(callId, callerName, isVideo)
+                    result.success(true)
+                }
+                "showMessageNotification" -> {
+                    val convId = call.argument<String>("conversationId") ?: ""
+                    val title = call.argument<String>("title") ?: "Pesan Baru"
+                    val message = call.argument<String>("message") ?: ""
+                    showSystemMessageNotification(convId, title, message)
+                    result.success(true)
+                }
+                "cancelNotification" -> {
+                    val id = call.argument<Int>("id") ?: 9999
+                    val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+                    nm.cancel(id)
+                    result.success(true)
+                }
+                "cancelAll" -> {
+                    val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+                    nm.cancelAll()
+                    result.success(true)
+                }
+                "getLaunchPayload" -> {
+                    val payload = launchPayload
+                    launchPayload = null
+                    result.success(payload)
+                }
+                "startBackgroundService" -> {
+                    val baseUrl = call.argument<String>("baseUrl") ?: ""
+                    val token = call.argument<String>("token") ?: ""
+                    LajuPushService.startService(applicationContext, baseUrl, token)
+                    result.success(true)
+                }
+                "stopBackgroundService" -> {
+                    LajuPushService.stopService(applicationContext)
                     result.success(true)
                 }
                 else -> result.notImplemented()
@@ -1367,6 +1512,8 @@ class MainActivity : FlutterFragmentActivity() {
         isCallAudioActive = true
         isCallAudioMuted = false
         isCallAudioSpeaker = isSpeaker
+        callRemoteIp = remoteIp
+        callRemotePort = remotePort
 
         val sampleRate = 16000
         val channelIn = AudioFormat.CHANNEL_IN_MONO
@@ -1421,10 +1568,17 @@ class MainActivity : FlutterFragmentActivity() {
 
                 var socket: DatagramSocket? = null
                 try {
-                    socket = DatagramSocket(localPort)
+                    socket = DatagramSocket(null).apply {
+                        reuseAddress = true
+                        broadcast = true
+                        bind(InetSocketAddress(localPort))
+                    }
                 } catch (_: Exception) {
                     try {
-                        socket = DatagramSocket()
+                        socket = DatagramSocket().apply {
+                            reuseAddress = true
+                            broadcast = true
+                        }
                     } catch (e2: Exception) {
                         e2.printStackTrace()
                     }
@@ -1435,22 +1589,32 @@ class MainActivity : FlutterFragmentActivity() {
                 recorder.startRecording()
 
                 // Sender thread
-                if (remoteIp.isNotEmpty() && remotePort > 0 && socket != null) {
+                if (socket != null) {
                     Thread {
                         val sendBuffer = ByteArray(640)
-                        var targetInet: InetAddress? = null
-                        try {
-                            targetInet = InetAddress.getByName(remoteIp)
-                        } catch (e: Exception) {
-                            e.printStackTrace()
-                        }
 
-                        while (isCallAudioActive && targetInet != null && !socket.isClosed) {
+                        while (isCallAudioActive && !socket.isClosed) {
                             try {
                                 val read = recorder.read(sendBuffer, 0, sendBuffer.size)
                                 if (read > 0 && !isCallAudioMuted) {
-                                    val packet = DatagramPacket(sendBuffer, read, targetInet, remotePort)
-                                    socket.send(packet)
+                                    val targetIp = callRemoteIp
+                                    val targetPort = callRemotePort
+
+                                    // 1. Send unicast if peer IP is known
+                                    if (targetIp.isNotEmpty() && targetIp != "255.255.255.255") {
+                                        try {
+                                            val target = InetAddress.getByName(targetIp)
+                                            val packet = DatagramPacket(sendBuffer, read, target, targetPort)
+                                            socket.send(packet)
+                                        } catch (_: Exception) {}
+                                    }
+
+                                    // 2. Also send broadcast to local subnet
+                                    try {
+                                        val bcast = InetAddress.getByName("255.255.255.255")
+                                        val bcastPacket = DatagramPacket(sendBuffer, read, bcast, targetPort)
+                                        socket.send(bcastPacket)
+                                    } catch (_: Exception) {}
                                 } else if (read <= 0) {
                                     Thread.sleep(10)
                                 }
@@ -1483,6 +1647,89 @@ class MainActivity : FlutterFragmentActivity() {
                 stopRealtimeCallAudio()
             }
         }.start()
+    }
+
+    private fun showSystemCallNotification(callId: String, callerName: String, isVideo: Boolean) {
+        val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+
+        val answerIntent = Intent(this, MainActivity::class.java).apply {
+            action = Intent.ACTION_MAIN
+            addCategory(Intent.CATEGORY_LAUNCHER)
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra("laju_type", "call")
+            putExtra("laju_id", callId)
+            putExtra("laju_is_video", isVideo)
+            putExtra("laju_action", "answer")
+        }
+        val answerPendingIntent = PendingIntent.getActivity(
+            this,
+            101,
+            answerIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val declineIntent = Intent(this, LajuPushService::class.java).apply {
+            action = LajuPushService.ACTION_DECLINE
+            putExtra("call_id", callId)
+        }
+        val declinePendingIntent = PendingIntent.getService(
+            this,
+            102,
+            declineIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val ringtoneUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
+
+        val builder = NotificationCompat.Builder(this, CHANNEL_ID_CALLS)
+            .setSmallIcon(R.mipmap.ic_launcher)
+            .setContentTitle(callerName)
+            .setContentText(if (isVideo) "Panggilan video masuk..." else "Panggilan suara masuk...")
+            .setPriority(NotificationCompat.PRIORITY_MAX)
+            .setCategory(NotificationCompat.CATEGORY_CALL)
+            .setSound(ringtoneUri)
+            .setVibrate(longArrayOf(0, 800, 400, 800, 400, 800))
+            .setFullScreenIntent(answerPendingIntent, true)
+            .setContentIntent(answerPendingIntent)
+            .setAutoCancel(true)
+            .setOngoing(true)
+            .addAction(android.R.drawable.ic_menu_call, "Jawab", answerPendingIntent)
+            .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Tolak", declinePendingIntent)
+
+        nm.notify(9999, builder.build())
+    }
+
+    private fun showSystemMessageNotification(conversationId: String, title: String, message: String) {
+        val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+
+        val intent = Intent(this, MainActivity::class.java).apply {
+            action = Intent.ACTION_MAIN
+            addCategory(Intent.CATEGORY_LAUNCHER)
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra("laju_type", "chat")
+            putExtra("laju_id", conversationId)
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            this,
+            conversationId.hashCode(),
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val msgUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+
+        val builder = NotificationCompat.Builder(this, CHANNEL_ID_MESSAGES)
+            .setSmallIcon(R.mipmap.ic_launcher)
+            .setContentTitle(title)
+            .setContentText(message)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setCategory(NotificationCompat.CATEGORY_MESSAGE)
+            .setSound(msgUri)
+            .setVibrate(longArrayOf(0, 250, 150, 250))
+            .setContentIntent(pendingIntent)
+            .setAutoCancel(true)
+
+        nm.notify(conversationId.hashCode(), builder.build())
     }
 
     private fun stopRealtimeCallAudio() {

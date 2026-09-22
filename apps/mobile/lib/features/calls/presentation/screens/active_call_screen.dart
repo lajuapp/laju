@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/theme_controller.dart';
 import '../../../../core/widgets/laju_glass.dart';
@@ -28,11 +29,17 @@ class ActiveCallScreen extends StatefulWidget {
 
 class _ActiveCallScreenState extends State<ActiveCallScreen> {
   late bool _isVideoEnabled;
+  MobileScannerController? _cameraController;
+  bool _isFrontCamera = true;
 
   @override
   void initState() {
     super.initState();
     _isVideoEnabled = widget.isVideo;
+
+    if (_isVideoEnabled) {
+      _startCamera();
+    }
 
     final session = CallSessionController.instance;
     session.addListener(_onSessionUpdated);
@@ -48,8 +55,31 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
     }
   }
 
+  void _startCamera() {
+    _cameraController?.dispose();
+    _cameraController = MobileScannerController(
+      facing: _isFrontCamera ? CameraFacing.front : CameraFacing.back,
+      detectionSpeed: DetectionSpeed.noDuplicates,
+      torchEnabled: false,
+    );
+  }
+
+  void _stopCamera() {
+    _cameraController?.dispose();
+    _cameraController = null;
+  }
+
+  void _switchCamera() async {
+    _isFrontCamera = !_isFrontCamera;
+    try {
+      await _cameraController?.switchCamera();
+    } catch (_) {}
+    if (mounted) setState(() {});
+  }
+
   @override
   void dispose() {
+    _stopCamera();
     CallSessionController.instance.removeListener(_onSessionUpdated);
     super.dispose();
   }
@@ -57,6 +87,16 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
   void _onSessionUpdated() {
     if (!mounted) return;
     final session = CallSessionController.instance;
+    if (_isVideoEnabled != session.isVideoOn) {
+      setState(() {
+        _isVideoEnabled = session.isVideoOn;
+        if (_isVideoEnabled) {
+          _startCamera();
+        } else {
+          _stopCamera();
+        }
+      });
+    }
     if (session.status == CallStatus.rejected || session.status == CallStatus.ended) {
       Future.delayed(const Duration(milliseconds: 1200), () {
         if (mounted) {
@@ -228,56 +268,150 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
 
                     // Visualizer / Video Frame
                     if (_isVideoEnabled)
-                      LajuGlassCard(
-                        padding: const EdgeInsets.all(3),
-                        borderRadius: 28,
-                        blurSigma: 24,
-                        borderColor: AppColors.primary.withValues(alpha: 0.45),
-                        borderWidth: 1.5,
-                        customShadow: [
-                          BoxShadow(
-                            color: AppColors.primary.withValues(alpha: 0.2),
-                            blurRadius: 24,
-                            spreadRadius: 2,
-                          ),
-                        ],
-                        child: Container(
-                          width: 250,
-                          height: 330,
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(25),
-                            gradient: LinearGradient(
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                              colors: isDark
-                                  ? [const Color(0xFF0F172A), const Color(0xFF1E293B)]
-                                  : [const Color(0xFFE2E8F0), const Color(0xFFCBD5E1)],
-                            ),
-                          ),
-                          child: Center(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.all(16),
-                                  decoration: BoxDecoration(
-                                    color: AppColors.primary.withValues(alpha: 0.15),
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: const Icon(Icons.videocam_rounded, color: AppColors.primary, size: 44),
-                                ),
-                                const SizedBox(height: 14),
-                                Text(
-                                  'HD Video Terenkripsi Aktif',
-                                  style: TextStyle(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w600,
-                                    color: textSecondary,
-                                  ),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 20),
+                        child: Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            // Main Remote Video Frame
+                            LajuGlassCard(
+                              padding: const EdgeInsets.all(3),
+                              borderRadius: 28,
+                              blurSigma: 24,
+                              borderColor: AppColors.primary.withValues(alpha: 0.45),
+                              borderWidth: 1.5,
+                              customShadow: [
+                                BoxShadow(
+                                  color: AppColors.primary.withValues(alpha: 0.2),
+                                  blurRadius: 24,
+                                  spreadRadius: 2,
                                 ),
                               ],
+                              child: Container(
+                                width: double.infinity,
+                                height: 320,
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(25),
+                                  gradient: LinearGradient(
+                                    begin: Alignment.topLeft,
+                                    end: Alignment.bottomRight,
+                                    colors: isDark
+                                        ? [const Color(0xFF0F172A), const Color(0xFF1E293B)]
+                                        : [const Color(0xFFE2E8F0), const Color(0xFFCBD5E1)],
+                                  ),
+                                ),
+                                child: Stack(
+                                  children: [
+                                    Center(
+                                      child: Column(
+                                        mainAxisAlignment: MainAxisAlignment.center,
+                                        children: [
+                                          ModernAvatar(
+                                            name: widget.contactName,
+                                            radius: 50,
+                                            isVerified: true,
+                                          ),
+                                          const SizedBox(height: 14),
+                                          Text(
+                                            widget.contactName,
+                                            style: TextStyle(
+                                              fontSize: 17,
+                                              fontWeight: FontWeight.w700,
+                                              color: textPrimary,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 4),
+                                          Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Container(
+                                                width: 7,
+                                                height: 7,
+                                                decoration: const BoxDecoration(
+                                                  shape: BoxShape.circle,
+                                                  color: Color(0xFF10B981),
+                                                ),
+                                              ),
+                                              const SizedBox(width: 6),
+                                              Text(
+                                                '1080p 60fps • Terenkripsi E2EE',
+                                                style: TextStyle(
+                                                  fontSize: 12,
+                                                  fontWeight: FontWeight.w600,
+                                                  color: textSecondary,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
                             ),
-                          ),
+
+                            // Floating Self-Camera Picture-in-Picture (PiP) Window
+                            Positioned(
+                              right: 14,
+                              bottom: 14,
+                              child: Container(
+                                width: 110,
+                                height: 155,
+                                decoration: BoxDecoration(
+                                  color: Colors.black,
+                                  borderRadius: BorderRadius.circular(18),
+                                  border: Border.all(
+                                    color: AppColors.primary.withValues(alpha: 0.8),
+                                    width: 2,
+                                  ),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withValues(alpha: 0.4),
+                                      blurRadius: 16,
+                                      spreadRadius: 2,
+                                    ),
+                                  ],
+                                ),
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(16),
+                                  child: Stack(
+                                    children: [
+                                      if (_cameraController != null)
+                                        MobileScanner(
+                                          controller: _cameraController!,
+                                          fit: BoxFit.cover,
+                                        )
+                                      else
+                                        const Center(
+                                          child: Icon(Icons.videocam_rounded, color: Colors.white54, size: 28),
+                                        ),
+                                      // Flip camera button
+                                      Positioned(
+                                        bottom: 6,
+                                        right: 6,
+                                        child: GestureDetector(
+                                          onTap: _switchCamera,
+                                          child: Container(
+                                            padding: const EdgeInsets.all(5),
+                                            decoration: BoxDecoration(
+                                              color: Colors.black.withValues(alpha: 0.6),
+                                              shape: BoxShape.circle,
+                                            ),
+                                            child: const Icon(
+                                              Icons.flip_camera_ios_rounded,
+                                              color: Colors.white,
+                                              size: 15,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       )
                     else
@@ -353,6 +487,13 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
                               session.toggleVideo();
                             },
                           ),
+                          if (_isVideoEnabled)
+                            _buildCallAction(
+                              icon: Icons.flip_camera_ios_rounded,
+                              isActive: false,
+                              label: 'Putar',
+                              onTap: _switchCamera,
+                            ),
                           _buildCallAction(
                             icon: session.isSpeaker ? Icons.volume_up_rounded : Icons.volume_down_rounded,
                             isActive: session.isSpeaker,
