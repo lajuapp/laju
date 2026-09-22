@@ -527,10 +527,46 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
               ),
             ],
           ),
-          body: Column(
-            children: [
-              Expanded(
-                child: _messages.isEmpty
+          body: ListenableBuilder(
+            listenable: ChatAppearanceController.instance,
+            builder: (context, _) {
+              final activeWallpaperId = ChatAppearanceController.instance.selectedWallpaper;
+              final activeWallpaper = kPresetWallpapers.firstWhere(
+                (w) => w.id == activeWallpaperId,
+                orElse: () => kPresetWallpapers.first,
+              );
+              final assetPath = activeWallpaper.getAssetPath(isDark);
+              final screenSize = MediaQuery.sizeOf(context);
+
+              return Stack(
+                clipBehavior: Clip.hardEdge,
+                children: [
+                  Positioned(
+                    top: 0,
+                    left: 0,
+                    width: screenSize.width,
+                    height: screenSize.height,
+                    child: Container(
+                      color: isDark ? const Color(0xFF071216) : activeWallpaper.backgroundColor,
+                    ),
+                  ),
+                  if (assetPath != null)
+                    Positioned(
+                      top: 0,
+                      left: 0,
+                      width: screenSize.width,
+                      height: screenSize.height,
+                      child: Image.asset(
+                        assetPath,
+                        fit: BoxFit.cover,
+                        alignment: Alignment.topCenter,
+                        errorBuilder: (context, error, stackTrace) => const SizedBox(),
+                      ),
+                    ),
+                  Column(
+                    children: [
+                      Expanded(
+                        child: _messages.isEmpty
                     ? Center(
                         child: Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 32),
@@ -624,11 +660,14 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                     ),
                   ),
                 ),
-            ],
-          ),
+              ],
+            ),
+          ],
         );
       },
+    ),
+  );
+      },
     );
-
   }
 }

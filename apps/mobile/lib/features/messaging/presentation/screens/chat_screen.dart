@@ -585,21 +585,33 @@ class _ChatScreenState extends State<ChatScreen> {
           );
           final assetPath = activeWallpaper.getAssetPath(isDark);
 
+          final screenSize = MediaQuery.sizeOf(context);
+
           return Stack(
+            clipBehavior: Clip.hardEdge,
             children: [
-              // Background Wallpaper Color fallback
-              Positioned.fill(
+              // Fixed Background Wallpaper Color fallback (unaffected by keyboard resize)
+              Positioned(
+                top: 0,
+                left: 0,
+                width: screenSize.width,
+                height: screenSize.height,
                 child: Container(
                   color: isDark ? const Color(0xFF071216) : activeWallpaper.backgroundColor,
                 ),
               ),
 
-              // Wallpaper Image asset (Uploaded Official LAJU Doodle)
+              // Fixed Wallpaper Image asset (never jumps/rescales when keyboard appears)
               if (assetPath != null)
-                Positioned.fill(
+                Positioned(
+                  top: 0,
+                  left: 0,
+                  width: screenSize.width,
+                  height: screenSize.height,
                   child: Image.asset(
                     assetPath,
                     fit: BoxFit.cover,
+                    alignment: Alignment.topCenter,
                     errorBuilder: (context, error, stackTrace) => const SizedBox(),
                   ),
                 ),
