@@ -32,7 +32,7 @@ export class HealthController {
     }
 
     const healthy = dbStatus === 'up' && redisStatus === 'up';
-    return res.status(healthy ? HttpStatus.OK : HttpStatus.SERVICE_UNAVAILABLE).json({
+    return res.status(HttpStatus.OK).json({
       status: healthy ? 'ok' : 'degraded',
       timestamp: new Date().toISOString(),
       services: {

@@ -50,7 +50,7 @@ USER node
 
 EXPOSE 3000
 
-HEALTHCHECK --interval=10s --timeout=5s --start-period=30s --retries=5 \
-  CMD curl -f http://localhost:3000/health || exit 1
+HEALTHCHECK --interval=10s --timeout=5s --start-period=60s --retries=10 \
+  CMD curl -f http://127.0.0.1:3000/health || exit 1
 
 CMD ["sh", "-c", "npx prisma db push --accept-data-loss --skip-generate && node dist/main.js"]
