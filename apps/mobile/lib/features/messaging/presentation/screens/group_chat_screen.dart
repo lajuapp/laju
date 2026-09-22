@@ -35,12 +35,16 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
   @override
   void initState() {
     super.initState();
+    ConversationService.instance.currentActiveConversationId = widget.groupId;
     _loadMessages();
     _startPolling();
   }
 
   @override
   void dispose() {
+    if (ConversationService.instance.currentActiveConversationId == widget.groupId) {
+      ConversationService.instance.currentActiveConversationId = null;
+    }
     _pollTimer?.cancel();
     super.dispose();
   }
@@ -49,22 +53,11 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
     // Step 1: Load from SQLite cache instantly (offline-ready)
     final cached = await ConversationService.instance.getMessagesFromCache(widget.groupId);
     if (mounted && cached.isNotEmpty) {
-      setState(() {
-        _messages = cached;
-      });
-      _markIncomingAsRead(cached);
+      _mergeAndSetMessages(cached);
     }
 
-    // Step 2: Fetch fresh messages from API in background
-    try {
-      final msgs = await ConversationService.instance.fetchMessages(widget.groupId);
-      if (mounted && msgs.isNotEmpty) {
-        setState(() {
-          _messages = msgs;
-        });
-        _markIncomingAsRead(msgs);
-      }
-    } catch (_) {}
+    // Step 2: Fetch fresh messages from API
+    _syncMessages();
   }
 
   void _markIncomingAsRead(List<MessageModel> msgs) {
@@ -77,27 +70,82 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
 
   void _startPolling() {
     _pollTimer?.cancel();
-    _pollTimer = Timer.periodic(const Duration(seconds: 3), (_) async {
-      if (!mounted) return;
-      try {
-        final msgs = await ConversationService.instance.fetchMessages(widget.groupId);
-        if (mounted && msgs.isNotEmpty) {
-          _markIncomingAsRead(msgs);
-          if (msgs.length != _messages.length ||
-              (msgs.isNotEmpty && _messages.isNotEmpty && msgs.last.id != _messages.last.id)) {
-            setState(() {
-              _messages = msgs;
-            });
-          }
-        }
-      } catch (_) {}
+    _pollTimer = Timer.periodic(const Duration(milliseconds: 1500), (_) async {
+      _syncMessages();
     });
+  }
+
+  Future<void> _syncMessages() async {
+    if (!mounted) return;
+    try {
+      final msgs = await ConversationService.instance.fetchMessages(widget.groupId);
+      if (mounted && msgs.isNotEmpty) {
+        _mergeAndSetMessages(msgs);
+      }
+    } catch (_) {}
+  }
+
+  void _mergeAndSetMessages(List<MessageModel> incoming) {
+    if (!mounted || incoming.isEmpty) return;
+
+    final existingIds = _messages.map((m) => m.id).toSet();
+    bool hasNewIncoming = false;
+    for (final inc in incoming) {
+      if (!inc.isOutgoing && !existingIds.contains(inc.id)) {
+        hasNewIncoming = true;
+        break;
+      }
+    }
+
+    final merged = List<MessageModel>.from(_messages);
+    for (final inc in incoming) {
+      final idx = merged.indexWhere((m) =>
+          m.id == inc.id ||
+          (inc.clientMessageId != null && (m.id == inc.clientMessageId || m.clientMessageId == inc.clientMessageId)));
+
+      if (idx != -1) {
+        merged[idx] = inc.copyWith(
+          attachmentPath: merged[idx].attachmentPath ?? inc.attachmentPath,
+          attachmentName: merged[idx].attachmentName ?? inc.attachmentName,
+          replyTo: merged[idx].replyTo ?? inc.replyTo,
+        );
+      } else {
+        merged.add(inc);
+      }
+    }
+
+    merged.sort((a, b) => a.timestamp.compareTo(b.timestamp));
+
+    bool hasChanged = merged.length != _messages.length;
+    if (!hasChanged) {
+      for (int i = 0; i < merged.length; i++) {
+        if (merged[i].id != _messages[i].id ||
+            merged[i].status != _messages[i].status ||
+            merged[i].reactions.length != _messages[i].reactions.length) {
+          hasChanged = true;
+          break;
+        }
+      }
+    }
+
+    if (hasChanged) {
+      setState(() {
+        _messages = merged;
+      });
+      _markIncomingAsRead(merged);
+    }
+
+    if (hasNewIncoming) {
+      LajuSoundService.playIncomingNotification(isGroup: true);
+    }
   }
 
   void _sendMessage(String text) async {
     LajuSoundService.playOutgoingTone();
+    final localId = 'g-${DateTime.now().millisecondsSinceEpoch}';
     final localMsg = MessageModel(
-      id: 'g-${DateTime.now().millisecondsSinceEpoch}',
+      id: localId,
+      clientMessageId: localId,
       conversationId: widget.groupId,
       senderName: 'You',
       content: text,
@@ -117,19 +165,17 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
     final sent = await ConversationService.instance.sendMessage(
       conversationId: widget.groupId,
       text: text,
-      clientMessageId: localMsg.id,
+      clientMessageId: localId,
     );
 
     if (mounted && sent != null) {
       setState(() {
-        final idx = _messages.indexWhere((m) => m.id == localMsg.id);
+        final idx = _messages.indexWhere((m) => m.id == localId || m.clientMessageId == localId);
         if (idx != -1) {
-          _messages[idx] = _messages[idx].copyWith(
-            id: sent.id,
-            status: sent.status,
-          );
+          _messages[idx] = sent;
         }
       });
+      _syncMessages();
     }
   }
 
@@ -239,8 +285,10 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
     if (result != null) {
       final filePath = result.data is String ? result.data as String : null;
       if (result.type == AttachmentType.document) {
+        final docId = 'doc-${DateTime.now().millisecondsSinceEpoch}';
         final docMsg = MessageModel(
-          id: 'doc-${DateTime.now().millisecondsSinceEpoch}',
+          id: docId,
+          clientMessageId: docId,
           conversationId: widget.groupId,
           senderName: 'You',
           content: result.subtitle ?? '📄 ${result.title}',
@@ -250,23 +298,36 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
           timestamp: DateTime.now(),
           isOutgoing: true,
           contentType: MessageContentType.attachment,
-          status: MessageDeliveryStatus.sent,
+          status: MessageDeliveryStatus.sending,
         );
         setState(() {
           _messages.add(docMsg);
         });
-        ConversationService.instance.sendMessage(
+        await LocalDatabase.instance.insertSentMessage(docMsg);
+
+        final sent = await ConversationService.instance.sendMessage(
           conversationId: widget.groupId,
           text: '📄 ${result.title} (${result.fileSize ?? ""})',
-          clientMessageId: docMsg.id,
+          clientMessageId: docId,
           messageType: 'DOCUMENT',
           attachmentPath: filePath,
           attachmentName: result.title,
           attachmentSize: result.fileSize,
         );
+        if (mounted && sent != null) {
+          setState(() {
+            final idx = _messages.indexWhere((m) => m.id == docId || m.clientMessageId == docId);
+            if (idx != -1) {
+              _messages[idx] = sent.copyWith(attachmentPath: filePath);
+            }
+          });
+          _syncMessages();
+        }
       } else if (result.type == AttachmentType.camera || result.type == AttachmentType.gallery) {
+        final imgId = 'img-${DateTime.now().millisecondsSinceEpoch}';
         final imgMsg = MessageModel(
-          id: 'img-${DateTime.now().millisecondsSinceEpoch}',
+          id: imgId,
+          clientMessageId: imgId,
           conversationId: widget.groupId,
           senderName: 'You',
           content: '📷 ${result.title} (${result.fileSize ?? ""})',
@@ -276,23 +337,36 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
           timestamp: DateTime.now(),
           isOutgoing: true,
           contentType: MessageContentType.attachment,
-          status: MessageDeliveryStatus.sent,
+          status: MessageDeliveryStatus.sending,
         );
         setState(() {
           _messages.add(imgMsg);
         });
-        ConversationService.instance.sendMessage(
+        await LocalDatabase.instance.insertSentMessage(imgMsg);
+
+        final sent = await ConversationService.instance.sendMessage(
           conversationId: widget.groupId,
           text: '📷 ${result.title} (${result.fileSize ?? ""})',
-          clientMessageId: imgMsg.id,
+          clientMessageId: imgId,
           messageType: 'IMAGE',
           attachmentPath: filePath,
           attachmentName: result.title,
           attachmentSize: result.fileSize,
         );
+        if (mounted && sent != null) {
+          setState(() {
+            final idx = _messages.indexWhere((m) => m.id == imgId || m.clientMessageId == imgId);
+            if (idx != -1) {
+              _messages[idx] = sent.copyWith(attachmentPath: filePath);
+            }
+          });
+          _syncMessages();
+        }
       } else if (result.type == AttachmentType.audio) {
+        final audId = 'aud-${DateTime.now().millisecondsSinceEpoch}';
         final audMsg = MessageModel(
-          id: 'aud-${DateTime.now().millisecondsSinceEpoch}',
+          id: audId,
+          clientMessageId: audId,
           conversationId: widget.groupId,
           senderName: 'You',
           content: '🎵 ${result.title} (${result.fileSize ?? ""})',
@@ -302,20 +376,31 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
           timestamp: DateTime.now(),
           isOutgoing: true,
           contentType: MessageContentType.attachment,
-          status: MessageDeliveryStatus.sent,
+          status: MessageDeliveryStatus.sending,
         );
         setState(() {
           _messages.add(audMsg);
         });
-        ConversationService.instance.sendMessage(
+        await LocalDatabase.instance.insertSentMessage(audMsg);
+
+        final sent = await ConversationService.instance.sendMessage(
           conversationId: widget.groupId,
           text: '🎵 ${result.title} (${result.fileSize ?? ""})',
-          clientMessageId: audMsg.id,
+          clientMessageId: audId,
           messageType: 'AUDIO',
           attachmentPath: filePath,
           attachmentName: result.title,
           attachmentSize: result.fileSize,
         );
+        if (mounted && sent != null) {
+          setState(() {
+            final idx = _messages.indexWhere((m) => m.id == audId || m.clientMessageId == audId);
+            if (idx != -1) {
+              _messages[idx] = sent.copyWith(attachmentPath: filePath);
+            }
+          });
+          _syncMessages();
+        }
       } else if (result.type == AttachmentType.contact) {
         _sendMessage(result.title);
       }

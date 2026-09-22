@@ -40,6 +40,7 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   void initState() {
     super.initState();
+    ConversationService.instance.currentActiveConversationId = widget.conversationId;
     _messages = [];
     _loadMessagesFromApi();
     _startPolling();
@@ -47,22 +48,75 @@ class _ChatScreenState extends State<ChatScreen> {
 
   void _startPolling() {
     _pollTimer?.cancel();
-    _pollTimer = Timer.periodic(const Duration(seconds: 3), (_) async {
-      if (!mounted) return;
-      try {
-        final apiMsgs = await ConversationService.instance.fetchMessages(widget.conversationId);
-        if (mounted && apiMsgs.isNotEmpty) {
-          _markIncomingAsRead(apiMsgs);
-          if (apiMsgs.length != _messages.length ||
-              (apiMsgs.isNotEmpty && _messages.isNotEmpty && apiMsgs.last.id != _messages.last.id)) {
-            setState(() {
-              _messages = apiMsgs;
-            });
-            Future.delayed(const Duration(milliseconds: 100), _scrollToBottom);
-          }
-        }
-      } catch (_) {}
+    _pollTimer = Timer.periodic(const Duration(milliseconds: 1500), (_) async {
+      _syncMessages();
     });
+  }
+
+  Future<void> _syncMessages() async {
+    if (!mounted) return;
+    try {
+      final apiMsgs = await ConversationService.instance.fetchMessages(widget.conversationId);
+      if (mounted && apiMsgs.isNotEmpty) {
+        _mergeAndSetMessages(apiMsgs);
+      }
+    } catch (_) {}
+  }
+
+  void _mergeAndSetMessages(List<MessageModel> incoming) {
+    if (!mounted || incoming.isEmpty) return;
+
+    final existingIds = _messages.map((m) => m.id).toSet();
+    bool hasNewIncoming = false;
+    for (final inc in incoming) {
+      if (!inc.isOutgoing && !existingIds.contains(inc.id)) {
+        hasNewIncoming = true;
+        break;
+      }
+    }
+
+    final merged = List<MessageModel>.from(_messages);
+    for (final inc in incoming) {
+      final idx = merged.indexWhere((m) =>
+          m.id == inc.id ||
+          (inc.clientMessageId != null && (m.id == inc.clientMessageId || m.clientMessageId == inc.clientMessageId)));
+
+      if (idx != -1) {
+        merged[idx] = inc.copyWith(
+          attachmentPath: merged[idx].attachmentPath ?? inc.attachmentPath,
+          attachmentName: merged[idx].attachmentName ?? inc.attachmentName,
+          replyTo: merged[idx].replyTo ?? inc.replyTo,
+        );
+      } else {
+        merged.add(inc);
+      }
+    }
+
+    merged.sort((a, b) => a.timestamp.compareTo(b.timestamp));
+
+    bool hasChanged = merged.length != _messages.length;
+    if (!hasChanged) {
+      for (int i = 0; i < merged.length; i++) {
+        if (merged[i].id != _messages[i].id ||
+            merged[i].status != _messages[i].status ||
+            merged[i].reactions.length != _messages[i].reactions.length) {
+          hasChanged = true;
+          break;
+        }
+      }
+    }
+
+    if (hasChanged) {
+      setState(() {
+        _messages = merged;
+      });
+      _markIncomingAsRead(merged);
+      Future.delayed(const Duration(milliseconds: 60), _scrollToBottom);
+    }
+
+    if (hasNewIncoming) {
+      LajuSoundService.playIncomingNotification();
+    }
   }
 
   void _markIncomingAsRead(List<MessageModel> msgs) {
@@ -75,6 +129,9 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   void dispose() {
+    if (ConversationService.instance.currentActiveConversationId == widget.conversationId) {
+      ConversationService.instance.currentActiveConversationId = null;
+    }
     _pollTimer?.cancel();
     _scrollController.dispose();
     super.dispose();
@@ -84,30 +141,19 @@ class _ChatScreenState extends State<ChatScreen> {
     // Step 1: Load from SQLite cache instantly (offline-ready)
     final cached = await ConversationService.instance.getMessagesFromCache(widget.conversationId);
     if (mounted && cached.isNotEmpty) {
-      setState(() {
-        _messages = cached;
-      });
-      _markIncomingAsRead(cached);
-      Future.delayed(const Duration(milliseconds: 100), _scrollToBottom);
+      _mergeAndSetMessages(cached);
     }
 
-    // Step 2: Fetch fresh messages from API in background
-    try {
-      final apiMsgs = await ConversationService.instance.fetchMessages(widget.conversationId);
-      if (mounted && apiMsgs.isNotEmpty) {
-        setState(() {
-          _messages = apiMsgs;
-        });
-        _markIncomingAsRead(apiMsgs);
-        Future.delayed(const Duration(milliseconds: 100), _scrollToBottom);
-      }
-    } catch (_) {}
+    // Step 2: Fetch fresh messages from API
+    _syncMessages();
   }
 
   void _sendMessage(String text) async {
     LajuSoundService.playOutgoingTone();
+    final localId = 'msg-${DateTime.now().millisecondsSinceEpoch}';
     final localMsg = MessageModel(
-      id: 'msg-${DateTime.now().millisecondsSinceEpoch}',
+      id: localId,
+      clientMessageId: localId,
       conversationId: widget.conversationId,
       senderName: 'You',
       content: text,
@@ -125,27 +171,23 @@ class _ChatScreenState extends State<ChatScreen> {
     // Save optimistically to SQLite
     await LocalDatabase.instance.insertSentMessage(localMsg);
 
-    Future.delayed(const Duration(milliseconds: 100), () {
-      _scrollToBottom();
-    });
+    Future.delayed(const Duration(milliseconds: 50), _scrollToBottom);
 
     // Send to backend
     final sentMsg = await ConversationService.instance.sendMessage(
       conversationId: widget.conversationId,
       text: text,
-      clientMessageId: localMsg.id,
+      clientMessageId: localId,
     );
 
     if (mounted && sentMsg != null) {
       setState(() {
-        final idx = _messages.indexWhere((m) => m.id == localMsg.id);
+        final idx = _messages.indexWhere((m) => m.id == localId || m.clientMessageId == localId);
         if (idx != -1) {
-          _messages[idx] = _messages[idx].copyWith(
-            id: sentMsg.id,
-            status: sentMsg.status,
-          );
+          _messages[idx] = sentMsg;
         }
       });
+      _syncMessages();
     }
   }
 
@@ -270,8 +312,10 @@ class _ChatScreenState extends State<ChatScreen> {
     if (result != null) {
       final filePath = result.data is String ? result.data as String : null;
       if (result.type == AttachmentType.document) {
+        final docId = 'doc-${DateTime.now().millisecondsSinceEpoch}';
         final docMsg = MessageModel(
-          id: 'doc-${DateTime.now().millisecondsSinceEpoch}',
+          id: docId,
+          clientMessageId: docId,
           conversationId: widget.conversationId,
           senderName: 'You',
           content: result.subtitle ?? '📄 ${result.title}',
@@ -287,19 +331,31 @@ class _ChatScreenState extends State<ChatScreen> {
           _messages.add(docMsg);
         });
         await LocalDatabase.instance.insertSentMessage(docMsg);
-        ConversationService.instance.sendMessage(
+        Future.delayed(const Duration(milliseconds: 50), _scrollToBottom);
+
+        final sent = await ConversationService.instance.sendMessage(
           conversationId: widget.conversationId,
           text: '📄 ${result.title} (${result.fileSize ?? ""})',
-          clientMessageId: docMsg.id,
+          clientMessageId: docId,
           messageType: 'DOCUMENT',
           attachmentPath: filePath,
           attachmentName: result.title,
           attachmentSize: result.fileSize,
         );
-        _scrollToBottom();
+        if (mounted && sent != null) {
+          setState(() {
+            final idx = _messages.indexWhere((m) => m.id == docId || m.clientMessageId == docId);
+            if (idx != -1) {
+              _messages[idx] = sent.copyWith(attachmentPath: filePath);
+            }
+          });
+          _syncMessages();
+        }
       } else if (result.type == AttachmentType.camera || result.type == AttachmentType.gallery) {
+        final imgId = 'img-${DateTime.now().millisecondsSinceEpoch}';
         final imgMsg = MessageModel(
-          id: 'img-${DateTime.now().millisecondsSinceEpoch}',
+          id: imgId,
+          clientMessageId: imgId,
           conversationId: widget.conversationId,
           senderName: 'You',
           content: '📷 ${result.title} (${result.fileSize ?? ""})',
@@ -315,19 +371,31 @@ class _ChatScreenState extends State<ChatScreen> {
           _messages.add(imgMsg);
         });
         await LocalDatabase.instance.insertSentMessage(imgMsg);
-        ConversationService.instance.sendMessage(
+        Future.delayed(const Duration(milliseconds: 50), _scrollToBottom);
+
+        final sent = await ConversationService.instance.sendMessage(
           conversationId: widget.conversationId,
           text: '📷 ${result.title} (${result.fileSize ?? ""})',
-          clientMessageId: imgMsg.id,
+          clientMessageId: imgId,
           messageType: 'IMAGE',
           attachmentPath: filePath,
           attachmentName: result.title,
           attachmentSize: result.fileSize,
         );
-        _scrollToBottom();
+        if (mounted && sent != null) {
+          setState(() {
+            final idx = _messages.indexWhere((m) => m.id == imgId || m.clientMessageId == imgId);
+            if (idx != -1) {
+              _messages[idx] = sent.copyWith(attachmentPath: filePath);
+            }
+          });
+          _syncMessages();
+        }
       } else if (result.type == AttachmentType.audio) {
+        final audId = 'aud-${DateTime.now().millisecondsSinceEpoch}';
         final audMsg = MessageModel(
-          id: 'aud-${DateTime.now().millisecondsSinceEpoch}',
+          id: audId,
+          clientMessageId: audId,
           conversationId: widget.conversationId,
           senderName: 'You',
           content: '🎵 ${result.title} (${result.fileSize ?? ""})',
@@ -343,16 +411,26 @@ class _ChatScreenState extends State<ChatScreen> {
           _messages.add(audMsg);
         });
         await LocalDatabase.instance.insertSentMessage(audMsg);
-        ConversationService.instance.sendMessage(
+        Future.delayed(const Duration(milliseconds: 50), _scrollToBottom);
+
+        final sent = await ConversationService.instance.sendMessage(
           conversationId: widget.conversationId,
           text: '🎵 ${result.title} (${result.fileSize ?? ""})',
-          clientMessageId: audMsg.id,
+          clientMessageId: audId,
           messageType: 'AUDIO',
           attachmentPath: filePath,
           attachmentName: result.title,
           attachmentSize: result.fileSize,
         );
-        _scrollToBottom();
+        if (mounted && sent != null) {
+          setState(() {
+            final idx = _messages.indexWhere((m) => m.id == audId || m.clientMessageId == audId);
+            if (idx != -1) {
+              _messages[idx] = sent.copyWith(attachmentPath: filePath);
+            }
+          });
+          _syncMessages();
+        }
       } else if (result.type == AttachmentType.contact) {
         _sendMessage(result.title);
       }

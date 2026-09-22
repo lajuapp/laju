@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import '../../../../core/core.dart';
 import '../domain/models/conversation_model.dart';
 import '../../messaging/domain/models/message_model.dart';
+import '../../messaging/presentation/screens/chat_screen.dart';
 
 class UserDirectoryItem {
   final String id;
@@ -34,6 +36,12 @@ class UserDirectoryItem {
 class ConversationService {
   ConversationService._();
   static final ConversationService instance = ConversationService._();
+
+  /// Current conversation screen open by user to prevent banner popup for active chat
+  String? currentActiveConversationId;
+
+  /// Keeps track of latest known message ID per conversation to detect new arrivals
+  final Map<String, String> _lastKnownMessageIds = {};
 
   /// Search users in the backend directory for new chats or group members
   Future<List<UserDirectoryItem>> searchUsers(String query) async {
@@ -70,6 +78,78 @@ class ConversationService {
       if (response.isSuccess && response.rawJson is List) {
         final list = response.rawJson as List;
         final currentUserId = ApiClient.instance.userId;
+
+        // Check for new incoming messages across conversations and trigger notifications
+        for (final item in list) {
+          final convId = item['id'] as String?;
+          if (convId == null) continue;
+
+          final msgs = item['messages'] as List?;
+          if (msgs != null && msgs.isNotEmpty) {
+            final latest = msgs[0];
+            final latestMsgId = latest['id'] as String?;
+            final senderId = latest['senderUserId'] as String?;
+
+            if (latestMsgId != null && senderId != null && senderId != currentUserId) {
+              final previousMsgId = _lastKnownMessageIds[convId];
+              // If new message from contact arrived while user is not currently in that conversation
+              if (previousMsgId != null && previousMsgId != latestMsgId && currentActiveConversationId != convId) {
+                final isGroup = item['type'] == 'GROUP';
+                String notifTitle = item['title'] ?? '';
+                if (notifTitle.isEmpty) {
+                  final members = item['members'];
+                  if (members is List) {
+                    final otherMember = members.firstWhere(
+                      (m) => m is Map && m['userId'] != currentUserId,
+                      orElse: () => null,
+                    );
+                    if (otherMember != null && otherMember['user'] is Map) {
+                      notifTitle = otherMember['user']['username'] ?? '';
+                    }
+                  }
+                  if (notifTitle.isEmpty) notifTitle = isGroup ? 'Group Chat' : 'Pesan Baru';
+                }
+
+                String preview = (latest['ciphertext'] ?? '') as String;
+                if (preview.startsWith('data:image')) {
+                  preview = '📷 Foto';
+                } else if (preview.startsWith('data:audio')) {
+                  preview = '🎤 Pesan Suara';
+                } else if (preview.startsWith('data:') || preview.startsWith('📄')) {
+                  preview = '📄 Berkas Dokumen';
+                }
+
+                AppNotificationService.instance.showIncomingMessage(
+                  conversationId: convId,
+                  senderName: notifTitle,
+                  message: preview,
+                  isGroup: isGroup,
+                  onOpenChat: () {
+                    AppNavigation.navigatorKey.currentState?.push(
+                      MaterialPageRoute(
+                        builder: (_) => ChatScreen(
+                          conversationId: convId,
+                          title: notifTitle,
+                          isGroup: isGroup,
+                        ),
+                      ),
+                    );
+                  },
+                  onQuickReply: (replyText) {
+                    sendMessage(
+                      conversationId: convId,
+                      text: replyText,
+                    );
+                  },
+                );
+              }
+              _lastKnownMessageIds[convId] = latestMsgId;
+            } else if (latestMsgId != null) {
+              _lastKnownMessageIds[convId] = latestMsgId;
+            }
+          }
+        }
+
         final conversations = list.map((item) {
           final isGroup = item['type'] == 'GROUP';
           String title = item['title'] ?? '';
@@ -328,6 +408,7 @@ class ConversationService {
 
             return MessageModel(
               id: m['id'],
+              clientMessageId: m['clientMessageId'] as String?,
               conversationId: conversationId,
               senderName: isOutgoing ? 'You' : (m['senderUser']?['username'] ?? 'Contact'),
               content: contentText,
@@ -403,6 +484,7 @@ class ConversationService {
         LocalDatabase.instance.updateMessageStatus(id, MessageDeliveryStatus.sent);
         return MessageModel(
           id: confirmedId,
+          clientMessageId: id,
           conversationId: conversationId,
           senderName: 'You',
           content: text,
@@ -424,6 +506,7 @@ class ConversationService {
 
     return MessageModel(
       id: id,
+      clientMessageId: id,
       conversationId: conversationId,
       senderName: 'You',
       content: text,

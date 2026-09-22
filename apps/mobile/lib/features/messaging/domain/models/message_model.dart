@@ -15,6 +15,7 @@ enum MessageContentType {
 
 class MessageModel {
   final String id;
+  final String? clientMessageId;
   final String conversationId;
   final String senderName;
   final String content;
@@ -34,6 +35,7 @@ class MessageModel {
 
   const MessageModel({
     required this.id,
+    this.clientMessageId,
     required this.conversationId,
     required this.senderName,
     required this.content,
@@ -53,6 +55,7 @@ class MessageModel {
 
   MessageModel copyWith({
     String? id,
+    String? clientMessageId,
     String? conversationId,
     String? senderName,
     String? content,
@@ -71,6 +74,7 @@ class MessageModel {
   }) {
     return MessageModel(
       id: id ?? this.id,
+      clientMessageId: clientMessageId ?? this.clientMessageId,
       conversationId: conversationId ?? this.conversationId,
       senderName: senderName ?? this.senderName,
       content: content ?? this.content,

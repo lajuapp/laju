@@ -46,18 +46,29 @@ class _HomeScreenState extends State<HomeScreen> {
     HomeScreen.activeTabNotifier.addListener(_onTabChanged);
     _loadConversations();
     // Periodically fetch conversations & check for incoming calls in background
-    _homePollingTimer = Timer.periodic(const Duration(seconds: 4), (_) {
+    _homePollingTimer = Timer.periodic(const Duration(seconds: 2), (_) {
       if (mounted) {
         CallSessionController.instance.checkForIncomingCalls();
-        if (_currentBottomNavIndex == 0 && !_isSearchExpanded) {
-          ConversationService.instance.fetchConversations().then((apiConvs) {
-            if (mounted && apiConvs.isNotEmpty) {
+        ConversationService.instance.fetchConversations().then((apiConvs) {
+          if (mounted && apiConvs.isNotEmpty && _currentBottomNavIndex == 0 && !_isSearchExpanded) {
+            bool changed = apiConvs.length != _conversations.length;
+            if (!changed) {
+              for (int i = 0; i < apiConvs.length; i++) {
+                if (apiConvs[i].id != _conversations[i].id ||
+                    apiConvs[i].lastMessage != _conversations[i].lastMessage ||
+                    apiConvs[i].lastMessageTime != _conversations[i].lastMessageTime) {
+                  changed = true;
+                  break;
+                }
+              }
+            }
+            if (changed) {
               setState(() {
                 _conversations = apiConvs;
               });
             }
-          }).catchError((_) {});
-        }
+          }
+        }).catchError((_) {});
       }
     });
   }
