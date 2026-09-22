@@ -141,7 +141,7 @@ class _GroupProfileScreenState extends State<GroupProfileScreen> {
                           GroupMemberItem(
                             id: u.id,
                             name: u.username,
-                            phone: u.phoneNumber ?? u.email ?? '',
+                            phone: '@${u.username}',
                             role: 'Anggota',
                             isAdmin: false,
                             isOnline: true,

@@ -287,6 +287,10 @@ class _FloatingCallOverlayState extends State<FloatingCallOverlay> with SingleTi
   }
 
   Widget _buildNotificationBanner(BuildContext context, InAppNotificationItem item, bool isDark) {
+    if (item.isCall) {
+      return _buildIncomingCallBanner(context, item, isDark);
+    }
+
     final textPrimary = isDark ? Colors.white : AppColors.textPrimary;
     final textSecondary = isDark ? const Color(0xFF94A3B8) : AppColors.textSecondary;
 
@@ -348,33 +352,214 @@ class _FloatingCallOverlayState extends State<FloatingCallOverlay> with SingleTi
                 ),
               ),
             ),
-            if (item.isCall) ...[
-              const SizedBox(width: 8),
-              // Decline
-              IconButton(
-                icon: const Icon(Icons.call_end_rounded, color: AppColors.danger, size: 20),
-                onPressed: item.onDecline,
-                constraints: const BoxConstraints(),
-                padding: const EdgeInsets.all(6),
-              ),
-              const SizedBox(width: 4),
-              // Accept
-              IconButton(
-                icon: const Icon(Icons.call_rounded, color: AppColors.primary, size: 20),
-                onPressed: item.onAccept,
-                constraints: const BoxConstraints(),
-                padding: const EdgeInsets.all(6),
-              ),
-            ] else ...[
-              IconButton(
-                icon: Icon(Icons.close_rounded, color: textSecondary, size: 18),
-                onPressed: () => AppNotificationService.instance.dismiss(),
-                constraints: const BoxConstraints(),
-                padding: const EdgeInsets.all(6),
-              ),
-            ],
+            IconButton(
+              icon: Icon(Icons.close_rounded, color: textSecondary, size: 18),
+              onPressed: () => AppNotificationService.instance.dismiss(),
+              constraints: const BoxConstraints(),
+              padding: const EdgeInsets.all(6),
+            ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildIncomingCallBanner(BuildContext context, InAppNotificationItem item, bool isDark) {
+    final textPrimary = isDark ? Colors.white : AppColors.textPrimary;
+    final textSecondary = isDark ? const Color(0xFF94A3B8) : AppColors.textSecondary;
+
+    return LajuGlassCard(
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+      borderRadius: 24,
+      blurSigma: 24,
+      tintColor: isDark ? const Color(0xFF0F172A) : Colors.white,
+      borderColor: AppColors.primary.withValues(alpha: 0.35),
+      borderWidth: 1.5,
+      customShadow: [
+        BoxShadow(
+          color: AppColors.primary.withValues(alpha: 0.25),
+          blurRadius: 28,
+          spreadRadius: 2,
+          offset: const Offset(0, 8),
+        ),
+      ],
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Header badge
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    Icon(item.icon, size: 13, color: AppColors.primary),
+                    const SizedBox(width: 4),
+                    Text(
+                      item.title.toUpperCase(),
+                      style: const TextStyle(
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.6,
+                        color: AppColors.primary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Text(
+                'Berdering...',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: textSecondary,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+
+          // Caller info row
+          Row(
+            children: [
+              Stack(
+                alignment: Alignment.center,
+                children: [
+                  AnimatedBuilder(
+                    animation: _pulseController,
+                    builder: (context, _) {
+                      return Container(
+                        width: 50 + (_pulseController.value * 8),
+                        height: 50 + (_pulseController.value * 8),
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: AppColors.primary.withValues(alpha: 0.5 - (_pulseController.value * 0.3)),
+                            width: 2,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                  ModernAvatar(
+                    name: item.senderName ?? item.message.split(' • ').first,
+                    radius: 23,
+                    isVerified: true,
+                  ),
+                ],
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      item.senderName ?? item.message.split(' • ').first,
+                      style: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w700,
+                        color: textPrimary,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      item.message.contains(' • ') ? item.message.split(' • ').last : item.message,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                        color: textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 18),
+
+          // Action Buttons: Tolak (Red) & Terima (Green)
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              // Decline Button
+              GestureDetector(
+                onTap: item.onDecline,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 50,
+                      height: 50,
+                      decoration: BoxDecoration(
+                        color: AppColors.danger,
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: AppColors.danger.withValues(alpha: 0.4),
+                            blurRadius: 12,
+                            spreadRadius: 1,
+                          ),
+                        ],
+                      ),
+                      child: const Icon(Icons.call_end_rounded, color: Colors.white, size: 24),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Tolak',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              // Accept Button
+              GestureDetector(
+                onTap: item.onAccept,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 50,
+                      height: 50,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF10B981),
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(0xFF10B981).withValues(alpha: 0.4),
+                            blurRadius: 12,
+                            spreadRadius: 1,
+                          ),
+                        ],
+                      ),
+                      child: const Icon(Icons.call_rounded, color: Colors.white, size: 24),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Terima',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }

@@ -58,7 +58,7 @@ class _StatusPrivacyContactPickerScreenState
           id: u.id,
           name: u.username,
           status: u.status ?? 'LAJU Verified User 🔒',
-          phone: u.phoneNumber ?? u.email ?? '',
+          phone: '@${u.username}',
         )).toList();
       });
     }
@@ -72,7 +72,7 @@ class _StatusPrivacyContactPickerScreenState
           id: u.id,
           name: u.username,
           status: u.status ?? 'LAJU Verified User 🔒',
-          phone: u.phoneNumber ?? u.email ?? '',
+          phone: '@${u.username}',
         )).toList();
       });
     }

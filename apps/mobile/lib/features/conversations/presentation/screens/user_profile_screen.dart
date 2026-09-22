@@ -452,9 +452,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
             icon: Icon(Icons.share_rounded, color: textPrimary),
             tooltip: 'Bagikan Kontak',
             onPressed: () {
-              final shareText = displayPhone != null
-                  ? '${widget.contactName} ($displayPhone)'
-                  : '${widget.contactName} (@${widget.contactName})';
+              final shareText = '${widget.contactName} (@${widget.contactName})';
               Clipboard.setData(ClipboardData(text: shareText));
               LajuToast.info(context, 'Detail kontak disalin ke clipboard');
             },
@@ -540,7 +538,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          displayPhone ?? 'Nomor ponsel tersembunyi',
+                          '@${widget.contactName}',
                           style: TextStyle(
                             fontSize: 14,
                             color: textSecondary,
@@ -685,12 +683,8 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                         const Divider(height: 24),
                         InkWell(
                           onTap: () {
-                            if (displayPhone != null) {
-                              Clipboard.setData(ClipboardData(text: displayPhone));
-                              LajuToast.info(context, 'Nomor disalin ke clipboard');
-                            } else {
-                              LajuToast.info(context, 'Pengguna tidak mencantumkan nomor telepon');
-                            }
+                            Clipboard.setData(ClipboardData(text: '@${widget.contactName}'));
+                            LajuToast.info(context, 'Username disalin ke clipboard');
                           },
                           child: Row(
                             children: [
@@ -699,25 +693,22 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text(
-                                      displayPhone ?? 'Tidak ada nomor telepon',
+                                      '@${widget.contactName}',
                                       style: TextStyle(
                                         fontSize: 15,
                                         fontWeight: FontWeight.w600,
-                                        color: displayPhone != null ? textPrimary : textSecondary,
+                                        color: textPrimary,
                                       ),
                                     ),
                                     const SizedBox(height: 2),
                                     Text(
-                                      displayPhone != null
-                                          ? 'Ponsel • Ketuk untuk salin'
-                                          : 'Ponsel • Nomor tidak dibagikan',
+                                      'ID Pengguna • Ketuk untuk salin',
                                       style: TextStyle(fontSize: 12, color: textSecondary),
                                     ),
                                   ],
                                 ),
                               ),
-                              if (displayPhone != null)
-                                const Icon(Icons.copy_rounded, size: 18, color: AppColors.primary),
+                              const Icon(Icons.copy_rounded, size: 18, color: AppColors.primary),
                             ],
                           ),
                         ),

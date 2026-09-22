@@ -30,7 +30,7 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
         _availableContacts = results.map((u) => GroupMemberItem(
           id: u.id,
           name: u.username,
-          phone: u.phoneNumber ?? u.email ?? '',
+          phone: '@${u.username}',
           role: u.status ?? 'LAJU Verified User 🔒',
           isOnline: true,
         )).toList();
@@ -45,7 +45,7 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
         _availableContacts = results.map((u) => GroupMemberItem(
           id: u.id,
           name: u.username,
-          phone: u.phoneNumber ?? u.email ?? '',
+          phone: '@${u.username}',
           role: u.status ?? 'LAJU Verified User 🔒',
           isOnline: true,
         )).toList();

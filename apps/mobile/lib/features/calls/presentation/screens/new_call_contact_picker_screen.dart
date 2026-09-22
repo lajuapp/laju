@@ -49,7 +49,7 @@ class _NewCallContactPickerScreenState extends State<NewCallContactPickerScreen>
           id: u.id,
           name: u.username,
           status: u.status ?? 'LAJU Verified User 🔒',
-          phone: u.phoneNumber ?? u.email ?? '',
+          phone: '@${u.username}',
           isOnline: true,
           isVerified: true,
         )).toList();
@@ -66,7 +66,7 @@ class _NewCallContactPickerScreenState extends State<NewCallContactPickerScreen>
           id: u.id,
           name: u.username,
           status: u.status ?? 'LAJU Verified User 🔒',
-          phone: u.phoneNumber ?? u.email ?? '',
+          phone: '@${u.username}',
           isOnline: true,
           isVerified: true,
         )).toList();
@@ -124,7 +124,7 @@ class _NewCallContactPickerScreenState extends State<NewCallContactPickerScreen>
                 autofocus: true,
                 style: TextStyle(fontSize: 16, color: isDark ? Colors.white : const Color(0xFF111827)),
                 decoration: InputDecoration(
-                  hintText: context.tr('searchNameOrNumber'),
+                  hintText: 'Cari nama atau username kontak...',
                   border: InputBorder.none,
                   hintStyle: TextStyle(color: isDark ? AppColors.darkTextSecondary : const Color(0xFF9CA3AF), fontSize: 15),
                 ),
@@ -284,7 +284,7 @@ class _NewCallContactPickerScreenState extends State<NewCallContactPickerScreen>
                               ),
                             ),
                             subtitle: Text(
-                              '${contact.phone} • ${contact.status}',
+                              '@${contact.name} • ${contact.status}',
                               style: TextStyle(fontSize: 12.5, color: isDark ? AppColors.darkTextSecondary : const Color(0xFF6B7280)),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,

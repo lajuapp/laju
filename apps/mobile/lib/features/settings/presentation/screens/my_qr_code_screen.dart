@@ -35,7 +35,7 @@ class _MyQrCodeScreenState extends State<MyQrCodeScreen> with TickerProviderStat
     HapticFeedback.selectionClick();
     final ctrl = AccountController.instance;
     final myUserId = AuthController.instance.currentUser?.id ?? '';
-    final link = 'laju://contact?u=${Uri.encodeComponent(ctrl.userName)}&id=$myUserId&phone=${Uri.encodeComponent(ctrl.phoneNumber)}&v=$_qrVersion';
+    final link = 'laju://contact?u=${Uri.encodeComponent(ctrl.userName)}&id=$myUserId&v=$_qrVersion';
     Clipboard.setData(ClipboardData(text: link));
     LajuToast.success(context, 'Tautan kontak disalin ke papan klip');
   }
@@ -44,7 +44,7 @@ class _MyQrCodeScreenState extends State<MyQrCodeScreen> with TickerProviderStat
     HapticFeedback.selectionClick();
     final ctrl = AccountController.instance;
     final myUserId = AuthController.instance.currentUser?.id ?? '';
-    final link = 'laju://contact?u=${Uri.encodeComponent(ctrl.userName)}&id=$myUserId&phone=${Uri.encodeComponent(ctrl.phoneNumber)}&v=$_qrVersion';
+    final link = 'laju://contact?u=${Uri.encodeComponent(ctrl.userName)}&id=$myUserId&v=$_qrVersion';
     final shareText =
         'Pindai kode QR saya untuk menambahkan kontak terenkripsi di LAJU:\n$link';
 
@@ -296,7 +296,7 @@ class _MyQrCodeScreenState extends State<MyQrCodeScreen> with TickerProviderStat
                     Builder(
                       builder: (context) {
                         final myUserId = AuthController.instance.currentUser?.id ?? '';
-                        final qrData = 'laju://contact?u=${Uri.encodeComponent(ctrl.userName)}&id=$myUserId&phone=${Uri.encodeComponent(ctrl.phoneNumber)}&v=$_qrVersion';
+                        final qrData = 'laju://contact?u=${Uri.encodeComponent(ctrl.userName)}&id=$myUserId&v=$_qrVersion';
                         return LajuQrCodeView(
                           data: qrData,
                           size: 216,

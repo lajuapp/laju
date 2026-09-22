@@ -18,18 +18,14 @@ export class CallsService {
 
   async createCall(callerUserId: string, callerDeviceId: string, calleeUserId: string, isVideo?: boolean) {
     return this.prisma.$transaction(async (tx) => {
-      // Find target callee user by ID, username, or phone
-      const cleanPhone = calleeUserId.replace(/[^0-9+]/g, '');
-      const rawDigits = calleeUserId.replace(/[^0-9]/g, '');
+      // Find target callee user by ID or username
+      const cleanUsername = calleeUserId.startsWith('@') ? calleeUserId.substring(1) : calleeUserId;
       const targetUser = await tx.user.findFirst({
         where: {
           OR: [
             { id: calleeUserId },
             { username: { equals: calleeUserId, mode: 'insensitive' } },
-            { phoneNumber: calleeUserId },
-            { phoneNumber: cleanPhone },
-            { phoneNumber: rawDigits },
-            { phoneNumber: `+${rawDigits}` }
+            { username: { equals: cleanUsername, mode: 'insensitive' } }
           ]
         }
       });

@@ -60,7 +60,7 @@ class _GroupCallPickerScreenState extends State<GroupCallPickerScreen> {
         _availableContacts = results.map((u) => GroupCallContactItem(
           id: u.id,
           name: u.username,
-          phone: u.phoneNumber ?? u.email ?? '',
+          phone: '@${u.username}',
           isOnline: true,
         )).toList();
       });
@@ -74,7 +74,7 @@ class _GroupCallPickerScreenState extends State<GroupCallPickerScreen> {
         _availableContacts = results.map((u) => GroupCallContactItem(
           id: u.id,
           name: u.username,
-          phone: u.phoneNumber ?? u.email ?? '',
+          phone: '@${u.username}',
           isOnline: true,
         )).toList();
       });
