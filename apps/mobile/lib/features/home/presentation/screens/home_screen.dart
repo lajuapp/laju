@@ -154,6 +154,14 @@ class _HomeScreenState extends State<HomeScreen> {
       if (!aPin && bPin) return 1;
       return b.lastMessageTime.compareTo(a.lastMessageTime);
     });
+
+    final query = _searchController.text.trim().toLowerCase();
+    if (query.isNotEmpty) {
+      list = list.where((c) =>
+          c.title.toLowerCase().contains(query) ||
+          c.lastMessage.toLowerCase().contains(query)).toList();
+    }
+
     return list;
   }
 
@@ -551,11 +559,34 @@ class _HomeScreenState extends State<HomeScreen> {
             child: SizedBox(
               height: 42,
               child: TextField(
+                controller: _searchController,
+                onChanged: (_) => setState(() {}),
                 style: TextStyle(color: isDark ? Colors.white : const Color(0xFF111827), fontSize: 14),
                 decoration: InputDecoration(
-                  hintText: 'Search chats, people, or message',
-                  hintStyle: TextStyle(color: isDark ? AppColors.darkTextSecondary : const Color(0xFF9CA3AF), fontSize: 13.5),
-                  prefixIcon: Icon(Icons.search_rounded, color: isDark ? AppColors.darkTextSecondary : const Color(0xFF9CA3AF), size: 20),
+                  hintText: 'Cari obrolan, kontak, atau pesan...',
+                  hintStyle: TextStyle(
+                    color: isDark ? AppColors.darkTextSecondary : const Color(0xFF9CA3AF),
+                    fontSize: 13.5,
+                  ),
+                  prefixIcon: Icon(
+                    Icons.search_rounded,
+                    color: isDark ? AppColors.darkTextSecondary : const Color(0xFF9CA3AF),
+                    size: 20,
+                  ),
+                  suffixIcon: _searchController.text.isNotEmpty
+                      ? IconButton(
+                          icon: Icon(
+                            Icons.close_rounded,
+                            size: 18,
+                            color: isDark ? Colors.white70 : const Color(0xFF6B7280),
+                          ),
+                          onPressed: () {
+                            _searchController.clear();
+                            setState(() {});
+                          },
+                          tooltip: 'Hapus Pencarian',
+                        )
+                      : null,
                   border: InputBorder.none,
                   enabledBorder: InputBorder.none,
                   focusedBorder: InputBorder.none,
@@ -600,6 +631,8 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     if (_filteredConversations.isEmpty) {
+      final isSearching = _searchController.text.trim().isNotEmpty;
+
       return ListView(
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
@@ -617,15 +650,15 @@ class _HomeScreenState extends State<HomeScreen> {
                       color: AppColors.primary.withValues(alpha: 0.12),
                       shape: BoxShape.circle,
                     ),
-                    child: const Icon(
-                      Icons.chat_bubble_outline_rounded,
+                    child: Icon(
+                      isSearching ? Icons.search_off_rounded : Icons.chat_bubble_outline_rounded,
                       color: AppColors.primary,
                       size: 32,
                     ),
                   ),
                   const SizedBox(height: 16),
                   Text(
-                    'Belum Ada Obrolan',
+                    isSearching ? 'Tidak Ditemukan' : 'Belum Ada Obrolan',
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
@@ -634,7 +667,9 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    'Mulai obrolan baru dengan kontak Anda menggunakan tombol pesan di kanan bawah.',
+                    isSearching
+                        ? 'Tidak ada obrolan yang cocok dengan "${_searchController.text.trim()}". Periksa ejaan atau gunakan kata kunci lain.'
+                        : 'Mulai obrolan baru dengan kontak Anda menggunakan tombol pesan di kanan bawah.',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       fontSize: 13,

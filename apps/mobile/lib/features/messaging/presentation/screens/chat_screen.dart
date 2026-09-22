@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import '../../../../core/core.dart';
 import '../../domain/models/message_model.dart';
 import '../widgets/chat_bubble.dart';
@@ -10,6 +11,7 @@ import '../../../conversations/domain/conversation_service.dart';
 import '../widgets/attachment_bottom_sheet.dart';
 import 'disappearing_messages_screen.dart';
 import '../../../conversations/presentation/screens/user_profile_screen.dart';
+import '../../../settings/presentation/screens/wallpaper_settings_screen.dart';
 import '../../../../core/services/voice_note_service.dart';
 
 class ChatScreen extends StatefulWidget {
@@ -39,6 +41,10 @@ class _ChatScreenState extends State<ChatScreen> {
   MessageModel? _editingMessage;
   Timer? _pollTimer;
   bool _showScrollToBottom = false;
+
+  bool _isSearching = false;
+  final TextEditingController _inChatSearchController = TextEditingController();
+  String _inChatSearchQuery = '';
 
   @override
   void initState() {
@@ -153,6 +159,7 @@ class _ChatScreenState extends State<ChatScreen> {
       ConversationService.instance.currentActiveConversationId = null;
     }
     _pollTimer?.cancel();
+    _inChatSearchController.dispose();
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
     super.dispose();
@@ -503,129 +510,424 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
+  void _showMediaSheet(BuildContext context, bool isDark) {
+    final mediaList = _messages.where((m) => m.contentType == MessageContentType.attachment).toList();
+    if (mediaList.isEmpty) {
+      LajuToast.info(context, 'Belum ada media atau berkas dibagikan dalam obrolan ini');
+      return;
+    }
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: isDark ? const Color(0xFF0F172A) : Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Media & Lampiran (${mediaList.length})',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: isDark ? Colors.white : const Color(0xFF0F172A),
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close_rounded),
+                      onPressed: () => Navigator.pop(sheetContext),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Flexible(
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    itemCount: mediaList.length,
+                    separatorBuilder: (_, __) => Divider(height: 1, color: isDark ? Colors.white10 : Colors.black12),
+                    itemBuilder: (ctx, i) {
+                      final item = mediaList[i];
+                      final name = item.attachmentName ?? item.content;
+                      final isImg = item.attachmentPath != null &&
+                          (item.attachmentPath!.startsWith('data:image') ||
+                              item.attachmentPath!.endsWith('.jpg') ||
+                              item.attachmentPath!.endsWith('.png') ||
+                              item.attachmentPath!.endsWith('.jpeg'));
+
+                      return ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: Container(
+                          width: 42,
+                          height: 42,
+                          decoration: BoxDecoration(
+                            color: AppColors.primary.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Icon(
+                            isImg ? Icons.image_rounded : Icons.insert_drive_file_rounded,
+                            color: AppColors.primary,
+                          ),
+                        ),
+                        title: Text(
+                          name,
+                          style: TextStyle(
+                            fontSize: 13.5,
+                            fontWeight: FontWeight.w600,
+                            color: isDark ? Colors.white : const Color(0xFF111827),
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        subtitle: Text(
+                          DateFormat('dd MMM yyyy, HH:mm').format(item.timestamp.toLocal()),
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            color: isDark ? AppColors.darkTextSecondary : const Color(0xFF6B7280),
+                          ),
+                        ),
+                        onTap: () {
+                          Navigator.pop(sheetContext);
+                          if (isImg && item.attachmentPath != null) {
+                            LajuImageViewer.show(
+                              context,
+                              imagePath: item.attachmentPath!,
+                              title: item.isOutgoing ? 'Anda' : item.senderName,
+                              subtitle: DateFormat('dd MMM yyyy, HH:mm').format(item.timestamp.toLocal()),
+                            );
+                          } else {
+                            LajuToast.info(context, 'Membuka $name');
+                          }
+                        },
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _confirmClearChat(BuildContext context, bool isDark) {
+    showDialog(
+      context: context,
+      builder: (dialogCtx) {
+        return AlertDialog(
+          backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: Text(
+            'Bersihkan Chat?',
+            style: TextStyle(
+              fontSize: 17,
+              fontWeight: FontWeight.bold,
+              color: isDark ? Colors.white : const Color(0xFF0F172A),
+            ),
+          ),
+          content: Text(
+            'Semua pesan dalam obrolan ini akan dihapus dari perangkat Anda.',
+            style: TextStyle(
+              fontSize: 13.5,
+              color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogCtx),
+              child: Text(
+                'Batal',
+                style: TextStyle(
+                  color: isDark ? Colors.white70 : const Color(0xFF64748B),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.danger,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+              onPressed: () {
+                Navigator.pop(dialogCtx);
+                setState(() {
+                  _messages.clear();
+                });
+                ConversationService.instance.updateMemoryMessages(widget.conversationId, []);
+                LajuToast.info(context, 'Chat berhasil dibersihkan');
+              },
+              child: const Text('Bersihkan Pesan', style: TextStyle(fontWeight: FontWeight.w700)),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  PopupMenuItem<String> _buildMenuItem(
+    String value,
+    IconData icon,
+    String title,
+    bool isDark, {
+    bool isDestructive = false,
+  }) {
+    final color = isDestructive ? AppColors.danger : (isDark ? Colors.white : const Color(0xFF1F2937));
+    return PopupMenuItem<String>(
+      value: value,
+      child: Row(
+        children: [
+          Icon(
+            icon,
+            size: 19,
+            color: isDestructive ? AppColors.danger : (isDark ? Colors.white70 : const Color(0xFF6B7280)),
+          ),
+          const SizedBox(width: 12),
+          Text(
+            title,
+            style: TextStyle(
+              fontSize: 13.5,
+              fontWeight: FontWeight.w500,
+              color: color,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = ThemeModeController.instance.isDarkMode(context);
 
     return Scaffold(
       backgroundColor: isDark ? const Color(0xFF0B1015) : const Color(0xFFF3F4F6),
-      appBar: LajuGlassAppBar(
-        titleSpacing: 0,
-        title: GestureDetector(
-          onTap: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => UserProfileScreen(
-                  contactName: widget.title,
-                  isOnline: true,
-                  isVerified: true,
-                  safetyNumber: widget.safetyNumber,
-                  avatarUrl: widget.avatarUrl,
+      appBar: _isSearching
+          ? LajuGlassAppBar(
+              titleSpacing: 0,
+              leading: IconButton(
+                icon: Icon(Icons.arrow_back_rounded, color: isDark ? Colors.white : const Color(0xFF374151)),
+                onPressed: () {
+                  setState(() {
+                    _isSearching = false;
+                    _inChatSearchController.clear();
+                    _inChatSearchQuery = '';
+                  });
+                },
+              ),
+              title: TextField(
+                controller: _inChatSearchController,
+                autofocus: true,
+                style: TextStyle(
+                  color: isDark ? Colors.white : const Color(0xFF0F172A),
+                  fontSize: 15,
                 ),
+                decoration: InputDecoration(
+                  hintText: 'Cari dalam obrolan...',
+                  hintStyle: TextStyle(
+                    color: isDark ? AppColors.darkTextSecondary : const Color(0xFF9CA3AF),
+                    fontSize: 14,
+                  ),
+                  border: InputBorder.none,
+                ),
+                onChanged: (val) {
+                  setState(() {
+                    _inChatSearchQuery = val.trim();
+                  });
+                },
               ),
-            );
-          },
-          child: Row(
-            children: [
-              ModernAvatar(
-                name: widget.title,
-                imagePath: widget.avatarUrl,
-                radius: 19,
-                isOnline: true,
-                isVerified: true,
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      widget.title,
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                        color: isDark ? Colors.white : const Color(0xFF0F172A),
+              actions: [
+                if (_inChatSearchController.text.isNotEmpty)
+                  IconButton(
+                    icon: Icon(Icons.close_rounded, size: 20, color: isDark ? Colors.white70 : const Color(0xFF6B7280)),
+                    onPressed: () {
+                      _inChatSearchController.clear();
+                      setState(() => _inChatSearchQuery = '');
+                    },
+                  ),
+              ],
+            )
+          : LajuGlassAppBar(
+              titleSpacing: 0,
+              title: GestureDetector(
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => UserProfileScreen(
+                        contactName: widget.title,
+                        isOnline: true,
+                        isVerified: true,
+                        safetyNumber: widget.safetyNumber,
+                        avatarUrl: widget.avatarUrl,
                       ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
                     ),
-                    Row(
-                      children: [
-                        Container(
-                          width: 6,
-                          height: 6,
-                          decoration: const BoxDecoration(
-                            color: Color(0xFF10B981),
-                            shape: BoxShape.circle,
-                            boxShadow: [
-                              BoxShadow(
-                                color: Color(0xFF10B981),
-                                blurRadius: 4,
-                              ),
-                            ],
+                  );
+                },
+                child: Row(
+                  children: [
+                    ModernAvatar(
+                      name: widget.title,
+                      imagePath: widget.avatarUrl,
+                      radius: 19,
+                      isOnline: true,
+                      isVerified: true,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            widget.title,
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                              color: isDark ? Colors.white : const Color(0xFF0F172A),
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
-                        ),
-                        const SizedBox(width: 4),
-                        const Text(
-                          'Online',
-                          style: TextStyle(fontSize: 11, color: Color(0xFF10B981), fontWeight: FontWeight.w600),
-                        ),
-                      ],
+                          ValueListenableBuilder<Map<String, bool>>(
+                            valueListenable: ConversationService.instance.typingStatusNotifier,
+                            builder: (context, typings, _) {
+                              final isTyping = typings[widget.conversationId] == true;
+                              if (isTyping) {
+                                return const Text(
+                                  'sedang mengetik...',
+                                  style: TextStyle(
+                                    fontSize: 11.5,
+                                    color: AppColors.primary,
+                                    fontWeight: FontWeight.w600,
+                                    fontStyle: FontStyle.italic,
+                                  ),
+                                );
+                              }
+                              return Row(
+                                children: [
+                                  Container(
+                                    width: 6,
+                                    height: 6,
+                                    decoration: const BoxDecoration(
+                                      color: Color(0xFF10B981),
+                                      shape: BoxShape.circle,
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: Color(0xFF10B981),
+                                          blurRadius: 4,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  const Text(
+                                    'Online',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: Color(0xFF10B981),
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
+                              );
+                            },
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 ),
               ),
-            ],
-          ),
-        ),
-        actions: [
-          IconButton(
-            icon: Icon(Icons.call_rounded, size: 21, color: isDark ? Colors.white : const Color(0xFF374151)),
-            onPressed: () => _startCall(false),
-            tooltip: 'Voice Call',
-          ),
-          IconButton(
-            icon: Icon(Icons.videocam_rounded, size: 23, color: isDark ? Colors.white : const Color(0xFF374151)),
-            onPressed: () => _startCall(true),
-            tooltip: 'Video Call',
-          ),
-          PopupMenuButton<String>(
-            color: isDark ? AppColors.darkSurfaceElevated : Colors.white,
-            icon: Icon(Icons.more_vert_rounded, color: isDark ? Colors.white : const Color(0xFF374151)),
-            onSelected: (value) {
-              if (value == 'verify') {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => KeyVerificationScreen(
-                      contactName: widget.title,
-                      safetyNumber: '19402 48190 28471 00293 84729 48190',
-                    ),
-                  ),
-                );
-              } else if (value == 'disappearing') {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const DisappearingMessagesScreen(),
-                  ),
-                );
-              }
-            },
-            itemBuilder: (context) => const [
-              PopupMenuItem(
-                value: 'verify',
-                child: Text('Verify Security Key'),
-              ),
-              PopupMenuItem(
-                value: 'disappearing',
-                child: Text('Disappearing Messages'),
-              ),
-            ],
-          ),
-        ],
-      ),
+              actions: [
+                IconButton(
+                  icon: Icon(Icons.call_rounded, size: 21, color: isDark ? Colors.white : const Color(0xFF374151)),
+                  onPressed: () => _startCall(false),
+                  tooltip: 'Voice Call',
+                ),
+                IconButton(
+                  icon: Icon(Icons.videocam_rounded, size: 23, color: isDark ? Colors.white : const Color(0xFF374151)),
+                  onPressed: () => _startCall(true),
+                  tooltip: 'Video Call',
+                ),
+                PopupMenuButton<String>(
+                  color: isDark ? AppColors.darkSurfaceElevated : Colors.white,
+                  icon: Icon(Icons.more_vert_rounded, color: isDark ? Colors.white : const Color(0xFF374151)),
+                  onSelected: (value) {
+                    switch (value) {
+                      case 'contact':
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => UserProfileScreen(
+                              contactName: widget.title,
+                              isOnline: true,
+                              isVerified: true,
+                              safetyNumber: widget.safetyNumber,
+                              avatarUrl: widget.avatarUrl,
+                            ),
+                          ),
+                        );
+                        break;
+                      case 'media':
+                        _showMediaSheet(context, isDark);
+                        break;
+                      case 'search':
+                        setState(() => _isSearching = true);
+                        break;
+                      case 'wallpaper':
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const WallpaperSettingsScreen(),
+                          ),
+                        );
+                        break;
+                      case 'disappearing':
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const DisappearingMessagesScreen(),
+                          ),
+                        );
+                        break;
+                      case 'verify':
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => KeyVerificationScreen(
+                              contactName: widget.title,
+                              safetyNumber: '19402 48190 28471 00293 84729 48190',
+                            ),
+                          ),
+                        );
+                        break;
+                      case 'clear':
+                        _confirmClearChat(context, isDark);
+                        break;
+                    }
+                  },
+                  itemBuilder: (context) => [
+                    _buildMenuItem('contact', Icons.person_outline_rounded, 'Lihat Kontak', isDark),
+                    _buildMenuItem('media', Icons.perm_media_outlined, 'Media & Lampiran', isDark),
+                    _buildMenuItem('search', Icons.search_rounded, 'Cari Pesan', isDark),
+                    _buildMenuItem('wallpaper', Icons.wallpaper_rounded, 'Wallpaper Chat', isDark),
+                    _buildMenuItem('disappearing', Icons.timer_outlined, 'Pesan Sementara', isDark),
+                    _buildMenuItem('verify', Icons.verified_user_outlined, 'Kunci Keamanan', isDark),
+                    const PopupMenuDivider(height: 1),
+                    _buildMenuItem('clear', Icons.delete_sweep_outlined, 'Bersihkan Chat', isDark, isDestructive: true),
+                  ],
+                ),
+              ],
+            ),
       body: ListenableBuilder(
         listenable: ChatAppearanceController.instance,
         builder: (context, _) {
@@ -721,37 +1023,80 @@ class _ChatScreenState extends State<ChatScreen> {
                               ),
                             ),
                           )
-                        : ListView.builder(
-                            controller: _scrollController,
-                            padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 4),
-                            itemCount: _messages.length,
-                            itemBuilder: (context, index) {
-                              final msg = _messages[index];
-                              final isFirstOrDiffDay = index == 0 ||
-                                  !DateHelper.isSameDay(msg.timestamp, _messages[index - 1].timestamp);
+                        : Builder(
+                            builder: (context) {
+                              final displayedMsgs = _isSearching && _inChatSearchQuery.isNotEmpty
+                                  ? _messages
+                                      .where((m) => m.content
+                                          .toLowerCase()
+                                          .contains(_inChatSearchQuery.toLowerCase()))
+                                      .toList()
+                                  : _messages;
 
-                              final bubble = ChatBubble(
-                                message: msg,
-                                onReactionSelected: (emoji) => _handleReaction(msg, emoji),
-                                onReply: _handleReply,
-                                onEdit: _handleEditMessage,
-                                onDelete: () async {
-                                  final msgToDelete = _messages[index];
-                                  setState(() => _messages.removeAt(index));
-                                  await ConversationService.instance.deleteMessage(msgToDelete.id);
-                                },
-                              );
-
-                              if (isFirstOrDiffDay) {
-                                return Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    _buildDateDivider(msg.timestamp, isDark),
-                                    bubble,
-                                  ],
+                              if (displayedMsgs.isEmpty && _isSearching) {
+                                return Center(
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(24),
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(Icons.search_off_rounded, size: 48, color: isDark ? Colors.white38 : Colors.black26),
+                                        const SizedBox(height: 12),
+                                        Text(
+                                          'Tidak ada pesan yang cocok',
+                                          style: TextStyle(
+                                            fontSize: 15,
+                                            fontWeight: FontWeight.w600,
+                                            color: isDark ? Colors.white : const Color(0xFF1E293B),
+                                          ),
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          '"$_inChatSearchQuery"',
+                                          style: TextStyle(
+                                            fontSize: 13,
+                                            color: isDark ? AppColors.darkTextSecondary : const Color(0xFF64748B),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
                                 );
                               }
-                              return bubble;
+
+                              return ListView.builder(
+                                controller: _scrollController,
+                                padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 4),
+                                itemCount: displayedMsgs.length,
+                                itemBuilder: (context, index) {
+                                  final msg = displayedMsgs[index];
+                                  final isFirstOrDiffDay = index == 0 ||
+                                      !DateHelper.isSameDay(msg.timestamp, displayedMsgs[index - 1].timestamp);
+
+                                  final bubble = ChatBubble(
+                                    message: msg,
+                                    onReactionSelected: (emoji) => _handleReaction(msg, emoji),
+                                    onReply: _handleReply,
+                                    onEdit: _handleEditMessage,
+                                    onDelete: () async {
+                                      final msgToDelete = displayedMsgs[index];
+                                      setState(() => _messages.removeWhere((m) => m.id == msgToDelete.id));
+                                      await ConversationService.instance.deleteMessage(msgToDelete.id);
+                                    },
+                                  );
+
+                                  if (isFirstOrDiffDay) {
+                                    return Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        _buildDateDivider(msg.timestamp, isDark),
+                                        bubble,
+                                      ],
+                                    );
+                                  }
+                                  return bubble;
+                                },
+                              );
                             },
                           ),
                   ),
@@ -766,6 +1111,9 @@ class _ChatScreenState extends State<ChatScreen> {
                     editingMessage: _editingMessage,
                     onCancelEdit: _cancelEdit,
                     onConfirmEdit: _confirmEditMessage,
+                    onTypingChanged: (isTyping) {
+                      ConversationService.instance.setTyping(widget.conversationId, isTyping);
+                    },
                   ),
                 ],
               ),

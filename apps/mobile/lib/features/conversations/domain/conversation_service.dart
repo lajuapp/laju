@@ -64,6 +64,19 @@ class ConversationService {
     }
   }
 
+  /// Active typing indicators per conversation ID
+  final ValueNotifier<Map<String, bool>> typingStatusNotifier = ValueNotifier({});
+
+  void setTyping(String conversationId, bool isTyping) {
+    final current = Map<String, bool>.from(typingStatusNotifier.value);
+    if (isTyping) {
+      current[conversationId] = true;
+    } else {
+      current.remove(conversationId);
+    }
+    typingStatusNotifier.value = current;
+  }
+
   /// Search users in the backend directory for new chats or group members
   Future<List<UserDirectoryItem>> searchUsers(String query) async {
     try {

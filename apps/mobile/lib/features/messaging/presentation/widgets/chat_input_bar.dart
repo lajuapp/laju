@@ -17,6 +17,7 @@ class ChatInputBar extends StatefulWidget {
   final MessageModel? editingMessage;
   final VoidCallback? onCancelEdit;
   final Function(String newText)? onConfirmEdit;
+  final ValueChanged<bool>? onTypingChanged;
 
   const ChatInputBar({
     super.key,
@@ -29,6 +30,7 @@ class ChatInputBar extends StatefulWidget {
     this.editingMessage,
     this.onCancelEdit,
     this.onConfirmEdit,
+    this.onTypingChanged,
   });
 
   @override
@@ -39,6 +41,7 @@ class _ChatInputBarState extends State<ChatInputBar> with SingleTickerProviderSt
   final TextEditingController _controller = TextEditingController();
   final FocusNode _focusNode = FocusNode();
   bool _hasText = false;
+  Timer? _typingTimer;
 
   bool _isRecording = false;
   int _recordSeconds = 0;
@@ -63,6 +66,16 @@ class _ChatInputBarState extends State<ChatInputBar> with SingleTickerProviderSt
         setState(() {
           _hasText = hasText;
         });
+      }
+      if (hasText) {
+        widget.onTypingChanged?.call(true);
+        _typingTimer?.cancel();
+        _typingTimer = Timer(const Duration(seconds: 2), () {
+          widget.onTypingChanged?.call(false);
+        });
+      } else {
+        _typingTimer?.cancel();
+        widget.onTypingChanged?.call(false);
       }
     });
 
@@ -109,6 +122,7 @@ class _ChatInputBarState extends State<ChatInputBar> with SingleTickerProviderSt
 
   @override
   void dispose() {
+    _typingTimer?.cancel();
     _recordTimer?.cancel();
     _pulseController.dispose();
     _focusNode.dispose();
