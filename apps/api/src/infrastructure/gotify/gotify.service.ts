@@ -19,13 +19,59 @@ export interface PushNotificationPayload {
 export class GotifyService {
   private readonly logger = new Logger(GotifyService.name);
   private readonly gotifyUrl: string;
-  private readonly token: string;
+  private token: string;
   private readonly fcmServerKey: string;
 
   constructor(private readonly configService: ConfigService) {
     this.gotifyUrl = this.configService.get<string>('GOTIFY_URL') || 'http://localhost:80';
     this.token = this.configService.get<string>('GOTIFY_CLIENT_TOKEN') || '';
     this.fcmServerKey = this.configService.get<string>('FCM_SERVER_KEY') || '';
+  }
+
+  private async getOrProvisionAppToken(): Promise<string | null> {
+    const username = this.configService.get<string>('GOTIFY_DEFAULTUSER_NAME') || 'lajuadmin';
+    const password = this.configService.get<string>('GOTIFY_DEFAULTUSER_PASS') || 'laju_gotify_secure_pass_123';
+    const authHeader = 'Basic ' + Buffer.from(`${username}:${password}`).toString('base64');
+
+    try {
+      const appsRes = await fetch(`${this.gotifyUrl}/application`, {
+        headers: { Authorization: authHeader }
+      });
+      if (appsRes.ok) {
+        const apps = await appsRes.json();
+        if (Array.isArray(apps) && apps.length > 0) {
+          const found = apps.find((a: any) => a.name === 'LajuMessenger') || apps[0];
+          if (found && found.token) {
+            this.token = found.token;
+            return found.token;
+          }
+        }
+      }
+
+      const createRes = await fetch(`${this.gotifyUrl}/application`, {
+        method: 'POST',
+        headers: {
+          Authorization: authHeader,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          name: 'LajuMessenger',
+          description: 'Laju Secure Messenger Push Service'
+        })
+      });
+
+      if (createRes.ok) {
+        const newApp = await createRes.json();
+        if (newApp && newApp.token) {
+          this.token = newApp.token;
+          this.logger.log(`Provisioned new Gotify Application Token successfully`);
+          return newApp.token;
+        }
+      }
+    } catch (e: any) {
+      this.logger.debug(`Could not auto-provision Gotify app token: ${e.message}`);
+    }
+    return null;
   }
 
   /**
@@ -36,7 +82,7 @@ export class GotifyService {
     let delivered = false;
 
     // 1. Try sending via Gotify if token or default token available
-    const activeGotifyToken = targetToken && !targetToken.startsWith('fcm_') ? targetToken : this.token;
+    let activeGotifyToken = targetToken && !targetToken.startsWith('fcm_') ? targetToken : this.token;
     if (activeGotifyToken) {
       try {
         const payload: any = {
@@ -52,20 +98,32 @@ export class GotifyService {
           }
         };
 
-        const res = await fetch(`${this.gotifyUrl}/message?token=${activeGotifyToken}`, {
+        let res = await fetch(`${this.gotifyUrl}/message?token=${activeGotifyToken}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
         });
 
+        if (res.status === 401) {
+          const renewed = await this.getOrProvisionAppToken();
+          if (renewed) {
+            activeGotifyToken = renewed;
+            res = await fetch(`${this.gotifyUrl}/message?token=${activeGotifyToken}`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload)
+            });
+          }
+        }
+
         if (res.ok) {
           delivered = true;
           this.logger.debug(`Gotify push sent successfully for conversation: ${conversationId}`);
         } else {
-          this.logger.warn(`Gotify push request responded with status: ${res.status}`);
+          this.logger.debug(`Gotify push request responded with status: ${res.status}`);
         }
       } catch (err: any) {
-        this.logger.warn(`Failed to dispatch Gotify push notification: ${err.message}`);
+        this.logger.debug(`Failed to dispatch Gotify push notification: ${err.message}`);
       }
     }
 

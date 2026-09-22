@@ -37,6 +37,8 @@ class ApiEndpoints {
   // Calls
   static const String calls = '/calls';
   static const String callIncoming = '/calls/incoming';
+  static const String callHistory = '/calls/history';
+  static String callById(String id) => '/calls/$id';
   static String callAccept(String id) => '/calls/$id/accept';
   static String callReject(String id) => '/calls/$id/reject';
   static String callEnd(String id) => '/calls/$id/end';

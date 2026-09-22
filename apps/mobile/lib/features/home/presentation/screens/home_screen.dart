@@ -2,7 +2,9 @@ import 'dart:ui' as ui;
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:intl/intl.dart';
 import '../../../../core/core.dart';
+import '../../../../core/services/local_database.dart';
 import '../../../conversations/domain/models/conversation_model.dart';
 import '../../../conversations/domain/conversation_service.dart';
 import '../../../conversations/presentation/widgets/conversation_tile.dart';
@@ -39,12 +41,15 @@ class _HomeScreenState extends State<HomeScreen> {
 
   final List<String> _filters = ['All', 'Unread', 'Groups', 'Favorites'];
 
+  List<Map<String, dynamic>> _callLogs = [];
+
   @override
   void initState() {
     super.initState();
     _currentBottomNavIndex = HomeScreen.activeTabNotifier.value;
     HomeScreen.activeTabNotifier.addListener(_onTabChanged);
     _loadConversations();
+    _loadCallLogs();
     // Periodically fetch conversations & check for incoming calls in background
     _homePollingTimer = Timer.periodic(const Duration(seconds: 2), (_) {
       if (mounted) {
@@ -72,6 +77,17 @@ class _HomeScreenState extends State<HomeScreen> {
         }).catchError((_) {});
       }
     });
+  }
+
+  Future<void> _loadCallLogs() async {
+    try {
+      final logs = await LocalDatabase.instance.getCallLogs();
+      if (mounted) {
+        setState(() {
+          _callLogs = logs;
+        });
+      }
+    } catch (_) {}
   }
 
   Future<void> _loadConversations() async {
@@ -111,6 +127,9 @@ class _HomeScreenState extends State<HomeScreen> {
       setState(() {
         _currentBottomNavIndex = HomeScreen.activeTabNotifier.value;
       });
+      if (_currentBottomNavIndex == 2) {
+        _loadCallLogs();
+      }
     }
   }
 
@@ -794,10 +813,32 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  String _formatCallTimestamp(int? timestampMs) {
+    if (timestampMs == null || timestampMs == 0) return '';
+    final dt = DateTime.fromMillisecondsSinceEpoch(timestampMs);
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final callDate = DateTime(dt.year, dt.month, dt.day);
+
+    if (callDate == today) {
+      return DateFormat('HH:mm').format(dt);
+    } else if (callDate == today.subtract(const Duration(days: 1))) {
+      return 'Kemarin, ${DateFormat('HH:mm').format(dt)}';
+    } else {
+      return DateFormat('d MMM, HH:mm').format(dt);
+    }
+  }
+
+  String _formatCallDuration(int seconds) {
+    if (seconds <= 0) return '';
+    final m = seconds ~/ 60;
+    final s = seconds % 60;
+    if (m == 0) return '${s}d';
+    return '${m}m ${s}d';
+  }
+
   Widget _buildCallsTab() {
     final isDark = ThemeModeController.instance.isDarkMode(context);
-
-    final List<Map<String, dynamic>> recentCalls = [];
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -827,6 +868,14 @@ class _HomeScreenState extends State<HomeScreen> {
               Icons.more_vert_rounded,
               color: isDark ? Colors.white : const Color(0xFF374151),
             ),
+            onSelected: (value) async {
+              if (value == 'clear') {
+                await LocalDatabase.instance.clearCallLogs();
+                _loadCallLogs();
+              } else if (value == 'settings') {
+                HomeScreen.activeTabNotifier.value = 3;
+              }
+            },
             itemBuilder: (context) => [
               PopupMenuItem(value: 'clear', child: Text(context.tr('clearCallLog'))),
               PopupMenuItem(value: 'settings', child: Text(context.tr('settings'))),
@@ -848,7 +897,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 Navigator.push(
                   context,
                   MaterialPageRoute(builder: (context) => const NewCallContactPickerScreen()),
-                );
+                ).then((_) => _loadCallLogs());
               },
               child: Row(
                 children: [
@@ -908,7 +957,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           const SizedBox(height: 20),
 
-          if (recentCalls.isEmpty)
+          if (_callLogs.isEmpty)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 36, horizontal: 24),
               child: Center(
@@ -976,14 +1025,36 @@ class _HomeScreenState extends State<HomeScreen> {
               borderRadius: 18,
               padding: const EdgeInsets.symmetric(vertical: 4),
               child: Column(
-                children: List.generate(recentCalls.length, (index) {
-                  final call = recentCalls[index];
-                  final name = call['name'] as String;
-                  final time = call['time'] as String;
-                  final isMissed = call['isMissed'] as bool;
-                  final isIncoming = call['isIncoming'] as bool;
-                  final isVideo = call['isVideo'] as bool;
-                  final isLast = index == recentCalls.length - 1;
+                children: List.generate(_callLogs.length, (index) {
+                  final call = _callLogs[index];
+                  final name = (call['contact_name'] as String?)?.isNotEmpty == true
+                      ? call['contact_name'] as String
+                      : 'Panggilan';
+                  final phone = call['contact_phone'] as String?;
+                  final userId = call['contact_user_id'] as String?;
+                  final direction = call['direction'] as String? ?? 'outgoing';
+                  final status = call['status'] as String? ?? 'completed';
+                  final callType = call['call_type'] as String? ?? 'audio';
+                  final isVideo = callType == 'video';
+                  final isIncoming = direction == 'incoming';
+                  final isMissed = status == 'missed' || status == 'rejected';
+                  final duration = (call['duration_seconds'] as num?)?.toInt() ?? 0;
+                  final createdAt = (call['created_at'] as num?)?.toInt();
+                  final timeStr = _formatCallTimestamp(createdAt);
+                  final isLast = index == _callLogs.length - 1;
+
+                  String statusDesc;
+                  if (status == 'rejected') {
+                    statusDesc = 'Ditolak';
+                  } else if (status == 'missed') {
+                    statusDesc = 'Tak terjawab';
+                  } else if (duration > 0) {
+                    statusDesc = _formatCallDuration(duration);
+                  } else {
+                    statusDesc = isIncoming ? 'Masuk' : 'Keluar';
+                  }
+
+                  final subtitleText = timeStr.isNotEmpty ? '$timeStr • $statusDesc' : statusDesc;
 
                   return Column(
                     children: [
@@ -1014,7 +1085,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             const SizedBox(width: 4),
                             Expanded(
                               child: Text(
-                                time,
+                                subtitleText,
                                 overflow: TextOverflow.ellipsis,
                                 style: TextStyle(
                                   fontSize: 12.5,
@@ -1041,12 +1112,32 @@ class _HomeScreenState extends State<HomeScreen> {
                               Navigator.push(
                                 context,
                                 MaterialPageRoute(
-                                  builder: (context) => ActiveCallScreen(contactName: name),
+                                  builder: (context) => ActiveCallScreen(
+                                    contactName: name,
+                                    calleeUserId: userId,
+                                    contactPhone: phone,
+                                    isVideo: isVideo,
+                                    returnToCallsScreen: true,
+                                  ),
                                 ),
-                              );
+                              ).then((_) => _loadCallLogs());
                             },
                           ),
                         ),
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => ActiveCallScreen(
+                                contactName: name,
+                                calleeUserId: userId,
+                                contactPhone: phone,
+                                isVideo: isVideo,
+                                returnToCallsScreen: true,
+                              ),
+                            ),
+                          ).then((_) => _loadCallLogs());
+                        },
                       ),
                       if (!isLast)
                         Divider(

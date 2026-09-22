@@ -20,6 +20,19 @@ export class CallsController {
     return this.callsService.getIncomingCall(userId);
   }
 
+  @Get('history')
+  getCallHistory(@CurrentUser('userId') userId: string) {
+    return this.callsService.getCallHistory(userId);
+  }
+
+  @Get(':id')
+  getCallById(
+    @CurrentUser('userId') userId: string,
+    @Param('id') callId: string
+  ) {
+    return this.callsService.getCallById(userId, callId);
+  }
+
   @Post()
   createCall(
     @CurrentUser('userId') userId: string,

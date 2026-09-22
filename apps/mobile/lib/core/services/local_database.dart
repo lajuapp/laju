@@ -66,6 +66,21 @@ class LocalDatabase {
     )
   ''';
 
+  static const String _createCallLogs = '''
+    CREATE TABLE IF NOT EXISTS call_logs (
+      id                TEXT PRIMARY KEY,
+      contact_name      TEXT NOT NULL,
+      contact_id        TEXT,
+      contact_phone     TEXT,
+      avatar_url        TEXT,
+      is_video          INTEGER NOT NULL DEFAULT 0,
+      is_outgoing       INTEGER NOT NULL DEFAULT 1,
+      status            TEXT NOT NULL DEFAULT 'completed',
+      duration_seconds  INTEGER NOT NULL DEFAULT 0,
+      timestamp         INTEGER NOT NULL
+    )
+  ''';
+
   // ── Lifecycle ─────────────────────────────────────────────────────────────
 
   Future<void> init() async {
@@ -78,9 +93,17 @@ class LocalDatabase {
       onCreate: (db, version) async {
         await db.execute(_createConversations);
         await db.execute(_createMessages);
+        await db.execute(_createCallLogs);
         await db.execute('CREATE INDEX IF NOT EXISTS idx_messages_conv ON messages(conversation_id)');
+        await db.execute('CREATE INDEX IF NOT EXISTS idx_calls_ts ON call_logs(timestamp)');
       },
       onOpen: (db) async {
+        try {
+          await db.execute(_createCallLogs);
+        } catch (_) {}
+        try {
+          await db.execute('CREATE INDEX IF NOT EXISTS idx_calls_ts ON call_logs(timestamp)');
+        } catch (_) {}
         try {
           await db.execute('ALTER TABLE conversations ADD COLUMN avatar_url TEXT');
         } catch (_) {}
@@ -339,5 +362,58 @@ class LocalDatabase {
       attachmentPath: row['attachment_path'] as String?,
       isEdited: (row['is_edited'] as int) == 1,
     );
+  }
+
+  // ── Call Logs ──────────────────────────────────────────────────────────────
+
+  Future<void> insertCallLog({
+    required String id,
+    required String contactName,
+    String? contactId,
+    String? contactPhone,
+    String? avatarUrl,
+    required bool isVideo,
+    required bool isOutgoing,
+    required String status, // 'completed', 'missed', 'rejected', 'cancelled'
+    int durationSeconds = 0,
+    int? timestamp,
+  }) async {
+    try {
+      await _database.insert(
+        'call_logs',
+        {
+          'id': id,
+          'contact_name': contactName,
+          'contact_id': contactId,
+          'contact_phone': contactPhone,
+          'avatar_url': avatarUrl,
+          'is_video': isVideo ? 1 : 0,
+          'is_outgoing': isOutgoing ? 1 : 0,
+          'status': status,
+          'duration_seconds': durationSeconds,
+          'timestamp': timestamp ?? DateTime.now().millisecondsSinceEpoch,
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    } catch (_) {}
+  }
+
+  Future<List<Map<String, dynamic>>> getCallLogs() async {
+    try {
+      final rows = await _database.query(
+        'call_logs',
+        orderBy: 'timestamp DESC',
+        limit: 100,
+      );
+      return rows;
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<void> clearCallLogs() async {
+    try {
+      await _database.delete('call_logs');
+    } catch (_) {}
   }
 }

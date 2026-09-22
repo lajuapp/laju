@@ -19,12 +19,17 @@ export class CallsService {
   async createCall(callerUserId: string, callerDeviceId: string, calleeUserId: string, isVideo?: boolean) {
     return this.prisma.$transaction(async (tx) => {
       // Find target callee user by ID, username, or phone
+      const cleanPhone = calleeUserId.replace(/[^0-9+]/g, '');
+      const rawDigits = calleeUserId.replace(/[^0-9]/g, '');
       const targetUser = await tx.user.findFirst({
         where: {
           OR: [
             { id: calleeUserId },
             { username: { equals: calleeUserId, mode: 'insensitive' } },
-            { phoneNumber: calleeUserId }
+            { phoneNumber: calleeUserId },
+            { phoneNumber: cleanPhone },
+            { phoneNumber: rawDigits },
+            { phoneNumber: `+${rawDigits}` }
           ]
         }
       });
@@ -234,5 +239,100 @@ export class CallsService {
       isVideo,
       createdAt: participant.call.startedAt
     };
+  }
+
+  async getCallById(userId: string, callId: string) {
+    const call = await this.prisma.call.findUnique({
+      where: { id: callId },
+      include: {
+        participants: {
+          include: {
+            user: { select: { id: true, username: true, phoneNumber: true } }
+          }
+        }
+      }
+    });
+
+    if (!call) {
+      throw new NotFoundException('Call not found');
+    }
+
+    let isVideo = false;
+    try {
+      const meta = await this.redis.get(`call:${call.id}:meta`);
+      if (meta) {
+        const parsed = JSON.parse(meta);
+        isVideo = !!parsed.isVideo;
+      }
+    } catch (_) {}
+
+    return {
+      id: call.id,
+      initiatorId: call.initiatorId,
+      state: call.state,
+      startedAt: call.startedAt,
+      endedAt: call.endedAt,
+      isVideo,
+      participants: call.participants.map((p) => ({
+        id: p.id,
+        userId: p.userId,
+        username: p.user?.username,
+        phoneNumber: p.user?.phoneNumber,
+        state: p.state,
+        joinedAt: p.joinedAt,
+        leftAt: p.leftAt
+      }))
+    };
+  }
+
+  async getCallHistory(userId: string) {
+    const calls = await this.prisma.call.findMany({
+      where: {
+        participants: {
+          some: { userId }
+        }
+      },
+      include: {
+        participants: {
+          include: {
+            user: { select: { id: true, username: true, phoneNumber: true } }
+          }
+        }
+      },
+      orderBy: { startedAt: 'desc' },
+      take: 50
+    });
+
+    return Promise.all(
+      calls.map(async (call) => {
+        let isVideo = false;
+        try {
+          const meta = await this.redis.get(`call:${call.id}:meta`);
+          if (meta) {
+            const parsed = JSON.parse(meta);
+            isVideo = !!parsed.isVideo;
+          }
+        } catch (_) {}
+
+        const isInitiator = call.initiatorId === userId;
+        const otherParticipant = call.participants.find((p) => p.userId !== userId);
+        const contactUser = isInitiator
+          ? otherParticipant?.user
+          : call.participants.find((p) => p.userId === call.initiatorId)?.user;
+
+        return {
+          id: call.id,
+          initiatorId: call.initiatorId,
+          isOutgoing: isInitiator,
+          state: call.state,
+          startedAt: call.startedAt,
+          endedAt: call.endedAt,
+          isVideo,
+          contactId: contactUser?.id || (isInitiator ? otherParticipant?.userId : call.initiatorId),
+          contactName: contactUser?.username || 'Kontak',
+          contactPhone: contactUser?.phoneNumber
+        };
+      })
+    );
   }
 }

@@ -520,6 +520,8 @@ class _ChatScreenState extends State<ChatScreen> {
       MaterialPageRoute(
         builder: (context) => ActiveCallScreen(
           contactName: widget.title,
+          calleeUserId: widget.contactUserId,
+          contactPhone: widget.contactPhone,
           isVideo: isVideo,
         ),
       ),

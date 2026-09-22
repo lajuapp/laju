@@ -293,6 +293,14 @@ export class MessagingService {
   }
 
   async acknowledgeDelivery(deviceId: string, messageId: string) {
+    const msg = await this.prisma.message.findUnique({
+      where: { id: messageId },
+      select: { id: true }
+    });
+    if (!msg) {
+      return null;
+    }
+
     return this.prisma.messageDelivery.upsert({
       where: {
         messageId_deviceId: { messageId, deviceId }
@@ -311,6 +319,14 @@ export class MessagingService {
   }
 
   async markRead(deviceId: string, messageId: string) {
+    const msg = await this.prisma.message.findUnique({
+      where: { id: messageId },
+      select: { id: true }
+    });
+    if (!msg) {
+      return null;
+    }
+
     return this.prisma.messageDelivery.upsert({
       where: {
         messageId_deviceId: { messageId, deviceId }

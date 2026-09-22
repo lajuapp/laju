@@ -91,12 +91,14 @@ class _NewCallContactPickerScreenState extends State<NewCallContactPickerScreen>
         .toList();
   }
 
-  void _startCall(String name, bool isVideo) {
+  void _startCall(CallContactItem contact, bool isVideo) {
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(
         builder: (context) => ActiveCallScreen(
-          contactName: name,
+          contactName: contact.name,
+          calleeUserId: contact.id,
+          contactPhone: contact.phone,
           isVideo: isVideo,
           returnToCallsScreen: true,
         ),
@@ -293,16 +295,16 @@ class _NewCallContactPickerScreenState extends State<NewCallContactPickerScreen>
                                 IconButton(
                                   icon: const Icon(Icons.call_rounded, color: AppColors.primary, size: 22),
                                   tooltip: context.tr('voiceCall'),
-                                  onPressed: () => _startCall(contact.name, false),
+                                  onPressed: () => _startCall(contact, false),
                                 ),
                                 IconButton(
                                   icon: const Icon(Icons.videocam_rounded, color: AppColors.primary, size: 24),
                                   tooltip: context.tr('videoCall'),
-                                  onPressed: () => _startCall(contact.name, true),
+                                  onPressed: () => _startCall(contact, true),
                                 ),
                               ],
                             ),
-                            onTap: () => _startCall(contact.name, false),
+                            onTap: () => _startCall(contact, false),
                           ),
                         ),
                         if (!isLast)

@@ -591,6 +591,8 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                                   MaterialPageRoute(
                                     builder: (context) => ActiveCallScreen(
                                       contactName: widget.contactName,
+                                      calleeUserId: _resolvedUserId ?? widget.userId,
+                                      contactPhone: _resolvedPhone ?? widget.phone,
                                       isVideo: false,
                                     ),
                                   ),
@@ -607,6 +609,8 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                                   MaterialPageRoute(
                                     builder: (context) => ActiveCallScreen(
                                       contactName: widget.contactName,
+                                      calleeUserId: _resolvedUserId ?? widget.userId,
+                                      contactPhone: _resolvedPhone ?? widget.phone,
                                       isVideo: true,
                                     ),
                                   ),

@@ -8,12 +8,16 @@ import '../../domain/call_session_controller.dart';
 
 class ActiveCallScreen extends StatefulWidget {
   final String contactName;
+  final String? calleeUserId;
+  final String? contactPhone;
   final bool isVideo;
   final bool returnToCallsScreen;
 
   const ActiveCallScreen({
     super.key,
     required this.contactName,
+    this.calleeUserId,
+    this.contactPhone,
     this.isVideo = false,
     this.returnToCallsScreen = false,
   });
@@ -31,10 +35,34 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
     _isVideoEnabled = widget.isVideo;
 
     final session = CallSessionController.instance;
+    session.addListener(_onSessionUpdated);
     if (!session.isActive || session.callId == null) {
-      session.start1on1Call(contactName: widget.contactName, isVideo: widget.isVideo);
+      session.start1on1Call(
+        contactName: widget.contactName,
+        calleeUserId: widget.calleeUserId,
+        contactPhone: widget.contactPhone,
+        isVideo: widget.isVideo,
+      );
     } else {
       _isVideoEnabled = session.isVideoOn;
+    }
+  }
+
+  @override
+  void dispose() {
+    CallSessionController.instance.removeListener(_onSessionUpdated);
+    super.dispose();
+  }
+
+  void _onSessionUpdated() {
+    if (!mounted) return;
+    final session = CallSessionController.instance;
+    if (session.status == CallStatus.rejected || session.status == CallStatus.ended) {
+      Future.delayed(const Duration(milliseconds: 1200), () {
+        if (mounted) {
+          _exitCall();
+        }
+      });
     }
   }
 
@@ -57,13 +85,60 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
     }
   }
 
+  Color _getStatusBadgeBgColor(CallStatus status) {
+    switch (status) {
+      case CallStatus.connecting:
+        return const Color(0xFFF59E0B).withValues(alpha: 0.15);
+      case CallStatus.ringing:
+        return AppColors.cyan.withValues(alpha: 0.15);
+      case CallStatus.connected:
+        return const Color(0xFF10B981).withValues(alpha: 0.15);
+      case CallStatus.rejected:
+        return AppColors.danger.withValues(alpha: 0.18);
+      case CallStatus.ended:
+      default:
+        return Colors.grey.withValues(alpha: 0.15);
+    }
+  }
+
+  Color _getStatusBadgeBorderColor(CallStatus status) {
+    switch (status) {
+      case CallStatus.connecting:
+        return const Color(0xFFF59E0B).withValues(alpha: 0.4);
+      case CallStatus.ringing:
+        return AppColors.cyan.withValues(alpha: 0.4);
+      case CallStatus.connected:
+        return const Color(0xFF10B981).withValues(alpha: 0.4);
+      case CallStatus.rejected:
+        return AppColors.danger.withValues(alpha: 0.5);
+      case CallStatus.ended:
+      default:
+        return Colors.grey.withValues(alpha: 0.3);
+    }
+  }
+
+  Color _getStatusBadgeTextColor(CallStatus status) {
+    switch (status) {
+      case CallStatus.connecting:
+        return const Color(0xFFF59E0B);
+      case CallStatus.ringing:
+        return AppColors.cyan;
+      case CallStatus.connected:
+        return const Color(0xFF10B981);
+      case CallStatus.rejected:
+        return AppColors.danger;
+      case CallStatus.ended:
+      default:
+        return Colors.grey;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
       listenable: CallSessionController.instance,
       builder: (context, _) {
         final session = CallSessionController.instance;
-        final durationText = session.formattedDuration;
         final isDark = ThemeModeController.instance.isDarkMode(context);
 
         final textPrimary = isDark ? Colors.white : const Color(0xFF0F172A);
@@ -117,20 +192,35 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
                     ),
                     const SizedBox(height: 6),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                       decoration: BoxDecoration(
-                        color: AppColors.cyan.withValues(alpha: 0.12),
+                        color: _getStatusBadgeBgColor(session.status),
                         borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: AppColors.cyan.withValues(alpha: 0.3)),
+                        border: Border.all(color: _getStatusBadgeBorderColor(session.status)),
                       ),
-                      child: Text(
-                        durationText,
-                        style: const TextStyle(
-                          fontSize: 14.5,
-                          color: AppColors.cyan,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 1.2,
-                        ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (session.status == CallStatus.connecting || session.status == CallStatus.ringing)
+                            Container(
+                              width: 8,
+                              height: 8,
+                              margin: const EdgeInsets.only(right: 6),
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: _getStatusBadgeTextColor(session.status),
+                              ),
+                            ),
+                          Text(
+                            session.statusLabel,
+                            style: TextStyle(
+                              fontSize: 14.5,
+                              color: _getStatusBadgeTextColor(session.status),
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: session.status == CallStatus.connected ? 1.2 : 0.3,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
 

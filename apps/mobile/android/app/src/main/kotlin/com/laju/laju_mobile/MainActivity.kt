@@ -23,8 +23,12 @@ import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import android.media.AudioAttributes
 import android.media.AudioFormat
+import android.media.AudioRecord
 import android.media.AudioTrack
+import android.media.AudioManager
 import android.media.RingtoneManager
+import android.media.audiofx.AcousticEchoCanceler
+import android.media.audiofx.NoiseSuppressor
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
@@ -33,13 +37,29 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
 import java.io.FileOutputStream
+import java.net.DatagramPacket
+import java.net.DatagramSocket
+import java.net.InetAddress
+import java.net.NetworkInterface
 
 class MainActivity : FlutterFragmentActivity() {
     private val CAMERA_CHANNEL = "com.laju/camera"
     private val VOICE_CHANNEL = "com.laju/voice_note"
     private val BIOMETRIC_CHANNEL = "com.laju/biometric"
     private val SOUND_CHANNEL = "com.laju/sound"
+    private val CALL_AUDIO_CHANNEL = "com.laju/call_audio"
     private var currentAudioTrack: AudioTrack? = null
+
+    private var callAudioRecord: AudioRecord? = null
+    private var callAudioTrack: AudioTrack? = null
+    private var callAudioSocket: DatagramSocket? = null
+    @Volatile private var isCallAudioActive = false
+    @Volatile private var isCallAudioMuted = false
+    @Volatile private var isCallAudioSpeaker = false
+    private var aecEffect: AcousticEchoCanceler? = null
+    private var nsEffect: NoiseSuppressor? = null
+    private var ringbackToneTrack: AudioTrack? = null
+    @Volatile private var isPlayingCallTone = false
 
     private val CAMERA_REQUEST_CODE = 1001
     private val GALLERY_REQUEST_CODE = 1002
@@ -634,6 +654,46 @@ class MainActivity : FlutterFragmentActivity() {
                 else -> result.notImplemented()
             }
         }
+
+        // Real-time Two-way Call Audio MethodChannel
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CALL_AUDIO_CHANNEL).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "getLocalIp" -> {
+                    val ip = getActiveLocalIpAddress()
+                    result.success(ip)
+                }
+                "startCallAudio" -> {
+                    val remoteIp = call.argument<String>("remoteIp") ?: ""
+                    val remotePort = call.argument<Int>("remotePort") ?: 50005
+                    val localPort = call.argument<Int>("localPort") ?: 50005
+                    val isSpeaker = call.argument<Boolean>("isSpeaker") ?: false
+                    val isVideo = call.argument<Boolean>("isVideo") ?: false
+
+                    startRealtimeCallAudio(remoteIp, remotePort, localPort, isSpeaker || isVideo)
+                    result.success(true)
+                }
+                "stopCallAudio" -> {
+                    stopRealtimeCallAudio()
+                    result.success(true)
+                }
+                "setMute" -> {
+                    val muted = call.argument<Boolean>("muted") ?: false
+                    isCallAudioMuted = muted
+                    result.success(true)
+                }
+                "setSpeaker" -> {
+                    val speaker = call.argument<Boolean>("speaker") ?: false
+                    setCallSpeakerphone(speaker)
+                    result.success(true)
+                }
+                "playCallTone" -> {
+                    val type = call.argument<String>("type") ?: "stop"
+                    handleCallTone(type)
+                    result.success(true)
+                }
+                else -> result.notImplemented()
+            }
+        }
     }
 
     private fun stopCurrentRingtone() {
@@ -1151,7 +1211,310 @@ class MainActivity : FlutterFragmentActivity() {
         }
     }
 
+    private fun getActiveLocalIpAddress(): String {
+        try {
+            val interfaces = NetworkInterface.getNetworkInterfaces()
+            while (interfaces.hasMoreElements()) {
+                val iface = interfaces.nextElement()
+                if (iface.isLoopback || !iface.isUp) continue
+                val addresses = iface.inetAddresses
+                while (addresses.hasMoreElements()) {
+                    val addr = addresses.nextElement()
+                    if (!addr.isLoopbackAddress && addr is java.net.Inet4Address) {
+                        return addr.hostAddress ?: "127.0.0.1"
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        return "127.0.0.1"
+    }
+
+    private fun setCallSpeakerphone(isSpeaker: Boolean) {
+        try {
+            isCallAudioSpeaker = isSpeaker
+            val audioManager = getSystemService(AUDIO_SERVICE) as AudioManager
+            audioManager.isSpeakerphoneOn = isSpeaker
+        } catch (_: Exception) {}
+    }
+
+    private fun handleCallTone(type: String) {
+        when (type) {
+            "ringback" -> startRingbackTone()
+            "busy" -> playBusyTone()
+            else -> stopCallTone()
+        }
+    }
+
+    private fun stopCallTone() {
+        isPlayingCallTone = false
+        try {
+            ringbackToneTrack?.apply {
+                if (playState == AudioTrack.PLAYSTATE_PLAYING) stop()
+                release()
+            }
+            ringbackToneTrack = null
+        } catch (_: Exception) {}
+    }
+
+    private fun startRingbackTone() {
+        stopCallTone()
+        isPlayingCallTone = true
+        Thread {
+            try {
+                val sampleRate = 16000
+                // Dual tone (440Hz + 480Hz) 1.8s tone, 2.5s pause
+                val durationSec = 1.8
+                val numSamples = (sampleRate * durationSec).toInt()
+                val samples = ShortArray(numSamples)
+                for (i in 0 until numSamples) {
+                    val t = i.toDouble() / sampleRate
+                    val sample = 0.5 * Math.sin(2.0 * Math.PI * 440.0 * t) + 0.5 * Math.sin(2.0 * Math.PI * 480.0 * t)
+                    samples[i] = (sample * 16000.0).toInt().toShort()
+                }
+
+                while (isPlayingCallTone) {
+                    val track = AudioTrack(
+                        AudioManager.STREAM_VOICE_CALL,
+                        sampleRate,
+                        AudioFormat.CHANNEL_OUT_MONO,
+                        AudioFormat.ENCODING_PCM_16BIT,
+                        samples.size * 2,
+                        AudioTrack.MODE_STATIC
+                    )
+                    ringbackToneTrack = track
+                    track.write(samples, 0, samples.size)
+                    track.play()
+
+                    val playTime = (durationSec * 1000).toLong()
+                    val start = System.currentTimeMillis()
+                    while (isPlayingCallTone && (System.currentTimeMillis() - start < playTime)) {
+                        Thread.sleep(100)
+                    }
+
+                    track.release()
+                    if (!isPlayingCallTone) break
+
+                    val pauseStart = System.currentTimeMillis()
+                    while (isPlayingCallTone && (System.currentTimeMillis() - pauseStart < 2500)) {
+                        Thread.sleep(100)
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }.start()
+    }
+
+    private fun playBusyTone() {
+        stopCallTone()
+        Thread {
+            try {
+                val sampleRate = 16000
+                // Busy tone (480Hz + 620Hz)
+                val durationSec = 0.4
+                val numSamples = (sampleRate * durationSec).toInt()
+                val samples = ShortArray(numSamples)
+                for (i in 0 until numSamples) {
+                    val t = i.toDouble() / sampleRate
+                    val sample = 0.5 * Math.sin(2.0 * Math.PI * 480.0 * t) + 0.5 * Math.sin(2.0 * Math.PI * 620.0 * t)
+                    samples[i] = (sample * 18000.0).toInt().toShort()
+                }
+
+                for (cycle in 0..2) {
+                    val track = AudioTrack(
+                        AudioManager.STREAM_VOICE_CALL,
+                        sampleRate,
+                        AudioFormat.CHANNEL_OUT_MONO,
+                        AudioFormat.ENCODING_PCM_16BIT,
+                        samples.size * 2,
+                        AudioTrack.MODE_STATIC
+                    )
+                    track.write(samples, 0, samples.size)
+                    track.play()
+                    Thread.sleep((durationSec * 1000).toLong())
+                    track.release()
+                    Thread.sleep(250)
+                }
+            } catch (_: Exception) {}
+        }.start()
+    }
+
+    private fun startRealtimeCallAudio(remoteIp: String, remotePort: Int, localPort: Int, isSpeaker: Boolean) {
+        stopCallTone()
+        stopRealtimeCallAudio()
+
+        isCallAudioActive = true
+        isCallAudioMuted = false
+        isCallAudioSpeaker = isSpeaker
+
+        val sampleRate = 16000
+        val channelIn = AudioFormat.CHANNEL_IN_MONO
+        val channelOut = AudioFormat.CHANNEL_OUT_MONO
+        val encoding = AudioFormat.ENCODING_PCM_16BIT
+
+        Thread {
+            try {
+                val audioManager = getSystemService(AUDIO_SERVICE) as AudioManager
+                audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
+                audioManager.isSpeakerphoneOn = isSpeaker
+
+                val minRecBuf = AudioRecord.getMinBufferSize(sampleRate, channelIn, encoding)
+                val recBufSize = Math.max(minRecBuf, 2048)
+
+                val recorder = AudioRecord(
+                    MediaRecorder.AudioSource.VOICE_COMMUNICATION,
+                    sampleRate,
+                    channelIn,
+                    encoding,
+                    recBufSize
+                )
+                callAudioRecord = recorder
+
+                try {
+                    if (AcousticEchoCanceler.isAvailable()) {
+                        aecEffect = AcousticEchoCanceler.create(recorder.audioSessionId)?.apply {
+                            enabled = true
+                        }
+                    }
+                    if (NoiseSuppressor.isAvailable()) {
+                        nsEffect = NoiseSuppressor.create(recorder.audioSessionId)?.apply {
+                            enabled = true
+                        }
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+
+                val minTrackBuf = AudioTrack.getMinBufferSize(sampleRate, channelOut, encoding)
+                val trackBufSize = Math.max(minTrackBuf, 2048)
+
+                val track = AudioTrack(
+                    AudioManager.STREAM_VOICE_CALL,
+                    sampleRate,
+                    channelOut,
+                    encoding,
+                    trackBufSize,
+                    AudioTrack.MODE_STREAM
+                )
+                callAudioTrack = track
+
+                var socket: DatagramSocket? = null
+                try {
+                    socket = DatagramSocket(localPort)
+                } catch (_: Exception) {
+                    try {
+                        socket = DatagramSocket()
+                    } catch (e2: Exception) {
+                        e2.printStackTrace()
+                    }
+                }
+                callAudioSocket = socket
+
+                track.play()
+                recorder.startRecording()
+
+                // Sender thread
+                if (remoteIp.isNotEmpty() && remotePort > 0 && socket != null) {
+                    Thread {
+                        val sendBuffer = ByteArray(640)
+                        var targetInet: InetAddress? = null
+                        try {
+                            targetInet = InetAddress.getByName(remoteIp)
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                        }
+
+                        while (isCallAudioActive && targetInet != null && !socket.isClosed) {
+                            try {
+                                val read = recorder.read(sendBuffer, 0, sendBuffer.size)
+                                if (read > 0 && !isCallAudioMuted) {
+                                    val packet = DatagramPacket(sendBuffer, read, targetInet, remotePort)
+                                    socket.send(packet)
+                                } else if (read <= 0) {
+                                    Thread.sleep(10)
+                                }
+                            } catch (_: Exception) {
+                                Thread.sleep(20)
+                            }
+                        }
+                    }.start()
+                }
+
+                // Receiver thread
+                if (socket != null) {
+                    Thread {
+                        val recvBuffer = ByteArray(1024)
+                        val recvPacket = DatagramPacket(recvBuffer, recvBuffer.size)
+
+                        while (isCallAudioActive && !socket.isClosed) {
+                            try {
+                                socket.receive(recvPacket)
+                                if (recvPacket.length > 0) {
+                                    track.write(recvPacket.data, recvPacket.offset, recvPacket.length)
+                                }
+                            } catch (_: Exception) {}
+                        }
+                    }.start()
+                }
+
+            } catch (e: Exception) {
+                e.printStackTrace()
+                stopRealtimeCallAudio()
+            }
+        }.start()
+    }
+
+    private fun stopRealtimeCallAudio() {
+        isCallAudioActive = false
+        try {
+            callAudioRecord?.apply {
+                if (recordingState == AudioRecord.RECORDSTATE_RECORDING) stop()
+                release()
+            }
+            callAudioRecord = null
+        } catch (_: Exception) {}
+
+        try {
+            aecEffect?.apply {
+                enabled = false
+                release()
+            }
+            aecEffect = null
+        } catch (_: Exception) {}
+
+        try {
+            nsEffect?.apply {
+                enabled = false
+                release()
+            }
+            nsEffect = null
+        } catch (_: Exception) {}
+
+        try {
+            callAudioTrack?.apply {
+                if (playState == AudioTrack.PLAYSTATE_PLAYING) stop()
+                release()
+            }
+            callAudioTrack = null
+        } catch (_: Exception) {}
+
+        try {
+            callAudioSocket?.close()
+            callAudioSocket = null
+        } catch (_: Exception) {}
+
+        try {
+            val audioManager = getSystemService(AUDIO_SERVICE) as AudioManager
+            audioManager.mode = AudioManager.MODE_NORMAL
+            audioManager.isSpeakerphoneOn = false
+        } catch (_: Exception) {}
+    }
+
     override fun onDestroy() {
+        stopCallTone()
+        stopRealtimeCallAudio()
         try {
             mediaRecorder?.stop()
         } catch (_: Exception) {}
