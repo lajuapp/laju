@@ -18,11 +18,22 @@ class _LoginScreenState extends State<LoginScreen>
   final TextEditingController _recoveryKeyController = TextEditingController();
   bool _isLoading = false;
   String? _activeMigrationId;
+  BiometricAvailability? _biometricInfo;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
+    _checkBiometrics();
+  }
+
+  Future<void> _checkBiometrics() async {
+    try {
+      final info = await BiometricService.instance.checkAvailability();
+      if (mounted) {
+        setState(() => _biometricInfo = info);
+      }
+    } catch (_) {}
   }
 
   @override
@@ -34,6 +45,55 @@ class _LoginScreenState extends State<LoginScreen>
 
   /// Flow 1: Device Cryptographic Authentication (Challenge-Response + Biometrics)
   Future<void> _handleDeviceKeystoreAuth() async {
+    // 1. Check biometric / device credentials availability
+    final availability = _biometricInfo ?? await BiometricService.instance.checkAvailability();
+
+    bool authenticated = false;
+
+    if (availability.isAvailable) {
+      final bioLabel = availability.biometricLabel.isNotEmpty
+          ? availability.biometricLabel
+          : 'Sidik Jari / Wajah';
+
+      authenticated = await BiometricService.instance.authenticate(
+        title: 'Verifikasi Pemilik Perangkat',
+        subtitle: 'Pindai $bioLabel atau kunci layar HP ini',
+        description: 'Autentikasi biometrik diperlukan untuk memastikan Anda adalah pemilik sah HP ini sebelum masuk.',
+        allowDeviceCredential: true,
+        negativeButtonText: AppLockController.instance.hasSetPin ? 'Gunakan PIN' : 'Batal',
+      );
+    }
+
+    // 2. Fallback to in-app PIN if biometric failed/cancelled and user has configured in-app PIN
+    if (!authenticated && AppLockController.instance.hasSetPin) {
+      if (mounted) {
+        authenticated = await SecurityAuthHelper.promptVerifyPin(
+          context,
+          title: 'Verifikasi PIN Pemilik',
+          subtitle: 'Masukkan 6-digit PIN keamanan akun Anda',
+        );
+      }
+    }
+
+    // 3. If neither biometric nor in-app PIN succeeded, reject login completely!
+    if (!authenticated) {
+      if (mounted) {
+        if (!availability.isAvailable && !AppLockController.instance.hasSetPin) {
+          LajuToast.error(
+            context,
+            'Perangkat belum memiliki sensor biometrik atau kunci layar aktif. Demi keamanan, aktifkan kunci layar HP atau gunakan login via Kode Pemulihan.',
+          );
+        } else {
+          LajuToast.error(
+            context,
+            'Verifikasi biometrik tidak berhasil. Akses login perangkat ditolak demi keamanan pemilik HP.',
+          );
+        }
+      }
+      return;
+    }
+
+    if (!mounted) return;
     setState(() => _isLoading = true);
 
     try {
@@ -744,11 +804,14 @@ class _LoginScreenState extends State<LoginScreen>
   /// Widget for Tab 2: Hardware Keystore Device Auth
   Widget _buildDeviceKeystoreTab(
       bool isDark, Color textPrimary, Color textSecondary) {
+    final hasFace = _biometricInfo?.hasFace == true && _biometricInfo?.hasFingerprint != true;
+    final bioLabel = _biometricInfo?.biometricLabel ?? 'Biometrik / Sidik Jari';
+
     return SingleChildScrollView(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
       child: Column(
         children: [
-          // Hardware TEE / StrongBox Verification Badge
+          // Hardware TEE / StrongBox & Biometric Protection Badge
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(16),
@@ -775,7 +838,7 @@ class _LoginScreenState extends State<LoginScreen>
                         shape: BoxShape.circle,
                       ),
                       child: const Icon(
-                        Icons.shield_rounded,
+                        Icons.verified_user_rounded,
                         color: Color(0xFF10B981),
                         size: 18,
                       ),
@@ -786,7 +849,7 @@ class _LoginScreenState extends State<LoginScreen>
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            context.tr('hardwareSecurityStatus'),
+                            'Proteksi Biometrik Pemilik Perangkat',
                             style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w600,
@@ -794,7 +857,9 @@ class _LoginScreenState extends State<LoginScreen>
                             ),
                           ),
                           Text(
-                            context.tr('keystoreActive'),
+                            _biometricInfo?.isAvailable == true
+                                ? '$bioLabel Aktif'
+                                : context.tr('keystoreActive'),
                             style: const TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.w800,
@@ -808,7 +873,7 @@ class _LoginScreenState extends State<LoginScreen>
                 ),
                 const SizedBox(height: 12),
                 Text(
-                  context.tr('deviceAuthCardDesc'),
+                  'Wajib memverifikasi sidik jari, wajah, atau kunci layar HP ini untuk membuktikan Anda adalah pemilik sah sebelum masuk ke akun.',
                   style: TextStyle(
                     fontSize: 13,
                     color: textSecondary,
@@ -852,8 +917,8 @@ class _LoginScreenState extends State<LoginScreen>
                         color: AppColors.primary,
                         strokeWidth: 3,
                       )
-                    : const Icon(
-                        Icons.fingerprint_rounded,
+                    : Icon(
+                        hasFace ? Icons.face_rounded : Icons.fingerprint_rounded,
                         color: AppColors.primary,
                         size: 64,
                       ),
@@ -863,7 +928,9 @@ class _LoginScreenState extends State<LoginScreen>
           const SizedBox(height: 20),
 
           Text(
-            context.tr('hardwareKeypairLabel'),
+            _biometricInfo?.deviceModel.isNotEmpty == true
+                ? 'Sensor: $bioLabel (${_biometricInfo!.deviceModel})'
+                : 'Sentuh sensor untuk verifikasi biometrik',
             style: TextStyle(
               fontSize: 12.5,
               fontWeight: FontWeight.w600,
@@ -886,11 +953,11 @@ class _LoginScreenState extends State<LoginScreen>
                   borderRadius: BorderRadius.circular(16),
                 ),
               ),
-              icon: const Icon(Icons.lock_open_rounded, size: 20),
+              icon: Icon(hasFace ? Icons.face_rounded : Icons.fingerprint_rounded, size: 20),
               label: Text(
                 _isLoading
                     ? context.tr('verifyingDevice')
-                    : context.tr('unlockWithBiometrics'),
+                    : 'Buka dengan $bioLabel',
                 style: const TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.w700,
