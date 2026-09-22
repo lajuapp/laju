@@ -97,6 +97,14 @@ class _ChatInputBarState extends State<ChatInputBar> with SingleTickerProviderSt
         FocusScope.of(context).unfocus();
       }
     }
+
+    if (widget.replyingTo != oldWidget.replyingTo && widget.replyingTo != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _focusNode.requestFocus();
+        }
+      });
+    }
   }
 
   @override

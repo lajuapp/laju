@@ -16,6 +16,7 @@ export 'widgets/modern_avatar.dart';
 export 'widgets/filter_chip_group.dart';
 export 'widgets/country_picker_bottom_sheet.dart';
 export 'widgets/laju_toast.dart';
+export 'widgets/laju_image_viewer.dart';
 export 'widgets/laju_logo.dart';
 export 'widgets/laju_qr_code_view.dart';
 export 'widgets/laju_qr_scanner_view.dart';

@@ -47,6 +47,7 @@ class _LoginScreenState extends State<LoginScreen>
   Future<void> _handleDeviceKeystoreAuth() async {
     // 1. Check biometric / device credentials availability
     final availability = _biometricInfo ?? await BiometricService.instance.checkAvailability();
+    bool authenticated = false;
 
     // 1. If device supports biometric, use biometric exclusively!
     if (availability.isAvailable) {

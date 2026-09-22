@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import '../../../../core/theme/app_colors.dart';
-import '../../../../core/theme/theme_controller.dart';
-import '../../../../core/widgets/modern_avatar.dart';
+import '../../../../core/core.dart';
 import '../../domain/models/conversation_model.dart';
 
 class ConversationTile extends StatelessWidget {

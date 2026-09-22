@@ -27,14 +27,17 @@ class GroupChatScreen extends StatefulWidget {
 }
 
 class _GroupChatScreenState extends State<GroupChatScreen> {
+  final ScrollController _scrollController = ScrollController();
   MessageModel? _replyingTo;
   MessageModel? _editingMessage;
   List<MessageModel> _messages = [];
   Timer? _pollTimer;
+  bool _showScrollToBottom = false;
 
   @override
   void initState() {
     super.initState();
+    _scrollController.addListener(_onScroll);
     ConversationService.instance.currentActiveConversationId = widget.groupId;
     final mem = ConversationService.instance.getMemoryMessages(widget.groupId);
     if (mem != null) {
@@ -44,12 +47,69 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
     _startPolling();
   }
 
+  void _onScroll() {
+    if (!_scrollController.hasClients) return;
+    final maxScroll = _scrollController.position.maxScrollExtent;
+    final currentScroll = _scrollController.offset;
+    final show = (maxScroll - currentScroll) > 280;
+    if (show != _showScrollToBottom) {
+      setState(() {
+        _showScrollToBottom = show;
+      });
+    }
+  }
+
+  void _scrollToBottom() {
+    if (_scrollController.hasClients) {
+      _scrollController.animateTo(
+        _scrollController.position.maxScrollExtent,
+        duration: const Duration(milliseconds: 250),
+        curve: Curves.easeOut,
+      );
+    }
+  }
+
+  Widget _buildDateDivider(DateTime date, bool isDark) {
+    return Center(
+      child: Container(
+        margin: const EdgeInsets.symmetric(vertical: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+        decoration: BoxDecoration(
+          color: (isDark ? const Color(0xFF1E293B) : Colors.white).withValues(alpha: 0.90),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: isDark ? Colors.white.withValues(alpha: 0.12) : Colors.black.withValues(alpha: 0.08),
+            width: 0.8,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.08),
+              blurRadius: 6,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Text(
+          DateHelper.formatChatDivider(date),
+          style: TextStyle(
+            fontSize: 11.5,
+            fontWeight: FontWeight.w600,
+            color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+            letterSpacing: 0.2,
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   void dispose() {
     if (ConversationService.instance.currentActiveConversationId == widget.groupId) {
       ConversationService.instance.currentActiveConversationId = null;
     }
     _pollTimer?.cancel();
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -138,6 +198,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
       });
       ConversationService.instance.updateMemoryMessages(widget.groupId, merged);
       _markIncomingAsRead(merged);
+      Future.delayed(const Duration(milliseconds: 60), _scrollToBottom);
     } else {
       ConversationService.instance.updateMemoryMessages(widget.groupId, merged);
     }
@@ -167,7 +228,9 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
       _replyingTo = null;
     });
 
+    // Save optimistically to SQLite
     await LocalDatabase.instance.insertSentMessage(localMsg);
+    Future.delayed(const Duration(milliseconds: 50), _scrollToBottom);
 
     final sent = await ConversationService.instance.sendMessage(
       conversationId: widget.groupId,
@@ -622,11 +685,15 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                         ),
                       )
                     : ListView.builder(
+                        controller: _scrollController,
                         padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 4),
                         itemCount: _messages.length,
                         itemBuilder: (context, index) {
                           final msg = _messages[index];
-                          return ChatBubble(
+                          final isFirstOrDiffDay = index == 0 ||
+                              !DateHelper.isSameDay(msg.timestamp, _messages[index - 1].timestamp);
+
+                          final bubble = ChatBubble(
                             message: msg,
                             onReactionSelected: (emoji) => _handleReaction(msg, emoji),
                             onReply: _handleReply,
@@ -637,6 +704,17 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                               await ConversationService.instance.deleteMessage(msgToDelete.id);
                             },
                           );
+
+                          if (isFirstOrDiffDay) {
+                            return Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                _buildDateDivider(msg.timestamp, isDark),
+                                bubble,
+                              ],
+                            );
+                          }
+                          return bubble;
                         },
                       ),
               ),
@@ -669,6 +747,40 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                 ),
               ],
             ),
+
+            // Scroll-to-bottom Floating Action Button (WhatsApp style)
+            if (_showScrollToBottom)
+              Positioned(
+                right: 16,
+                bottom: 74,
+                child: Material(
+                  color: isDark ? const Color(0xFF1E293B) : Colors.white,
+                  elevation: 6,
+                  shadowColor: Colors.black38,
+                  shape: const CircleBorder(),
+                  clipBehavior: Clip.antiAlias,
+                  child: InkWell(
+                    onTap: _scrollToBottom,
+                    child: Container(
+                      width: 40,
+                      height: 40,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: isDark ? Colors.white12 : Colors.black12,
+                          width: 1,
+                        ),
+                      ),
+                      child: Icon(
+                        Icons.keyboard_arrow_down_rounded,
+                        size: 26,
+                        color: isDark ? AppColors.cyan : AppColors.primary,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
           ],
         );
       },

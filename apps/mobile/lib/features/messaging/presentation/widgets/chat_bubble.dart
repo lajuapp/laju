@@ -226,7 +226,7 @@ class ChatBubble extends StatelessWidget {
     final isDark = ThemeModeController.instance.isDarkMode(context);
     final timeStr = DateFormat('HH:mm').format(message.timestamp.toLocal());
 
-    return Align(
+    final bubbleWidget = Align(
       alignment: isOut ? Alignment.centerRight : Alignment.centerLeft,
       child: GestureDetector(
         onLongPress: () => _showMessageOptions(context),
@@ -482,6 +482,12 @@ class ChatBubble extends StatelessWidget {
         ),
       ),
     );
+
+    return _SwipeToReplyWrapper(
+      isDark: isDark,
+      onReply: onReply != null ? () => onReply!(message) : null,
+      child: bubbleWidget,
+    );
   }
 
   bool _shouldShowMessageContent() {
@@ -576,7 +582,8 @@ class ChatBubble extends StatelessWidget {
           imageWidget = Image.memory(
             bytes,
             fit: BoxFit.cover,
-            errorBuilder: (_, __, ___) => Center(child: Icon(Icons.broken_image_rounded, color: iconColor, size: 36)),
+            errorBuilder: (context, error, stackTrace) =>
+                Center(child: Icon(Icons.broken_image_rounded, color: iconColor, size: 36)),
           );
         } catch (_) {}
       } else if (File(message.attachmentPath!).existsSync()) {
@@ -587,22 +594,45 @@ class ChatBubble extends StatelessWidget {
       }
 
       if (imageWidget != null) {
-        return Container(
-          margin: const EdgeInsets.only(bottom: 6),
-          constraints: const BoxConstraints(maxHeight: 240, maxWidth: 280),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: cardBorder, width: 1.2),
+        return GestureDetector(
+          onTap: () {
+            LajuImageViewer.show(
+              context,
+              imagePath: message.attachmentPath!,
+              title: message.isOutgoing
+                  ? 'Anda'
+                  : (message.senderName.isNotEmpty ? message.senderName : 'Foto'),
+              subtitle: DateFormat('dd MMMM yyyy, HH:mm').format(message.timestamp.toLocal()),
+            );
+          },
+          child: Container(
+            margin: const EdgeInsets.only(bottom: 6),
+            constraints: const BoxConstraints(maxHeight: 240, maxWidth: 280),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: cardBorder, width: 1.2),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: imageWidget,
           ),
-          clipBehavior: Clip.antiAlias,
-          child: imageWidget,
         );
       }
     }
 
     return InkWell(
       onTap: () {
-        LajuToast.info(context, 'Membuka $fileName');
+        if (isImage && message.attachmentPath != null) {
+          LajuImageViewer.show(
+            context,
+            imagePath: message.attachmentPath!,
+            title: message.isOutgoing
+                ? 'Anda'
+                : (message.senderName.isNotEmpty ? message.senderName : 'Foto'),
+            subtitle: DateFormat('dd MMMM yyyy, HH:mm').format(message.timestamp.toLocal()),
+          );
+        } else {
+          LajuToast.info(context, 'Membuka $fileName');
+        }
       },
       borderRadius: BorderRadius.circular(14),
       child: Container(
@@ -699,6 +729,141 @@ class ChatBubble extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _SwipeToReplyWrapper extends StatefulWidget {
+  final Widget child;
+  final VoidCallback? onReply;
+  final bool isDark;
+
+  const _SwipeToReplyWrapper({
+    required this.child,
+    this.onReply,
+    required this.isDark,
+  });
+
+  @override
+  State<_SwipeToReplyWrapper> createState() => _SwipeToReplyWrapperState();
+}
+
+class _SwipeToReplyWrapperState extends State<_SwipeToReplyWrapper>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _animation;
+  double _dragOffset = 0.0;
+  static const double _triggerThreshold = 55.0;
+  static const double _maxDragOffset = 75.0;
+  bool _hasHapticTriggered = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 220),
+    );
+    _animation = Tween<double>(begin: 0.0, end: 0.0).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic),
+    )..addListener(() {
+        setState(() {
+          _dragOffset = _animation.value;
+        });
+      });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _onHorizontalDragUpdate(DragUpdateDetails details) {
+    if (widget.onReply == null) return;
+    final delta = details.primaryDelta ?? 0.0;
+    // Allow dragging towards right to trigger reply
+    final newOffset = (_dragOffset + delta).clamp(0.0, _maxDragOffset);
+    if (newOffset != _dragOffset) {
+      if (newOffset >= _triggerThreshold && !_hasHapticTriggered) {
+        HapticFeedback.lightImpact();
+        _hasHapticTriggered = true;
+      } else if (newOffset < _triggerThreshold) {
+        _hasHapticTriggered = false;
+      }
+      setState(() {
+        _dragOffset = newOffset;
+      });
+    }
+  }
+
+  void _onHorizontalDragEnd(DragEndDetails details) {
+    if (widget.onReply == null) return;
+    if (_dragOffset >= _triggerThreshold) {
+      widget.onReply?.call();
+    }
+    _hasHapticTriggered = false;
+    _animation = Tween<double>(begin: _dragOffset, end: 0.0).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic),
+    );
+    _controller.forward(from: 0.0);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.onReply == null) {
+      return widget.child;
+    }
+
+    final progress = (_dragOffset / _triggerThreshold).clamp(0.0, 1.0);
+
+    return GestureDetector(
+      behavior: HitTestBehavior.translucent,
+      onHorizontalDragUpdate: _onHorizontalDragUpdate,
+      onHorizontalDragEnd: _onHorizontalDragEnd,
+      child: Stack(
+        alignment: Alignment.centerLeft,
+        children: [
+          if (_dragOffset > 0)
+            Positioned(
+              left: 12 + (_dragOffset * 0.15),
+              child: Opacity(
+                opacity: progress,
+                child: Transform.scale(
+                  scale: 0.6 + (0.4 * progress),
+                  child: Container(
+                    width: 34,
+                    height: 34,
+                    decoration: BoxDecoration(
+                      color: widget.isDark
+                          ? const Color(0xFF1E293B)
+                          : const Color(0xFFE2E8F0),
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.15),
+                          blurRadius: 6,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: Icon(
+                      Icons.reply_rounded,
+                      color: progress >= 1.0
+                          ? AppColors.primary
+                          : (widget.isDark ? Colors.white70 : const Color(0xFF64748B)),
+                      size: 20,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          Transform.translate(
+            offset: Offset(_dragOffset, 0),
+            child: widget.child,
+          ),
+        ],
       ),
     );
   }

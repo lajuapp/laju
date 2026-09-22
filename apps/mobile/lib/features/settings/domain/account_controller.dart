@@ -239,7 +239,7 @@ class AccountController extends ChangeNotifier {
         if (res.isSuccess) {
           debugPrint('[AccountController] profile successfully synced to backend');
         } else {
-          debugPrint('[AccountController] profile sync failed: ${res.statusCode} ${res.message}');
+          debugPrint('[AccountController] profile sync failed: ${res.statusCode} ${res.errorMessage}');
         }
       }
     } catch (e) {

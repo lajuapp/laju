@@ -24,4 +24,59 @@ class DateHelper {
     final parsed = DateTime.tryParse(normalized) ?? DateTime.tryParse(str);
     return parsed != null ? parsed.toLocal() : DateTime.now();
   }
+
+  /// Checks if two DateTimes represent the exact same calendar day in local time.
+  static bool isSameDay(DateTime a, DateTime b) {
+    final localA = a.toLocal();
+    final localB = b.toLocal();
+    return localA.year == localB.year &&
+        localA.month == localB.month &&
+        localA.day == localB.day;
+  }
+
+  /// WhatsApp-style chat date divider string:
+  /// - Today -> 'Hari Ini'
+  /// - Yesterday -> 'Kemarin'
+  /// - Within past 7 days -> Day of the week ('Senin', 'Selasa', etc.)
+  /// - Otherwise -> 'd MMMM yyyy' ('22 September 2026')
+  static String formatChatDivider(DateTime dateTime) {
+    final local = dateTime.toLocal();
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final msgDate = DateTime(local.year, local.month, local.day);
+
+    final diffDays = today.difference(msgDate).inDays;
+    if (diffDays == 0) {
+      return 'Hari Ini';
+    } else if (diffDays == 1) {
+      return 'Kemarin';
+    } else if (diffDays > 1 && diffDays < 7) {
+      const days = [
+        'Senin',
+        'Selasa',
+        'Rabu',
+        'Kamis',
+        'Jumat',
+        'Sabtu',
+        'Minggu',
+      ];
+      return days[local.weekday - 1];
+    } else {
+      const months = [
+        'Januari',
+        'Februari',
+        'Maret',
+        'April',
+        'Mei',
+        'Juni',
+        'Juli',
+        'Agustus',
+        'September',
+        'Oktober',
+        'November',
+        'Desember',
+      ];
+      return '${local.day} ${months[local.month - 1]} ${local.year}';
+    }
+  }
 }
