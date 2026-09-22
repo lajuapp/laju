@@ -2,7 +2,7 @@ import 'dart:io';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import '../../../../core/core.dart';
-import '../domain/status_service.dart';
+import '../../domain/status_service.dart';
 
 class StatusStoryItem {
   final String? id;
@@ -211,8 +211,9 @@ class _StatusViewScreenState extends State<StatusViewScreen>
                   ),
                 ),
               ),
+            ),
 
-              // Main Story Content (Photo with caption OR centered text)
+            // Main Story Content (Photo with caption OR centered text)
               if (story.isPhoto) ...[
                 // Photo Background Visual
                 Positioned.fill(
@@ -424,7 +425,6 @@ class _StatusViewScreenState extends State<StatusViewScreen>
             ],
           ),
         ),
-      ),
-    );
-  }
+      );
+    }
 }

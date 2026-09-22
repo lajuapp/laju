@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import '../../../../core/core.dart';
 import '../../../settings/domain/account_controller.dart';
 import '../../../settings/presentation/screens/settings_screen.dart';
-import '../domain/status_service.dart';
+import '../../domain/status_service.dart';
 import 'status_view_screen.dart';
 import 'status_privacy_contact_picker_screen.dart';
 import 'text_status_composer_screen.dart';
