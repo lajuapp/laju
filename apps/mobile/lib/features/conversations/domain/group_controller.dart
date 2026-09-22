@@ -224,6 +224,14 @@ class GroupController extends ChangeNotifier {
     }
   }
 
+  void setDisappearingSeconds(String groupId, int? seconds) {
+    final group = _groups[groupId];
+    if (group != null) {
+      group.disappearingSeconds = seconds;
+      notifyListeners();
+    }
+  }
+
   Future<void> removeMember(String groupId, String memberId) async {
     final group = _groups[groupId];
     if (group != null) {

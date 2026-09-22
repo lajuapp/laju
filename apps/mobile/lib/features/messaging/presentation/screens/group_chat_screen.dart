@@ -13,6 +13,7 @@ import '../../../conversations/domain/group_controller.dart';
 import '../../../conversations/domain/conversation_service.dart';
 import '../../../settings/presentation/screens/wallpaper_settings_screen.dart';
 import '../../../../core/services/voice_note_service.dart';
+import 'disappearing_messages_screen.dart';
 
 class GroupChatScreen extends StatefulWidget {
   final String groupId;
@@ -910,6 +911,14 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                               ),
                             );
                             break;
+                          case 'disappearing':
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => const DisappearingMessagesScreen(initialTimer: 'Off'),
+                              ),
+                            );
+                            break;
                           case 'clear':
                             _confirmClearChat(context, isDark);
                             break;
@@ -923,6 +932,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                         _buildMenuItem('media', Icons.perm_media_outlined, 'Media & Lampiran', isDark),
                         _buildMenuItem('search', Icons.search_rounded, 'Cari Pesan', isDark),
                         _buildMenuItem('wallpaper', Icons.wallpaper_rounded, 'Wallpaper Chat', isDark),
+                        _buildMenuItem('disappearing', Icons.timer_outlined, 'Pesan Sementara', isDark),
                         const PopupMenuDivider(height: 1),
                         _buildMenuItem('clear', Icons.delete_sweep_outlined, 'Bersihkan Chat', isDark),
                         _buildMenuItem('leave', Icons.exit_to_app_rounded, 'Keluar dari Grup', isDark, isDestructive: true),
