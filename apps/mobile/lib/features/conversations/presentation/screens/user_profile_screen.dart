@@ -12,6 +12,7 @@ class UserProfileScreen extends StatefulWidget {
   final bool isOnline;
   final bool isVerified;
   final String safetyNumber;
+  final String? avatarUrl;
 
   const UserProfileScreen({
     super.key,
@@ -21,6 +22,7 @@ class UserProfileScreen extends StatefulWidget {
     this.isOnline = true,
     this.isVerified = true,
     this.safetyNumber = '19402 48190 28471 00293 84729 48190',
+    this.avatarUrl,
   });
 
   @override
@@ -159,6 +161,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                 children: [
                   ModernAvatar(
                     name: widget.contactName,
+                    imagePath: widget.avatarUrl,
                     radius: 46,
                     isOnline: widget.isOnline,
                     isVerified: widget.isVerified,

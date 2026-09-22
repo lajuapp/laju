@@ -13,6 +13,7 @@ class UserDirectoryItem {
   final String? email;
   final String? phoneNumber;
   final String? status;
+  final String? avatarUrl;
 
   const UserDirectoryItem({
     required this.id,
@@ -20,6 +21,7 @@ class UserDirectoryItem {
     this.email,
     this.phoneNumber,
     this.status,
+    this.avatarUrl,
   });
 
   factory UserDirectoryItem.fromJson(Map<String, dynamic> json) {
@@ -29,6 +31,7 @@ class UserDirectoryItem {
       email: json['email'],
       phoneNumber: json['phoneNumber'],
       status: json['status'],
+      avatarUrl: json['avatarUrl'] ?? json['avatar'],
     );
   }
 }
@@ -153,6 +156,7 @@ class ConversationService {
         final conversations = list.map((item) {
           final isGroup = item['type'] == 'GROUP';
           String title = item['title'] ?? '';
+          String? avatarUrl;
           if (title.isEmpty) {
             if (isGroup) {
               title = 'Group Chat';
@@ -165,9 +169,21 @@ class ConversationService {
                 );
                 if (otherMember != null && otherMember['user'] is Map) {
                   title = otherMember['user']['username'] ?? '';
+                  avatarUrl = otherMember['user']['avatarUrl'] as String?;
                 }
               }
               if (title.isEmpty) title = 'Direct Chat';
+            }
+          } else if (!isGroup) {
+            final members = item['members'];
+            if (members is List) {
+              final otherMember = members.firstWhere(
+                (m) => m is Map && m['userId'] != currentUserId,
+                orElse: () => null,
+              );
+              if (otherMember != null && otherMember['user'] is Map) {
+                avatarUrl = otherMember['user']['avatarUrl'] as String?;
+              }
             }
           }
           final lastMsg = (item['messages'] is List && (item['messages'] as List).isNotEmpty)
@@ -183,6 +199,7 @@ class ConversationService {
             isGroup: isGroup,
             isOnline: true,
             isKeyVerified: true,
+            avatarUrl: avatarUrl,
           );
         }).toList();
 

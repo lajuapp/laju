@@ -31,6 +31,10 @@ export class UpdateUserProfileDto {
   @MinLength(4)
   @MaxLength(6)
   twoFactorPin?: string;
+
+  @IsOptional()
+  @IsString()
+  avatarUrl?: string;
 }
 
 export class SearchUsersQueryDto {

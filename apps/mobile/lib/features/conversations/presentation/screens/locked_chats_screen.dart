@@ -51,6 +51,7 @@ class _LockedChatsScreenState extends State<LockedChatsScreen> {
             conversationId: conv.id,
             title: conv.title,
             isGroup: conv.isGroup,
+            avatarUrl: conv.avatarUrl,
           ),
         ),
       );

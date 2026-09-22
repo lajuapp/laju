@@ -5,12 +5,16 @@ import {
   BadRequestException
 } from '@nestjs/common';
 import { PrismaService } from '../../infrastructure/prisma/prisma.service';
+import { RedisService } from '../../infrastructure/redis/redis.service';
 import { UpdateUserProfileDto } from './dto/users.dto';
 import { CreateUserReportDto, ReviewUserReportDto } from './dto/reports.dto';
 
 @Injectable()
 export class UsersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly redis: RedisService
+  ) {}
 
   async getProfile(userId: string) {
     const user = await this.prisma.user.findUnique({
@@ -36,7 +40,11 @@ export class UsersService {
       throw new NotFoundException('User not found');
     }
 
-    return user;
+    const [avatarUrl, about] = await Promise.all([
+      this.redis.get(`user:${userId}:avatar`),
+      this.redis.get(`user:${userId}:about`)
+    ]);
+    return { ...user, avatarUrl, about: about ?? 'Available' };
   }
 
   async updateProfile(userId: string, dto: UpdateUserProfileDto) {
@@ -78,6 +86,22 @@ export class UsersService {
       }
     }
 
+    if (dto.avatarUrl !== undefined) {
+      if (dto.avatarUrl && dto.avatarUrl.length > 0) {
+        await this.redis.set(`user:${userId}:avatar`, dto.avatarUrl);
+      } else {
+        await this.redis.del(`user:${userId}:avatar`);
+      }
+    }
+
+    if (dto.status !== undefined) {
+      if (dto.status && dto.status.length > 0) {
+        await this.redis.set(`user:${userId}:about`, dto.status);
+      } else {
+        await this.redis.del(`user:${userId}:about`);
+      }
+    }
+
     const updated = await this.prisma.user.update({
       where: { id: userId },
       data: {
@@ -99,7 +123,11 @@ export class UsersService {
       }
     });
 
-    return updated;
+    const [avatarUrl, about] = await Promise.all([
+      this.redis.get(`user:${userId}:avatar`),
+      this.redis.get(`user:${userId}:about`)
+    ]);
+    return { ...updated, avatarUrl, about: about ?? 'Available' };
   }
 
   async searchUsers(currentUserId: string, query?: string, limitStr?: string, offsetStr?: string) {
@@ -138,8 +166,15 @@ export class UsersService {
       this.prisma.user.count({ where: whereClause })
     ]);
 
+    const usersWithAvatar = await Promise.all(
+      users.map(async (u) => ({
+        ...u,
+        avatarUrl: await this.redis.get(`user:${u.id}:avatar`)
+      }))
+    );
+
     return {
-      users,
+      users: usersWithAvatar,
       total,
       limit,
       offset
@@ -162,7 +197,8 @@ export class UsersService {
       throw new NotFoundException('User not found');
     }
 
-    return user;
+    const avatarUrl = await this.redis.get(`user:${userId}:avatar`);
+    return { ...user, avatarUrl };
   }
 
   async createUserReport(reporterId: string, dto: CreateUserReportDto) {

@@ -73,7 +73,7 @@ class _GroupProfileScreenState extends State<GroupProfileScreen> {
                 )
               else
                 ...candidates.map((u) => ListTile(
-                      leading: ModernAvatar(name: u.username, radius: 20),
+                      leading: ModernAvatar(name: u.username, imagePath: u.avatarUrl, radius: 20),
                       title: Text(
                         u.username,
                         style: TextStyle(
@@ -399,6 +399,7 @@ class _GroupProfileScreenState extends State<GroupProfileScreen> {
                       builder: (context) => ChatScreen(
                         conversationId: convId,
                         title: member.name,
+                        avatarUrl: member.avatarUrl,
                       ),
                     ),
                   );
@@ -420,6 +421,7 @@ class _GroupProfileScreenState extends State<GroupProfileScreen> {
                         phone: member.phone,
                         status: member.role,
                         isOnline: member.isOnline,
+                        avatarUrl: member.avatarUrl,
                       ),
                     ),
                   );
@@ -978,6 +980,7 @@ class _GroupProfileScreenState extends State<GroupProfileScreen> {
                           onTap: () => _showMemberActions(member, isUserAdmin),
                           leading: ModernAvatar(
                             name: member.name,
+                            imagePath: member.avatarUrl,
                             radius: 20,
                             isOnline: member.isOnline,
                             isVerified: true,

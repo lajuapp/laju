@@ -1,10 +1,14 @@
 import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../../infrastructure/prisma/prisma.service';
+import { RedisService } from '../../infrastructure/redis/redis.service';
 import { CreateStatusDto, StatusTypeDto } from './dto/status.dto';
 
 @Injectable()
 export class StatusService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly redis: RedisService
+  ) {}
 
   async createStatus(userId: string, dto: CreateStatusDto) {
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours expiry
@@ -114,10 +118,12 @@ export class StatusService {
     const userStoryMap = new Map<string, any>();
     for (const story of stories) {
       if (!userStoryMap.has(story.userId)) {
+        const avatarUrl = await this.redis.get(`user:${story.userId}:avatar`);
         userStoryMap.set(story.userId, {
           userId: story.userId,
           username: story.user.username,
           phoneNumber: story.user.phoneNumber,
+          avatarUrl,
           stories: []
         });
       }

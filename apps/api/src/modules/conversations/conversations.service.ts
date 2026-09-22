@@ -5,12 +5,16 @@ import {
   BadRequestException
 } from '@nestjs/common';
 import { PrismaService } from '../../infrastructure/prisma/prisma.service';
+import { RedisService } from '../../infrastructure/redis/redis.service';
 import { CreateConversationDto, AddMemberDto, ChangeMemberRoleDto, UpdateConversationDto } from './dto/conversation.dto';
 import { ConversationType, ConversationRole } from '@secure-messenger/shared-types';
 
 @Injectable()
 export class ConversationsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly redis: RedisService
+  ) {}
 
   async createConversation(currentUserId: string, dto: CreateConversationDto) {
     const allUserIds = Array.from(new Set([currentUserId, ...dto.participantUserIds]));
@@ -83,7 +87,7 @@ export class ConversationsService {
   }
 
   async listUserConversations(userId: string) {
-    return this.prisma.conversation.findMany({
+    const convs = await this.prisma.conversation.findMany({
       where: {
         members: { some: { userId, leftAt: null } }
       },
@@ -101,6 +105,27 @@ export class ConversationsService {
         }
       }
     });
+
+    return Promise.all(
+      convs.map(async (conv) => {
+        const enrichedMembers = await Promise.all(
+          conv.members.map(async (m) => {
+            const avatarUrl = await this.redis.get(`user:${m.userId}:avatar`);
+            return {
+              ...m,
+              user: {
+                ...m.user,
+                avatarUrl
+              }
+            };
+          })
+        );
+        return {
+          ...conv,
+          members: enrichedMembers
+        };
+      })
+    );
   }
 
   async getConversation(userId: string, conversationId: string) {
@@ -111,7 +136,7 @@ export class ConversationsService {
       throw new ForbiddenException('Not a member of this conversation');
     }
 
-    return this.prisma.conversation.findUnique({
+    const conv = await this.prisma.conversation.findUnique({
       where: { id: conversationId },
       include: {
         members: {
@@ -121,6 +146,28 @@ export class ConversationsService {
         }
       }
     });
+
+    if (!conv) {
+      return null;
+    }
+
+    const enrichedMembers = await Promise.all(
+      conv.members.map(async (m) => {
+        const avatarUrl = await this.redis.get(`user:${m.userId}:avatar`);
+        return {
+          ...m,
+          user: {
+            ...m.user,
+            avatarUrl
+          }
+        };
+      })
+    );
+
+    return {
+      ...conv,
+      members: enrichedMembers
+    };
   }
 
   async addMember(userId: string, conversationId: string, dto: AddMemberDto) {

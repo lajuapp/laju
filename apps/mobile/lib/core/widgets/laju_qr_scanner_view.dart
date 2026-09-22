@@ -536,6 +536,7 @@ class _ScannedResultBottomSheetState extends State<_ScannedResultBottomSheet> {
   _SheetStep _step = _SheetStep.loading;
   String? _resolvedUserId;
   String? _resolvedUsername;
+  String? _resolvedAvatarUrl;
   String? _conversationId;
   String _errorMessage = '';
 
@@ -576,6 +577,7 @@ class _ScannedResultBottomSheetState extends State<_ScannedResultBottomSheet> {
       String? foundUserId = (targetId != null && targetId.isNotEmpty) ? targetId : null;
       String displayName = targetUser ?? 'Teman LAJU';
 
+      String? resolvedAvatar;
       // 2. Search user by username if no direct userId
       if (foundUserId == null && targetUser != null && targetUser.isNotEmpty) {
         final users = await ConversationService.instance.searchUsers(targetUser);
@@ -583,9 +585,11 @@ class _ScannedResultBottomSheetState extends State<_ScannedResultBottomSheet> {
         if (match.isNotEmpty) {
           foundUserId = match.first.id;
           displayName = match.first.username;
+          resolvedAvatar = match.first.avatarUrl;
         } else if (users.isNotEmpty) {
           foundUserId = users.first.id;
           displayName = users.first.username;
+          resolvedAvatar = users.first.avatarUrl;
         }
       }
 
@@ -595,6 +599,7 @@ class _ScannedResultBottomSheetState extends State<_ScannedResultBottomSheet> {
         if (users.isNotEmpty) {
           foundUserId = users.first.id;
           displayName = users.first.username;
+          resolvedAvatar = users.first.avatarUrl;
         }
       }
 
@@ -623,6 +628,7 @@ class _ScannedResultBottomSheetState extends State<_ScannedResultBottomSheet> {
           _step = _SheetStep.success;
           _resolvedUserId = foundUserId;
           _resolvedUsername = displayName;
+          _resolvedAvatarUrl = resolvedAvatar;
           _conversationId = convId;
         });
       }
@@ -649,6 +655,7 @@ class _ScannedResultBottomSheetState extends State<_ScannedResultBottomSheet> {
             conversationId: _conversationId ?? 'conv-$_resolvedUserId',
             title: _resolvedUsername ?? 'Teman',
             isGroup: false,
+            avatarUrl: _resolvedAvatarUrl,
           ),
         ),
       );
@@ -857,6 +864,7 @@ class _ScannedResultBottomSheetState extends State<_ScannedResultBottomSheet> {
                 children: [
                   ModernAvatar(
                     name: _resolvedUsername ?? 'Teman',
+                    imagePath: _resolvedAvatarUrl,
                     radius: 28,
                     isVerified: true,
                   ),

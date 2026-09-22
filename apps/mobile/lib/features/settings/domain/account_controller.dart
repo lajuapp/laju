@@ -1,3 +1,5 @@
+import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../../../core/core.dart';
@@ -86,6 +88,10 @@ class AccountController extends ChangeNotifier {
         _blockedContacts.addAll(blocked);
       }
       notifyListeners();
+      syncProfileFromBackend();
+      if (_avatarUrl.isNotEmpty) {
+        _syncWithBackend();
+      }
     } catch (e) {
       debugPrint('[AccountController] init error: $e');
     }
@@ -171,9 +177,51 @@ class AccountController extends ChangeNotifier {
     } catch (_) {}
   }
 
+  Future<void> syncProfileFromBackend() async {
+    try {
+      if (ApiClient.instance.authToken == null) return;
+      final response = await ApiClient.instance.get(ApiEndpoints.currentUser);
+      if (response.isSuccess && response.rawJson is Map) {
+        final data = response.rawJson as Map<String, dynamic>;
+        final bAvatar = data['avatarUrl'] as String? ?? data['avatar'] as String?;
+        if (bAvatar != null && bAvatar.isNotEmpty && _avatarUrl.isEmpty) {
+          _avatarUrl = bAvatar;
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString('laju_avatar_url', _avatarUrl);
+          notifyListeners();
+        }
+        final bAbout = data['about'] as String? ?? data['status'] as String?;
+        if (bAbout != null && bAbout.isNotEmpty && (_about.isEmpty || _about == 'Available')) {
+          _about = bAbout;
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString('laju_about', _about);
+          notifyListeners();
+        }
+      }
+    } catch (_) {}
+  }
+
   void _syncWithBackend() async {
     try {
       if (ApiClient.instance.authToken != null) {
+        String? avatarPayload;
+        if (_avatarUrl.isNotEmpty) {
+          if (_avatarUrl.startsWith('data:') || _avatarUrl.startsWith('http://') || _avatarUrl.startsWith('https://')) {
+            avatarPayload = _avatarUrl;
+          } else {
+            try {
+              final file = File(_avatarUrl);
+              if (await file.exists()) {
+                final bytes = await file.readAsBytes();
+                final base64String = base64Encode(bytes);
+                avatarPayload = 'data:image/jpeg;base64,$base64String';
+              }
+            } catch (e) {
+              debugPrint('[AccountController] error reading avatar file: $e');
+            }
+          }
+        }
+
         await ApiClient.instance.patch(
           ApiEndpoints.currentUser,
           body: {
@@ -183,6 +231,7 @@ class AccountController extends ChangeNotifier {
             'status': _about,
             'twoFactorEnabled': _twoStepVerificationEnabled,
             'twoFactorPin': _twoStepPin,
+            if (avatarPayload != null) 'avatarUrl': avatarPayload,
           },
         );
       }

@@ -9,6 +9,7 @@ class GroupMemberItem {
   final String role;
   final bool isAdmin;
   final bool isOnline;
+  final String? avatarUrl;
 
   const GroupMemberItem({
     required this.id,
@@ -17,6 +18,7 @@ class GroupMemberItem {
     required this.role,
     this.isAdmin = false,
     this.isOnline = false,
+    this.avatarUrl,
   });
 
   GroupMemberItem copyWith({
@@ -26,6 +28,7 @@ class GroupMemberItem {
     String? role,
     bool? isAdmin,
     bool? isOnline,
+    String? avatarUrl,
   }) {
     return GroupMemberItem(
       id: id ?? this.id,
@@ -34,6 +37,7 @@ class GroupMemberItem {
       role: role ?? this.role,
       isAdmin: isAdmin ?? this.isAdmin,
       isOnline: isOnline ?? this.isOnline,
+      avatarUrl: avatarUrl ?? this.avatarUrl,
     );
   }
 }
@@ -266,6 +270,7 @@ class GroupController extends ChangeNotifier {
                 role: role == 'OWNER' ? 'Admin Grup • Owner' : (isAdmin ? 'Admin Grup' : 'Anggota'),
                 isAdmin: isAdmin,
                 isOnline: true,
+                avatarUrl: user?['avatarUrl'] as String?,
               ));
             }
           }

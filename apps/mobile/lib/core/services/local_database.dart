@@ -24,6 +24,7 @@ class LocalDatabase {
     CREATE TABLE IF NOT EXISTS conversations (
       id                    TEXT PRIMARY KEY,
       title                 TEXT NOT NULL,
+      avatar_url            TEXT,
       last_message          TEXT NOT NULL DEFAULT '',
       last_message_time     INTEGER NOT NULL DEFAULT 0,
       unread_count          INTEGER NOT NULL DEFAULT 0,
@@ -74,6 +75,11 @@ class LocalDatabase {
         await db.execute(_createConversations);
         await db.execute(_createMessages);
         await db.execute('CREATE INDEX IF NOT EXISTS idx_messages_conv ON messages(conversation_id)');
+      },
+      onOpen: (db) async {
+        try {
+          await db.execute('ALTER TABLE conversations ADD COLUMN avatar_url TEXT');
+        } catch (_) {}
       },
     );
   }

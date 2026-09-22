@@ -17,6 +17,7 @@ class ChatScreen extends StatefulWidget {
   final String title;
   final bool isGroup;
   final String safetyNumber;
+  final String? avatarUrl;
 
   const ChatScreen({
     super.key,
@@ -24,6 +25,7 @@ class ChatScreen extends StatefulWidget {
     required this.title,
     this.isGroup = false,
     this.safetyNumber = '4812 ••• 9901',
+    this.avatarUrl,
   });
 
   @override
@@ -467,6 +469,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   isOnline: true,
                   isVerified: true,
                   safetyNumber: widget.safetyNumber,
+                  avatarUrl: widget.avatarUrl,
                 ),
               ),
             );
@@ -475,6 +478,7 @@ class _ChatScreenState extends State<ChatScreen> {
             children: [
               ModernAvatar(
                 name: widget.title,
+                imagePath: widget.avatarUrl,
                 radius: 19,
                 isOnline: true,
                 isVerified: true,

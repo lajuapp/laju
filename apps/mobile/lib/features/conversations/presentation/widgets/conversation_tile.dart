@@ -67,6 +67,7 @@ class ConversationTile extends StatelessWidget {
             children: [
               ModernAvatar(
                 name: conversation.title,
+                imagePath: conversation.avatarUrl,
                 radius: 26,
                 isOnline: conversation.isOnline,
                 isVerified: conversation.isKeyVerified,

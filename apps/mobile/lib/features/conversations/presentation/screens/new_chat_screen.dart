@@ -12,6 +12,7 @@ class ContactItem {
   final String phone;
   final bool isVerified;
   final bool isOnline;
+  final String? avatarUrl;
 
   const ContactItem({
     required this.id,
@@ -20,6 +21,7 @@ class ContactItem {
     required this.phone,
     this.isVerified = true,
     this.isOnline = false,
+    this.avatarUrl,
   });
 }
 
@@ -53,6 +55,7 @@ class _NewChatScreenState extends State<NewChatScreen> {
           phone: u.phoneNumber ?? u.email ?? '',
           isVerified: true,
           isOnline: true,
+          avatarUrl: u.avatarUrl,
         )).toList();
         _isSearching = false;
       });
@@ -81,6 +84,7 @@ class _NewChatScreenState extends State<NewChatScreen> {
           phone: u.phoneNumber ?? u.email ?? '',
           isVerified: true,
           isOnline: true,
+          avatarUrl: u.avatarUrl,
         )).toList();
       });
     }
@@ -103,6 +107,7 @@ class _NewChatScreenState extends State<NewChatScreen> {
           conversationId: convId,
           title: contact.name,
           isGroup: false,
+          avatarUrl: contact.avatarUrl,
         ),
       ),
     );
@@ -300,6 +305,7 @@ class _NewChatScreenState extends State<NewChatScreen> {
               contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
               leading: ModernAvatar(
                 name: contact.name,
+                imagePath: contact.avatarUrl,
                 radius: 22,
                 isOnline: contact.isOnline,
                 isVerified: contact.isVerified,

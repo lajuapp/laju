@@ -243,6 +243,7 @@ class _HomeScreenState extends State<HomeScreen> {
             conversationId: conv.id,
             title: conv.title,
             isGroup: conv.isGroup,
+            avatarUrl: conv.avatarUrl,
           ),
         ),
       );

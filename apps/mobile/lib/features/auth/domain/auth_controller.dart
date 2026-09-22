@@ -14,6 +14,7 @@ class AuthUser {
   final String? phoneNumber;
   final bool twoFactorEnabled;
   final String? status;
+  final String? avatarUrl;
 
   const AuthUser({
     required this.id,
@@ -22,6 +23,7 @@ class AuthUser {
     this.phoneNumber,
     this.twoFactorEnabled = false,
     this.status,
+    this.avatarUrl,
   });
 
   factory AuthUser.fromJson(Map<String, dynamic> json) {
@@ -32,6 +34,7 @@ class AuthUser {
       phoneNumber: json['phoneNumber'],
       twoFactorEnabled: json['twoFactorEnabled'] == true,
       status: json['status'],
+      avatarUrl: json['avatarUrl'] ?? json['avatar'],
     );
   }
 }

@@ -6,6 +6,7 @@ enum ConversationCategory {
 class ConversationModel {
   final String id;
   final String title;
+  final String? avatarUrl;
   final String lastMessage;
   final DateTime lastMessageTime;
   final int unreadCount;
@@ -23,6 +24,7 @@ class ConversationModel {
   const ConversationModel({
     required this.id,
     required this.title,
+    this.avatarUrl,
     required this.lastMessage,
     required this.lastMessageTime,
     this.unreadCount = 0,
@@ -41,6 +43,7 @@ class ConversationModel {
   ConversationModel copyWith({
     String? id,
     String? title,
+    String? avatarUrl,
     String? lastMessage,
     DateTime? lastMessageTime,
     int? unreadCount,
@@ -58,6 +61,7 @@ class ConversationModel {
     return ConversationModel(
       id: id ?? this.id,
       title: title ?? this.title,
+      avatarUrl: avatarUrl ?? this.avatarUrl,
       lastMessage: lastMessage ?? this.lastMessage,
       lastMessageTime: lastMessageTime ?? this.lastMessageTime,
       unreadCount: unreadCount ?? this.unreadCount,
