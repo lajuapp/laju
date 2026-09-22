@@ -14,6 +14,7 @@ import 'camera_status_screen.dart';
 
 class StatusContactGroup {
   final String name;
+  final String? avatarUrl;
   final String time;
   final int storyCount;
   final Color storyColor;
@@ -22,6 +23,7 @@ class StatusContactGroup {
 
   const StatusContactGroup({
     required this.name,
+    this.avatarUrl,
     required this.time,
     required this.storyCount,
     required this.storyColor,
@@ -807,144 +809,122 @@ class StatusScreenState extends State<StatusScreen> {
           children: [
             // My Status Tile (only shown when not filtering or when empty query)
             if (!_isSearching || query.isEmpty) ...[
-              LajuGlassCard(
-                borderRadius: 18,
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(14),
-                  onTap: () {
-                    if (_myStories.isEmpty) {
-                      _showMediaPickerSheet();
-                    } else {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => StatusViewScreen(
-                            contactName: 'My Status (You)',
-                            stories: _myStories,
-                          ),
-                        ),
-                      );
-                    }
-                  },
-                  child: Row(
-                    children: [
-                      _myStories.isEmpty
-                          ? Stack(
-                              children: [
-                                ModernAvatar(
-                                  name: AccountController.instance.userName,
-                                  radius: 25,
-                                  isVerified: true,
-                                ),
-                                Positioned(
-                                  bottom: 0,
-                                  right: 0,
-                                  child: Container(
-                                    padding: const EdgeInsets.all(3),
-                                    decoration: BoxDecoration(
-                                      color: AppColors.primary,
-                                      shape: BoxShape.circle,
-                                      border: Border.all(
-                                        color: isDark ? const Color(0xFF0F172A) : Colors.white,
-                                        width: 2,
-                                      ),
-                                      boxShadow: [
-                                        BoxShadow(
-                                          color: AppColors.primary.withValues(alpha: 0.4),
-                                          blurRadius: 6,
+              ListenableBuilder(
+                listenable: AccountController.instance,
+                builder: (context, _) {
+                  final myAvatarUrl = AccountController.instance.avatarUrl;
+                  final myName = AccountController.instance.userName;
+
+                  return LajuGlassCard(
+                    borderRadius: 18,
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(14),
+                      onTap: () {
+                        if (_myStories.isEmpty) {
+                          _showMediaPickerSheet();
+                        } else {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => StatusViewScreen(
+                                contactName: 'My Status (You)',
+                                stories: _myStories,
+                              ),
+                            ),
+                          );
+                        }
+                      },
+                      child: Row(
+                        children: [
+                          _myStories.isEmpty
+                              ? Stack(
+                                  children: [
+                                    ModernAvatar(
+                                      name: myName,
+                                      imagePath: myAvatarUrl.isNotEmpty ? myAvatarUrl : null,
+                                      radius: 25,
+                                      isVerified: true,
+                                    ),
+                                    Positioned(
+                                      bottom: 0,
+                                      right: 0,
+                                      child: Container(
+                                        padding: const EdgeInsets.all(3),
+                                        decoration: BoxDecoration(
+                                          color: AppColors.primary,
+                                          shape: BoxShape.circle,
+                                          border: Border.all(
+                                            color: isDark ? const Color(0xFF0F172A) : Colors.white,
+                                            width: 2,
+                                          ),
+                                          boxShadow: [
+                                            BoxShadow(
+                                              color: AppColors.primary.withValues(alpha: 0.4),
+                                              blurRadius: 6,
+                                            ),
+                                          ],
                                         ),
-                                      ],
+                                        child: const Icon(
+                                          Icons.add_rounded,
+                                          size: 13,
+                                          color: Colors.white,
+                                        ),
+                                      ),
                                     ),
-                                    child: const Icon(
-                                      Icons.add_rounded,
-                                      size: 13,
-                                      color: Colors.white,
+                                  ],
+                                )
+                              : Container(
+                                  padding: const EdgeInsets.all(2.5),
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    gradient: const LinearGradient(
+                                      colors: [Color(0xFF34D399), AppColors.primary, Color(0xFF06B6D4)],
                                     ),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: AppColors.primary.withValues(alpha: 0.35),
+                                        blurRadius: 8,
+                                      ),
+                                    ],
+                                  ),
+                                  child: ModernAvatar(
+                                    name: myName,
+                                    imagePath: myAvatarUrl.isNotEmpty ? myAvatarUrl : null,
+                                    radius: 23,
+                                    isVerified: true,
+                                  ),
+                                ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'My Status',
+                                  style: TextStyle(
+                                    fontSize: 15.5,
+                                    fontWeight: FontWeight.w700,
+                                    color: isDark ? Colors.white : const Color(0xFF111827),
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  _myStories.isEmpty
+                                      ? 'Tap to add status update'
+                                      : '${_myStories.first.time} • ${_myStories.length} ${_myStories.length > 1 ? 'updates' : 'update'}',
+                                  style: TextStyle(
+                                    fontSize: 12.5,
+                                    color: _myStories.isEmpty
+                                        ? (isDark ? AppColors.darkTextSecondary : const Color(0xFF6B7280))
+                                        : AppColors.primary,
+                                    fontWeight: _myStories.isEmpty ? FontWeight.normal : FontWeight.w600,
                                   ),
                                 ),
                               ],
-                            )
-                          : Container(
-                              padding: const EdgeInsets.all(2.5),
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                gradient: const LinearGradient(
-                                  colors: [Color(0xFF34D399), AppColors.primary, Color(0xFF06B6D4)],
-                                ),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: AppColors.primary.withValues(alpha: 0.35),
-                                    blurRadius: 8,
-                                  ),
-                                ],
-                              ),
-                              child: ModernAvatar(
-                                name: AccountController.instance.userName,
-                                radius: 23,
-                                isVerified: true,
-                              ),
                             ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'My Status',
-                              style: TextStyle(
-                                fontSize: 15.5,
-                                fontWeight: FontWeight.w700,
-                                color: isDark ? Colors.white : const Color(0xFF111827),
-                              ),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              _myStories.isEmpty
-                                  ? 'Tap to add status update'
-                                  : '${_myStories.first.time} • ${_myStories.length} ${_myStories.length > 1 ? 'updates' : 'update'}',
-                              style: TextStyle(
-                                fontSize: 12.5,
-                                color: _myStories.isEmpty
-                                    ? (isDark ? AppColors.darkTextSecondary : const Color(0xFF6B7280))
-                                    : AppColors.primary,
-                                fontWeight: _myStories.isEmpty ? FontWeight.normal : FontWeight.w600,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      if (_myStories.isNotEmpty)
-                        Container(
-                          decoration: BoxDecoration(
-                            color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.05),
-                            shape: BoxShape.circle,
                           ),
-                          child: IconButton(
-                            icon: Icon(
-                              Icons.more_horiz_rounded,
-                              color: isDark ? Colors.white70 : const Color(0xFF4B5563),
-                              size: 20,
-                            ),
-                            onPressed: _showMyStatusActions,
-                          ),
-                        )
-                      else
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Container(
-                              decoration: BoxDecoration(
-                                color: (isDark ? Colors.white : AppColors.primary).withValues(alpha: isDark ? 0.08 : 0.1),
-                                shape: BoxShape.circle,
-                              ),
-                              child: IconButton(
-                                icon: const Icon(Icons.camera_alt_rounded, size: 18, color: AppColors.primary),
-                                onPressed: _showMediaPickerSheet,
-                                tooltip: 'Kamera / Galeri',
-                              ),
-                            ),
-                            const SizedBox(width: 6),
+                          if (_myStories.isNotEmpty)
                             Container(
                               decoration: BoxDecoration(
                                 color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.05),
@@ -952,19 +932,51 @@ class StatusScreenState extends State<StatusScreen> {
                               ),
                               child: IconButton(
                                 icon: Icon(
-                                  Icons.edit_rounded,
-                                  size: 18,
+                                  Icons.more_horiz_rounded,
                                   color: isDark ? Colors.white70 : const Color(0xFF4B5563),
+                                  size: 20,
                                 ),
-                                onPressed: _openTextStatusComposer,
-                                tooltip: 'Text',
+                                onPressed: _showMyStatusActions,
                               ),
+                            )
+                          else
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(
+                                  decoration: BoxDecoration(
+                                    color: (isDark ? Colors.white : AppColors.primary).withValues(alpha: isDark ? 0.08 : 0.1),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: IconButton(
+                                    icon: const Icon(Icons.camera_alt_rounded, size: 18, color: AppColors.primary),
+                                    onPressed: _showMediaPickerSheet,
+                                    tooltip: 'Kamera / Galeri',
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                                Container(
+                                  decoration: BoxDecoration(
+                                    color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.05),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: IconButton(
+                                    icon: Icon(
+                                      Icons.edit_rounded,
+                                      size: 18,
+                                      color: isDark ? Colors.white70 : const Color(0xFF4B5563),
+                                    ),
+                                    onPressed: _openTextStatusComposer,
+                                    tooltip: 'Text',
+                                  ),
+                                ),
+                              ],
                             ),
-                          ],
-                        ),
-                    ],
-                  ),
-                ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
               ),
               const SizedBox(height: 20),
             ],
@@ -1016,6 +1028,7 @@ class StatusScreenState extends State<StatusScreen> {
                           context: context,
                           isDark: isDark,
                           name: item.name,
+                          avatarUrl: item.avatarUrl,
                           time: item.time,
                           storyCount: item.storyCount,
                           storyColor: item.storyColor,
@@ -1083,6 +1096,7 @@ class StatusScreenState extends State<StatusScreen> {
                           context: context,
                           isDark: isDark,
                           name: item.name,
+                          avatarUrl: item.avatarUrl,
                           time: item.time,
                           storyCount: item.storyCount,
                           storyColor: item.storyColor,
@@ -1180,6 +1194,7 @@ class StatusScreenState extends State<StatusScreen> {
     required BuildContext context,
     required bool isDark,
     required String name,
+    String? avatarUrl,
     required String time,
     required int storyCount,
     required Color storyColor,
@@ -1202,6 +1217,7 @@ class StatusScreenState extends State<StatusScreen> {
         ),
         child: ModernAvatar(
           name: name,
+          imagePath: avatarUrl,
           radius: 22,
           isVerified: true,
         ),

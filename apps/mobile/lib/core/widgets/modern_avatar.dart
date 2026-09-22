@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import '../theme/app_colors.dart';
@@ -56,13 +57,31 @@ class ModernAvatar extends StatelessWidget {
 
     final gradientColors = _resolveGradient(name);
 
-    final path = imagePath?.trim();
-    final isNetwork = path != null && (path.startsWith('http://') || path.startsWith('https://'));
-    final isLocalFile = !isNetwork && path != null && path.isNotEmpty && File(path).existsSync();
-    final hasValidImage = isNetwork || isLocalFile;
-    final ImageProvider? avatarProvider = isNetwork
-        ? NetworkImage(path)
-        : (isLocalFile ? FileImage(File(path)) : null);
+    final rawPath = imagePath?.trim();
+    String? normalizedPath = rawPath;
+    if (rawPath != null && rawPath.startsWith('file://')) {
+      try {
+        normalizedPath = Uri.parse(rawPath).toFilePath();
+      } catch (_) {
+        normalizedPath = rawPath.replaceFirst('file://', '');
+      }
+    }
+
+    final isNetwork = normalizedPath != null && (normalizedPath.startsWith('http://') || normalizedPath.startsWith('https://'));
+    final isBase64 = normalizedPath != null && (normalizedPath.startsWith('data:image') || normalizedPath.startsWith('data:application'));
+    final isLocalFile = !isNetwork && !isBase64 && normalizedPath != null && normalizedPath.isNotEmpty && File(normalizedPath).existsSync();
+    final hasValidImage = isNetwork || isBase64 || isLocalFile;
+    ImageProvider? avatarProvider;
+    if (isNetwork) {
+      avatarProvider = NetworkImage(normalizedPath);
+    } else if (isBase64) {
+      try {
+        final b64 = normalizedPath.split(',').last;
+        avatarProvider = MemoryImage(base64Decode(b64));
+      } catch (_) {}
+    } else if (isLocalFile) {
+      avatarProvider = FileImage(File(normalizedPath));
+    }
 
     return Stack(
       clipBehavior: Clip.none,
