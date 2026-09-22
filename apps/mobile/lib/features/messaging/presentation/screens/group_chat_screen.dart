@@ -36,6 +36,10 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
   void initState() {
     super.initState();
     ConversationService.instance.currentActiveConversationId = widget.groupId;
+    final mem = ConversationService.instance.getMemoryMessages(widget.groupId);
+    if (mem != null) {
+      _messages = List<MessageModel>.from(mem);
+    }
     _loadMessages();
     _startPolling();
   }
@@ -132,7 +136,10 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
       setState(() {
         _messages = merged;
       });
+      ConversationService.instance.updateMemoryMessages(widget.groupId, merged);
       _markIncomingAsRead(merged);
+    } else {
+      ConversationService.instance.updateMemoryMessages(widget.groupId, merged);
     }
 
     if (hasNewIncoming) {

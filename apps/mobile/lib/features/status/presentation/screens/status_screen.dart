@@ -41,7 +41,10 @@ class StatusScreen extends StatefulWidget {
   StatusScreenState createState() => StatusScreenState();
 }
 
-class StatusScreenState extends State<StatusScreen> {
+class StatusScreenState extends State<StatusScreen> with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+
   void showMediaPicker() {
     _showMediaPickerSheet();
   }
@@ -57,6 +60,19 @@ class StatusScreenState extends State<StatusScreen> {
   @override
   void initState() {
     super.initState();
+    // Instant cache hydration (Stale-While-Revalidate)
+    if (StatusService.instance.cachedMyStatuses.isNotEmpty) {
+      _myStories.addAll(StatusService.instance.cachedMyStatuses);
+    }
+    if (StatusService.instance.cachedContactGroups.isNotEmpty) {
+      for (final group in StatusService.instance.cachedContactGroups) {
+        if (group.isViewed) {
+          _viewedUpdates.add(group);
+        } else {
+          _recentUpdates.add(group);
+        }
+      }
+    }
     _loadStatuses();
     // Background polling every 8 seconds for live updates from contacts
     _pollingTimer = Timer.periodic(const Duration(seconds: 8), (_) => _loadStatuses());
@@ -706,6 +722,7 @@ class StatusScreenState extends State<StatusScreen> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     final query = _searchController.text.trim().toLowerCase();
 
     final filteredRecent = query.isEmpty

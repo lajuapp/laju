@@ -46,6 +46,24 @@ class ConversationService {
   /// Keeps track of latest known message ID per conversation to detect new arrivals
   final Map<String, String> _lastKnownMessageIds = {};
 
+  /// In-memory cache for TanStack Query-style instantaneous hydration
+  List<ConversationModel>? inMemoryConversations;
+  final Map<String, List<MessageModel>> _inMemoryMessages = {};
+
+  List<MessageModel>? getMemoryMessages(String conversationId) {
+    final list = _inMemoryMessages[conversationId];
+    if (list != null && list.isNotEmpty) {
+      return List<MessageModel>.unmodifiable(list);
+    }
+    return null;
+  }
+
+  void updateMemoryMessages(String conversationId, List<MessageModel> messages) {
+    if (messages.isNotEmpty) {
+      _inMemoryMessages[conversationId] = List<MessageModel>.from(messages);
+    }
+  }
+
   /// Search users in the backend directory for new chats or group members
   Future<List<UserDirectoryItem>> searchUsers(String query) async {
     try {
@@ -69,8 +87,12 @@ class ConversationService {
   }
 
   /// Return conversations from local SQLite cache (offline-safe, instant).
-  Future<List<ConversationModel>> getConversationsFromCache() {
-    return LocalDatabase.instance.getConversations();
+  Future<List<ConversationModel>> getConversationsFromCache() async {
+    final cached = await LocalDatabase.instance.getConversations();
+    if (cached.isNotEmpty) {
+      inMemoryConversations = cached;
+    }
+    return cached;
   }
 
   /// Fetch conversations for the current authenticated user
@@ -203,7 +225,8 @@ class ConversationService {
           );
         }).toList();
 
-        // Persist to local cache
+        // Persist to local cache and memory cache
+        inMemoryConversations = conversations;
         LocalDatabase.instance.upsertConversations(conversations);
         return conversations;
       }
@@ -360,8 +383,12 @@ class ConversationService {
   }
 
   /// Return messages from local SQLite cache for a conversation (offline-safe, instant).
-  Future<List<MessageModel>> getMessagesFromCache(String conversationId) {
-    return LocalDatabase.instance.getMessages(conversationId);
+  Future<List<MessageModel>> getMessagesFromCache(String conversationId) async {
+    final cached = await LocalDatabase.instance.getMessages(conversationId);
+    if (cached.isNotEmpty) {
+      updateMemoryMessages(conversationId, cached);
+    }
+    return cached;
   }
 
   /// Fetch message history for a conversation
@@ -440,7 +467,8 @@ class ConversationService {
             );
           }).toList();
 
-          // Persist to local cache
+          // Persist to local cache and memory cache
+          updateMemoryMessages(conversationId, messages);
           LocalDatabase.instance.upsertMessages(conversationId, messages);
           return messages;
         }

@@ -43,7 +43,8 @@ class _ChatScreenState extends State<ChatScreen> {
   void initState() {
     super.initState();
     ConversationService.instance.currentActiveConversationId = widget.conversationId;
-    _messages = [];
+    final mem = ConversationService.instance.getMemoryMessages(widget.conversationId);
+    _messages = mem != null ? List<MessageModel>.from(mem) : [];
     _loadMessagesFromApi();
     _startPolling();
   }
@@ -112,8 +113,11 @@ class _ChatScreenState extends State<ChatScreen> {
       setState(() {
         _messages = merged;
       });
+      ConversationService.instance.updateMemoryMessages(widget.conversationId, merged);
       _markIncomingAsRead(merged);
       Future.delayed(const Duration(milliseconds: 60), _scrollToBottom);
+    } else {
+      ConversationService.instance.updateMemoryMessages(widget.conversationId, merged);
     }
 
     if (hasNewIncoming) {

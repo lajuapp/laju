@@ -9,6 +9,10 @@ class StatusService {
   StatusService._();
   static final StatusService instance = StatusService._();
 
+  /// In-memory cache for TanStack Query-style stale-while-revalidate hydration
+  List<StatusStoryItem> cachedMyStatuses = [];
+  List<StatusContactGroup> cachedContactGroups = [];
+
   /// Create a new status story (text or image)
   Future<StatusStoryItem?> postStatus({
     required String type, // 'TEXT' or 'IMAGE'
@@ -48,7 +52,9 @@ class StatusService {
 
       if (response.isSuccess && response.rawJson is Map) {
         final data = response.rawJson as Map<String, dynamic>;
-        return _mapStoryItem(data);
+        final story = _mapStoryItem(data);
+        cachedMyStatuses.insert(0, story);
+        return story;
       }
     } catch (e) {
       debugPrint('[StatusService] postStatus error: $e');
@@ -62,12 +68,14 @@ class StatusService {
       final response = await ApiClient.instance.get(ApiEndpoints.statusMe);
       if (response.isSuccess && response.rawJson is List) {
         final list = response.rawJson as List;
-        return list.map((item) => _mapStoryItem(item as Map<String, dynamic>)).toList();
+        final items = list.map((item) => _mapStoryItem(item as Map<String, dynamic>)).toList();
+        cachedMyStatuses = items;
+        return items;
       }
     } catch (e) {
       debugPrint('[StatusService] getMyStatuses error: $e');
     }
-    return [];
+    return cachedMyStatuses;
   }
 
   /// Get active statuses from contacts (shared conversation members / contacts)
@@ -113,12 +121,13 @@ class StatusService {
           );
         }
 
+        cachedContactGroups = groups;
         return groups;
       }
     } catch (e) {
       debugPrint('[StatusService] getContactsStatuses error: $e');
     }
-    return [];
+    return cachedContactGroups;
   }
 
   /// Mark status as viewed

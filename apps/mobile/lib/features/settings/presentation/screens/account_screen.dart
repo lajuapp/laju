@@ -37,12 +37,6 @@ class AccountScreen extends StatelessWidget {
         child: ListenableBuilder(
           listenable: AccountController.instance,
           builder: (context, _) {
-            final email = AccountController.instance.email;
-            final isVerified = AccountController.instance.isEmailVerified;
-            final emailSub = email.isNotEmpty
-                ? '$email • ${isVerified ? 'Terverifikasi' : 'Belum verifikasi'}'
-                : 'Tambahkan email';
-
             return ListView(
               padding: const EdgeInsets.fromLTRB(14, 12, 14, 40),
               children: [

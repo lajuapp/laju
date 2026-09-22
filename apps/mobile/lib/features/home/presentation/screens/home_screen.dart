@@ -74,18 +74,20 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _loadConversations() async {
-    // Step 1: Show cached data instantly (no spinner)
-    final cached = await ConversationService.instance.getConversationsFromCache();
-    if (mounted && cached.isNotEmpty) {
-      setState(() {
-        _conversations = cached;
-        _isLoadingConversations = false;
-      });
-    } else if (mounted) {
-      setState(() => _isLoadingConversations = true);
+    // Step 1: If in-memory cache is empty, check SQLite cache
+    if (_conversations.isEmpty) {
+      final cached = await ConversationService.instance.getConversationsFromCache();
+      if (mounted && cached.isNotEmpty) {
+        setState(() {
+          _conversations = cached;
+          _isLoadingConversations = false;
+        });
+      } else if (mounted && _conversations.isEmpty) {
+        setState(() => _isLoadingConversations = true);
+      }
     }
 
-    // Step 2: Fetch from server in background silently
+    // Step 2: Fetch from server in background silently (stale-while-revalidate)
     try {
       final apiConvs = await ConversationService.instance.fetchConversations();
       if (mounted) {
@@ -118,7 +120,7 @@ class _HomeScreenState extends State<HomeScreen> {
     super.dispose();
   }
 
-  List<ConversationModel> _conversations = [];
+  List<ConversationModel> _conversations = ConversationService.instance.inMemoryConversations ?? [];
   bool _isLoadingConversations = false;
 
   List<ConversationModel> get _filteredConversations {
@@ -521,18 +523,15 @@ class _HomeScreenState extends State<HomeScreen> {
 }
 
   Widget _buildBody() {
-    switch (_currentBottomNavIndex) {
-      case 0:
-        return _buildChatsTab();
-      case 1:
-        return StatusScreen(key: StatusScreen.statusKey);
-      case 2:
-        return _buildCallsTab();
-      case 3:
-        return const SettingsScreen();
-      default:
-        return _buildChatsTab();
-    }
+    return IndexedStack(
+      index: _currentBottomNavIndex,
+      children: [
+        _buildChatsTab(),
+        StatusScreen(key: StatusScreen.statusKey),
+        _buildCallsTab(),
+        const SettingsScreen(),
+      ],
+    );
   }
 
   Widget _buildChatsTab() {

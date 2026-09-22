@@ -2,7 +2,6 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import '../../../../core/core.dart';
 import '../../../location/presentation/screens/share_location_screen.dart';
-import '../../../status/presentation/screens/camera_status_screen.dart';
 
 enum AttachmentType {
   document,
