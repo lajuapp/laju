@@ -182,11 +182,13 @@ export class UsersService {
   }
 
   async getUserById(userId: string) {
-    const user = await this.prisma.user.findUnique({
+    let user = await this.prisma.user.findUnique({
       where: { id: userId },
       select: {
         id: true,
         username: true,
+        phoneNumber: true,
+        email: true,
         status: true,
         trustScore: true,
         createdAt: true
@@ -194,11 +196,29 @@ export class UsersService {
     });
 
     if (!user) {
+      user = await this.prisma.user.findUnique({
+        where: { username: userId },
+        select: {
+          id: true,
+          username: true,
+          phoneNumber: true,
+          email: true,
+          status: true,
+          trustScore: true,
+          createdAt: true
+        }
+      });
+    }
+
+    if (!user) {
       throw new NotFoundException('User not found');
     }
 
-    const avatarUrl = await this.redis.get(`user:${userId}:avatar`);
-    return { ...user, avatarUrl };
+    const [avatarUrl, about] = await Promise.all([
+      this.redis.get(`user:${user.id}:avatar`),
+      this.redis.get(`user:${user.id}:about`)
+    ]);
+    return { ...user, avatarUrl, about: about ?? 'Available' };
   }
 
   async createUserReport(reporterId: string, dto: CreateUserReportDto) {

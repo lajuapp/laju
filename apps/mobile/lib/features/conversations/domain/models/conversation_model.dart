@@ -20,6 +20,10 @@ class ConversationModel {
   final bool isLocked;
   final bool isArchived;
   final bool isMuted;
+  final String? participantUserId;
+  final String? participantPhone;
+  final String? participantAbout;
+  final int? participantTrustScore;
 
   const ConversationModel({
     required this.id,
@@ -38,6 +42,10 @@ class ConversationModel {
     this.isLocked = false,
     this.isArchived = false,
     this.isMuted = false,
+    this.participantUserId,
+    this.participantPhone,
+    this.participantAbout,
+    this.participantTrustScore,
   });
 
   ConversationModel copyWith({
@@ -57,6 +65,10 @@ class ConversationModel {
     bool? isLocked,
     bool? isArchived,
     bool? isMuted,
+    String? participantUserId,
+    String? participantPhone,
+    String? participantAbout,
+    int? participantTrustScore,
   }) {
     return ConversationModel(
       id: id ?? this.id,
@@ -75,6 +87,10 @@ class ConversationModel {
       isLocked: isLocked ?? this.isLocked,
       isArchived: isArchived ?? this.isArchived,
       isMuted: isMuted ?? this.isMuted,
+      participantUserId: participantUserId ?? this.participantUserId,
+      participantPhone: participantPhone ?? this.participantPhone,
+      participantAbout: participantAbout ?? this.participantAbout,
+      participantTrustScore: participantTrustScore ?? this.participantTrustScore,
     );
   }
 }

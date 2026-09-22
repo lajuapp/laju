@@ -35,6 +35,7 @@ export 'services/push_notification_service.dart';
 
 export 'config/env_config.dart';
 export 'utils/date_helper.dart';
+export 'utils/safety_number_helper.dart';
 export 'network/api_client.dart';
 export 'network/api_endpoints.dart';
 

@@ -418,6 +418,7 @@ class _GroupProfileScreenState extends State<GroupProfileScreen> {
                     MaterialPageRoute(
                       builder: (context) => UserProfileScreen(
                         contactName: member.name,
+                        userId: member.id,
                         phone: member.phone,
                         status: member.role,
                         isOnline: member.isOnline,
@@ -867,7 +868,7 @@ class _GroupProfileScreenState extends State<GroupProfileScreen> {
                           Navigator.push(
                             context,
                             MaterialPageRoute(
-                              builder: (context) => const DisappearingMessagesScreen(),
+                              builder: (context) => const DisappearingMessagesScreen(initialTimer: 'Off'),
                             ),
                           );
                         },

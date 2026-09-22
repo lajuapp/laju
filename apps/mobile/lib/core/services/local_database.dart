@@ -38,6 +38,10 @@ class LocalDatabase {
       safety_number_preview TEXT NOT NULL DEFAULT '4812 ••• 9901',
       has_disappearing      INTEGER NOT NULL DEFAULT 0,
       disappearing_seconds  INTEGER,
+      participant_user_id   TEXT,
+      participant_phone     TEXT,
+      participant_about     TEXT,
+      participant_trust_score INTEGER,
       cached_at             INTEGER NOT NULL DEFAULT 0
     )
   ''';
@@ -79,6 +83,18 @@ class LocalDatabase {
       onOpen: (db) async {
         try {
           await db.execute('ALTER TABLE conversations ADD COLUMN avatar_url TEXT');
+        } catch (_) {}
+        try {
+          await db.execute('ALTER TABLE conversations ADD COLUMN participant_user_id TEXT');
+        } catch (_) {}
+        try {
+          await db.execute('ALTER TABLE conversations ADD COLUMN participant_phone TEXT');
+        } catch (_) {}
+        try {
+          await db.execute('ALTER TABLE conversations ADD COLUMN participant_about TEXT');
+        } catch (_) {}
+        try {
+          await db.execute('ALTER TABLE conversations ADD COLUMN participant_trust_score INTEGER');
         } catch (_) {}
       },
     );
@@ -233,6 +249,7 @@ class LocalDatabase {
     return {
       'id': c.id,
       'title': c.title,
+      'avatar_url': c.avatarUrl,
       'last_message': c.lastMessage,
       'last_message_time': c.lastMessageTime.millisecondsSinceEpoch,
       'unread_count': c.unreadCount,
@@ -246,6 +263,10 @@ class LocalDatabase {
       'safety_number_preview': c.safetyNumberPreview,
       'has_disappearing': c.hasDisappearingMessages ? 1 : 0,
       'disappearing_seconds': c.disappearingSeconds,
+      'participant_user_id': c.participantUserId,
+      'participant_phone': c.participantPhone,
+      'participant_about': c.participantAbout,
+      'participant_trust_score': c.participantTrustScore,
       'cached_at': cachedAt,
     };
   }
@@ -254,6 +275,7 @@ class LocalDatabase {
     return ConversationModel(
       id: row['id'] as String,
       title: row['title'] as String,
+      avatarUrl: row['avatar_url'] as String?,
       lastMessage: row['last_message'] as String,
       lastMessageTime: DateTime.fromMillisecondsSinceEpoch(row['last_message_time'] as int),
       unreadCount: row['unread_count'] as int,
@@ -267,6 +289,10 @@ class LocalDatabase {
       safetyNumberPreview: row['safety_number_preview'] as String,
       hasDisappearingMessages: (row['has_disappearing'] as int) == 1,
       disappearingSeconds: row['disappearing_seconds'] as int?,
+      participantUserId: row['participant_user_id'] as String?,
+      participantPhone: row['participant_phone'] as String?,
+      participantAbout: row['participant_about'] as String?,
+      participantTrustScore: row['participant_trust_score'] as int?,
     );
   }
 

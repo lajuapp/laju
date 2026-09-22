@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../../../core/core.dart';
 import '../../domain/account_controller.dart';
 import 'biometric_settings_screen.dart';
@@ -15,7 +16,19 @@ class _PrivacyScreenState extends State<PrivacyScreen> {
   bool _readReceipts = true;
   String _lastSeen = 'My contacts';
   String _profilePhoto = 'My contacts';
-  String _disappearingTimer = '24 hours';
+  String _disappearingTimer = 'Off';
+
+  @override
+  void initState() {
+    super.initState();
+    SharedPreferences.getInstance().then((prefs) {
+      if (mounted) {
+        setState(() {
+          _disappearingTimer = prefs.getString('privacy_disappearing_timer') ?? 'Off';
+        });
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -98,9 +111,14 @@ class _PrivacyScreenState extends State<PrivacyScreen> {
                     onTap: () {
                       _showSelectionDialog(
                         context.tr('disappearingTimer'),
-                        ['24 hours', '7 days', '90 days', 'Off'],
+                        ['Off', '24 hours', '7 days', '90 days'],
                         _disappearingTimer,
-                        (val) => setState(() => _disappearingTimer = val),
+                        (val) {
+                          setState(() => _disappearingTimer = val);
+                          SharedPreferences.getInstance().then((prefs) {
+                            prefs.setString('privacy_disappearing_timer', val);
+                          });
+                        },
                       );
                     },
                   ),

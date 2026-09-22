@@ -108,6 +108,9 @@ class _NewChatScreenState extends State<NewChatScreen> {
           title: contact.name,
           isGroup: false,
           avatarUrl: contact.avatarUrl,
+          contactUserId: contact.id,
+          contactPhone: contact.phone,
+          contactAbout: contact.status,
         ),
       ),
     );

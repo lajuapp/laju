@@ -2,14 +2,21 @@ import 'package:flutter/material.dart';
 import '../../../../core/core.dart';
 
 class DisappearingMessagesScreen extends StatefulWidget {
-  const DisappearingMessagesScreen({super.key});
+  final String initialTimer;
+  const DisappearingMessagesScreen({super.key, this.initialTimer = 'Off'});
 
   @override
   State<DisappearingMessagesScreen> createState() => _DisappearingMessagesScreenState();
 }
 
 class _DisappearingMessagesScreenState extends State<DisappearingMessagesScreen> {
-  String _selectedTimer = '24 hours';
+  late String _selectedTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedTimer = widget.initialTimer;
+  }
 
   final List<String> _options = [
     'Off',
@@ -142,9 +149,15 @@ class _DisappearingMessagesScreenState extends State<DisappearingMessagesScreen>
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                   ),
                   onPressed: () {
+                    LajuToast.info(
+                      context,
+                      _selectedTimer == 'Off'
+                          ? 'Pesan sementara dinonaktifkan (Mati)'
+                          : 'Pesan sementara disetel ke $_selectedTimer',
+                    );
                     Navigator.pop(context, _selectedTimer);
                   },
-                  child: const Text('Save Settings', style: TextStyle(fontWeight: FontWeight.w700)),
+                  child: const Text('Simpan Pengaturan', style: TextStyle(fontWeight: FontWeight.w700)),
                 ),
               ),
             ],

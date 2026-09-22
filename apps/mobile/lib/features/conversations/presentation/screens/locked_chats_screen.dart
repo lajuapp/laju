@@ -52,6 +52,10 @@ class _LockedChatsScreenState extends State<LockedChatsScreen> {
             title: conv.title,
             isGroup: conv.isGroup,
             avatarUrl: conv.avatarUrl,
+            contactUserId: conv.participantUserId,
+            contactPhone: conv.participantPhone,
+            contactAbout: conv.participantAbout,
+            contactTrustScore: conv.participantTrustScore,
           ),
         ),
       );

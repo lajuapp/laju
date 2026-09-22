@@ -255,6 +255,10 @@ class _HomeScreenState extends State<HomeScreen> {
             title: conv.title,
             isGroup: conv.isGroup,
             avatarUrl: conv.avatarUrl,
+            contactUserId: conv.participantUserId,
+            contactPhone: conv.participantPhone,
+            contactAbout: conv.participantAbout,
+            contactTrustScore: conv.participantTrustScore,
           ),
         ),
       );

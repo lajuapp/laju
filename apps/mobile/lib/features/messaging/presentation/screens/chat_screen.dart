@@ -18,16 +18,24 @@ class ChatScreen extends StatefulWidget {
   final String conversationId;
   final String title;
   final bool isGroup;
-  final String safetyNumber;
+  final String? safetyNumber;
   final String? avatarUrl;
+  final String? contactUserId;
+  final String? contactPhone;
+  final String? contactAbout;
+  final int? contactTrustScore;
 
   const ChatScreen({
     super.key,
     required this.conversationId,
     required this.title,
     this.isGroup = false,
-    this.safetyNumber = '4812 ••• 9901',
+    this.safetyNumber,
     this.avatarUrl,
+    this.contactUserId,
+    this.contactPhone,
+    this.contactAbout,
+    this.contactTrustScore,
   });
 
   @override
@@ -45,6 +53,7 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _isSearching = false;
   final TextEditingController _inChatSearchController = TextEditingController();
   String _inChatSearchQuery = '';
+  late String _derivedSafetyNumber;
 
   @override
   void initState() {
@@ -55,6 +64,13 @@ class _ChatScreenState extends State<ChatScreen> {
     _messages = mem != null ? List<MessageModel>.from(mem) : [];
     _loadMessagesFromApi();
     _startPolling();
+
+    _derivedSafetyNumber = (widget.safetyNumber != null && widget.safetyNumber != '4812 ••• 9901')
+        ? widget.safetyNumber!
+        : SafetyNumberHelper.deriveSafetyNumber(
+            widget.conversationId,
+            widget.contactUserId ?? widget.title,
+          );
   }
 
   void _onScroll() {
@@ -765,13 +781,22 @@ class _ChatScreenState extends State<ChatScreen> {
                     MaterialPageRoute(
                       builder: (context) => UserProfileScreen(
                         contactName: widget.title,
+                        userId: widget.contactUserId,
+                        conversationId: widget.conversationId,
+                        phone: widget.contactPhone,
+                        status: widget.contactAbout,
+                        trustScore: widget.contactTrustScore,
                         isOnline: true,
                         isVerified: true,
-                        safetyNumber: widget.safetyNumber,
+                        safetyNumber: _derivedSafetyNumber,
                         avatarUrl: widget.avatarUrl,
                       ),
                     ),
-                  );
+                  ).then((val) {
+                    if (val == 'search') {
+                      setState(() => _isSearching = true);
+                    }
+                  });
                 },
                 child: Row(
                   children: [
@@ -869,13 +894,22 @@ class _ChatScreenState extends State<ChatScreen> {
                           MaterialPageRoute(
                             builder: (context) => UserProfileScreen(
                               contactName: widget.title,
+                              userId: widget.contactUserId,
+                              conversationId: widget.conversationId,
+                              phone: widget.contactPhone,
+                              status: widget.contactAbout,
+                              trustScore: widget.contactTrustScore,
                               isOnline: true,
                               isVerified: true,
-                              safetyNumber: widget.safetyNumber,
+                              safetyNumber: _derivedSafetyNumber,
                               avatarUrl: widget.avatarUrl,
                             ),
                           ),
-                        );
+                        ).then((val) {
+                          if (val == 'search') {
+                            setState(() => _isSearching = true);
+                          }
+                        });
                         break;
                       case 'media':
                         _showMediaSheet(context, isDark);
@@ -895,7 +929,7 @@ class _ChatScreenState extends State<ChatScreen> {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (context) => const DisappearingMessagesScreen(),
+                            builder: (context) => const DisappearingMessagesScreen(initialTimer: 'Off'),
                           ),
                         );
                         break;
@@ -905,7 +939,7 @@ class _ChatScreenState extends State<ChatScreen> {
                           MaterialPageRoute(
                             builder: (context) => KeyVerificationScreen(
                               contactName: widget.title,
-                              safetyNumber: '19402 48190 28471 00293 84729 48190',
+                              safetyNumber: _derivedSafetyNumber,
                             ),
                           ),
                         );

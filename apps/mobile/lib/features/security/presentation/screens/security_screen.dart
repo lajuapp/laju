@@ -221,7 +221,7 @@ class _SecurityScreenState extends State<SecurityScreen> {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (context) => const DisappearingMessagesScreen(),
+                            builder: (context) => const DisappearingMessagesScreen(initialTimer: 'Off'),
                           ),
                         );
                       },
@@ -680,7 +680,10 @@ class _SecurityScreenState extends State<SecurityScreen> {
                                             MaterialPageRoute(
                                               builder: (context) => KeyVerificationScreen(
                                                 contactName: name,
-                                                safetyNumber: '19402 48190 28471 00293 84729 48190',
+                                                safetyNumber: SafetyNumberHelper.deriveSafetyNumber(
+                                                  name,
+                                                  ApiClient.instance.userId ?? 'me',
+                                                ),
                                               ),
                                             ),
                                           );

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../../../core/core.dart';
 import '../domain/models/conversation_model.dart';
 import '../../messaging/domain/models/message_model.dart';
@@ -99,6 +100,57 @@ class ConversationService {
     return [];
   }
 
+  /// Fetch user profile by ID or username from backend API
+  Future<Map<String, dynamic>?> fetchUserProfile(String userIdOrUsername) async {
+    if (userIdOrUsername.trim().isEmpty) return null;
+    try {
+      final response = await ApiClient.instance.get('${ApiEndpoints.users}/${userIdOrUsername.trim()}');
+      if (response.isSuccess && response.rawJson is Map) {
+        return Map<String, dynamic>.from(response.rawJson as Map);
+      }
+    } catch (e) {
+      debugPrint('[ConversationService] fetchUserProfile error: $e');
+    }
+    return null;
+  }
+
+  /// Toggles mute status for a conversation and persists to SQLite and memory cache
+  Future<void> toggleMute(String conversationId, bool isMuted) async {
+    if (inMemoryConversations != null) {
+      final idx = inMemoryConversations!.indexWhere((c) => c.id == conversationId);
+      if (idx != -1) {
+        final updated = inMemoryConversations![idx].copyWith(isMuted: isMuted);
+        inMemoryConversations![idx] = updated;
+        await LocalDatabase.instance.upsertConversations([updated]);
+      }
+    }
+  }
+
+  /// Blocks a user locally and adds to blocked list
+  Future<void> blockUser(String userId) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final blocked = prefs.getStringList('blocked_user_ids') ?? [];
+      if (!blocked.contains(userId)) {
+        blocked.add(userId);
+        await prefs.setStringList('blocked_user_ids', blocked);
+      }
+    } catch (e) {
+      debugPrint('[ConversationService] blockUser error: $e');
+    }
+  }
+
+  /// Checks if a user is blocked
+  Future<bool> isUserBlocked(String userId) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final blocked = prefs.getStringList('blocked_user_ids') ?? [];
+      return blocked.contains(userId);
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// Return conversations from local SQLite cache (offline-safe, instant).
   Future<List<ConversationModel>> getConversationsFromCache() async {
     final cached = await LocalDatabase.instance.getConversations();
@@ -192,41 +244,50 @@ class ConversationService {
           final isGroup = item['type'] == 'GROUP';
           String title = item['title'] ?? '';
           String? avatarUrl;
-          if (title.isEmpty) {
-            if (isGroup) {
-              title = 'Group Chat';
-            } else {
-              final members = item['members'];
-              if (members is List) {
-                final otherMember = members.firstWhere(
-                  (m) => m is Map && m['userId'] != currentUserId,
-                  orElse: () => null,
-                );
-                if (otherMember != null && otherMember['user'] is Map) {
-                  title = otherMember['user']['username'] ?? '';
-                  avatarUrl = otherMember['user']['avatarUrl'] as String?;
+          String? participantUserId;
+          String? participantPhone;
+          String? participantAbout;
+          int? participantTrustScore;
+
+          final members = item['members'];
+          if (members is List) {
+            final otherMember = members.firstWhere(
+              (m) => m is Map && m['userId'] != currentUserId,
+              orElse: () => null,
+            );
+            if (otherMember != null) {
+              participantUserId = otherMember['userId'] as String?;
+              if (otherMember['user'] is Map) {
+                final u = otherMember['user'];
+                participantUserId ??= u['id'] as String?;
+                participantPhone = u['phoneNumber'] as String?;
+                participantAbout = u['about'] as String?;
+                if (u['trustScore'] is num) {
+                  participantTrustScore = (u['trustScore'] as num).toInt();
                 }
-              }
-              if (title.isEmpty) title = 'Direct Chat';
-            }
-          } else if (!isGroup) {
-            final members = item['members'];
-            if (members is List) {
-              final otherMember = members.firstWhere(
-                (m) => m is Map && m['userId'] != currentUserId,
-                orElse: () => null,
-              );
-              if (otherMember != null && otherMember['user'] is Map) {
-                avatarUrl = otherMember['user']['avatarUrl'] as String?;
+                if (!isGroup) {
+                  if (title.isEmpty) title = u['username'] ?? '';
+                  avatarUrl = u['avatarUrl'] as String?;
+                }
               }
             }
           }
+
+          if (title.isEmpty) {
+            title = isGroup ? 'Group Chat' : 'Direct Chat';
+          }
+
           final lastMsg = (item['messages'] is List && (item['messages'] as List).isNotEmpty)
               ? item['messages'][0]['ciphertext'] ?? 'Encrypted Message'
               : 'No messages yet';
 
+          final convId = item['id'] as String? ?? '';
+          final safetyPreview = SafetyNumberHelper.getPreview(
+            SafetyNumberHelper.deriveSafetyNumber(convId, participantUserId ?? currentUserId ?? 'peer'),
+          );
+
           return ConversationModel(
-            id: item['id'],
+            id: convId,
             title: title,
             lastMessage: lastMsg,
             lastMessageTime: DateHelper.parseUtc(item['updatedAt']),
@@ -235,6 +296,11 @@ class ConversationService {
             isOnline: true,
             isKeyVerified: true,
             avatarUrl: avatarUrl,
+            safetyNumberPreview: safetyPreview,
+            participantUserId: participantUserId,
+            participantPhone: participantPhone,
+            participantAbout: participantAbout,
+            participantTrustScore: participantTrustScore,
           );
         }).toList();
 

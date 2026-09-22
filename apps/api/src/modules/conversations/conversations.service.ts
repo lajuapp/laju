@@ -95,7 +95,7 @@ export class ConversationsService {
         members: {
           include: {
             user: {
-              select: { id: true, username: true, status: true }
+              select: { id: true, username: true, phoneNumber: true, status: true, trustScore: true }
             }
           }
         },
@@ -110,12 +110,16 @@ export class ConversationsService {
       convs.map(async (conv) => {
         const enrichedMembers = await Promise.all(
           conv.members.map(async (m) => {
-            const avatarUrl = await this.redis.get(`user:${m.userId}:avatar`);
+            const [avatarUrl, about] = await Promise.all([
+              this.redis.get(`user:${m.userId}:avatar`),
+              this.redis.get(`user:${m.userId}:about`),
+            ]);
             return {
               ...m,
               user: {
                 ...m.user,
-                avatarUrl
+                avatarUrl,
+                about: about ?? 'Available'
               }
             };
           })
@@ -141,7 +145,7 @@ export class ConversationsService {
       include: {
         members: {
           include: {
-            user: { select: { id: true, username: true, phoneNumber: true, status: true } }
+            user: { select: { id: true, username: true, phoneNumber: true, status: true, trustScore: true } }
           }
         }
       }
@@ -153,12 +157,16 @@ export class ConversationsService {
 
     const enrichedMembers = await Promise.all(
       conv.members.map(async (m) => {
-        const avatarUrl = await this.redis.get(`user:${m.userId}:avatar`);
+        const [avatarUrl, about] = await Promise.all([
+          this.redis.get(`user:${m.userId}:avatar`),
+          this.redis.get(`user:${m.userId}:about`),
+        ]);
         return {
           ...m,
           user: {
             ...m.user,
-            avatarUrl
+            avatarUrl,
+            about: about ?? 'Available'
           }
         };
       })
