@@ -147,13 +147,21 @@ class AppNotificationService extends ChangeNotifier {
     notifyListeners();
 
     try {
-      HapticFeedback.vibrate();
-      SystemSound.play(SystemSoundType.alert);
-    } catch (_) {}
+      LajuSoundService.playRingtone('Panggilan Masuk');
+      LajuSoundService.triggerVibrate('Panjang');
+    } catch (_) {
+      try {
+        HapticFeedback.vibrate();
+        SystemSound.play(SystemSoundType.alert);
+      } catch (_) {}
+    }
   }
 
   void dismiss() {
     _dismissTimer?.cancel();
+    try {
+      LajuSoundService.stopRingtone();
+    } catch (_) {}
     if (_currentNotification != null) {
       _currentNotification = null;
       notifyListeners();

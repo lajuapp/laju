@@ -98,7 +98,7 @@ class ConversationService {
             id: item['id'],
             title: title,
             lastMessage: lastMsg,
-            lastMessageTime: DateTime.tryParse(item['updatedAt'] ?? '') ?? DateTime.now(),
+            lastMessageTime: (DateTime.tryParse(item['updatedAt'] ?? '') ?? DateTime.now()).toLocal(),
             unreadCount: 0,
             isGroup: isGroup,
             isOnline: true,
@@ -314,11 +314,17 @@ class ConversationService {
               attName = 'Voice Note';
               contentText = '🎤 Pesan Suara';
               attSize = '0:15';
-            } else if (msgType == 'DOCUMENT') {
+            } else if (msgType == 'DOCUMENT' || rawCiphertext.startsWith('data:') || rawCiphertext.startsWith('📄')) {
               contentType = MessageContentType.attachment;
+              mediaData = rawCiphertext.startsWith('data:') ? rawCiphertext : null;
               attName = 'Dokumen';
-              contentText = rawCiphertext.startsWith('📄') ? rawCiphertext : '📄 Berkas Dokumen';
+              contentText = rawCiphertext.startsWith('data:') ? '📄 Berkas Dokumen' : rawCiphertext;
+            } else if (msgType == 'ATTACHMENT') {
+              contentType = MessageContentType.attachment;
+              contentText = rawCiphertext;
             }
+
+            final parsedDate = DateTime.tryParse(m['createdAt'] ?? '');
 
             return MessageModel(
               id: m['id'],
@@ -329,7 +335,7 @@ class ConversationService {
               attachmentName: attName,
               attachmentSize: attSize,
               contentType: contentType,
-              timestamp: DateTime.tryParse(m['createdAt'] ?? '') ?? DateTime.now(),
+              timestamp: (parsedDate != null ? parsedDate.toLocal() : DateTime.now()),
               isOutgoing: isOutgoing,
               status: MessageDeliveryStatus.delivered,
               reactions: reactionsList,
@@ -377,13 +383,17 @@ class ConversationService {
     }
 
     try {
+      final backendMessageType = (type == 'IMAGE' || type == 'AUDIO' || type == 'DOCUMENT' || type == 'ATTACHMENT')
+          ? 'ATTACHMENT'
+          : (type == 'LOCATION' ? 'LOCATION' : 'TEXT');
+
       final response = await ApiClient.instance.post(
         ApiEndpoints.conversationMessages(conversationId),
         body: {
           'clientMessageId': id,
           'ciphertext': payloadCiphertext,
           'nonce': base64Encode(List.generate(12, (i) => i)),
-          'messageType': type,
+          'messageType': backendMessageType,
         },
       );
 

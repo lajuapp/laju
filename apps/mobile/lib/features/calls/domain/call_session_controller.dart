@@ -5,7 +5,9 @@ import '../presentation/screens/active_call_screen.dart';
 import '../presentation/screens/active_group_call_screen.dart';
 
 class CallSessionController extends ChangeNotifier {
-  CallSessionController._();
+  CallSessionController._() {
+    _startIncomingCallPoller();
+  }
   static final CallSessionController instance = CallSessionController._();
 
   String? _callId;
@@ -22,6 +24,16 @@ class CallSessionController extends ChangeNotifier {
   bool _isActive = false;
 
   Timer? _timer;
+  Timer? _incomingCallPoller;
+  String? _declinedCallId;
+  String? _lastRingingCallId;
+
+  void _startIncomingCallPoller() {
+    _incomingCallPoller?.cancel();
+    _incomingCallPoller = Timer.periodic(const Duration(seconds: 2), (_) {
+      checkForIncomingCalls();
+    });
+  }
 
   // Getters
   String? get callId => _callId;
@@ -46,6 +58,7 @@ class CallSessionController extends ChangeNotifier {
   void start1on1Call({
     required String contactName,
     required bool isVideo,
+    String? calleeUserId,
   }) {
     _timer?.cancel();
     _callId = 'call-${DateTime.now().millisecondsSinceEpoch}';
@@ -57,12 +70,12 @@ class CallSessionController extends ChangeNotifier {
     _durationSeconds = 0;
     _isMuted = false;
     _isVideoOn = isVideo;
-    _isSpeaker = false;
+    _isSpeaker = isVideo;
     _isMinimized = false;
     _isActive = true;
 
     _startTimer();
-    _dispatchCallToBackend(contactName);
+    _dispatchCallToBackend(calleeUserId ?? contactName, isVideo: isVideo);
     notifyListeners();
   }
 
@@ -168,12 +181,15 @@ class CallSessionController extends ChangeNotifier {
     }
   }
 
-  void _dispatchCallToBackend(String callee) async {
+  void _dispatchCallToBackend(String callee, {bool isVideo = false}) async {
     try {
       if (ApiClient.instance.authToken != null) {
         final resp = await ApiClient.instance.post(
           ApiEndpoints.calls,
-          body: {'calleeUserId': callee},
+          body: {
+            'calleeUserId': callee,
+            'isVideo': isVideo,
+          },
         );
         if (resp.isSuccess && resp.rawJson is Map && resp.rawJson['id'] != null) {
           _callId = resp.rawJson['id'];
@@ -190,8 +206,6 @@ class CallSessionController extends ChangeNotifier {
     } catch (_) {}
   }
 
-  String? _lastRingingCallId;
-
   /// Checks for any incoming calls targeting this user on the backend
   Future<void> checkForIncomingCalls() async {
     if (_isActive || ApiClient.instance.authToken == null) return;
@@ -201,15 +215,21 @@ class CallSessionController extends ChangeNotifier {
         final data = resp.rawJson;
         final incomingCallId = data['callId'] as String?;
         final callerName = data['initiatorName'] as String? ?? 'Kontak';
-        if (incomingCallId != null && incomingCallId != _lastRingingCallId) {
+        final isVideo = data['isVideo'] == true;
+        if (incomingCallId != null &&
+            incomingCallId != _lastRingingCallId &&
+            incomingCallId != _declinedCallId) {
           _lastRingingCallId = incomingCallId;
           AppNotificationService.instance.showIncomingCall(
             callerName: callerName,
-            isVideo: false,
+            isVideo: isVideo,
             onAccept: () async {
               _callId = incomingCallId;
               _title = callerName;
               _isActive = true;
+              _isVideo = isVideo;
+              _isVideoOn = isVideo;
+              _isSpeaker = isVideo;
               _durationSeconds = 0;
               _startTimer();
               notifyListeners();
@@ -222,13 +242,15 @@ class CallSessionController extends ChangeNotifier {
                 MaterialPageRoute(
                   builder: (_) => ActiveCallScreen(
                     contactName: callerName,
-                    isVideo: false,
+                    isVideo: isVideo,
                     returnToCallsScreen: false,
                   ),
                 ),
               );
             },
             onDecline: () async {
+              _declinedCallId = incomingCallId;
+              _lastRingingCallId = null;
               try {
                 await ApiClient.instance.post(ApiEndpoints.callReject(incomingCallId));
               } catch (_) {}
@@ -236,6 +258,7 @@ class CallSessionController extends ChangeNotifier {
           );
         }
       } else {
+        _declinedCallId = null;
         if (_lastRingingCallId != null) {
           _lastRingingCallId = null;
           AppNotificationService.instance.dismiss();

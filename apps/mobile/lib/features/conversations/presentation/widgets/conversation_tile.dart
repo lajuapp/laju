@@ -18,13 +18,18 @@ class ConversationTile extends StatelessWidget {
   });
 
   String _formatTime(DateTime time) {
+    final local = time.toLocal();
     final now = DateTime.now();
-    if (now.difference(time).inDays == 0) {
-      return DateFormat('HH:mm').format(time);
-    } else if (now.difference(time).inDays == 1) {
+    final isToday = now.year == local.year && now.month == local.month && now.day == local.day;
+    final yesterday = now.subtract(const Duration(days: 1));
+    final isYesterday = yesterday.year == local.year && yesterday.month == local.month && yesterday.day == local.day;
+
+    if (isToday) {
+      return DateFormat('HH:mm').format(local);
+    } else if (isYesterday) {
       return 'Yesterday';
     } else {
-      return DateFormat('dd/MM').format(time);
+      return DateFormat('dd/MM').format(local);
     }
   }
 

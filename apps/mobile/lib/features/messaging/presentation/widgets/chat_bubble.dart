@@ -224,7 +224,7 @@ class ChatBubble extends StatelessWidget {
 
     final isOut = message.isOutgoing;
     final isDark = ThemeModeController.instance.isDarkMode(context);
-    final timeStr = DateFormat('HH:mm').format(message.timestamp);
+    final timeStr = DateFormat('HH:mm').format(message.timestamp.toLocal());
 
     return Align(
       alignment: isOut ? Alignment.centerRight : Alignment.centerLeft,

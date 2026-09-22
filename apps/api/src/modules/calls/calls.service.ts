@@ -16,8 +16,20 @@ export class CallsService {
     @Optional() private readonly gotifyService?: GotifyService
   ) {}
 
-  async createCall(callerUserId: string, callerDeviceId: string, calleeUserId: string) {
+  async createCall(callerUserId: string, callerDeviceId: string, calleeUserId: string, isVideo?: boolean) {
     return this.prisma.$transaction(async (tx) => {
+      // Find target callee user by ID, username, or phone
+      const targetUser = await tx.user.findFirst({
+        where: {
+          OR: [
+            { id: calleeUserId },
+            { username: { equals: calleeUserId, mode: 'insensitive' } },
+            { phoneNumber: calleeUserId }
+          ]
+        }
+      });
+      const resolvedCalleeUserId = targetUser ? targetUser.id : calleeUserId;
+
       const call = await tx.call.create({
         data: {
           initiatorId: callerUserId,
@@ -35,21 +47,30 @@ export class CallsService {
         }
       });
 
-      // Find callee active device
+      // Find callee device
       const calleeDevice = await tx.device.findFirst({
-        where: { userId: calleeUserId, status: 'ACTIVE' }
+        where: { userId: resolvedCalleeUserId },
+        orderBy: { lastSeenAt: 'desc' }
       });
 
-      if (calleeDevice) {
-        await tx.callParticipant.create({
-          data: {
-            callId: call.id,
-            userId: calleeUserId,
-            deviceId: calleeDevice.id,
-            state: 'RINGING'
-          }
-        });
-      }
+      // ALWAYS create callParticipant with state 'RINGING' for callee so incoming call query succeeds
+      await tx.callParticipant.create({
+        data: {
+          callId: call.id,
+          userId: resolvedCalleeUserId,
+          deviceId: calleeDevice?.id || `dev-${resolvedCalleeUserId}`,
+          state: 'RINGING',
+          joinedAt: new Date()
+        }
+      });
+
+      // Store call metadata (e.g. isVideo) in Redis
+      await this.redis.set(
+        `call:${call.id}:meta`,
+        JSON.stringify({ isVideo: !!isVideo }),
+        'EX',
+        3600
+      );
 
       const caller = await tx.user.findUnique({
         where: { id: callerUserId },
@@ -57,13 +78,14 @@ export class CallsService {
       });
 
       await this.redis.publish(
-        `user:${calleeUserId}`,
+        `user:${resolvedCalleeUserId}`,
         JSON.stringify({
           type: 'CALL_INCOMING',
           callId: call.id,
           initiatorId: callerUserId,
           initiatorName: caller?.username || 'Kontak',
-          callerDeviceId
+          callerDeviceId,
+          isVideo: !!isVideo
         })
       );
 
@@ -72,7 +94,7 @@ export class CallsService {
         this.gotifyService.sendPushNotification({
           targetToken: calleeDevice?.pushToken || undefined,
           title: `Panggilan Masuk dari ${caller?.username || 'Kontak'}`,
-          message: 'Panggilan Suara Masuk',
+          message: isVideo ? 'Panggilan Video Masuk' : 'Panggilan Suara Masuk',
           conversationId: call.id,
           priority: 8
         }).catch(() => {});
@@ -196,10 +218,20 @@ export class CallsService {
       select: { id: true, username: true }
     });
 
+    let isVideo = false;
+    try {
+      const meta = await this.redis.get(`call:${participant.callId}:meta`);
+      if (meta) {
+        const parsed = JSON.parse(meta);
+        isVideo = !!parsed.isVideo;
+      }
+    } catch (_) {}
+
     return {
       callId: participant.callId,
       initiatorId: participant.call.initiatorId,
       initiatorName: initiator?.username || 'Kontak',
+      isVideo,
       createdAt: participant.call.startedAt
     };
   }

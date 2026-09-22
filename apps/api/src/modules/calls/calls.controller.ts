@@ -24,9 +24,10 @@ export class CallsController {
   createCall(
     @CurrentUser('userId') userId: string,
     @CurrentUser('deviceId') deviceId: string,
-    @Body('calleeUserId') calleeUserId: string
+    @Body('calleeUserId') calleeUserId: string,
+    @Body('isVideo') isVideo?: boolean
   ) {
-    return this.callsService.createCall(userId, deviceId, calleeUserId);
+    return this.callsService.createCall(userId, deviceId, calleeUserId, isVideo);
   }
 
   @Post(':id/accept')
