@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import '../../../../core/core.dart';
+import '../../../auth/domain/auth_controller.dart';
 import '../../domain/account_controller.dart';
 
 class MyQrCodeScreen extends StatefulWidget {
@@ -33,7 +34,8 @@ class _MyQrCodeScreenState extends State<MyQrCodeScreen> with TickerProviderStat
   void _copyContactLink() {
     HapticFeedback.selectionClick();
     final ctrl = AccountController.instance;
-    final link = 'laju://${ctrl.userName}?v=$_qrVersion';
+    final myUserId = AuthController.instance.currentUser?.id ?? '';
+    final link = 'laju://contact?u=${Uri.encodeComponent(ctrl.userName)}&id=$myUserId&phone=${Uri.encodeComponent(ctrl.phoneNumber)}&v=$_qrVersion';
     Clipboard.setData(ClipboardData(text: link));
     LajuToast.success(context, 'Tautan kontak disalin ke papan klip');
   }
@@ -41,8 +43,10 @@ class _MyQrCodeScreenState extends State<MyQrCodeScreen> with TickerProviderStat
   Future<void> _shareQrCode() async {
     HapticFeedback.selectionClick();
     final ctrl = AccountController.instance;
+    final myUserId = AuthController.instance.currentUser?.id ?? '';
+    final link = 'laju://contact?u=${Uri.encodeComponent(ctrl.userName)}&id=$myUserId&phone=${Uri.encodeComponent(ctrl.phoneNumber)}&v=$_qrVersion';
     final shareText =
-        'Pindai kode QR saya untuk menambahkan kontak terenkripsi di LAJU:\nlaju://${ctrl.userName}?v=$_qrVersion';
+        'Pindai kode QR saya untuk menambahkan kontak terenkripsi di LAJU:\n$link';
 
     // If currently on scan code tab, animate to my code tab first so card is in tree
     if (_tabController.index != 0) {
@@ -289,9 +293,15 @@ class _MyQrCodeScreenState extends State<MyQrCodeScreen> with TickerProviderStat
                     const SizedBox(height: 20),
 
                     // High-contrast clean white QR tile with embedded LAJU logo
-                    LajuQrCodeView(
-                      data: 'laju://${ctrl.userName}?v=$_qrVersion',
-                      size: 216,
+                    Builder(
+                      builder: (context) {
+                        final myUserId = AuthController.instance.currentUser?.id ?? '';
+                        final qrData = 'laju://contact?u=${Uri.encodeComponent(ctrl.userName)}&id=$myUserId&phone=${Uri.encodeComponent(ctrl.phoneNumber)}&v=$_qrVersion';
+                        return LajuQrCodeView(
+                          data: qrData,
+                          size: 216,
+                        );
+                      },
                     ),
                   ],
                 ),
