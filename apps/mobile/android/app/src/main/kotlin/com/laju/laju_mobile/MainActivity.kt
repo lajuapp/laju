@@ -71,6 +71,9 @@ class MainActivity : FlutterFragmentActivity() {
 
     private var callAudioRecord: AudioRecord? = null
     private var callAudioTrack: AudioTrack? = null
+    private val audioTrackLock = Any()
+    private val audioPlaybackQueue = java.util.concurrent.LinkedBlockingQueue<ByteArray>(60)
+    private var pendingCallAudioArgs: Map<String, Any>? = null
     private var callAudioSocket: DatagramSocket? = null
     @Volatile private var isCallAudioActive = false
     @Volatile private var isCallAudioMuted = false
@@ -821,7 +824,9 @@ class MainActivity : FlutterFragmentActivity() {
                     if (chunkBase64.isNotEmpty()) {
                         try {
                             val bytes = android.util.Base64.decode(chunkBase64, android.util.Base64.NO_WRAP)
-                            callAudioTrack?.write(bytes, 0, bytes.size)
+                            if (bytes.isNotEmpty() && audioPlaybackQueue.size < 60) {
+                                audioPlaybackQueue.offer(bytes)
+                            }
                         } catch (_: Exception) {}
                     }
                     result.success(true)
@@ -1337,6 +1342,23 @@ class MainActivity : FlutterFragmentActivity() {
             val granted = grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED
             pendingAudioPermissionResult?.success(granted)
             pendingAudioPermissionResult = null
+            if (granted && pendingCallAudioArgs != null) {
+                val args = pendingCallAudioArgs
+                pendingCallAudioArgs = null
+                if (args != null) {
+                    startRealtimeCallAudio(
+                        args["remoteIp"] as? String ?: "",
+                        args["remotePort"] as? Int ?: 50005,
+                        args["localPort"] as? Int ?: 50005,
+                        args["isSpeaker"] as? Boolean ?: false,
+                        args["baseUrl"] as? String ?: "",
+                        args["callId"] as? String ?: "",
+                        args["token"] as? String ?: ""
+                    )
+                }
+            } else if (!granted) {
+                pendingCallAudioArgs = null
+            }
         } else if (requestCode == CAMERA_PERMISSION_REQUEST_CODE) {
             val granted = grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED
             pendingCameraPermissionResult?.success(granted)
@@ -1700,11 +1722,21 @@ class MainActivity : FlutterFragmentActivity() {
 
         // Verify microphone permission before initializing audio hardware
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            pendingCallAudioArgs = mapOf(
+                "remoteIp" to remoteIp,
+                "remotePort" to remotePort,
+                "localPort" to localPort,
+                "isSpeaker" to isSpeaker,
+                "baseUrl" to baseUrl,
+                "callId" to callId,
+                "token" to token
+            )
             ActivityCompat.requestPermissions(
                 this,
                 arrayOf(Manifest.permission.RECORD_AUDIO),
                 RECORD_AUDIO_REQUEST_CODE
             )
+            return
         }
 
         isCallAudioActive = true
@@ -1712,6 +1744,7 @@ class MainActivity : FlutterFragmentActivity() {
         isCallAudioSpeaker = isSpeaker
         callRemoteIp = remoteIp
         callRemotePort = remotePort
+        audioPlaybackQueue.clear()
 
         val sampleRate = 16000
         val channelIn = AudioFormat.CHANNEL_IN_MONO
@@ -1726,7 +1759,7 @@ class MainActivity : FlutterFragmentActivity() {
                 setCallSpeakerphone(isSpeaker)
 
                 val minRecBuf = AudioRecord.getMinBufferSize(sampleRate, channelIn, encoding)
-                val recBufSize = Math.max(minRecBuf, 4096)
+                val recBufSize = Math.max(minRecBuf * 4, 8192)
 
                 // Initialize AudioRecord with multiple source fallbacks for maximum device compatibility
                 var recorder: AudioRecord? = null
@@ -1770,7 +1803,7 @@ class MainActivity : FlutterFragmentActivity() {
                 }
 
                 val minTrackBuf = AudioTrack.getMinBufferSize(sampleRate, channelOut, encoding)
-                val trackBufSize = Math.max(minTrackBuf, 4096)
+                val trackBufSize = Math.max(minTrackBuf * 4, 16384)
 
                 val audioAttributes = AudioAttributes.Builder()
                     .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
@@ -1789,7 +1822,20 @@ class MainActivity : FlutterFragmentActivity() {
                     .setBufferSizeInBytes(trackBufSize)
                     .setTransferMode(AudioTrack.MODE_STREAM)
                     .build()
-                callAudioTrack = track
+
+                if (track.state != AudioTrack.STATE_INITIALIZED) {
+                    android.util.Log.e("MainActivity", "Failed to initialize AudioTrack")
+                    try { track.release() } catch (_: Exception) {}
+                    stopRealtimeCallAudio()
+                    return@Thread
+                }
+
+                synchronized(audioTrackLock) {
+                    callAudioTrack = track
+                    try {
+                        track.play()
+                    } catch (_: Exception) {}
+                }
 
                 var socket: DatagramSocket? = null
                 try {
@@ -1810,12 +1856,34 @@ class MainActivity : FlutterFragmentActivity() {
                 }
                 callAudioSocket = socket
 
-                track.play()
-                recorder.startRecording()
+                try {
+                    recorder.startRecording()
+                } catch (e: Exception) {
+                    android.util.Log.e("MainActivity", "startRecording failed: $e")
+                }
 
                 val audioSendQueue = java.util.concurrent.ConcurrentLinkedQueue<ByteArray>()
 
-                // 1a. Audio Capture loop (reads PCM from mic)
+                // 1. Audio Playback Thread (dedicated single consumer for AudioTrack to eliminate SIGSEGV concurrency)
+                Thread {
+                    while (isCallAudioActive) {
+                        try {
+                            val chunk = audioPlaybackQueue.poll(40, java.util.concurrent.TimeUnit.MILLISECONDS)
+                            if (chunk != null && chunk.isNotEmpty() && isCallAudioActive) {
+                                synchronized(audioTrackLock) {
+                                    val currentTrack = callAudioTrack
+                                    if (currentTrack != null &&
+                                        currentTrack.state == AudioTrack.STATE_INITIALIZED &&
+                                        currentTrack.playState == AudioTrack.PLAYSTATE_PLAYING) {
+                                        currentTrack.write(chunk, 0, chunk.size)
+                                    }
+                                }
+                            }
+                        } catch (_: Exception) {}
+                    }
+                }.start()
+
+                // 2. Audio Capture loop (reads PCM from mic)
                 Thread {
                     val sendBuffer = ByteArray(640) // 20ms of 16kHz 16-bit mono PCM
                     val httpAccumulator = java.io.ByteArrayOutputStream()
@@ -1865,7 +1933,7 @@ class MainActivity : FlutterFragmentActivity() {
                     }
                 }.start()
 
-                // 1b. Persistent HTTP Audio Sender Worker Thread (reusing connections, non-blocking)
+                // 3. Persistent HTTP Audio Sender Worker Thread
                 if (hasHttpRelay) {
                     Thread {
                         val postUrl = URL("$cleanBase/calls/$callId/audio-chunk")
@@ -1899,7 +1967,7 @@ class MainActivity : FlutterFragmentActivity() {
                     }.start()
                 }
 
-                // 2. UDP Receiver thread
+                // 4. UDP Receiver thread (pushes into audioPlaybackQueue)
                 if (socket != null) {
                     Thread {
                         val recvBuffer = ByteArray(1024)
@@ -1909,14 +1977,17 @@ class MainActivity : FlutterFragmentActivity() {
                             try {
                                 socket.receive(recvPacket)
                                 if (recvPacket.length > 0) {
-                                    track.write(recvPacket.data, recvPacket.offset, recvPacket.length)
+                                    val copy = recvPacket.data.copyOfRange(recvPacket.offset, recvPacket.offset + recvPacket.length)
+                                    if (audioPlaybackQueue.size < 50) {
+                                        audioPlaybackQueue.offer(copy)
+                                    }
                                 }
                             } catch (_: Exception) {}
                         }
                     }.start()
                 }
 
-                // 3. Persistent HTTP Audio Receiver thread (polls chunks from server)
+                // 5. Persistent HTTP Audio Receiver thread (pushes into audioPlaybackQueue)
                 if (hasHttpRelay) {
                     Thread {
                         val fetchUrl = URL("$cleanBase/calls/$callId/audio-chunks")
@@ -1938,7 +2009,9 @@ class MainActivity : FlutterFragmentActivity() {
                                             val b64 = chunks.getString(i)
                                             if (b64.isNotEmpty()) {
                                                 val bytes = android.util.Base64.decode(b64, android.util.Base64.NO_WRAP)
-                                                track.write(bytes, 0, bytes.size)
+                                                if (bytes.isNotEmpty() && audioPlaybackQueue.size < 50) {
+                                                    audioPlaybackQueue.offer(bytes)
+                                                }
                                             }
                                         }
                                     }
@@ -2047,10 +2120,40 @@ class MainActivity : FlutterFragmentActivity() {
 
     private fun stopRealtimeCallAudio() {
         isCallAudioActive = false
+        audioPlaybackQueue.clear()
+
+        synchronized(audioTrackLock) {
+            try {
+                callAudioTrack?.apply {
+                    if (state == AudioTrack.STATE_INITIALIZED) {
+                        try {
+                            if (playState == AudioTrack.PLAYSTATE_PLAYING) {
+                                pause()
+                                flush()
+                                stop()
+                            }
+                        } catch (_: Exception) {}
+                        try {
+                            release()
+                        } catch (_: Exception) {}
+                    }
+                }
+            } catch (_: Exception) {}
+            callAudioTrack = null
+        }
+
         try {
             callAudioRecord?.apply {
-                if (recordingState == AudioRecord.RECORDSTATE_RECORDING) stop()
-                release()
+                if (state == AudioRecord.STATE_INITIALIZED) {
+                    try {
+                        if (recordingState == AudioRecord.RECORDSTATE_RECORDING) {
+                            stop()
+                        }
+                    } catch (_: Exception) {}
+                    try {
+                        release()
+                    } catch (_: Exception) {}
+                }
             }
             callAudioRecord = null
         } catch (_: Exception) {}
@@ -2069,14 +2172,6 @@ class MainActivity : FlutterFragmentActivity() {
                 release()
             }
             nsEffect = null
-        } catch (_: Exception) {}
-
-        try {
-            callAudioTrack?.apply {
-                if (playState == AudioTrack.PLAYSTATE_PLAYING) stop()
-                release()
-            }
-            callAudioTrack = null
         } catch (_: Exception) {}
 
         try {
