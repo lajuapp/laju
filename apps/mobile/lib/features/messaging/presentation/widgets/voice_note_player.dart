@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import '../../../../core/services/voice_note_service.dart';
 import '../../../../core/theme/app_colors.dart';
 
-class VoiceNotePlayer extends StatelessWidget {
+class VoiceNotePlayer extends StatefulWidget {
   final String filePath;
   final String durationLabel;
   final bool isOutgoing;
@@ -17,45 +17,90 @@ class VoiceNotePlayer extends StatelessWidget {
   });
 
   @override
+  State<VoiceNotePlayer> createState() => _VoiceNotePlayerState();
+}
+
+class _VoiceNotePlayerState extends State<VoiceNotePlayer> {
+  String? _resolvedDuration;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkDuration();
+  }
+
+  @override
+  void didUpdateWidget(VoiceNotePlayer oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.filePath != widget.filePath || oldWidget.durationLabel != widget.durationLabel) {
+      _checkDuration();
+    }
+  }
+
+  void _checkDuration() {
+    final label = widget.durationLabel.trim();
+    if (label.isNotEmpty && label != '0:00' && label != '0:15') {
+      _resolvedDuration = label;
+      return;
+    }
+    // Asynchronously resolve real duration from media metadata if missing
+    VoiceNoteService.instance.getAudioDuration(widget.filePath).then((durMs) {
+      if (mounted && durMs > 0) {
+        setState(() {
+          _resolvedDuration = VoiceNoteService.instance.formatDurationMs(durMs);
+        });
+      }
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<PlaybackState>(
       valueListenable: VoiceNoteService.instance.playbackState,
       builder: (context, state, _) {
-        final isCurrent = state.filePath == filePath;
+        final isCurrent = state.filePath == widget.filePath;
         final isPlaying = isCurrent && state.isPlaying;
         final progress = isCurrent ? state.progress : 0.0;
+
+        final effectiveDuration = (isCurrent && state.durationMs > 0)
+            ? state.formattedDuration
+            : (_resolvedDuration ??
+                (widget.durationLabel.isNotEmpty && widget.durationLabel != '0:15'
+                    ? widget.durationLabel
+                    : '0:00'));
+
         final timeDisplay = isPlaying
-            ? '${state.formattedPosition} / ${state.formattedDuration}'
+            ? '${state.formattedPosition} / $effectiveDuration'
             : (isCurrent && state.positionMs > 0
-                ? '${state.formattedPosition} / ${state.formattedDuration}'
-                : durationLabel);
+                ? '${state.formattedPosition} / $effectiveDuration'
+                : effectiveDuration);
 
-        final playButtonBg = isOutgoing
+        final playButtonBg = widget.isOutgoing
             ? Colors.white.withValues(alpha: 0.25)
-            : (isDark ? AppColors.primary.withValues(alpha: 0.25) : AppColors.primaryLight);
-        final playIconColor = isOutgoing
+            : (widget.isDark ? AppColors.primary.withValues(alpha: 0.25) : AppColors.primaryLight);
+        final playIconColor = widget.isOutgoing
             ? Colors.white
-            : (isDark ? AppColors.primaryLight : AppColors.primaryDark);
+            : (widget.isDark ? AppColors.primaryLight : AppColors.primaryDark);
 
-        final playedBarColor = isOutgoing
+        final playedBarColor = widget.isOutgoing
             ? Colors.white
-            : (isDark ? AppColors.primaryLight : AppColors.primaryDark);
-        final unplayedBarColor = isOutgoing
+            : (widget.isDark ? AppColors.primaryLight : AppColors.primaryDark);
+        final unplayedBarColor = widget.isOutgoing
             ? Colors.white.withValues(alpha: 0.40)
-            : (isDark ? Colors.white24 : const Color(0xFFCBD5E1));
+            : (widget.isDark ? Colors.white24 : const Color(0xFFCBD5E1));
 
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
           margin: const EdgeInsets.symmetric(vertical: 4),
           decoration: BoxDecoration(
-            color: isOutgoing
+            color: widget.isOutgoing
                 ? Colors.black.withValues(alpha: 0.15)
-                : (isDark ? Colors.black.withValues(alpha: 0.25) : const Color(0xFFF1F5F9)),
+                : (widget.isDark ? Colors.black.withValues(alpha: 0.25) : const Color(0xFFF1F5F9)),
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
-              color: isOutgoing
+              color: widget.isOutgoing
                   ? Colors.white.withValues(alpha: 0.15)
-                  : (isDark ? Colors.white.withValues(alpha: 0.08) : const Color(0xFFE2E8F0)),
+                  : (widget.isDark ? Colors.white.withValues(alpha: 0.08) : const Color(0xFFE2E8F0)),
               width: 1,
             ),
           ),
@@ -68,7 +113,7 @@ class VoiceNotePlayer extends StatelessWidget {
                   // Play / Pause Circle Button
                   GestureDetector(
                     onTap: () {
-                      VoiceNoteService.instance.togglePlay(filePath);
+                      VoiceNoteService.instance.togglePlay(widget.filePath);
                     },
                     child: Container(
                       width: 44,
@@ -113,13 +158,9 @@ class VoiceNotePlayer extends StatelessWidget {
                               style: TextStyle(
                                 fontSize: 11.5,
                                 fontWeight: FontWeight.w600,
-                                color: isOutgoing
+                                color: widget.isOutgoing
                                     ? Colors.white.withValues(alpha: 0.85)
-                                    : (isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B)),
-                                fontFeatures: const [
-                                  // Tabular figures so digits don't jitter
-                                  // dart:ui FontFeature.tabularFigures
-                                ],
+                                    : (widget.isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B)),
                               ),
                             ),
                             Row(
@@ -128,9 +169,9 @@ class VoiceNotePlayer extends StatelessWidget {
                                 Icon(
                                   Icons.lock_rounded,
                                   size: 10,
-                                  color: isOutgoing
+                                  color: widget.isOutgoing
                                       ? Colors.white70
-                                      : (isDark ? AppColors.primaryLight : AppColors.primaryDark),
+                                      : (widget.isDark ? AppColors.primaryLight : AppColors.primaryDark),
                                 ),
                                 const SizedBox(width: 3),
                                 Text(
@@ -138,9 +179,9 @@ class VoiceNotePlayer extends StatelessWidget {
                                   style: TextStyle(
                                     fontSize: 10,
                                     fontWeight: FontWeight.w700,
-                                    color: isOutgoing
+                                    color: widget.isOutgoing
                                         ? Colors.white70
-                                        : (isDark ? AppColors.primaryLight : AppColors.primaryDark),
+                                        : (widget.isDark ? AppColors.primaryLight : AppColors.primaryDark),
                                   ),
                                 ),
                               ],

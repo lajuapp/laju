@@ -637,6 +637,28 @@ class MainActivity : FlutterFragmentActivity() {
                         result.success(data)
                     }
                 }
+                "getAudioDuration" -> {
+                    val filePath = call.argument<String>("filePath")
+                    if (filePath.isNullOrEmpty()) {
+                        result.success(0)
+                        return@setMethodCallHandler
+                    }
+                    val file = File(filePath)
+                    if (!file.exists()) {
+                        result.success(0)
+                        return@setMethodCallHandler
+                    }
+                    try {
+                        val mmr = android.media.MediaMetadataRetriever()
+                        mmr.setDataSource(filePath)
+                        val durationStr = mmr.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)
+                        val durationMs = durationStr?.toIntOrNull() ?: 0
+                        mmr.release()
+                        result.success(durationMs)
+                    } catch (_: Exception) {
+                        result.success(0)
+                    }
+                }
                 else -> {
                     result.notImplemented()
                 }

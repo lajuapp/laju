@@ -583,11 +583,19 @@ class ConversationService {
             if (rawCiphertext.startsWith('{') && rawCiphertext.contains('"media"')) {
               try {
                 final parsed = jsonDecode(rawCiphertext);
-                if (parsed is Map && parsed['type'] == 'image') {
-                  contentType = MessageContentType.attachment;
-                  mediaData = parsed['media'] as String?;
-                  attName = 'Foto.jpg';
-                  contentText = (parsed['caption'] ?? '') as String;
+                if (parsed is Map) {
+                  if (parsed['type'] == 'image') {
+                    contentType = MessageContentType.attachment;
+                    mediaData = parsed['media'] as String?;
+                    attName = 'Foto.jpg';
+                    contentText = (parsed['caption'] ?? '') as String;
+                  } else if (parsed['type'] == 'audio') {
+                    contentType = MessageContentType.voiceNote;
+                    mediaData = parsed['media'] as String?;
+                    attName = (parsed['fileName'] ?? 'Voice Note') as String;
+                    attSize = (parsed['duration'] ?? '') as String;
+                    contentText = attSize.isNotEmpty ? '🎤 Pesan Suara ($attSize)' : '🎤 Pesan Suara';
+                  }
                 }
               } catch (_) {}
             }
@@ -602,7 +610,7 @@ class ConversationService {
                 mediaData = rawCiphertext;
                 attName = 'Voice Note';
                 contentText = '🎤 Pesan Suara';
-                attSize = '0:15';
+                attSize = '0:00';
               } else if (msgType == 'DOCUMENT' || rawCiphertext.startsWith('data:') || rawCiphertext.startsWith('📄')) {
                 contentType = MessageContentType.attachment;
                 mediaData = rawCiphertext.startsWith('data:') ? rawCiphertext : null;
@@ -672,11 +680,18 @@ class ConversationService {
           final mime = type == 'IMAGE'
               ? 'image/jpeg'
               : (type == 'AUDIO' ? 'audio/m4a' : 'application/octet-stream');
-          if (type == 'IMAGE' && text.trim().isNotEmpty) {
+          if (type == 'IMAGE') {
             payloadCiphertext = jsonEncode({
               'type': 'image',
               'media': 'data:$mime;base64,$b64',
               'caption': text.trim(),
+            });
+          } else if (type == 'AUDIO') {
+            payloadCiphertext = jsonEncode({
+              'type': 'audio',
+              'media': 'data:$mime;base64,$b64',
+              'duration': attachmentSize ?? '0:00',
+              'fileName': attachmentName ?? 'Voice Note',
             });
           } else {
             payloadCiphertext = 'data:$mime;base64,$b64';

@@ -381,7 +381,7 @@ class ChatBubble extends StatelessWidget {
                       if (message.contentType == MessageContentType.voiceNote && message.attachmentPath != null)
                         VoiceNotePlayer(
                           filePath: message.attachmentPath!,
-                          durationLabel: message.attachmentSize ?? '0:15',
+                          durationLabel: message.attachmentSize ?? '0:00',
                           isOutgoing: isOut,
                           isDark: isDark,
                         ),

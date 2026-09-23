@@ -72,6 +72,8 @@ class VoiceNoteService {
   final ValueNotifier<PlaybackState> playbackState = ValueNotifier(const PlaybackState());
   Timer? _positionPollTimer;
   bool _isRecording = false;
+  String? _activeFilePath;
+  final Map<String, int> _durationCache = {};
 
   bool get isRecording => _isRecording;
 
@@ -80,7 +82,7 @@ class VoiceNoteService {
       _stopPollTimer();
       final current = playbackState.value;
       playbackState.value = PlaybackState(
-        filePath: current.filePath,
+        filePath: _activeFilePath ?? current.filePath,
         isPlaying: false,
         positionMs: 0,
         durationMs: current.durationMs,
@@ -155,6 +157,7 @@ class VoiceNoteService {
 
   Future<void> play(String filePath) async {
     try {
+      _activeFilePath = filePath;
       String actualPath = filePath;
       if (filePath.startsWith('data:audio')) {
         try {
@@ -176,11 +179,14 @@ class VoiceNoteService {
       if (res != null) {
         final durationMs = (res['durationMs'] as num?)?.toInt() ?? 0;
         final positionMs = (res['positionMs'] as num?)?.toInt() ?? 0;
+        if (durationMs > 0) {
+          _durationCache[filePath] = durationMs;
+        }
         playbackState.value = PlaybackState(
           filePath: filePath,
           isPlaying: true,
           positionMs: positionMs,
-          durationMs: durationMs,
+          durationMs: durationMs > 0 ? durationMs : (_durationCache[filePath] ?? 0),
         );
         _startPollTimer();
       }
@@ -196,11 +202,12 @@ class VoiceNoteService {
       _stopPollTimer();
       final current = playbackState.value;
       final pos = (res?['positionMs'] as num?)?.toInt() ?? current.positionMs;
+      final dur = (res?['durationMs'] as num?)?.toInt() ?? current.durationMs;
       playbackState.value = PlaybackState(
-        filePath: current.filePath,
+        filePath: _activeFilePath ?? current.filePath,
         isPlaying: false,
         positionMs: pos,
-        durationMs: current.durationMs,
+        durationMs: dur > 0 ? dur : current.durationMs,
       );
     } catch (e) {
       debugPrint('Error pausing voice note: $e');
@@ -212,7 +219,13 @@ class VoiceNoteService {
     try {
       await _channel.invokeMethod('stopAudio');
     } catch (_) {}
-    playbackState.value = const PlaybackState();
+    final current = playbackState.value;
+    playbackState.value = PlaybackState(
+      filePath: _activeFilePath ?? current.filePath,
+      isPlaying: false,
+      positionMs: 0,
+      durationMs: current.durationMs,
+    );
   }
 
   Future<void> togglePlay(String filePath) async {
@@ -229,12 +242,47 @@ class VoiceNoteService {
       await _channel.invokeMethod('seekAudio', {'positionMs': positionMs});
       final current = playbackState.value;
       playbackState.value = PlaybackState(
-        filePath: current.filePath,
+        filePath: _activeFilePath ?? current.filePath,
         isPlaying: current.isPlaying,
         positionMs: positionMs,
         durationMs: current.durationMs,
       );
     } catch (_) {}
+  }
+
+  Future<int> getAudioDuration(String filePath) async {
+    if (_durationCache.containsKey(filePath)) {
+      return _durationCache[filePath]!;
+    }
+    try {
+      String actualPath = filePath;
+      if (filePath.startsWith('data:audio')) {
+        try {
+          final b64 = filePath.split(',').last;
+          final bytes = base64Decode(b64);
+          final tempFile = File('${Directory.systemTemp.path}/vn_${filePath.hashCode}.m4a');
+          if (!tempFile.existsSync()) {
+            tempFile.writeAsBytesSync(bytes);
+          }
+          actualPath = tempFile.path;
+        } catch (_) {}
+      }
+      final res = await _channel.invokeMethod<int>('getAudioDuration', {'filePath': actualPath});
+      final dur = res ?? 0;
+      if (dur > 0) {
+        _durationCache[filePath] = dur;
+      }
+      return dur;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  String formatDurationMs(int durationMs) {
+    final s = (durationMs / 1000).ceil();
+    final m = s ~/ 60;
+    final sec = s % 60;
+    return '$m:${sec.toString().padLeft(2, '0')}';
   }
 
   void _startPollTimer() {
@@ -246,22 +294,30 @@ class VoiceNoteService {
           final isPlaying = res['isPlaying'] as bool? ?? false;
           final pos = (res['positionMs'] as num?)?.toInt() ?? 0;
           final dur = (res['durationMs'] as num?)?.toInt() ?? 0;
-          final path = res['filePath'] as String?;
+          final targetPath = _activeFilePath ?? (res['filePath'] as String?);
+
+          final effectiveDur = dur > 0
+              ? dur
+              : (targetPath != null ? (_durationCache[targetPath] ?? playbackState.value.durationMs) : playbackState.value.durationMs);
+
+          if (effectiveDur > 0 && targetPath != null) {
+            _durationCache[targetPath] = effectiveDur;
+          }
 
           playbackState.value = PlaybackState(
-            filePath: path,
+            filePath: targetPath,
             isPlaying: isPlaying,
             positionMs: pos,
-            durationMs: dur,
+            durationMs: effectiveDur,
           );
 
-          if (!isPlaying && (dur > 0 && pos >= dur - 200)) {
+          if (!isPlaying && (effectiveDur > 0 && pos >= effectiveDur - 200)) {
             _stopPollTimer();
             playbackState.value = PlaybackState(
-              filePath: path,
+              filePath: targetPath,
               isPlaying: false,
               positionMs: 0,
-              durationMs: dur,
+              durationMs: effectiveDur,
             );
           }
         }
