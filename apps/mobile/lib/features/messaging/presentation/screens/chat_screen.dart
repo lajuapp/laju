@@ -604,6 +604,7 @@ class _ChatScreenState extends State<ChatScreen> {
           contactName: widget.title,
           calleeUserId: widget.contactUserId,
           contactPhone: widget.contactPhone,
+          avatarUrl: widget.avatarUrl,
           isVideo: isVideo,
         ),
       ),

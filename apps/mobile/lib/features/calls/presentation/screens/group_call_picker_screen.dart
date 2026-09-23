@@ -24,12 +24,14 @@ class GroupCallContactItem {
   final String id;
   final String name;
   final String phone;
+  final String? avatarUrl;
   final bool isOnline;
 
   const GroupCallContactItem({
     required this.id,
     required this.name,
     required this.phone,
+    this.avatarUrl,
     this.isOnline = false,
   });
 }
@@ -61,6 +63,7 @@ class _GroupCallPickerScreenState extends State<GroupCallPickerScreen> {
           id: u.id,
           name: u.username,
           phone: '@${u.username}',
+          avatarUrl: u.avatarUrl,
           isOnline: true,
         )).toList();
       });
@@ -75,6 +78,7 @@ class _GroupCallPickerScreenState extends State<GroupCallPickerScreen> {
           id: u.id,
           name: u.username,
           phone: '@${u.username}',
+          avatarUrl: u.avatarUrl,
           isOnline: true,
         )).toList();
       });
@@ -394,6 +398,7 @@ class _GroupCallPickerScreenState extends State<GroupCallPickerScreen> {
                             },
                             secondary: ModernAvatar(
                               name: contact.name,
+                              imagePath: contact.avatarUrl,
                               radius: 20,
                               isOnline: contact.isOnline,
                               isVerified: true,

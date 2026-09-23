@@ -10,6 +10,7 @@ enum ParticipantCallStatus { ringing, connected, unanswered }
 class GroupCallParticipant {
   final String id;
   final String name;
+  final String? avatarUrl;
   final bool isSelf;
   ParticipantCallStatus status;
   int ringingSeconds;
@@ -21,6 +22,7 @@ class GroupCallParticipant {
   GroupCallParticipant({
     required this.id,
     required this.name,
+    this.avatarUrl,
     this.isSelf = false,
     this.status = ParticipantCallStatus.ringing,
     this.ringingSeconds = 0,
@@ -84,11 +86,15 @@ class _ActiveGroupCallScreenState extends State<ActiveGroupCallScreen>
       _isSelfVideoOn = session.isVideoOn;
     }
 
+    final selfAvatar = ApiClient.instance.userAvatar;
+    final convs = ConversationService.instance.inMemoryConversations ?? [];
+
     // Self participant
     final participantsList = <GroupCallParticipant>[
       GroupCallParticipant(
         id: 'self',
         name: 'You',
+        avatarUrl: selfAvatar,
         isSelf: true,
         status: ParticipantCallStatus.connected,
         isVideoOn: widget.isVideo,
@@ -99,10 +105,19 @@ class _ActiveGroupCallScreenState extends State<ActiveGroupCallScreen>
     final seeds = widget.initialParticipants;
 
     for (int i = 0; i < seeds.length; i++) {
+      final seedName = seeds[i];
+      String? seedAvatar;
+      for (final c in convs) {
+        if (c.title.trim().toLowerCase() == seedName.trim().toLowerCase()) {
+          seedAvatar = c.avatarUrl;
+          break;
+        }
+      }
       participantsList.add(
         GroupCallParticipant(
           id: 'p-$i',
-          name: seeds[i],
+          name: seedName,
+          avatarUrl: seedAvatar,
           isSelf: false,
           status: ParticipantCallStatus.ringing,
           isVideoOn: widget.isVideo,
@@ -202,12 +217,23 @@ class _ActiveGroupCallScreenState extends State<ActiveGroupCallScreen>
     Navigator.pop(context); // close sheet
   }
 
-  void _addContactToCall(String name) {
+  void _addContactToCall(String name, [String? avatarUrl]) {
+    String? resolvedAvatar = avatarUrl;
+    if (resolvedAvatar == null) {
+      final convs = ConversationService.instance.inMemoryConversations ?? [];
+      for (final c in convs) {
+        if (c.title.trim().toLowerCase() == name.trim().toLowerCase()) {
+          resolvedAvatar = c.avatarUrl;
+          break;
+        }
+      }
+    }
     setState(() {
       _participants.add(
         GroupCallParticipant(
           id: 'p-${DateTime.now().millisecondsSinceEpoch}',
           name: name,
+          avatarUrl: resolvedAvatar,
           isSelf: false,
           status: ParticipantCallStatus.ringing,
           isVideoOn: widget.isVideo,
@@ -561,6 +587,7 @@ class _ActiveGroupCallScreenState extends State<ActiveGroupCallScreen>
                                 scale: pulseScale,
                                 child: ModernAvatar(
                                   name: participant.isSelf ? 'You' : participant.name,
+                                  imagePath: participant.avatarUrl,
                                   radius: isSingle ? 46 : 30,
                                   isVerified: true,
                                 ),
@@ -1020,6 +1047,7 @@ class _ActiveGroupCallScreenState extends State<ActiveGroupCallScreen>
                     contentPadding: EdgeInsets.zero,
                     leading: ModernAvatar(
                       name: p.isSelf ? 'You' : p.name,
+                      imagePath: p.avatarUrl,
                       radius: 18,
                       isVerified: true,
                     ),
@@ -1070,7 +1098,7 @@ class _ActiveGroupCallScreenState extends State<ActiveGroupCallScreen>
                     return ListTile(
                       dense: true,
                       contentPadding: EdgeInsets.zero,
-                      leading: ModernAvatar(name: up.name, radius: 18),
+                      leading: ModernAvatar(name: up.name, imagePath: up.avatarUrl, radius: 18),
                       title: Text(
                         up.name,
                         style: TextStyle(fontSize: 14, color: textSecondary),
@@ -1237,7 +1265,7 @@ class _ActiveGroupCallScreenState extends State<ActiveGroupCallScreen>
                             final name = user.username as String;
                             return ListTile(
                               contentPadding: EdgeInsets.zero,
-                              leading: ModernAvatar(name: name, radius: 18),
+                              leading: ModernAvatar(name: name, imagePath: user.avatarUrl, radius: 18),
                               title: Text(name, style: TextStyle(color: textPrimary, fontSize: 14)),
                               subtitle: user.phoneNumber != null
                                   ? Text(user.phoneNumber, style: TextStyle(color: textSecondary, fontSize: 11))
@@ -1246,12 +1274,12 @@ class _ActiveGroupCallScreenState extends State<ActiveGroupCallScreen>
                                 icon: const Icon(Icons.add_call, color: AppColors.primary),
                                 onPressed: () {
                                   Navigator.pop(dialogCtx);
-                                  _addContactToCall(name);
+                                  _addContactToCall(name, user.avatarUrl);
                                 },
                               ),
                               onTap: () {
                                 Navigator.pop(dialogCtx);
-                                _addContactToCall(name);
+                                _addContactToCall(name, user.avatarUrl);
                               },
                             );
                           },

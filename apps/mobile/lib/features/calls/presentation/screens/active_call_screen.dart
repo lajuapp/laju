@@ -16,6 +16,7 @@ class ActiveCallScreen extends StatefulWidget {
   final String contactName;
   final String? calleeUserId;
   final String? contactPhone;
+  final String? avatarUrl;
   final bool isVideo;
   final bool returnToCallsScreen;
 
@@ -24,6 +25,7 @@ class ActiveCallScreen extends StatefulWidget {
     required this.contactName,
     this.calleeUserId,
     this.contactPhone,
+    this.avatarUrl,
     this.isVideo = false,
     this.returnToCallsScreen = false,
   });
@@ -44,6 +46,9 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
   bool _isConvertingFrame = false;
   int _lastFrameSentTime = 0;
 
+  String? get _resolvedAvatarUrl =>
+      widget.avatarUrl ?? CallSessionController.instance.avatarUrl;
+
   @override
   void initState() {
     super.initState();
@@ -63,6 +68,7 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
           contactName: widget.contactName,
           calleeUserId: widget.calleeUserId,
           contactPhone: widget.contactPhone,
+          avatarUrl: widget.avatarUrl,
           isVideo: widget.isVideo,
         );
       });
@@ -719,6 +725,7 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
                   ),
                   child: ModernAvatar(
                     name: widget.contactName,
+                    imagePath: _resolvedAvatarUrl,
                     radius: 64,
                     isVerified: true,
                   ),
@@ -910,6 +917,7 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
           children: [
             ModernAvatar(
               name: widget.contactName,
+              imagePath: _resolvedAvatarUrl,
               radius: isPip ? 26 : 48,
               isVerified: true,
             ),

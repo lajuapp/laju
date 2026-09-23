@@ -9,6 +9,7 @@ class CallContactItem {
   final String name;
   final String status;
   final String phone;
+  final String? avatarUrl;
   final bool isOnline;
   final bool isVerified;
 
@@ -17,6 +18,7 @@ class CallContactItem {
     required this.name,
     required this.status,
     required this.phone,
+    this.avatarUrl,
     this.isOnline = false,
     this.isVerified = true,
   });
@@ -50,6 +52,7 @@ class _NewCallContactPickerScreenState extends State<NewCallContactPickerScreen>
           name: u.username,
           status: u.status ?? 'LAJU Verified User 🔒',
           phone: '@${u.username}',
+          avatarUrl: u.avatarUrl,
           isOnline: true,
           isVerified: true,
         )).toList();
@@ -67,6 +70,7 @@ class _NewCallContactPickerScreenState extends State<NewCallContactPickerScreen>
           name: u.username,
           status: u.status ?? 'LAJU Verified User 🔒',
           phone: '@${u.username}',
+          avatarUrl: u.avatarUrl,
           isOnline: true,
           isVerified: true,
         )).toList();
@@ -99,6 +103,7 @@ class _NewCallContactPickerScreenState extends State<NewCallContactPickerScreen>
           contactName: contact.name,
           calleeUserId: contact.id,
           contactPhone: contact.phone,
+          avatarUrl: contact.avatarUrl,
           isVideo: isVideo,
           returnToCallsScreen: true,
         ),
@@ -271,6 +276,7 @@ class _NewCallContactPickerScreenState extends State<NewCallContactPickerScreen>
                             contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
                             leading: ModernAvatar(
                               name: contact.name,
+                              imagePath: contact.avatarUrl,
                               radius: 22,
                               isOnline: contact.isOnline,
                               isVerified: contact.isVerified,

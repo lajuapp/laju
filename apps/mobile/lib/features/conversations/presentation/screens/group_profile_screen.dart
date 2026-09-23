@@ -492,7 +492,12 @@ class _GroupProfileScreenState extends State<GroupProfileScreen> {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (context) => ActiveCallScreen(contactName: member.name),
+                      builder: (context) => ActiveCallScreen(
+                        contactName: member.name,
+                        calleeUserId: member.id,
+                        contactPhone: member.phone,
+                        avatarUrl: member.avatarUrl,
+                      ),
                     ),
                   );
                 },

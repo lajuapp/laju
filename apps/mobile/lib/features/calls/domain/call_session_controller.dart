@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import '../../../core/core.dart';
+import '../../conversations/domain/conversation_service.dart';
 import '../presentation/screens/active_call_screen.dart';
 import '../presentation/screens/active_group_call_screen.dart';
 
@@ -42,6 +43,7 @@ class CallSessionController extends ChangeNotifier {
   String _title = '';
   String? _contactUserId;
   String? _contactPhone;
+  String? _avatarUrl;
   String? _groupName;
   bool _isGroup = false;
   bool _isVideo = false;
@@ -66,6 +68,7 @@ class CallSessionController extends ChangeNotifier {
   String get title => _title;
   String? get contactUserId => _contactUserId;
   String? get contactPhone => _contactPhone;
+  String? get avatarUrl => _avatarUrl;
   String? get groupName => _groupName;
   bool get isGroup => _isGroup;
   bool get isVideo => _isVideo;
@@ -109,11 +112,30 @@ class CallSessionController extends ChangeNotifier {
     });
   }
 
+  String? _resolveAvatar(String? userId, String? phone, String contactName) {
+    try {
+      final convs = ConversationService.instance.conversationsNotifier.value;
+      for (final c in convs) {
+        if (userId != null && userId.isNotEmpty && c.participantUserId == userId) {
+          if (c.avatarUrl != null && c.avatarUrl!.isNotEmpty) return c.avatarUrl;
+        }
+        if (phone != null && phone.isNotEmpty && c.participantPhone == phone) {
+          if (c.avatarUrl != null && c.avatarUrl!.isNotEmpty) return c.avatarUrl;
+        }
+        if (c.title.toLowerCase() == contactName.toLowerCase()) {
+          if (c.avatarUrl != null && c.avatarUrl!.isNotEmpty) return c.avatarUrl;
+        }
+      }
+    } catch (_) {}
+    return null;
+  }
+
   void start1on1Call({
     required String contactName,
     required bool isVideo,
     String? calleeUserId,
     String? contactPhone,
+    String? avatarUrl,
   }) {
     _stopCallAudio();
     _playCallTone('stop');
@@ -124,6 +146,7 @@ class CallSessionController extends ChangeNotifier {
     _title = contactName;
     _contactUserId = calleeUserId;
     _contactPhone = contactPhone;
+    _avatarUrl = avatarUrl ?? _resolveAvatar(calleeUserId, contactPhone, contactName);
     _groupName = null;
     _isGroup = false;
     _isVideo = isVideo;
@@ -362,6 +385,7 @@ class CallSessionController extends ChangeNotifier {
             isVideo: _isVideo,
             calleeUserId: _contactUserId,
             contactPhone: _contactPhone,
+            avatarUrl: _avatarUrl,
             returnToCallsScreen: false,
           ),
         ),
@@ -418,11 +442,13 @@ class CallSessionController extends ChangeNotifier {
 
   void _saveCallLog({required String status, int? duration}) {
     if (_title.isEmpty) return;
+    final resolvedAvatar = _avatarUrl ?? _resolveAvatar(_contactUserId, _contactPhone, _title);
     LocalDatabase.instance.insertCallLog(
       id: 'call-log-${DateTime.now().millisecondsSinceEpoch}',
       contactName: _title,
       contactId: _contactUserId,
       contactPhone: _contactPhone,
+      avatarUrl: resolvedAvatar,
       isVideo: _isVideo,
       isOutgoing: _isOutgoing,
       status: status,
@@ -468,6 +494,8 @@ class CallSessionController extends ChangeNotifier {
         final callerName = data['initiatorName'] as String? ?? 'Kontak';
         final callerId = data['initiatorId'] as String?;
         final callerPhone = data['initiatorPhone'] as String?;
+        final callerAvatar = (data['initiatorAvatar'] as String?) ?? (data['avatarUrl'] as String?);
+        final resolvedAvatar = callerAvatar ?? _resolveAvatar(callerId, callerPhone, callerName);
         final isVideo = data['isVideo'] == true;
 
         if (incomingCallId != null &&
@@ -491,12 +519,15 @@ class CallSessionController extends ChangeNotifier {
               isVideo: isVideo,
               callerId: callerId,
               callerPhone: callerPhone,
+              avatarUrl: resolvedAvatar,
             ),
             onDecline: () => declineIncomingCall(
               incomingCallId,
               callerName: callerName,
               isVideo: isVideo,
               callerId: callerId,
+              callerPhone: callerPhone,
+              avatarUrl: resolvedAvatar,
             ),
           );
         }
@@ -519,18 +550,27 @@ class CallSessionController extends ChangeNotifier {
         final action = args?['action'] as String?;
         final isVideo = args?['isVideo'] == true;
         final callerName = (args?['callerName'] as String?) ?? 'Panggilan';
+        final callerId = args?['callerId'] as String?;
+        final callerPhone = args?['callerPhone'] as String?;
+        final callerAvatar = (args?['avatarUrl'] as String?) ?? _resolveAvatar(callerId, callerPhone, callerName);
         if (callId != null && callId.isNotEmpty) {
           if (action == 'answer') {
             await answerIncomingCall(
               callId,
               callerName: callerName,
               isVideo: isVideo,
+              callerId: callerId,
+              callerPhone: callerPhone,
+              avatarUrl: callerAvatar,
             );
           } else if (action == 'decline') {
             await declineIncomingCall(
               callId,
               callerName: callerName,
               isVideo: isVideo,
+              callerId: callerId,
+              callerPhone: callerPhone,
+              avatarUrl: callerAvatar,
             );
           }
         }
@@ -544,6 +584,7 @@ class CallSessionController extends ChangeNotifier {
     required bool isVideo,
     String? callerId,
     String? callerPhone,
+    String? avatarUrl,
   }) async {
     _systemNotifChannel.invokeMethod('cancelNotification', {'id': 9999}).catchError((_) {});
     AppNotificationService.instance.dismiss();
@@ -553,6 +594,7 @@ class CallSessionController extends ChangeNotifier {
     _title = callerName;
     _contactUserId = callerId;
     _contactPhone = callerPhone;
+    _avatarUrl = avatarUrl ?? _resolveAvatar(callerId, callerPhone, callerName);
     _isActive = true;
     _isOutgoing = false;
     _isVideo = isVideo;
@@ -576,6 +618,7 @@ class CallSessionController extends ChangeNotifier {
           isVideo: isVideo,
           calleeUserId: callerId,
           contactPhone: callerPhone,
+          avatarUrl: _avatarUrl,
           returnToCallsScreen: false,
         ),
       ),
@@ -587,20 +630,26 @@ class CallSessionController extends ChangeNotifier {
     required String callerName,
     required bool isVideo,
     String? callerId,
+    String? callerPhone,
+    String? avatarUrl,
   }) async {
     _systemNotifChannel.invokeMethod('cancelNotification', {'id': 9999}).catchError((_) {});
     AppNotificationService.instance.dismiss();
 
     _declinedCallId = incomingCallId;
     _lastRingingCallId = null;
+    final resolvedAvatar = avatarUrl ?? _resolveAvatar(callerId, callerPhone, callerName);
     LocalDatabase.instance.insertCallLog(
       id: 'call-log-${DateTime.now().millisecondsSinceEpoch}',
       contactName: callerName,
       contactId: callerId ?? 'unknown',
+      contactPhone: callerPhone,
+      avatarUrl: resolvedAvatar,
       isVideo: isVideo,
       isOutgoing: false,
       status: 'rejected',
       durationSeconds: 0,
+      timestamp: DateTime.now().millisecondsSinceEpoch,
     );
     try {
       await ApiClient.instance.post(ApiEndpoints.callReject(incomingCallId));
@@ -616,18 +665,27 @@ class CallSessionController extends ChangeNotifier {
         final isVideo = payload['isVideo'] == true;
         final action = payload['action'] as String?;
         final callerName = (payload['callerName'] as String?) ?? 'Panggilan';
+        final callerId = payload['callerId'] as String?;
+        final callerPhone = payload['callerPhone'] as String?;
+        final callerAvatar = (payload['avatarUrl'] as String?) ?? _resolveAvatar(callerId, callerPhone, callerName);
         if (callId != null && callId.isNotEmpty) {
           if (action == 'answer') {
             await answerIncomingCall(
               callId,
               callerName: callerName,
               isVideo: isVideo,
+              callerId: callerId,
+              callerPhone: callerPhone,
+              avatarUrl: callerAvatar,
             );
           } else if (action == 'decline') {
             await declineIncomingCall(
               callId,
               callerName: callerName,
               isVideo: isVideo,
+              callerId: callerId,
+              callerPhone: callerPhone,
+              avatarUrl: callerAvatar,
             );
           }
         }

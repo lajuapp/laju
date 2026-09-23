@@ -1414,7 +1414,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       ? call['contact_name'] as String
                       : 'Panggilan';
                   final phone = call['contact_phone'] as String?;
-                  final userId = call['contact_user_id'] as String?;
+                  final userId = (call['contact_id'] ?? call['contact_user_id']) as String?;
                   final direction = call['direction'] as String? ?? 'outgoing';
                   final status = call['status'] as String? ?? 'completed';
                   final callType = call['call_type'] as String? ?? 'audio';
@@ -1422,9 +1422,35 @@ class _HomeScreenState extends State<HomeScreen> {
                   final isIncoming = direction == 'incoming';
                   final isMissed = status == 'missed' || status == 'rejected';
                   final duration = (call['duration_seconds'] as num?)?.toInt() ?? 0;
-                  final createdAt = (call['created_at'] as num?)?.toInt();
+                  final createdAt = (call['created_at'] as num?)?.toInt() ?? (call['timestamp'] as num?)?.toInt();
                   final timeStr = _formatCallTimestamp(createdAt);
                   final isLast = index == _callLogs.length - 1;
+
+                  String? avatarUrl = call['avatar_url'] as String?;
+                  if (avatarUrl == null || avatarUrl.isEmpty) {
+                    try {
+                      for (final c in _conversations) {
+                        if (userId != null && userId.isNotEmpty && c.participantUserId == userId) {
+                          if (c.avatarUrl != null && c.avatarUrl!.isNotEmpty) {
+                            avatarUrl = c.avatarUrl;
+                            break;
+                          }
+                        }
+                        if (phone != null && phone.isNotEmpty && c.participantPhone == phone) {
+                          if (c.avatarUrl != null && c.avatarUrl!.isNotEmpty) {
+                            avatarUrl = c.avatarUrl;
+                            break;
+                          }
+                        }
+                        if (c.title.trim().toLowerCase() == name.trim().toLowerCase()) {
+                          if (c.avatarUrl != null && c.avatarUrl!.isNotEmpty) {
+                            avatarUrl = c.avatarUrl;
+                            break;
+                          }
+                        }
+                      }
+                    } catch (_) {}
+                  }
 
                   String statusDesc;
                   if (status == 'rejected') {
@@ -1445,6 +1471,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                         leading: ModernAvatar(
                           name: name,
+                          imagePath: avatarUrl,
                           radius: 22,
                           isVerified: true,
                         ),
@@ -1499,6 +1526,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                     contactName: name,
                                     calleeUserId: userId,
                                     contactPhone: phone,
+                                    avatarUrl: avatarUrl,
                                     isVideo: isVideo,
                                     returnToCallsScreen: true,
                                   ),
@@ -1515,6 +1543,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 contactName: name,
                                 calleeUserId: userId,
                                 contactPhone: phone,
+                                avatarUrl: avatarUrl,
                                 isVideo: isVideo,
                                 returnToCallsScreen: true,
                               ),

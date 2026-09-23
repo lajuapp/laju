@@ -107,6 +107,9 @@ class LocalDatabase {
           await db.execute(_createCallLogs);
         } catch (_) {}
         try {
+          await db.execute('ALTER TABLE call_logs ADD COLUMN avatar_url TEXT');
+        } catch (_) {}
+        try {
           await db.execute('CREATE INDEX IF NOT EXISTS idx_calls_ts ON call_logs(timestamp)');
         } catch (_) {}
         try {
