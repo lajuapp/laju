@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../../core/core.dart';
 import '../../../conversations/domain/conversation_service.dart';
 import '../../../home/presentation/screens/home_screen.dart';
+import '../../../settings/domain/account_controller.dart';
 import '../../domain/call_session_controller.dart';
 
 enum ParticipantCallStatus { ringing, connected, unanswered }
@@ -86,7 +87,9 @@ class _ActiveGroupCallScreenState extends State<ActiveGroupCallScreen>
       _isSelfVideoOn = session.isVideoOn;
     }
 
-    final selfAvatar = ApiClient.instance.userAvatar;
+    final selfAvatar = AccountController.instance.avatarUrl.isNotEmpty
+        ? AccountController.instance.avatarUrl
+        : null;
     final convs = ConversationService.instance.inMemoryConversations ?? [];
 
     // Self participant
