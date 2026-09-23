@@ -30,6 +30,11 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
 
   void _showFinalConfirmationDialog() {
     final isDark = ThemeModeController.instance.isDarkMode(context);
+    final titleText = context.tr('deleteAccountConfirmTitle');
+    final descText = context.tr('deleteAccountConfirmDesc');
+    final cancelLabel = context.tr('cancel');
+    final deleteBtnLabel = context.tr('deleteAccountButton');
+    final accountDeletedMsg = context.tr('accountDeleted');
 
     showDialog(
       context: context,
@@ -49,7 +54,7 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
             const SizedBox(width: 12),
             Expanded(
               child: Text(
-                context.tr('deleteAccountConfirmTitle'),
+                titleText,
                 style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.w800,
@@ -60,7 +65,7 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
           ],
         ),
         content: Text(
-          context.tr('deleteAccountConfirmDesc'),
+          descText,
           style: TextStyle(
             fontSize: 13.5,
             height: 1.4,
@@ -71,7 +76,7 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
           TextButton(
             onPressed: () => Navigator.pop(ctx),
             child: Text(
-              context.tr('cancel'),
+              cancelLabel,
               style: TextStyle(
                 color: isDark ? AppColors.darkTextSecondary : const Color(0xFF6B7280),
                 fontWeight: FontWeight.w600,
@@ -84,18 +89,21 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
               foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             ),
-            onPressed: () {
+            onPressed: () async {
               Navigator.pop(ctx); // Close dialog
+              await Future.delayed(const Duration(milliseconds: 150));
               AccountController.instance.resetAccount();
               AuthController.instance.logout();
-              Navigator.pushAndRemoveUntil(
-                context,
+              AppNavigation.navigatorKey.currentState?.pushAndRemoveUntil(
                 MaterialPageRoute(builder: (context) => const WelcomeScreen()),
                 (route) => false,
               );
-              LajuToast.error(context, context.tr('accountDeleted'));
+              final globalCtx = AppNavigation.currentContext;
+              if (globalCtx != null && globalCtx.mounted) {
+                LajuToast.error(globalCtx, accountDeletedMsg);
+              }
             },
-            child: Text(context.tr('deleteAccountButton'), style: const TextStyle(fontWeight: FontWeight.w700)),
+            child: Text(deleteBtnLabel, style: const TextStyle(fontWeight: FontWeight.w700)),
           ),
         ],
       ),

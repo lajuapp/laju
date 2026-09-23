@@ -128,6 +128,10 @@ class _DeviceMigrationScreenState extends State<DeviceMigrationScreen> {
   }
 
   void _handleMigrationCommitted() {
+    final titleText = context.tr('migrationSuccess');
+    final noticeText = context.tr('migrationCompleteLogoutNotice');
+    final doneLabel = context.tr('done');
+
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -139,14 +143,14 @@ class _DeviceMigrationScreenState extends State<DeviceMigrationScreen> {
             const SizedBox(width: 10),
             Expanded(
               child: Text(
-                context.tr('migrationSuccess'),
+                titleText,
                 style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 17),
               ),
             ),
           ],
         ),
         content: Text(
-          context.tr('migrationCompleteLogoutNotice'),
+          noticeText,
           style: const TextStyle(fontSize: 14, height: 1.45),
         ),
         actions: [
@@ -156,16 +160,16 @@ class _DeviceMigrationScreenState extends State<DeviceMigrationScreen> {
               foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
             ),
-            onPressed: () {
+            onPressed: () async {
               Navigator.pop(ctx);
+              await Future.delayed(const Duration(milliseconds: 150));
               AuthController.instance.logout();
-              Navigator.pushAndRemoveUntil(
-                context,
+              AppNavigation.navigatorKey.currentState?.pushAndRemoveUntil(
                 MaterialPageRoute(builder: (context) => const WelcomeScreen()),
                 (route) => false,
               );
             },
-            child: Text(context.tr('done'), style: const TextStyle(fontWeight: FontWeight.w700)),
+            child: Text(doneLabel, style: const TextStyle(fontWeight: FontWeight.w700)),
           ),
         ],
       ),

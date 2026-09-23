@@ -336,6 +336,7 @@ class SettingsScreen extends StatelessWidget {
 
   void _showLogoutConfirmation(BuildContext context) {
     final isDark = ThemeModeController.instance.isDarkMode(context);
+    final cancelLabel = context.tr('cancel');
     showDialog(
       context: context,
       builder: (dialogCtx) => AlertDialog(
@@ -359,7 +360,7 @@ class SettingsScreen extends StatelessWidget {
           TextButton(
             onPressed: () => Navigator.pop(dialogCtx),
             child: Text(
-              context.tr('cancel'),
+              cancelLabel,
               style: TextStyle(color: isDark ? Colors.white70 : const Color(0xFF6B7280)),
             ),
           ),
@@ -369,12 +370,12 @@ class SettingsScreen extends StatelessWidget {
               foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
             ),
-            onPressed: () {
+            onPressed: () async {
               Navigator.pop(dialogCtx);
+              await Future.delayed(const Duration(milliseconds: 150));
               AuthController.instance.logout();
-              Navigator.pushAndRemoveUntil(
-                context,
-                MaterialPageRoute(builder: (context) => const WelcomeScreen()),
+              AppNavigation.navigatorKey.currentState?.pushAndRemoveUntil(
+                MaterialPageRoute(builder: (_) => const WelcomeScreen()),
                 (route) => false,
               );
             },
