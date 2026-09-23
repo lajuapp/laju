@@ -952,15 +952,11 @@ class MainActivity : FlutterFragmentActivity() {
                         yuvImage.compressToJpeg(Rect(0, 0, width, height), quality, outStream)
                         val jpegBytes = outStream.toByteArray()
 
-                        // Rotate bitmap if needed for camera orientation (standard portrait display)
+                        // Rotate bitmap if needed for camera orientation (standard portrait display, front mirror default)
                         val matrix = Matrix()
-                        val isMirror = call.argument<Boolean>("isMirror") ?: false
-                        val isBeauty = call.argument<Boolean>("isBeauty") ?: true
                         if (isFront) {
                             matrix.postRotate(270f)
-                            if (isMirror) {
-                                matrix.postScale(-1f, 1f) // Mirror only if explicitly requested
-                            }
+                            matrix.postScale(-1f, 1f) // Natural front camera mirror mode
                         } else {
                             matrix.postRotate(90f)
                         }
@@ -970,27 +966,9 @@ class MainActivity : FlutterFragmentActivity() {
                             val rotatedBmp = Bitmap.createBitmap(originalBmp, 0, 0, originalBmp.width, originalBmp.height, matrix, true)
                             originalBmp.recycle()
 
-                            val finalBmp = if (isBeauty) {
-                                val enhancedBmp = Bitmap.createBitmap(rotatedBmp.width, rotatedBmp.height, Bitmap.Config.ARGB_8888)
-                                val canvas = Canvas(enhancedBmp)
-                                val paint = Paint(Paint.FILTER_BITMAP_FLAG).apply {
-                                    colorFilter = ColorMatrixColorFilter(ColorMatrix(floatArrayOf(
-                                        1.06f, 0f,    0f,    0f, 10f, // Warm flattering radiant skin tone
-                                        0f,    1.03f, 0f,    0f, 7f,  // Natural smooth complexion
-                                        0f,    0f,    0.98f, 0f, 3f,  // Soften cold shadows
-                                        0f,    0f,    0f,    1f, 0f
-                                    )))
-                                }
-                                canvas.drawBitmap(rotatedBmp, 0f, 0f, paint)
-                                rotatedBmp.recycle()
-                                enhancedBmp
-                            } else {
-                                rotatedBmp
-                            }
-
                             val rotatedOut = ByteArrayOutputStream()
-                            finalBmp.compress(Bitmap.CompressFormat.JPEG, quality, rotatedOut)
-                            finalBmp.recycle()
+                            rotatedBmp.compress(Bitmap.CompressFormat.JPEG, quality, rotatedOut)
+                            rotatedBmp.recycle()
                             result.success(rotatedOut.toByteArray())
                         } else {
                             result.success(jpegBytes)

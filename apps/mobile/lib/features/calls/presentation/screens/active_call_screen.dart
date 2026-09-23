@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:math' as math;
 import 'dart:typed_data';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
@@ -12,18 +11,6 @@ import '../../../../core/widgets/laju_glass.dart';
 import '../../../../core/widgets/modern_avatar.dart';
 import '../../../home/presentation/screens/home_screen.dart';
 import '../../domain/call_session_controller.dart';
-
-enum BeautyPreset {
-  glow('Glow Natural', Icons.auto_awesome_rounded, Color(0xFFF59E0B)),
-  rosy('Soft Rosy', Icons.favorite_rounded, Color(0xFFEC4899)),
-  clean('Clean Sharp', Icons.wb_sunny_rounded, Color(0xFF06B6D4)),
-  off('Normal', Icons.block_rounded, Color(0xFF94A3B8));
-
-  final String label;
-  final IconData icon;
-  final Color color;
-  const BeautyPreset(this.label, this.icon, this.color);
-}
 
 class ActiveCallScreen extends StatefulWidget {
   final String contactName;
@@ -50,8 +37,6 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
   CameraController? _cameraController;
   bool _isFrontCamera = true;
   bool _isCameraInMainView = true;
-  bool _isMirrorEnabled = false; // Default: false (tampilan asli, non-mirror)
-  BeautyPreset _beautyPreset = BeautyPreset.glow; // Default: Glow Natural (tampak ganteng/cantik)
 
   Uint8List? _remoteVideoBytes;
   int _lastRemoteFrameTime = 0;
@@ -143,8 +128,6 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
             'uvPixelStride': image.planes[1].bytesPerPixel ?? 1,
             'quality': 78,
             'isFront': _isFrontCamera,
-            'isMirror': _isMirrorEnabled,
-            'isBeauty': _beautyPreset != BeautyPreset.off,
           });
 
           if (jpeg != null && jpeg.isNotEmpty) {
@@ -209,57 +192,6 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
     setState(() {
       _isCameraInMainView = !_isCameraInMainView;
     });
-  }
-
-  void _toggleMirror() {
-    setState(() {
-      _isMirrorEnabled = !_isMirrorEnabled;
-    });
-    LajuToast.info(
-      context,
-      _isMirrorEnabled
-          ? 'Mode Cermin Diaktifkan'
-          : 'Mode Non-Mirror / Asli Aktif (Wajah Sesuai Asli)',
-    );
-  }
-
-  void _cycleBeautyPreset() {
-    setState(() {
-      final nextIndex = (_beautyPreset.index + 1) % BeautyPreset.values.length;
-      _beautyPreset = BeautyPreset.values[nextIndex];
-    });
-    LajuToast.info(
-      context,
-      'Efek Kamera: ${_beautyPreset.label}',
-    );
-  }
-
-  List<double>? _getBeautyMatrix(BeautyPreset preset) {
-    switch (preset) {
-      case BeautyPreset.glow:
-        return const [
-          1.06, 0.0,  0.0,  0.0, 10.0,
-          0.0,  1.03, 0.0,  0.0, 7.0,
-          0.0,  0.0,  0.98, 0.0, 3.0,
-          0.0,  0.0,  0.0,  1.0, 0.0,
-        ];
-      case BeautyPreset.rosy:
-        return const [
-          1.08, 0.0,  0.0,  0.0, 12.0,
-          0.0,  1.02, 0.0,  0.0, 5.0,
-          0.0,  0.0,  1.01, 0.0, 4.0,
-          0.0,  0.0,  0.0,  1.0, 0.0,
-        ];
-      case BeautyPreset.clean:
-        return const [
-          1.05, 0.0,  0.0,  0.0, 8.0,
-          0.0,  1.05, 0.0,  0.0, 8.0,
-          0.0,  0.0,  1.04, 0.0, 8.0,
-          0.0,  0.0,  0.0,  1.0, 0.0,
-        ];
-      case BeautyPreset.off:
-        return null;
-    }
   }
 
   @override
@@ -377,472 +309,229 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
             _minimizeCall();
           },
           child: Scaffold(
-            backgroundColor: isDark ? AppColors.darkBackground : const Color(0xFFF1F5F9),
-            body: LajuGlassBackground(
-              showOrbs: true,
-              child: SafeArea(
-                child: Column(
-                  children: [
-                    // Top Frosted Navigation
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          LajuGlassCard(
-                            padding: const EdgeInsets.all(8),
-                            borderRadius: 14,
-                            blurSigma: 12,
-                            onTap: _minimizeCall,
-                            child: Icon(
-                              Icons.keyboard_arrow_down_rounded,
-                              size: 26,
-                              color: textPrimary,
-                            ),
-                          ),
-                          const SizedBox(width: 44),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 18),
+            backgroundColor: _isVideoEnabled
+                ? Colors.black
+                : (isDark ? AppColors.darkBackground : const Color(0xFFF1F5F9)),
+            body: _isVideoEnabled
+                ? _buildVideoCallView(session)
+                : _buildAudioCallView(session, isDark, textPrimary, textSecondary),
+          ),
+        );
+      },
+    );
+  }
 
-                    // Contact Info Header
-                    Text(
-                      widget.contactName,
-                      style: TextStyle(
-                        fontSize: 27,
-                        fontWeight: FontWeight.w800,
-                        color: textPrimary,
-                        letterSpacing: 0.3,
-                      ),
+  Widget _buildVideoCallView(CallSessionController session) {
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        // 1. Fullscreen Main Stage (Remote Video or Local Camera)
+        Positioned.fill(
+          child: GestureDetector(
+            onDoubleTap: _switchCamera,
+            child: _isCameraInMainView
+                ? _buildLocalCameraPreview(isPip: false)
+                : _buildRemoteVideoView(isPip: false, textPrimary: Colors.white, textSecondary: Colors.white70),
+          ),
+        ),
+
+        // 2. Top Vignette Gradient for Header Contrast
+        Positioned(
+          top: 0,
+          left: 0,
+          right: 0,
+          height: 160,
+          child: IgnorePointer(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.black.withValues(alpha: 0.82),
+                    Colors.transparent,
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+
+        // 3. Bottom Vignette Gradient for Controls Contrast
+        Positioned(
+          bottom: 0,
+          left: 0,
+          right: 0,
+          height: 220,
+          child: IgnorePointer(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.bottomCenter,
+                  end: Alignment.topCenter,
+                  colors: [
+                    Colors.black.withValues(alpha: 0.88),
+                    Colors.transparent,
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+
+        // 4. Top Floating App Bar (Minimize, Contact Info & Status, Camera Flip)
+        Positioned(
+          top: 0,
+          left: 0,
+          right: 0,
+          child: SafeArea(
+            bottom: false,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Row(
+                children: [
+                  LajuGlassCard(
+                    padding: const EdgeInsets.all(8),
+                    borderRadius: 14,
+                    blurSigma: 16,
+                    borderColor: Colors.white.withValues(alpha: 0.2),
+                    onTap: _minimizeCall,
+                    child: const Icon(
+                      Icons.keyboard_arrow_down_rounded,
+                      size: 26,
+                      color: Colors.white,
                     ),
-                    const SizedBox(height: 6),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
                       decoration: BoxDecoration(
-                        color: _getStatusBadgeBgColor(session.status),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: _getStatusBadgeBorderColor(session.status)),
+                        color: Colors.black.withValues(alpha: 0.5),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: Colors.white.withValues(alpha: 0.15)),
                       ),
                       child: Row(
-                        mainAxisSize: MainAxisSize.min,
                         children: [
-                          if (session.status == CallStatus.connecting || session.status == CallStatus.ringing)
-                            Container(
-                              width: 8,
-                              height: 8,
-                              margin: const EdgeInsets.only(right: 6),
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: _getStatusBadgeTextColor(session.status),
-                              ),
-                            ),
-                          Text(
-                            session.statusLabel,
-                            style: TextStyle(
-                              fontSize: 14.5,
-                              color: _getStatusBadgeTextColor(session.status),
-                              fontWeight: FontWeight.w700,
-                              letterSpacing: session.status == CallStatus.connected ? 1.2 : 0.3,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-
-                    const Spacer(),
-
-                    // Visualizer / Video Frame
-                    if (_isVideoEnabled)
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 20),
-                        child: Stack(
-                          clipBehavior: Clip.none,
-                          children: [
-                            // Main Stage Card (Either Local Live Camera or Remote Avatar)
-                            LajuGlassCard(
-                              padding: const EdgeInsets.all(3),
-                              borderRadius: 28,
-                              blurSigma: 24,
-                              borderColor: AppColors.primary.withValues(alpha: 0.45),
-                              borderWidth: 1.5,
-                              customShadow: [
-                                BoxShadow(
-                                  color: AppColors.primary.withValues(alpha: 0.2),
-                                  blurRadius: 24,
-                                  spreadRadius: 2,
+                          const Icon(Icons.lock_rounded, size: 13, color: AppColors.primary),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  widget.contactName,
+                                  style: const TextStyle(
+                                    fontSize: 14.5,
+                                    fontWeight: FontWeight.w700,
+                                    color: Colors.white,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                Row(
+                                  children: [
+                                    if (session.status == CallStatus.connecting || session.status == CallStatus.ringing)
+                                      Container(
+                                        width: 6,
+                                        height: 6,
+                                        margin: const EdgeInsets.only(right: 5),
+                                        decoration: BoxDecoration(
+                                          shape: BoxShape.circle,
+                                          color: _getStatusBadgeTextColor(session.status),
+                                        ),
+                                      ),
+                                    Text(
+                                      session.statusLabel,
+                                      style: TextStyle(
+                                        fontSize: 11.5,
+                                        color: _getStatusBadgeTextColor(session.status),
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ],
-                              child: Container(
-                                width: double.infinity,
-                                height: 320,
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(25),
-                                  color: Colors.black,
-                                ),
-                                child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(25),
-                                  child: Stack(
-                                    children: [
-                                      Positioned.fill(
-                                        child: _isCameraInMainView
-                                            ? _buildLocalCameraPreview(isPip: false)
-                                            : _buildRemoteVideoView(isPip: false, textPrimary: textPrimary, textSecondary: textSecondary),
-                                      ),
-                                      // Camera label (Top Left)
-                                      Positioned(
-                                        top: 12,
-                                        left: 14,
-                                        child: Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                          decoration: BoxDecoration(
-                                            color: Colors.black54,
-                                            borderRadius: BorderRadius.circular(12),
-                                          ),
-                                          child: Row(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              const Icon(Icons.videocam_rounded, size: 14, color: AppColors.primary),
-                                              const SizedBox(width: 5),
-                                              Text(
-                                                _isCameraInMainView ? 'Kamera Anda (HD Live)' : '${widget.contactName} (Live)',
-                                                style: const TextStyle(color: Colors.white, fontSize: 11.5, fontWeight: FontWeight.w600),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                      ),
-                                      // Quick Beauty & Mirror Toolbar (Top Right)
-                                      if (_isCameraInMainView)
-                                        Positioned(
-                                          top: 10,
-                                          right: 12,
-                                          child: Row(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              // Beauty Mode Button
-                                              GestureDetector(
-                                                onTap: _cycleBeautyPreset,
-                                                child: Container(
-                                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-                                                  decoration: BoxDecoration(
-                                                    color: Colors.black.withValues(alpha: 0.65),
-                                                    borderRadius: BorderRadius.circular(14),
-                                                    border: Border.all(
-                                                      color: _beautyPreset != BeautyPreset.off
-                                                          ? _beautyPreset.color
-                                                          : Colors.white24,
-                                                      width: 1.2,
-                                                    ),
-                                                    boxShadow: _beautyPreset != BeautyPreset.off
-                                                        ? [
-                                                            BoxShadow(
-                                                              color: _beautyPreset.color.withValues(alpha: 0.35),
-                                                              blurRadius: 8,
-                                                              spreadRadius: 1,
-                                                            )
-                                                          ]
-                                                        : null,
-                                                  ),
-                                                  child: Row(
-                                                    mainAxisSize: MainAxisSize.min,
-                                                    children: [
-                                                      Icon(
-                                                        _beautyPreset.icon,
-                                                        size: 13,
-                                                        color: _beautyPreset != BeautyPreset.off
-                                                            ? _beautyPreset.color
-                                                            : Colors.white70,
-                                                      ),
-                                                      const SizedBox(width: 4),
-                                                      Text(
-                                                        _beautyPreset.label,
-                                                        style: TextStyle(
-                                                          color: _beautyPreset != BeautyPreset.off
-                                                              ? Colors.white
-                                                              : Colors.white70,
-                                                          fontSize: 10.5,
-                                                          fontWeight: FontWeight.w700,
-                                                        ),
-                                                      ),
-                                                    ],
-                                                  ),
-                                                ),
-                                              ),
-                                              if (_isFrontCamera) ...[
-                                                const SizedBox(width: 6),
-                                                // Mirror Mode Toggle
-                                                GestureDetector(
-                                                  onTap: _toggleMirror,
-                                                  child: Container(
-                                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-                                                    decoration: BoxDecoration(
-                                                      color: Colors.black.withValues(alpha: 0.65),
-                                                      borderRadius: BorderRadius.circular(14),
-                                                      border: Border.all(
-                                                        color: _isMirrorEnabled ? AppColors.primary : Colors.white24,
-                                                        width: 1.2,
-                                                      ),
-                                                    ),
-                                                    child: Row(
-                                                      mainAxisSize: MainAxisSize.min,
-                                                      children: [
-                                                        Icon(
-                                                          _isMirrorEnabled ? Icons.flip_rounded : Icons.crop_free_rounded,
-                                                          size: 13,
-                                                          color: _isMirrorEnabled ? AppColors.primary : Colors.white70,
-                                                        ),
-                                                        const SizedBox(width: 4),
-                                                        Text(
-                                                          _isMirrorEnabled ? 'Cermin' : 'Asli',
-                                                          style: TextStyle(
-                                                            color: _isMirrorEnabled ? AppColors.primary : Colors.white,
-                                                            fontSize: 10.5,
-                                                            fontWeight: FontWeight.w700,
-                                                          ),
-                                                        ),
-                                                      ],
-                                                    ),
-                                                  ),
-                                                ),
-                                              ],
-                                            ],
-                                          ),
-                                        ),
-                                      // Flip camera button (Bottom Left)
-                                      if (_isCameraInMainView)
-                                        Positioned(
-                                          bottom: 12,
-                                          left: 14,
-                                          child: GestureDetector(
-                                            onTap: _switchCamera,
-                                            child: Container(
-                                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                              decoration: BoxDecoration(
-                                                color: Colors.black.withValues(alpha: 0.6),
-                                                borderRadius: BorderRadius.circular(14),
-                                                border: Border.all(color: Colors.white24),
-                                              ),
-                                              child: const Row(
-                                                mainAxisSize: MainAxisSize.min,
-                                                children: [
-                                                  Icon(Icons.flip_camera_ios_rounded, color: Colors.white, size: 16),
-                                                  SizedBox(width: 6),
-                                                  Text(
-                                                    'Putar Kamera',
-                                                    style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
-                                                  ),
-                                                ],
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                    ],
-                                  ),
-                                ),
-                              ),
                             ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  LajuGlassCard(
+                    padding: const EdgeInsets.all(8),
+                    borderRadius: 14,
+                    blurSigma: 16,
+                    borderColor: Colors.white.withValues(alpha: 0.2),
+                    onTap: _switchCamera,
+                    child: const Icon(
+                      Icons.flip_camera_ios_rounded,
+                      size: 22,
+                      color: Colors.white,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
 
-                            // Floating Picture-in-Picture (PiP) Window (Tap to swap!)
-                            Positioned(
-                              right: 14,
-                              bottom: 14,
-                              child: GestureDetector(
-                                onTap: _swapViews,
-                                child: Container(
-                                  width: 110,
-                                  height: 155,
-                                  decoration: BoxDecoration(
-                                    color: Colors.black,
-                                    borderRadius: BorderRadius.circular(18),
-                                    border: Border.all(
-                                      color: AppColors.primary.withValues(alpha: 0.8),
-                                      width: 2,
-                                    ),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: Colors.black.withValues(alpha: 0.5),
-                                        blurRadius: 16,
-                                        spreadRadius: 2,
-                                      ),
-                                    ],
-                                  ),
-                                  child: ClipRRect(
-                                    borderRadius: BorderRadius.circular(16),
-                                    child: Stack(
-                                      children: [
-                                        Positioned.fill(
-                                          child: !_isCameraInMainView
-                                              ? _buildLocalCameraPreview(isPip: true)
-                                              : _buildRemoteVideoView(isPip: true, textPrimary: textPrimary, textSecondary: textSecondary),
-                                        ),
-                                        if (!_isCameraInMainView) ...[
-                                          Positioned(
-                                            bottom: 6,
-                                            right: 6,
-                                            child: GestureDetector(
-                                              onTap: _switchCamera,
-                                              child: Container(
-                                                padding: const EdgeInsets.all(5),
-                                                decoration: BoxDecoration(
-                                                  color: Colors.black.withValues(alpha: 0.6),
-                                                  shape: BoxShape.circle,
-                                                ),
-                                                child: const Icon(
-                                                  Icons.flip_camera_ios_rounded,
-                                                  color: Colors.white,
-                                                  size: 15,
-                                                ),
-                                              ),
-                                            ),
-                                          ),
-                                          Positioned(
-                                            top: 6,
-                                            right: 6,
-                                            child: GestureDetector(
-                                              onTap: _cycleBeautyPreset,
-                                              child: Container(
-                                                padding: const EdgeInsets.all(4),
-                                                decoration: BoxDecoration(
-                                                  color: Colors.black.withValues(alpha: 0.7),
-                                                  shape: BoxShape.circle,
-                                                  border: Border.all(
-                                                    color: _beautyPreset != BeautyPreset.off
-                                                        ? _beautyPreset.color
-                                                        : Colors.white24,
-                                                    width: 1,
-                                                  ),
-                                                ),
-                                                child: Icon(
-                                                  _beautyPreset.icon,
-                                                  color: _beautyPreset != BeautyPreset.off
-                                                      ? _beautyPreset.color
-                                                      : Colors.white70,
-                                                  size: 12,
-                                                ),
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                        Positioned(
-                                          top: 6,
-                                          left: 6,
-                                          child: Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-                                            decoration: BoxDecoration(
-                                              color: Colors.black54,
-                                              borderRadius: BorderRadius.circular(6),
-                                            ),
-                                            child: const Text(
-                                              'Tukar',
-                                              style: TextStyle(color: Colors.white, fontSize: 8.5, fontWeight: FontWeight.bold),
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                              ),
+        // 5. Floating Picture-in-Picture (PiP) Window (Tap to swap!)
+        Positioned(
+          top: 96,
+          right: 16,
+          child: GestureDetector(
+            onTap: _swapViews,
+            child: Container(
+              width: 110,
+              height: 160,
+              decoration: BoxDecoration(
+                color: Colors.black,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: AppColors.primary.withValues(alpha: 0.85),
+                  width: 2,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.5),
+                    blurRadius: 16,
+                    spreadRadius: 2,
+                  ),
+                ],
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(18),
+                child: Stack(
+                  children: [
+                    Positioned.fill(
+                      child: !_isCameraInMainView
+                          ? _buildLocalCameraPreview(isPip: true)
+                          : _buildRemoteVideoView(isPip: true, textPrimary: Colors.white, textSecondary: Colors.white70),
+                    ),
+                    Positioned(
+                      bottom: 6,
+                      left: 6,
+                      right: 6,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 3),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.7),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.swap_horiz_rounded, size: 11, color: Colors.white70),
+                            SizedBox(width: 3),
+                            Text(
+                              'Tukar',
+                              style: TextStyle(color: Colors.white, fontSize: 9.5, fontWeight: FontWeight.w600),
                             ),
                           ],
                         ),
-                      )
-                    else
-                      Column(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(6),
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              boxShadow: [
-                                BoxShadow(
-                                  color: AppColors.primary.withValues(alpha: 0.25),
-                                  blurRadius: 30,
-                                  spreadRadius: 4,
-                                ),
-                              ],
-                            ),
-                            child: ModernAvatar(
-                              name: widget.contactName,
-                              radius: 64,
-                              isVerified: true,
-                            ),
-                          ),
-                          const SizedBox(height: 32),
-                          // Animated glass equalizer waveform bars
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: List.generate(14, (index) {
-                              final heights = [14.0, 26.0, 42.0, 18.0, 36.0, 50.0, 28.0, 44.0, 20.0, 32.0, 16.0, 38.0, 22.0, 12.0];
-                              return Container(
-                                width: 3.5,
-                                height: heights[index % heights.length],
-                                margin: const EdgeInsets.symmetric(horizontal: 2.5),
-                                decoration: BoxDecoration(
-                                  gradient: const LinearGradient(
-                                    begin: Alignment.bottomCenter,
-                                    end: Alignment.topCenter,
-                                    colors: [AppColors.primary, AppColors.cyan],
-                                  ),
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                              );
-                            }),
-                          ),
-                        ],
-                      ),
-
-                    const Spacer(),
-
-                    // Floating Glassmorphic Bottom Control Panel
-                    LajuGlassCard(
-                      margin: const EdgeInsets.fromLTRB(20, 0, 20, 26),
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
-                      borderRadius: 30,
-                      blurSigma: 24,
-                      borderColor: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.12),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                        children: [
-                          _buildCallAction(
-                            icon: session.isMuted ? Icons.mic_off_rounded : Icons.mic_rounded,
-                            isActive: session.isMuted,
-                            label: 'Mute',
-                            onTap: () {
-                              session.toggleMute();
-                            },
-                          ),
-                          _buildCallAction(
-                            icon: session.isVideoOn ? Icons.videocam_rounded : Icons.videocam_off_rounded,
-                            isActive: session.isVideoOn,
-                            label: 'Video',
-                            onTap: () {
-                              session.toggleVideo();
-                            },
-                          ),
-                          if (_isVideoEnabled)
-                            _buildCallAction(
-                              icon: Icons.flip_camera_ios_rounded,
-                              isActive: false,
-                              label: 'Putar',
-                              onTap: _switchCamera,
-                            ),
-                          _buildCallAction(
-                            icon: session.isSpeaker ? Icons.volume_up_rounded : Icons.volume_down_rounded,
-                            isActive: session.isSpeaker,
-                            label: 'Speaker',
-                            onTap: () {
-                              session.toggleSpeaker();
-                            },
-                          ),
-                          _buildCallAction(
-                            icon: Icons.call_end_rounded,
-                            isEndCall: true,
-                            label: 'Akhiri',
-                            onTap: _endCall,
-                          ),
-                        ],
                       ),
                     ),
                   ],
@@ -850,8 +539,230 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
               ),
             ),
           ),
-        );
-      },
+        ),
+
+        // 6. Floating Glassmorphic Bottom Controls Dock
+        Positioned(
+          bottom: 0,
+          left: 0,
+          right: 0,
+          child: SafeArea(
+            top: false,
+            child: LajuGlassCard(
+              margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 14),
+              borderRadius: 30,
+              blurSigma: 24,
+              borderColor: Colors.white.withValues(alpha: 0.15),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  _buildCallAction(
+                    icon: session.isMuted ? Icons.mic_off_rounded : Icons.mic_rounded,
+                    isActive: session.isMuted,
+                    label: 'Mute',
+                    onTap: session.toggleMute,
+                  ),
+                  _buildCallAction(
+                    icon: session.isVideoOn ? Icons.videocam_rounded : Icons.videocam_off_rounded,
+                    isActive: session.isVideoOn,
+                    label: 'Video',
+                    onTap: session.toggleVideo,
+                  ),
+                  _buildCallAction(
+                    icon: Icons.flip_camera_ios_rounded,
+                    isActive: false,
+                    label: 'Putar',
+                    onTap: _switchCamera,
+                  ),
+                  _buildCallAction(
+                    icon: session.isSpeaker ? Icons.volume_up_rounded : Icons.volume_down_rounded,
+                    isActive: session.isSpeaker,
+                    label: 'Speaker',
+                    onTap: session.toggleSpeaker,
+                  ),
+                  _buildCallAction(
+                    icon: Icons.call_end_rounded,
+                    isEndCall: true,
+                    label: 'Akhiri',
+                    onTap: _endCall,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildAudioCallView(
+    CallSessionController session,
+    bool isDark,
+    Color textPrimary,
+    Color textSecondary,
+  ) {
+    return LajuGlassBackground(
+      showOrbs: true,
+      child: SafeArea(
+        child: Column(
+          children: [
+            // Top Frosted Navigation
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  LajuGlassCard(
+                    padding: const EdgeInsets.all(8),
+                    borderRadius: 14,
+                    blurSigma: 12,
+                    onTap: _minimizeCall,
+                    child: Icon(
+                      Icons.keyboard_arrow_down_rounded,
+                      size: 26,
+                      color: textPrimary,
+                    ),
+                  ),
+                  const SizedBox(width: 44),
+                ],
+              ),
+            ),
+            const SizedBox(height: 18),
+
+            // Contact Info Header
+            Text(
+              widget.contactName,
+              style: TextStyle(
+                fontSize: 27,
+                fontWeight: FontWeight.w800,
+                color: textPrimary,
+                letterSpacing: 0.3,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              decoration: BoxDecoration(
+                color: _getStatusBadgeBgColor(session.status),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: _getStatusBadgeBorderColor(session.status)),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (session.status == CallStatus.connecting || session.status == CallStatus.ringing)
+                    Container(
+                      width: 8,
+                      height: 8,
+                      margin: const EdgeInsets.only(right: 6),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: _getStatusBadgeTextColor(session.status),
+                      ),
+                    ),
+                  Text(
+                    session.statusLabel,
+                    style: TextStyle(
+                      fontSize: 14.5,
+                      color: _getStatusBadgeTextColor(session.status),
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: session.status == CallStatus.connected ? 1.2 : 0.3,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            const Spacer(),
+
+            // Large Animated Avatar & Audio Waveform
+            Column(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppColors.primary.withValues(alpha: 0.25),
+                        blurRadius: 30,
+                        spreadRadius: 4,
+                      ),
+                    ],
+                  ),
+                  child: ModernAvatar(
+                    name: widget.contactName,
+                    radius: 64,
+                    isVerified: true,
+                  ),
+                ),
+                const SizedBox(height: 32),
+                // Animated glass equalizer waveform bars
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: List.generate(14, (index) {
+                    final heights = [14.0, 26.0, 42.0, 18.0, 36.0, 50.0, 28.0, 44.0, 20.0, 32.0, 16.0, 38.0, 22.0, 12.0];
+                    return Container(
+                      width: 3.5,
+                      height: heights[index % heights.length],
+                      margin: const EdgeInsets.symmetric(horizontal: 2.5),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          begin: Alignment.bottomCenter,
+                          end: Alignment.topCenter,
+                          colors: [AppColors.primary, AppColors.cyan],
+                        ),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                    );
+                  }),
+                ),
+              ],
+            ),
+
+            const Spacer(),
+
+            // Bottom Call Controls
+            LajuGlassCard(
+              margin: const EdgeInsets.fromLTRB(20, 0, 20, 26),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+              borderRadius: 30,
+              blurSigma: 24,
+              borderColor: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.12),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  _buildCallAction(
+                    icon: session.isMuted ? Icons.mic_off_rounded : Icons.mic_rounded,
+                    isActive: session.isMuted,
+                    label: 'Mute',
+                    onTap: session.toggleMute,
+                  ),
+                  _buildCallAction(
+                    icon: session.isVideoOn ? Icons.videocam_rounded : Icons.videocam_off_rounded,
+                    isActive: session.isVideoOn,
+                    label: 'Video',
+                    onTap: session.toggleVideo,
+                  ),
+                  _buildCallAction(
+                    icon: session.isSpeaker ? Icons.volume_up_rounded : Icons.volume_down_rounded,
+                    isActive: session.isSpeaker,
+                    label: 'Speaker',
+                    onTap: session.toggleSpeaker,
+                  ),
+                  _buildCallAction(
+                    icon: Icons.call_end_rounded,
+                    isEndCall: true,
+                    label: 'Akhiri',
+                    onTap: _endCall,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -863,16 +774,19 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
     bool isEndCall = false,
   }) {
     final isDark = ThemeModeController.instance.isDarkMode(context);
+    final isVideo = _isVideoEnabled;
     final bgColor = isEndCall
         ? AppColors.danger
         : (isActive
             ? AppColors.primary
-            : (isDark ? Colors.white.withValues(alpha: 0.10) : const Color(0xFFF1F5F9)));
+            : (isVideo
+                ? Colors.black.withValues(alpha: 0.5)
+                : (isDark ? Colors.white.withValues(alpha: 0.10) : const Color(0xFFF1F5F9))));
     final iconColor = isEndCall
         ? Colors.white
         : (isActive
             ? Colors.black
-            : (isDark ? Colors.white : AppColors.textPrimary));
+            : (isVideo || isDark ? Colors.white : AppColors.textPrimary));
 
     return GestureDetector(
       onTap: onTap,
@@ -880,8 +794,8 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
         mainAxisSize: MainAxisSize.min,
         children: [
           Container(
-            width: 54,
-            height: 54,
+            width: 52,
+            height: 52,
             decoration: BoxDecoration(
               color: bgColor,
               shape: BoxShape.circle,
@@ -890,7 +804,7 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
                     ? AppColors.danger.withValues(alpha: 0.5)
                     : (isActive
                         ? AppColors.primary
-                        : (isDark ? Colors.white.withValues(alpha: 0.15) : const Color(0xFFCBD5E1))),
+                        : (isVideo ? Colors.white.withValues(alpha: 0.2) : (isDark ? Colors.white.withValues(alpha: 0.15) : const Color(0xFFCBD5E1)))),
                 width: 1.2,
               ),
               boxShadow: [
@@ -916,7 +830,7 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
             style: TextStyle(
               fontSize: 11.5,
               fontWeight: FontWeight.w600,
-              color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+              color: isVideo ? Colors.white.withValues(alpha: 0.9) : (isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B)),
             ),
           ),
         ],
@@ -926,7 +840,7 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
 
   Widget _buildLocalCameraPreview({required bool isPip}) {
     if (_cameraController != null && _cameraController!.value.isInitialized) {
-      Widget cameraWidget = SizedBox.expand(
+      return SizedBox.expand(
         child: FittedBox(
           fit: BoxFit.cover,
           child: SizedBox(
@@ -935,52 +849,6 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
             child: CameraPreview(_cameraController!),
           ),
         ),
-      );
-
-      // Invert mirror if front camera and user chose non-mirror (default false)
-      if (_isFrontCamera && !_isMirrorEnabled) {
-        cameraWidget = Transform(
-          alignment: Alignment.center,
-          transform: Matrix4.rotationY(math.pi),
-          child: cameraWidget,
-        );
-      }
-
-      // Apply Beauty Filter Matrix
-      final matrix = _getBeautyMatrix(_beautyPreset);
-      if (matrix != null) {
-        cameraWidget = ColorFiltered(
-          colorFilter: ColorFilter.matrix(matrix),
-          child: cameraWidget,
-        );
-      }
-
-      return Stack(
-        fit: StackFit.expand,
-        children: [
-          cameraWidget,
-
-          // Studio Lighting & Radiance Overlay when Beauty is active
-          if (_beautyPreset != BeautyPreset.off)
-            IgnorePointer(
-              child: Container(
-                decoration: BoxDecoration(
-                  gradient: RadialGradient(
-                    center: const Alignment(0.0, -0.1),
-                    radius: isPip ? 0.9 : 0.8,
-                    colors: [
-                      _beautyPreset == BeautyPreset.rosy
-                          ? const Color(0xFFF43F5E).withValues(alpha: 0.08)
-                          : const Color(0xFFF59E0B).withValues(alpha: 0.08),
-                      Colors.transparent,
-                      Colors.black.withValues(alpha: isPip ? 0.14 : 0.22),
-                    ],
-                    stops: const [0.0, 0.55, 1.0],
-                  ),
-                ),
-              ),
-            ),
-        ],
       );
     }
     return Container(
