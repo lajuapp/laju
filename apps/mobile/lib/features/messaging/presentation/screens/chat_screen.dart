@@ -13,6 +13,7 @@ import 'disappearing_messages_screen.dart';
 import '../../../conversations/presentation/screens/user_profile_screen.dart';
 import '../../../settings/presentation/screens/wallpaper_settings_screen.dart';
 import '../../../../core/services/voice_note_service.dart';
+import 'image_preview_send_screen.dart';
 
 class ChatScreen extends StatefulWidget {
   final String conversationId;
@@ -114,31 +115,16 @@ class _ChatScreenState extends State<ChatScreen> {
       }
     }
 
-    final merged = List<MessageModel>.from(_messages);
-    for (final inc in incoming) {
-      final idx = merged.indexWhere((m) =>
-          m.id == inc.id ||
-          (inc.clientMessageId != null && (m.id == inc.clientMessageId || m.clientMessageId == inc.clientMessageId)));
-
-      if (idx != -1) {
-        merged[idx] = inc.copyWith(
-          attachmentPath: merged[idx].attachmentPath ?? inc.attachmentPath,
-          attachmentName: merged[idx].attachmentName ?? inc.attachmentName,
-          replyTo: merged[idx].replyTo ?? inc.replyTo,
-        );
-      } else {
-        merged.add(inc);
-      }
-    }
-
-    merged.sort((a, b) => a.timestamp.compareTo(b.timestamp));
+    final combined = List<MessageModel>.from(_messages)..addAll(incoming);
+    final merged = MessageModel.deduplicate(combined);
 
     bool hasChanged = merged.length != _messages.length;
     if (!hasChanged) {
       for (int i = 0; i < merged.length; i++) {
         if (merged[i].id != _messages[i].id ||
             merged[i].status != _messages[i].status ||
-            merged[i].reactions.length != _messages[i].reactions.length) {
+            merged[i].reactions.length != _messages[i].reactions.length ||
+            merged[i].content != _messages[i].content) {
           hasChanged = true;
           break;
         }
@@ -171,6 +157,8 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   void dispose() {
+    ConversationService.instance.sendTypingStatus(widget.conversationId, false);
+    ConversationService.instance.setTyping(widget.conversationId, false);
     if (ConversationService.instance.currentActiveConversationId == widget.conversationId) {
       ConversationService.instance.currentActiveConversationId = null;
     }
@@ -193,6 +181,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _sendMessage(String text) async {
+    ConversationService.instance.sendTypingStatus(widget.conversationId, false);
     LajuSoundService.playOutgoingTone();
     final localId = 'msg-${DateTime.now().millisecondsSinceEpoch}';
     final localMsg = MessageModel(
@@ -429,13 +418,26 @@ class _ChatScreenState extends State<ChatScreen> {
           _syncMessages();
         }
       } else if (result.type == AttachmentType.camera || result.type == AttachmentType.gallery) {
+        if (filePath == null) return;
+        final previewResult = await Navigator.push<ImagePreviewResult>(
+          context,
+          MaterialPageRoute(
+            builder: (_) => ImagePreviewSendScreen(
+              imagePath: filePath,
+              recipientName: widget.title,
+            ),
+          ),
+        );
+        if (previewResult == null) return; // User cancelled
+
+        final caption = previewResult.caption;
         final imgId = 'img-${DateTime.now().millisecondsSinceEpoch}';
         final imgMsg = MessageModel(
           id: imgId,
           clientMessageId: imgId,
           conversationId: widget.conversationId,
           senderName: 'You',
-          content: '📷 ${result.title} (${result.fileSize ?? ""})',
+          content: caption,
           attachmentName: result.title,
           attachmentSize: result.fileSize,
           attachmentPath: filePath,
@@ -452,7 +454,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
         final sent = await ConversationService.instance.sendMessage(
           conversationId: widget.conversationId,
-          text: '📷 ${result.title} (${result.fileSize ?? ""})',
+          text: caption,
           clientMessageId: imgId,
           messageType: 'IMAGE',
           attachmentPath: filePath,
@@ -1148,7 +1150,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     onCancelEdit: _cancelEdit,
                     onConfirmEdit: _confirmEditMessage,
                     onTypingChanged: (isTyping) {
-                      ConversationService.instance.setTyping(widget.conversationId, isTyping);
+                      ConversationService.instance.sendTypingStatus(widget.conversationId, isTyping);
                     },
                   ),
                 ],

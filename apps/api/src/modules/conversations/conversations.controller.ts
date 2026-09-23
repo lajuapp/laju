@@ -107,5 +107,14 @@ export class ConversationsController {
   ) {
     return this.conversationsService.listMessages(userId, conversationId, limit, cursor);
   }
+
+  @Post(':id/typing')
+  setTyping(
+    @CurrentUser('userId') userId: string,
+    @Param('id') conversationId: string,
+    @Body() body: { isTyping: boolean }
+  ) {
+    return this.conversationsService.setTyping(userId, conversationId, !!body?.isTyping);
+  }
 }
 

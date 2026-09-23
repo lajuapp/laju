@@ -28,6 +28,7 @@ class ApiEndpoints {
   static String conversationMemberRole(String id, String userId) => '/conversations/$id/members/$userId';
   static String conversationLeave(String id) => '/conversations/$id/leave';
   static String conversationMessages(String id) => '/conversations/$id/messages';
+  static String conversationTyping(String id) => '/conversations/$id/typing';
 
   // Messages
   static String messageById(String id) => '/messages/$id';
@@ -46,6 +47,8 @@ class ApiEndpoints {
   static String callSignals(String id) => '/calls/$id/signals';
   static String callAudioChunk(String id) => '/calls/$id/audio-chunk';
   static String callAudioChunks(String id) => '/calls/$id/audio-chunks';
+  static String callVideoFrame(String id) => '/calls/$id/video-frame';
+  static String callMediaStream(String id) => '/calls/$id/media-stream';
 
   // Attachments
   static String attachmentUpload(String messageId) => '/attachments/$messageId';

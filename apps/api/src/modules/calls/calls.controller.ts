@@ -106,4 +106,30 @@ export class CallsController {
   ) {
     return this.callsService.getAudioChunks(userId, callId);
   }
+
+  @Post(':id/video-frame')
+  pushVideoFrame(
+    @CurrentUser('userId') userId: string,
+    @Param('id') callId: string,
+    @Body('frame') frame: string
+  ) {
+    return this.callsService.pushVideoFrame(userId, callId, frame);
+  }
+
+  @Get(':id/video-frame')
+  getVideoFrame(
+    @CurrentUser('userId') userId: string,
+    @Param('id') callId: string
+  ) {
+    return this.callsService.getVideoFrame(userId, callId);
+  }
+
+  @Post(':id/media-stream')
+  syncMediaStream(
+    @CurrentUser('userId') userId: string,
+    @Param('id') callId: string,
+    @Body() body: { audioChunk?: string; videoFrame?: string }
+  ) {
+    return this.callsService.syncMediaStream(userId, callId, body || {});
+  }
 }

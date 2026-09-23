@@ -36,7 +36,9 @@ class _LajuQrScannerViewState extends State<LajuQrScannerView>
   void initState() {
     super.initState();
     _scannerController = MobileScannerController(
-      detectionSpeed: DetectionSpeed.noDuplicates,
+      formats: const [BarcodeFormat.qrCode],
+      detectionSpeed: DetectionSpeed.normal,
+      detectionTimeoutMs: 600,
       facing: CameraFacing.back,
       torchEnabled: false,
     );
@@ -74,7 +76,7 @@ class _LajuQrScannerViewState extends State<LajuQrScannerView>
   void _onDetect(BarcodeCapture capture) {
     if (_hasDetected) return;
     for (final barcode in capture.barcodes) {
-      final raw = barcode.rawValue;
+      final raw = barcode.rawValue ?? barcode.displayValue;
       if (raw != null && raw.trim().isNotEmpty) {
         _handleDetected(raw.trim());
         break;
@@ -176,12 +178,9 @@ class _LajuQrScannerViewState extends State<LajuQrScannerView>
       isLajuContact = true;
     } else if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
       // JSON format QR code
-      try {
-        final uri = Uri.tryParse(trimmed);
-        if (trimmed.contains('"u"') || trimmed.contains('"username"') || trimmed.contains('"id"')) {
-          isLajuContact = true;
-        }
-      } catch (_) {}
+      if (trimmed.contains('"u"') || trimmed.contains('"username"') || trimmed.contains('"id"')) {
+        isLajuContact = true;
+      }
     }
 
     showModalBottomSheet(

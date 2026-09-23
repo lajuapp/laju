@@ -2,7 +2,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../../core/core.dart';
-import '../../../core/services/local_database.dart';
 import '../presentation/screens/active_call_screen.dart';
 import '../presentation/screens/active_group_call_screen.dart';
 
@@ -17,6 +16,7 @@ enum CallStatus {
 
 class CallSessionController extends ChangeNotifier {
   CallSessionController._() {
+    _initChannelHandler();
     _startIncomingCallPoller();
     checkLaunchPayload();
   }
@@ -85,7 +85,6 @@ class CallSessionController extends ChangeNotifier {
       case CallStatus.ended:
         return 'Panggilan Berakhir';
       case CallStatus.idle:
-      default:
         return '';
     }
   }
@@ -268,6 +267,10 @@ class CallSessionController extends ChangeNotifier {
 
   Future<void> _initCallAudio() async {
     try {
+      final hasPerm = await _audioChannel.invokeMethod<bool>('hasRecordPermission') ?? false;
+      if (!hasPerm) {
+        await _audioChannel.invokeMethod('requestRecordPermission');
+      }
       final localIp = await _audioChannel.invokeMethod<String>('getLocalIp') ?? '127.0.0.1';
 
       // Exchange IP with peer over signaling
@@ -457,6 +460,7 @@ class CallSessionController extends ChangeNotifier {
         final incomingCallId = data['callId'] as String?;
         final callerName = data['initiatorName'] as String? ?? 'Kontak';
         final callerId = data['initiatorId'] as String?;
+        final callerPhone = data['initiatorPhone'] as String?;
         final isVideo = data['isVideo'] == true;
 
         if (incomingCallId != null &&
@@ -474,56 +478,19 @@ class CallSessionController extends ChangeNotifier {
           AppNotificationService.instance.showIncomingCall(
             callerName: callerName,
             isVideo: isVideo,
-            onAccept: () async {
-              _systemNotifChannel.invokeMethod('cancelNotification', {'id': 9999}).catchError((_) {});
-              _stopCallAudio();
-              _callId = incomingCallId;
-              _title = callerName;
-              _contactUserId = callerId;
-              _isActive = true;
-              _isOutgoing = false;
-              _isVideo = isVideo;
-              _isVideoOn = isVideo;
-              _isSpeaker = isVideo;
-              _durationSeconds = 0;
-              _status = CallStatus.connected;
-              _startTimer();
-              _initCallAudio();
-              _startCallStatusPoller();
-              notifyListeners();
-
-              try {
-                await ApiClient.instance.post(ApiEndpoints.callAccept(incomingCallId));
-              } catch (_) {}
-
-              AppNavigation.navigatorKey.currentState?.push(
-                MaterialPageRoute(
-                  builder: (_) => ActiveCallScreen(
-                    contactName: callerName,
-                    isVideo: isVideo,
-                    calleeUserId: callerId,
-                    returnToCallsScreen: false,
-                  ),
-                ),
-              );
-            },
-            onDecline: () async {
-              _systemNotifChannel.invokeMethod('cancelNotification', {'id': 9999}).catchError((_) {});
-              _declinedCallId = incomingCallId;
-              _lastRingingCallId = null;
-              LocalDatabase.instance.insertCallLog(
-                id: 'call-log-${DateTime.now().millisecondsSinceEpoch}',
-                contactName: callerName,
-                contactId: callerId,
-                isVideo: isVideo,
-                isOutgoing: false,
-                status: 'rejected',
-                durationSeconds: 0,
-              );
-              try {
-                await ApiClient.instance.post(ApiEndpoints.callReject(incomingCallId));
-              } catch (_) {}
-            },
+            onAccept: () => answerIncomingCall(
+              incomingCallId,
+              callerName: callerName,
+              isVideo: isVideo,
+              callerId: callerId,
+              callerPhone: callerPhone,
+            ),
+            onDecline: () => declineIncomingCall(
+              incomingCallId,
+              callerName: callerName,
+              isVideo: isVideo,
+              callerId: callerId,
+            ),
           );
         }
       } else {
@@ -537,6 +504,103 @@ class CallSessionController extends ChangeNotifier {
     } catch (_) {}
   }
 
+  void _initChannelHandler() {
+    _systemNotifChannel.setMethodCallHandler((call) async {
+      if (call.method == 'onCallAction') {
+        final args = call.arguments as Map?;
+        final callId = args?['callId'] as String?;
+        final action = args?['action'] as String?;
+        final isVideo = args?['isVideo'] == true;
+        final callerName = (args?['callerName'] as String?) ?? 'Panggilan';
+        if (callId != null && callId.isNotEmpty) {
+          if (action == 'answer') {
+            await answerIncomingCall(
+              callId,
+              callerName: callerName,
+              isVideo: isVideo,
+            );
+          } else if (action == 'decline') {
+            await declineIncomingCall(
+              callId,
+              callerName: callerName,
+              isVideo: isVideo,
+            );
+          }
+        }
+      }
+    });
+  }
+
+  Future<void> answerIncomingCall(
+    String incomingCallId, {
+    required String callerName,
+    required bool isVideo,
+    String? callerId,
+    String? callerPhone,
+  }) async {
+    _systemNotifChannel.invokeMethod('cancelNotification', {'id': 9999}).catchError((_) {});
+    AppNotificationService.instance.dismiss();
+
+    _stopCallAudio();
+    _callId = incomingCallId;
+    _title = callerName;
+    _contactUserId = callerId;
+    _contactPhone = callerPhone;
+    _isActive = true;
+    _isOutgoing = false;
+    _isVideo = isVideo;
+    _isVideoOn = isVideo;
+    _isSpeaker = isVideo;
+    _durationSeconds = 0;
+    _status = CallStatus.connected;
+    _startTimer();
+    _initCallAudio();
+    _startCallStatusPoller();
+    notifyListeners();
+
+    try {
+      await ApiClient.instance.post(ApiEndpoints.callAccept(incomingCallId));
+    } catch (_) {}
+
+    AppNavigation.navigatorKey.currentState?.push(
+      MaterialPageRoute(
+        builder: (_) => ActiveCallScreen(
+          contactName: callerName,
+          isVideo: isVideo,
+          calleeUserId: callerId,
+          contactPhone: callerPhone,
+          returnToCallsScreen: false,
+        ),
+      ),
+    );
+  }
+
+  Future<void> declineIncomingCall(
+    String incomingCallId, {
+    required String callerName,
+    required bool isVideo,
+    String? callerId,
+  }) async {
+    _systemNotifChannel.invokeMethod('cancelNotification', {'id': 9999}).catchError((_) {});
+    AppNotificationService.instance.dismiss();
+
+    _declinedCallId = incomingCallId;
+    _lastRingingCallId = null;
+    LocalDatabase.instance.insertCallLog(
+      id: 'call-log-${DateTime.now().millisecondsSinceEpoch}',
+      contactName: callerName,
+      contactId: callerId ?? 'unknown',
+      isVideo: isVideo,
+      isOutgoing: false,
+      status: 'rejected',
+      durationSeconds: 0,
+    );
+    try {
+      await ApiClient.instance.post(ApiEndpoints.callReject(incomingCallId));
+    } catch (_) {}
+    notifyListeners();
+  }
+
   Future<void> checkLaunchPayload() async {
     try {
       final payload = await _systemNotifChannel.invokeMapMethod<String, dynamic>('getLaunchPayload');
@@ -544,35 +608,21 @@ class CallSessionController extends ChangeNotifier {
         final callId = payload['id'] as String?;
         final isVideo = payload['isVideo'] == true;
         final action = payload['action'] as String?;
-        if (callId != null && action == 'answer') {
-          _stopCallAudio();
-          _callId = callId;
-          _title = 'Panggilan';
-          _isActive = true;
-          _isOutgoing = false;
-          _isVideo = isVideo;
-          _isVideoOn = isVideo;
-          _isSpeaker = isVideo;
-          _durationSeconds = 0;
-          _status = CallStatus.connected;
-          _startTimer();
-          _initCallAudio();
-          _startCallStatusPoller();
-          notifyListeners();
-
-          try {
-            await ApiClient.instance.post(ApiEndpoints.callAccept(callId));
-          } catch (_) {}
-
-          AppNavigation.navigatorKey.currentState?.push(
-            MaterialPageRoute(
-              builder: (_) => ActiveCallScreen(
-                contactName: 'Panggilan',
-                isVideo: isVideo,
-                returnToCallsScreen: false,
-              ),
-            ),
-          );
+        final callerName = (payload['callerName'] as String?) ?? 'Panggilan';
+        if (callId != null && callId.isNotEmpty) {
+          if (action == 'answer') {
+            await answerIncomingCall(
+              callId,
+              callerName: callerName,
+              isVideo: isVideo,
+            );
+          } else if (action == 'decline') {
+            await declineIncomingCall(
+              callId,
+              callerName: callerName,
+              isVideo: isVideo,
+            );
+          }
         }
       }
     } catch (_) {}

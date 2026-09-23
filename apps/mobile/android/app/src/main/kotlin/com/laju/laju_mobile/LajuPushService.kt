@@ -84,12 +84,20 @@ class LajuPushService : Service() {
         val action = intent?.action
 
         if (action == ACTION_DECLINE) {
-            val callId = intent.getStringExtra("call_id")
-            if (callId != null) {
+            val callId = intent.getStringExtra("call_id") ?: ""
+            val callerName = intent.getStringExtra("caller_name") ?: "Panggilan"
+            if (callId.isNotEmpty()) {
                 declineCallInBackground(callId)
             }
-            val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
-            nm.cancel(NOTIFICATION_ID_CALL)
+            try {
+                val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+                nm.cancel(NOTIFICATION_ID_CALL)
+                nm.cancel(9999)
+            } catch (_: Exception) {}
+
+            MainActivity.instance?.let { activity ->
+                activity.dispatchCallAction(callId, "decline", callerName = callerName)
+            }
             return START_NOT_STICKY
         }
 
@@ -217,7 +225,7 @@ class LajuPushService : Service() {
                         retryDelay = 3000L // Reset backoff
                         reader = BufferedReader(InputStreamReader(conn.inputStream))
 
-                        var line: String?
+                        var line: String? = null
                         while (isRunning && reader.readLine().also { line = it } != null) {
                             val l = line?.trim() ?: continue
                             if (l.startsWith("data:")) {
@@ -290,9 +298,10 @@ class LajuPushService : Service() {
         val answerIntent = Intent(this, MainActivity::class.java).apply {
             action = Intent.ACTION_MAIN
             addCategory(Intent.CATEGORY_LAUNCHER)
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
             putExtra("laju_type", "call")
             putExtra("laju_id", callId)
+            putExtra("laju_caller_name", callerName)
             putExtra("laju_is_video", isVideo)
             putExtra("laju_action", "answer")
         }
@@ -307,6 +316,7 @@ class LajuPushService : Service() {
         val declineIntent = Intent(this, LajuPushService::class.java).apply {
             action = ACTION_DECLINE
             putExtra("call_id", callId)
+            putExtra("caller_name", callerName)
         }
         val declinePendingIntent = PendingIntent.getService(
             this,

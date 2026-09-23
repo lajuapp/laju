@@ -7,6 +7,12 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.ImageFormat
+import android.graphics.Matrix
+import android.graphics.Rect
+import android.graphics.YuvImage
+import android.media.AudioDeviceInfo
+import java.io.ByteArrayOutputStream
 import android.media.MediaPlayer
 import android.media.MediaRecorder
 import android.net.Uri
@@ -40,9 +46,11 @@ import java.io.File
 import java.io.FileOutputStream
 import java.net.DatagramPacket
 import java.net.DatagramSocket
+import java.net.HttpURLConnection
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.NetworkInterface
+import java.net.URL
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -97,8 +105,14 @@ class MainActivity : FlutterFragmentActivity() {
     private var mediaPlayer: MediaPlayer? = null
     private var currentPlayingPath: String? = null
     private var voiceMethodChannel: MethodChannel? = null
+    private var notificationMethodChannel: MethodChannel? = null
+
+    companion object {
+        var instance: MainActivity? = null
+    }
 
     override fun onCreate(savedInstanceState: android.os.Bundle?) {
+        instance = this
         super.onCreate(savedInstanceState)
         createNotificationChannels()
         handleIntent(intent)
@@ -109,13 +123,50 @@ class MainActivity : FlutterFragmentActivity() {
         handleIntent(intent)
     }
 
+    fun dispatchCallAction(callId: String, action: String, isVideo: Boolean = false, callerName: String = "Panggilan") {
+        try {
+            val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+            nm.cancel(9999)
+            nm.cancel(8888)
+        } catch (_: Exception) {}
+        stopCurrentRingtone()
+        stopCallTone()
+
+        if (notificationMethodChannel != null) {
+            runOnUiThread {
+                notificationMethodChannel?.invokeMethod("onCallAction", mapOf(
+                    "callId" to callId,
+                    "action" to action,
+                    "isVideo" to isVideo,
+                    "callerName" to callerName
+                ))
+            }
+        } else {
+            launchPayload = mapOf(
+                "type" to "call",
+                "id" to callId,
+                "action" to action,
+                "isVideo" to isVideo,
+                "callerName" to callerName
+            )
+        }
+    }
+
     private fun handleIntent(intent: Intent?) {
         if (intent == null) return
         val type = intent.getStringExtra("laju_type")
         val id = intent.getStringExtra("laju_id")
         val isVideo = intent.getBooleanExtra("laju_is_video", false)
         val action = intent.getStringExtra("laju_action")
-        if (type != null && id != null) {
+        val callerName = intent.getStringExtra("laju_caller_name") ?: "Panggilan"
+
+        if (type == "call" && id != null) {
+            if (action == "answer" || action == "decline") {
+                dispatchCallAction(id, action, isVideo, callerName)
+                return
+            }
+            launchPayload = mapOf("type" to type, "id" to id, "isVideo" to isVideo, "action" to action, "callerName" to callerName)
+        } else if (type != null && id != null) {
             launchPayload = mapOf("type" to type, "id" to id, "isVideo" to isVideo, "action" to action)
         }
     }
@@ -789,6 +840,103 @@ class MainActivity : FlutterFragmentActivity() {
                     setCallSpeakerphone(speaker)
                     result.success(true)
                 }
+                "hasRecordPermission" -> {
+                    val granted = ContextCompat.checkSelfPermission(
+                        this,
+                        Manifest.permission.RECORD_AUDIO
+                    ) == PackageManager.PERMISSION_GRANTED
+                    result.success(granted)
+                }
+                "requestRecordPermission" -> {
+                    val granted = ContextCompat.checkSelfPermission(
+                        this,
+                        Manifest.permission.RECORD_AUDIO
+                    ) == PackageManager.PERMISSION_GRANTED
+                    if (granted) {
+                        result.success(true)
+                    } else {
+                        pendingAudioPermissionResult = result
+                        ActivityCompat.requestPermissions(
+                            this,
+                            arrayOf(Manifest.permission.RECORD_AUDIO),
+                            RECORD_AUDIO_REQUEST_CODE
+                        )
+                    }
+                }
+                "convertYuvToJpeg" -> {
+                    try {
+                        val y = call.argument<ByteArray>("y")
+                        val u = call.argument<ByteArray>("u")
+                        val v = call.argument<ByteArray>("v")
+                        val width = call.argument<Int>("width") ?: 0
+                        val height = call.argument<Int>("height") ?: 0
+                        val yRowStride = call.argument<Int>("yRowStride") ?: width
+                        val uvRowStride = call.argument<Int>("uvRowStride") ?: width
+                        val uvPixelStride = call.argument<Int>("uvPixelStride") ?: 1
+                        val quality = call.argument<Int>("quality") ?: 60
+                        val isFront = call.argument<Boolean>("isFront") ?: true
+
+                        if (y == null || u == null || v == null || width == 0 || height == 0) {
+                            result.error("INVALID_ARGS", "Missing YUV plane data", null)
+                            return@setMethodCallHandler
+                        }
+
+                        // Convert YUV420 to NV21 format (Y plane followed by interleaved V, U)
+                        val nv21 = ByteArray(width * height * 3 / 2)
+                        var pos = 0
+
+                        // Copy Y plane (handling row stride)
+                        for (row in 0 until height) {
+                            val yOffset = row * yRowStride
+                            System.arraycopy(y, yOffset, nv21, pos, width)
+                            pos += width
+                        }
+
+                        // Interleave V and U planes (NV21 format expects V then U)
+                        val uvHeight = height / 2
+                        val uvWidth = width / 2
+                        for (row in 0 until uvHeight) {
+                            val uRowOffset = row * uvRowStride
+                            val vRowOffset = row * uvRowStride
+                            for (col in 0 until uvWidth) {
+                                val uIndex = uRowOffset + col * uvPixelStride
+                                val vIndex = vRowOffset + col * uvPixelStride
+                                if (pos + 1 < nv21.size && vIndex < v.size && uIndex < u.size) {
+                                    nv21[pos++] = v[vIndex]
+                                    nv21[pos++] = u[uIndex]
+                                }
+                            }
+                        }
+
+                        val yuvImage = YuvImage(nv21, ImageFormat.NV21, width, height, null)
+                        val outStream = ByteArrayOutputStream()
+                        yuvImage.compressToJpeg(Rect(0, 0, width, height), quality, outStream)
+                        val jpegBytes = outStream.toByteArray()
+
+                        // Rotate bitmap if needed for camera orientation (standard portrait display)
+                        val matrix = Matrix()
+                        if (isFront) {
+                            matrix.postRotate(270f)
+                            matrix.postScale(-1f, 1f) // Mirror front camera so it acts like a selfie mirror
+                        } else {
+                            matrix.postRotate(90f)
+                        }
+
+                        val originalBmp = BitmapFactory.decodeByteArray(jpegBytes, 0, jpegBytes.size)
+                        if (originalBmp != null) {
+                            val rotatedBmp = Bitmap.createBitmap(originalBmp, 0, 0, originalBmp.width, originalBmp.height, matrix, true)
+                            val rotatedOut = ByteArrayOutputStream()
+                            rotatedBmp.compress(Bitmap.CompressFormat.JPEG, quality, rotatedOut)
+                            originalBmp.recycle()
+                            rotatedBmp.recycle()
+                            result.success(rotatedOut.toByteArray())
+                        } else {
+                            result.success(jpegBytes)
+                        }
+                    } catch (e: Exception) {
+                        result.error("CONVERT_ERROR", e.message, null)
+                    }
+                }
                 "playCallTone" -> {
                     val type = call.argument<String>("type") ?: "stop"
                     handleCallTone(type)
@@ -799,7 +947,8 @@ class MainActivity : FlutterFragmentActivity() {
         }
 
         // Native System Notifications MethodChannel
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, NOTIFICATION_CHANNEL).setMethodCallHandler { call, result ->
+        notificationMethodChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, NOTIFICATION_CHANNEL)
+        notificationMethodChannel?.setMethodCallHandler { call, result ->
             when (call.method) {
                 "showCallNotification" -> {
                     val callId = call.argument<String>("callId") ?: ""
@@ -819,11 +968,17 @@ class MainActivity : FlutterFragmentActivity() {
                     val id = call.argument<Int>("id") ?: 9999
                     val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
                     nm.cancel(id)
+                    nm.cancel(8888)
+                    nm.cancel(9999)
+                    stopCurrentRingtone()
+                    stopCallTone()
                     result.success(true)
                 }
                 "cancelAll" -> {
                     val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
                     nm.cancelAll()
+                    stopCurrentRingtone()
+                    stopCallTone()
                     result.success(true)
                 }
                 "getLaunchPayload" -> {
@@ -1402,7 +1557,30 @@ class MainActivity : FlutterFragmentActivity() {
         try {
             isCallAudioSpeaker = isSpeaker
             val audioManager = getSystemService(AUDIO_SERVICE) as AudioManager
-            audioManager.isSpeakerphoneOn = isSpeaker
+            audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                if (isSpeaker) {
+                    val speakerDevice = audioManager.availableCommunicationDevices.firstOrNull {
+                        it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER
+                    }
+                    if (speakerDevice != null) {
+                        audioManager.setCommunicationDevice(speakerDevice)
+                    }
+                } else {
+                    val earpieceDevice = audioManager.availableCommunicationDevices.firstOrNull {
+                        it.type == AudioDeviceInfo.TYPE_BUILTIN_EARPIECE
+                    }
+                    if (earpieceDevice != null) {
+                        audioManager.setCommunicationDevice(earpieceDevice)
+                    } else {
+                        audioManager.clearCommunicationDevice()
+                    }
+                }
+            } else {
+                @Suppress("DEPRECATION")
+                audioManager.isSpeakerphoneOn = isSpeaker
+            }
         } catch (_: Exception) {}
     }
 
@@ -1520,6 +1698,15 @@ class MainActivity : FlutterFragmentActivity() {
         stopCallTone()
         stopRealtimeCallAudio()
 
+        // Verify microphone permission before initializing audio hardware
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(
+                this,
+                arrayOf(Manifest.permission.RECORD_AUDIO),
+                RECORD_AUDIO_REQUEST_CODE
+            )
+        }
+
         isCallAudioActive = true
         isCallAudioMuted = false
         isCallAudioSpeaker = isSpeaker
@@ -1536,20 +1723,35 @@ class MainActivity : FlutterFragmentActivity() {
 
         Thread {
             try {
-                val audioManager = getSystemService(AUDIO_SERVICE) as AudioManager
-                audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
-                audioManager.isSpeakerphoneOn = isSpeaker
+                setCallSpeakerphone(isSpeaker)
 
                 val minRecBuf = AudioRecord.getMinBufferSize(sampleRate, channelIn, encoding)
-                val recBufSize = Math.max(minRecBuf, 2048)
+                val recBufSize = Math.max(minRecBuf, 4096)
 
-                val recorder = AudioRecord(
+                // Initialize AudioRecord with multiple source fallbacks for maximum device compatibility
+                var recorder: AudioRecord? = null
+                val sources = intArrayOf(
                     MediaRecorder.AudioSource.VOICE_COMMUNICATION,
-                    sampleRate,
-                    channelIn,
-                    encoding,
-                    recBufSize
+                    MediaRecorder.AudioSource.MIC,
+                    MediaRecorder.AudioSource.DEFAULT
                 )
+                for (source in sources) {
+                    try {
+                        val rec = AudioRecord(source, sampleRate, channelIn, encoding, recBufSize)
+                        if (rec.state == AudioRecord.STATE_INITIALIZED) {
+                            recorder = rec
+                            break
+                        } else {
+                            rec.release()
+                        }
+                    } catch (_: Exception) {}
+                }
+
+                if (recorder == null) {
+                    android.util.Log.e("MainActivity", "Failed to initialize AudioRecord with any source")
+                    stopRealtimeCallAudio()
+                    return@Thread
+                }
                 callAudioRecord = recorder
 
                 try {
@@ -1568,16 +1770,25 @@ class MainActivity : FlutterFragmentActivity() {
                 }
 
                 val minTrackBuf = AudioTrack.getMinBufferSize(sampleRate, channelOut, encoding)
-                val trackBufSize = Math.max(minTrackBuf, 2048)
+                val trackBufSize = Math.max(minTrackBuf, 4096)
 
-                val track = AudioTrack(
-                    AudioManager.STREAM_VOICE_CALL,
-                    sampleRate,
-                    channelOut,
-                    encoding,
-                    trackBufSize,
-                    AudioTrack.MODE_STREAM
-                )
+                val audioAttributes = AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                    .build()
+
+                val audioFormat = AudioFormat.Builder()
+                    .setEncoding(encoding)
+                    .setSampleRate(sampleRate)
+                    .setChannelMask(channelOut)
+                    .build()
+
+                val track = AudioTrack.Builder()
+                    .setAudioAttributes(audioAttributes)
+                    .setAudioFormat(audioFormat)
+                    .setBufferSizeInBytes(trackBufSize)
+                    .setTransferMode(AudioTrack.MODE_STREAM)
+                    .build()
                 callAudioTrack = track
 
                 var socket: DatagramSocket? = null
@@ -1602,13 +1813,15 @@ class MainActivity : FlutterFragmentActivity() {
                 track.play()
                 recorder.startRecording()
 
-                // 1. UDP + HTTP Sender thread
-                Thread {
-                    val sendBuffer = ByteArray(640)
-                    val httpStream = java.io.ByteArrayOutputStream()
-                    var lastHttpTime = System.currentTimeMillis()
+                val audioSendQueue = java.util.concurrent.ConcurrentLinkedQueue<ByteArray>()
 
-                    while (isCallAudioActive) {
+                // 1a. Audio Capture loop (reads PCM from mic)
+                Thread {
+                    val sendBuffer = ByteArray(640) // 20ms of 16kHz 16-bit mono PCM
+                    val httpAccumulator = java.io.ByteArrayOutputStream()
+                    var lastFlushTime = System.currentTimeMillis()
+
+                    while (isCallAudioActive && recorder.recordingState == AudioRecord.RECORDSTATE_RECORDING) {
                         try {
                             val read = recorder.read(sendBuffer, 0, sendBuffer.size)
                             if (read > 0 && !isCallAudioMuted) {
@@ -1624,8 +1837,6 @@ class MainActivity : FlutterFragmentActivity() {
                                             socket.send(packet)
                                         } catch (_: Exception) {}
                                     }
-
-                                    // Broadcast to local subnet
                                     try {
                                         val bcast = InetAddress.getByName("255.255.255.255")
                                         val bcastPacket = DatagramPacket(sendBuffer, read, bcast, targetPort)
@@ -1633,37 +1844,16 @@ class MainActivity : FlutterFragmentActivity() {
                                     } catch (_: Exception) {}
                                 }
 
-                                // Accumulate for HTTP relay fallback (transmits over internet/cellular)
                                 if (hasHttpRelay) {
-                                    httpStream.write(sendBuffer, 0, read)
+                                    httpAccumulator.write(sendBuffer, 0, read)
                                     val now = System.currentTimeMillis()
-                                    if (now - lastHttpTime >= 220 && httpStream.size() > 0) {
-                                        val payloadBytes = httpStream.toByteArray()
-                                        httpStream.reset()
-                                        lastHttpTime = now
-
-                                        Thread {
-                                            try {
-                                                val b64 = android.util.Base64.encodeToString(payloadBytes, android.util.Base64.NO_WRAP)
-                                                val postObj = org.json.JSONObject().apply {
-                                                    put("chunk", b64)
-                                                }
-                                                val url = URL("$cleanBase/calls/$callId/audio-chunk")
-                                                val conn = (url.openConnection() as HttpURLConnection).apply {
-                                                    requestMethod = "POST"
-                                                    setRequestProperty("Authorization", "Bearer $token")
-                                                    setRequestProperty("Content-Type", "application/json")
-                                                    connectTimeout = 3000
-                                                    readTimeout = 3000
-                                                    doOutput = true
-                                                }
-                                                conn.outputStream.use { os ->
-                                                    os.write(postObj.toString().toByteArray())
-                                                }
-                                                conn.responseCode
-                                                conn.disconnect()
-                                            } catch (_: Exception) {}
-                                        }.start()
+                                    if (now - lastFlushTime >= 120 && httpAccumulator.size() > 0) {
+                                        val chunk = httpAccumulator.toByteArray()
+                                        httpAccumulator.reset()
+                                        lastFlushTime = now
+                                        if (audioSendQueue.size < 12) {
+                                            audioSendQueue.offer(chunk)
+                                        }
                                     }
                                 }
                             } else if (read <= 0) {
@@ -1674,6 +1864,40 @@ class MainActivity : FlutterFragmentActivity() {
                         }
                     }
                 }.start()
+
+                // 1b. Persistent HTTP Audio Sender Worker Thread (reusing connections, non-blocking)
+                if (hasHttpRelay) {
+                    Thread {
+                        val postUrl = URL("$cleanBase/calls/$callId/audio-chunk")
+                        while (isCallAudioActive) {
+                            val chunk = audioSendQueue.poll()
+                            if (chunk != null && chunk.isNotEmpty()) {
+                                try {
+                                    val b64 = android.util.Base64.encodeToString(chunk, android.util.Base64.NO_WRAP)
+                                    val postObj = org.json.JSONObject().apply {
+                                        put("chunk", b64)
+                                    }
+                                    val conn = (postUrl.openConnection() as HttpURLConnection).apply {
+                                        requestMethod = "POST"
+                                        setRequestProperty("Authorization", "Bearer $token")
+                                        setRequestProperty("Content-Type", "application/json")
+                                        setRequestProperty("Connection", "Keep-Alive")
+                                        connectTimeout = 3000
+                                        readTimeout = 3000
+                                        doOutput = true
+                                    }
+                                    conn.outputStream.use { os ->
+                                        os.write(postObj.toString().toByteArray())
+                                    }
+                                    conn.responseCode
+                                    conn.disconnect()
+                                } catch (_: Exception) {}
+                            } else {
+                                Thread.sleep(25)
+                            }
+                        }
+                    }.start()
+                }
 
                 // 2. UDP Receiver thread
                 if (socket != null) {
@@ -1692,15 +1916,16 @@ class MainActivity : FlutterFragmentActivity() {
                     }.start()
                 }
 
-                // 3. HTTP Relay Receiver thread (poll chunks from server)
+                // 3. Persistent HTTP Audio Receiver thread (polls chunks from server)
                 if (hasHttpRelay) {
                     Thread {
+                        val fetchUrl = URL("$cleanBase/calls/$callId/audio-chunks")
                         while (isCallAudioActive) {
                             try {
-                                val url = URL("$cleanBase/calls/$callId/audio-chunks")
-                                val conn = (url.openConnection() as HttpURLConnection).apply {
+                                val conn = (fetchUrl.openConnection() as HttpURLConnection).apply {
                                     requestMethod = "GET"
                                     setRequestProperty("Authorization", "Bearer $token")
+                                    setRequestProperty("Connection", "Keep-Alive")
                                     connectTimeout = 3000
                                     readTimeout = 3000
                                 }
@@ -1722,7 +1947,7 @@ class MainActivity : FlutterFragmentActivity() {
                             } catch (_: Exception) {}
 
                             try {
-                                Thread.sleep(180)
+                                Thread.sleep(90)
                             } catch (_: Exception) {}
                         }
                     }.start()
@@ -1741,9 +1966,10 @@ class MainActivity : FlutterFragmentActivity() {
         val answerIntent = Intent(this, MainActivity::class.java).apply {
             action = Intent.ACTION_MAIN
             addCategory(Intent.CATEGORY_LAUNCHER)
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
             putExtra("laju_type", "call")
             putExtra("laju_id", callId)
+            putExtra("laju_caller_name", callerName)
             putExtra("laju_is_video", isVideo)
             putExtra("laju_action", "answer")
         }
@@ -1757,6 +1983,7 @@ class MainActivity : FlutterFragmentActivity() {
         val declineIntent = Intent(this, LajuPushService::class.java).apply {
             action = LajuPushService.ACTION_DECLINE
             putExtra("call_id", callId)
+            putExtra("caller_name", callerName)
         }
         val declinePendingIntent = PendingIntent.getService(
             this,

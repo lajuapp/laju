@@ -23,7 +23,7 @@ class ForegroundSyncService with WidgetsBindingObserver {
 
   void start() {
     _poller?.cancel();
-    _poller = Timer.periodic(const Duration(milliseconds: 1500), (_) {
+    _poller = Timer.periodic(const Duration(milliseconds: 3000), (_) {
       tick();
     });
     // Fire an immediate tick
@@ -39,6 +39,7 @@ class ForegroundSyncService with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       start();
+      CallSessionController.instance.checkLaunchPayload();
     } else if (state == AppLifecycleState.paused || state == AppLifecycleState.detached) {
       // Keep slow-polling in background (every 8 seconds)
       _poller?.cancel();

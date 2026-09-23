@@ -68,9 +68,10 @@ class ConversationService {
     }
   }
 
-  /// Active typing indicators per conversation ID
+  /// Active typing indicators per conversation ID (true if remote participant is typing)
   final ValueNotifier<Map<String, bool>> typingStatusNotifier = ValueNotifier({});
 
+  /// Update remote typing indicator state (received from backend sync)
   void setTyping(String conversationId, bool isTyping) {
     final current = Map<String, bool>.from(typingStatusNotifier.value);
     if (isTyping) {
@@ -79,6 +80,18 @@ class ConversationService {
       current.remove(conversationId);
     }
     typingStatusNotifier.value = current;
+  }
+
+  /// Inform backend of current user's typing activity so the other party sees it
+  Future<void> sendTypingStatus(String conversationId, bool isTyping) async {
+    try {
+      await ApiClient.instance.post(
+        ApiEndpoints.conversationTyping(conversationId),
+        body: {'isTyping': isTyping},
+      );
+    } catch (_) {
+      // Ignored non-critical broadcast
+    }
   }
 
   /// Search users in the backend directory for new chats or group members
@@ -209,7 +222,15 @@ class ConversationService {
                   if (notifTitle.isEmpty) notifTitle = isGroup ? 'Group Chat' : 'Pesan Baru';
 
                   String preview = (latest['ciphertext'] ?? '') as String;
-                  if (preview.startsWith('data:image')) {
+                  if (preview.startsWith('{') && preview.contains('"media"')) {
+                    try {
+                      final parsed = jsonDecode(preview);
+                      final cap = (parsed['caption'] ?? '') as String;
+                      preview = cap.isNotEmpty ? '📷 $cap' : '📷 Foto';
+                    } catch (_) {
+                      preview = '📷 Foto';
+                    }
+                  } else if (preview.startsWith('data:image')) {
                     preview = '📷 Foto';
                   } else if (preview.startsWith('data:audio')) {
                     preview = '🎤 Pesan Suara';
@@ -288,9 +309,21 @@ class ConversationService {
             title = isGroup ? 'Group Chat' : 'Direct Chat';
           }
 
-          final lastMsg = (item['messages'] is List && (item['messages'] as List).isNotEmpty)
+          final lastMsgRaw = (item['messages'] is List && (item['messages'] as List).isNotEmpty)
               ? item['messages'][0]['ciphertext'] ?? 'Encrypted Message'
               : 'No messages yet';
+          String lastMsg = lastMsgRaw;
+          if (lastMsg.startsWith('{') && lastMsg.contains('"media"')) {
+            try {
+              final parsed = jsonDecode(lastMsg);
+              final cap = (parsed['caption'] ?? '') as String;
+              lastMsg = cap.isNotEmpty ? '📷 $cap' : '📷 Foto';
+            } catch (_) {
+              lastMsg = '📷 Foto';
+            }
+          } else if (lastMsg.startsWith('data:image')) {
+            lastMsg = '📷 Foto';
+          }
 
           final convId = item['id'] as String? ?? '';
           final safetyPreview = SafetyNumberHelper.getPreview(
@@ -332,10 +365,13 @@ class ConversationService {
           }
         }
 
-        // Persist to local cache and memory cache
-        inMemoryConversations = conversations;
-        conversationsNotifier.value = conversations;
-        LocalDatabase.instance.upsertConversations(conversations);
+        // Persist to local cache and memory cache only if data has changed
+        final hasChanged = !ConversationModel.areListsEqual(inMemoryConversations, conversations);
+        if (hasChanged) {
+          inMemoryConversations = conversations;
+          conversationsNotifier.value = conversations;
+          LocalDatabase.instance.upsertConversations(conversations);
+        }
         return conversations;
       }
     } catch (e) {
@@ -518,6 +554,10 @@ class ConversationService {
       );
 
       if (response.isSuccess && response.rawJson is Map) {
+        if (response.rawJson.containsKey('isTyping')) {
+          setTyping(conversationId, response.rawJson['isTyping'] == true);
+        }
+
         final messagesList = response.rawJson['messages'];
         if (messagesList is List) {
           final currentUserId = ApiClient.instance.userId;
@@ -540,25 +580,38 @@ class ConversationService {
             String? attName;
             String? attSize;
 
-            if (msgType == 'IMAGE' || rawCiphertext.startsWith('data:image')) {
-              contentType = MessageContentType.attachment;
-              mediaData = rawCiphertext;
-              attName = 'Foto.jpg';
-              contentText = '📷 Foto';
-            } else if (msgType == 'AUDIO' || rawCiphertext.startsWith('data:audio')) {
-              contentType = MessageContentType.voiceNote;
-              mediaData = rawCiphertext;
-              attName = 'Voice Note';
-              contentText = '🎤 Pesan Suara';
-              attSize = '0:15';
-            } else if (msgType == 'DOCUMENT' || rawCiphertext.startsWith('data:') || rawCiphertext.startsWith('📄')) {
-              contentType = MessageContentType.attachment;
-              mediaData = rawCiphertext.startsWith('data:') ? rawCiphertext : null;
-              attName = 'Dokumen';
-              contentText = rawCiphertext.startsWith('data:') ? '📄 Berkas Dokumen' : rawCiphertext;
-            } else if (msgType == 'ATTACHMENT') {
-              contentType = MessageContentType.attachment;
-              contentText = rawCiphertext;
+            if (rawCiphertext.startsWith('{') && rawCiphertext.contains('"media"')) {
+              try {
+                final parsed = jsonDecode(rawCiphertext);
+                if (parsed is Map && parsed['type'] == 'image') {
+                  contentType = MessageContentType.attachment;
+                  mediaData = parsed['media'] as String?;
+                  attName = 'Foto.jpg';
+                  contentText = (parsed['caption'] ?? '') as String;
+                }
+              } catch (_) {}
+            }
+            if (mediaData == null) {
+              if (msgType == 'IMAGE' || rawCiphertext.startsWith('data:image')) {
+                contentType = MessageContentType.attachment;
+                mediaData = rawCiphertext;
+                attName = 'Foto.jpg';
+                contentText = ''; // No generic description
+              } else if (msgType == 'AUDIO' || rawCiphertext.startsWith('data:audio')) {
+                contentType = MessageContentType.voiceNote;
+                mediaData = rawCiphertext;
+                attName = 'Voice Note';
+                contentText = '🎤 Pesan Suara';
+                attSize = '0:15';
+              } else if (msgType == 'DOCUMENT' || rawCiphertext.startsWith('data:') || rawCiphertext.startsWith('📄')) {
+                contentType = MessageContentType.attachment;
+                mediaData = rawCiphertext.startsWith('data:') ? rawCiphertext : null;
+                attName = 'Dokumen';
+                contentText = rawCiphertext.startsWith('data:') ? '📄 Berkas Dokumen' : rawCiphertext;
+              } else if (msgType == 'ATTACHMENT') {
+                contentType = MessageContentType.attachment;
+                contentText = rawCiphertext;
+              }
             }
 
             return MessageModel(
@@ -578,10 +631,11 @@ class ConversationService {
             );
           }).toList();
 
+          final deduplicated = MessageModel.deduplicate(messages);
           // Persist to local cache and memory cache
-          updateMemoryMessages(conversationId, messages);
-          LocalDatabase.instance.upsertMessages(conversationId, messages);
-          return messages;
+          updateMemoryMessages(conversationId, deduplicated);
+          LocalDatabase.instance.upsertMessages(conversationId, deduplicated);
+          return deduplicated;
         }
       }
     } catch (e) {
@@ -618,7 +672,15 @@ class ConversationService {
           final mime = type == 'IMAGE'
               ? 'image/jpeg'
               : (type == 'AUDIO' ? 'audio/m4a' : 'application/octet-stream');
-          payloadCiphertext = 'data:$mime;base64,$b64';
+          if (type == 'IMAGE' && text.trim().isNotEmpty) {
+            payloadCiphertext = jsonEncode({
+              'type': 'image',
+              'media': 'data:$mime;base64,$b64',
+              'caption': text.trim(),
+            });
+          } else {
+            payloadCiphertext = 'data:$mime;base64,$b64';
+          }
         }
       } catch (_) {}
     }
@@ -641,13 +703,12 @@ class ConversationService {
       if (response.isSuccess && response.rawJson is Map) {
         final m = response.rawJson;
         final confirmedId = m['id'] ?? id;
-        LocalDatabase.instance.updateMessageStatus(id, MessageDeliveryStatus.sent);
-        return MessageModel(
+        final confirmedMsg = MessageModel(
           id: confirmedId,
           clientMessageId: id,
           conversationId: conversationId,
           senderName: 'You',
-          content: text,
+          content: text.trim(),
           attachmentPath: attachmentPath,
           attachmentName: attachmentName,
           attachmentSize: attachmentSize,
@@ -658,6 +719,24 @@ class ConversationService {
           isOutgoing: true,
           status: MessageDeliveryStatus.sent,
         );
+
+        // Replace optimistic message in SQLite and update status
+        await LocalDatabase.instance.replaceOptimisticMessage(id, confirmedMsg);
+
+        // Update in-memory messages if present
+        final currentMemory = _inMemoryMessages[conversationId];
+        if (currentMemory != null) {
+          final updatedMemory = List<MessageModel>.from(currentMemory);
+          final idx = updatedMemory.indexWhere((msg) => msg.id == id || msg.clientMessageId == id);
+          if (idx != -1) {
+            updatedMemory[idx] = confirmedMsg;
+          } else {
+            updatedMemory.add(confirmedMsg);
+          }
+          _inMemoryMessages[conversationId] = MessageModel.deduplicate(updatedMemory);
+        }
+
+        return confirmedMsg;
       }
     } catch (e) {
       debugPrint('[ConversationService] sendMessage error: $e');

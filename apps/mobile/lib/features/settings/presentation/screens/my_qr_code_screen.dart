@@ -88,7 +88,9 @@ class _MyQrCodeScreenState extends State<MyQrCodeScreen> with TickerProviderStat
         LajuToast.success(context, 'Membuka menu bagikan...');
       } else {
         await Clipboard.setData(ClipboardData(text: shareText));
-        LajuToast.success(context, 'Tautan kontak disalin ke papan klip');
+        if (mounted) {
+          LajuToast.success(context, 'Tautan kontak disalin ke papan klip');
+        }
       }
     }
   }

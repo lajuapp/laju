@@ -172,11 +172,11 @@ class ChatBubble extends StatelessWidget {
     );
   }
 
-  Widget _buildStatusIcon(MessageDeliveryStatus status, {bool isOut = false}) {
-    final defaultColor = isOut ? Colors.white70 : AppColors.textSecondary;
+  Widget _buildStatusIcon(MessageDeliveryStatus status, {bool isOut = false, bool forcedWhite = false}) {
+    final defaultColor = forcedWhite ? Colors.white : (isOut ? Colors.white70 : AppColors.textSecondary);
     switch (status) {
       case MessageDeliveryStatus.sending:
-        return Icon(Icons.access_time_rounded, size: 12, color: isOut ? Colors.white60 : AppColors.textTertiary);
+        return Icon(Icons.access_time_rounded, size: 12, color: forcedWhite ? Colors.white70 : (isOut ? Colors.white60 : AppColors.textTertiary));
       case MessageDeliveryStatus.sent:
         return Icon(Icons.check_rounded, size: 13, color: defaultColor);
       case MessageDeliveryStatus.delivered:
@@ -226,17 +226,15 @@ class ChatBubble extends StatelessWidget {
     final isDark = ThemeModeController.instance.isDarkMode(context);
     final timeStr = DateFormat('HH:mm').format(message.timestamp.toLocal());
 
+    final isImage = _isImageMessage();
+
     final bubbleWidget = Align(
       alignment: isOut ? Alignment.centerRight : Alignment.centerLeft,
       child: GestureDetector(
         onLongPress: () => _showMessageOptions(context),
         child: Container(
-          constraints: BoxConstraints(
-            maxWidth: MediaQuery.of(context).size.width * 0.78,
-          ),
-          margin: EdgeInsets.only(
-            top: 6,
-            bottom: message.reactions.isNotEmpty ? 18 : 6,
+          margin: const EdgeInsets.symmetric(vertical: 2.5),
+          padding: EdgeInsets.only(
             left: isOut ? 48 : 12,
             right: isOut ? 12 : 48,
           ),
@@ -244,7 +242,11 @@ class ChatBubble extends StatelessWidget {
             clipBehavior: Clip.none,
             children: [
               Container(
-                padding: const EdgeInsets.fromLTRB(14, 10, 14, 8),
+                padding: isImage
+                    ? (_hasImageCaption()
+                        ? const EdgeInsets.fromLTRB(4, 4, 4, 8)
+                        : const EdgeInsets.all(4))
+                    : const EdgeInsets.fromLTRB(14, 10, 14, 8),
                 decoration: BoxDecoration(
                   gradient: isOut
                       ? LinearGradient(
@@ -300,22 +302,33 @@ class ChatBubble extends StatelessWidget {
                   children: [
                     // Sender Name (Incoming in group or user chat)
                     if (!isOut && message.senderName.isNotEmpty) ...[
-                      Text(
-                        message.senderName,
-                        style: TextStyle(
-                          fontSize: 12.5,
-                          fontWeight: FontWeight.w700,
-                          color: isDark ? AppColors.primaryLight : AppColors.primaryDark,
-                          letterSpacing: 0.2,
+                      Padding(
+                        padding: EdgeInsets.only(
+                          left: isImage ? 8 : 0,
+                          top: isImage ? 4 : 0,
+                          bottom: 4,
+                        ),
+                        child: Text(
+                          message.senderName,
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w700,
+                            color: isDark ? AppColors.primaryLight : AppColors.primaryDark,
+                            letterSpacing: 0.2,
+                          ),
                         ),
                       ),
-                      const SizedBox(height: 4),
                     ],
 
                     // Quoted Message Box (Reply)
                     if (message.replyTo != null) ...[
                       Container(
-                        margin: const EdgeInsets.only(bottom: 8),
+                        margin: EdgeInsets.only(
+                          left: isImage ? 4 : 0,
+                          right: isImage ? 4 : 0,
+                          top: isImage ? 4 : 0,
+                          bottom: 6,
+                        ),
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                         decoration: BoxDecoration(
                           color: isDark
@@ -355,76 +368,82 @@ class ChatBubble extends StatelessWidget {
                       ),
                     ],
 
-                    // Attachment Preview (Refined Card)
-                    if (message.contentType == MessageContentType.attachment)
-                      _buildAttachmentPreview(context, isDark, isOut),
+                    // Image Message Content (Modern, edge-to-edge look with optional caption & floating pill)
+                    if (isImage)
+                      _buildImageContent(context, isDark, isOut, timeStr),
 
-                    // Voice Note Player
-                    if (message.contentType == MessageContentType.voiceNote && message.attachmentPath != null)
-                      VoiceNotePlayer(
-                        filePath: message.attachmentPath!,
-                        durationLabel: message.attachmentSize ?? '0:15',
-                        isOutgoing: isOut,
-                        isDark: isDark,
-                      ),
-
-                    // Message Content (Deduplicated so attachment title is not repeated)
-                    if (_shouldShowMessageContent()) ...[
+                    if (!isImage) ...[
+                      // Attachment Preview (Refined Card)
                       if (message.contentType == MessageContentType.attachment)
-                        const SizedBox(height: 4),
-                      Text(
-                        message.content,
-                        style: TextStyle(
-                          fontSize: 14.5 * ChatAppearanceController.instance.fontScale,
-                          color: isOut ? Colors.white : (isDark ? Colors.white : const Color(0xFF0F172A)),
-                          height: 1.35,
+                        _buildAttachmentPreview(context, isDark, isOut),
+
+                      // Voice Note Player
+                      if (message.contentType == MessageContentType.voiceNote && message.attachmentPath != null)
+                        VoiceNotePlayer(
+                          filePath: message.attachmentPath!,
+                          durationLabel: message.attachmentSize ?? '0:15',
+                          isOutgoing: isOut,
+                          isDark: isDark,
+                        ),
+
+                      // Message Content (Deduplicated so attachment title is not repeated)
+                      if (_shouldShowMessageContent()) ...[
+                        if (message.contentType == MessageContentType.attachment)
+                          const SizedBox(height: 4),
+                        Text(
+                          message.content,
+                          style: TextStyle(
+                            fontSize: 14.5 * ChatAppearanceController.instance.fontScale,
+                            color: isOut ? Colors.white : (isDark ? Colors.white : const Color(0xFF0F172A)),
+                            height: 1.35,
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 4),
+
+                      // Timestamp & Status Icon (Right-aligned WhatsApp style)
+                      Align(
+                        alignment: Alignment.bottomRight,
+                        child: Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (message.isDisappearing) ...[
+                                Icon(Icons.timer_outlined, size: 11, color: isOut ? Colors.white70 : AppColors.cyan),
+                                const SizedBox(width: 3),
+                              ],
+                              if (message.isEdited) ...[
+                                Text(
+                                  'diedit ',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    fontStyle: FontStyle.italic,
+                                    color: isOut
+                                        ? Colors.white.withValues(alpha: 0.75)
+                                        : (isDark ? const Color(0xFF94A3B8) : const Color(0xFF6B7280)),
+                                  ),
+                                ),
+                              ],
+                              Text(
+                                timeStr,
+                                style: TextStyle(
+                                  fontSize: 10.5,
+                                  color: isOut
+                                      ? Colors.white.withValues(alpha: 0.8)
+                                      : (isDark ? const Color(0xFF94A3B8) : const Color(0xFF6B7280)),
+                                  fontWeight: FontWeight.w400,
+                                ),
+                              ),
+                              if (isOut) ...[
+                                const SizedBox(width: 4),
+                                _buildStatusIcon(message.status, isOut: true),
+                              ],
+                            ],
+                          ),
                         ),
                       ),
                     ],
-                    const SizedBox(height: 4),
-
-                    // Timestamp & Status Icon (Right-aligned WhatsApp style)
-                    Align(
-                      alignment: Alignment.bottomRight,
-                      child: Padding(
-                        padding: const EdgeInsets.only(top: 2),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            if (message.isDisappearing) ...[
-                              Icon(Icons.timer_outlined, size: 11, color: isOut ? Colors.white70 : AppColors.cyan),
-                              const SizedBox(width: 3),
-                            ],
-                            if (message.isEdited) ...[
-                              Text(
-                                'diedit ',
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  fontStyle: FontStyle.italic,
-                                  color: isOut
-                                      ? Colors.white.withValues(alpha: 0.75)
-                                      : (isDark ? const Color(0xFF94A3B8) : const Color(0xFF6B7280)),
-                                ),
-                              ),
-                            ],
-                            Text(
-                              timeStr,
-                              style: TextStyle(
-                                fontSize: 10.5,
-                                color: isOut
-                                    ? Colors.white.withValues(alpha: 0.8)
-                                    : (isDark ? const Color(0xFF94A3B8) : const Color(0xFF6B7280)),
-                                fontWeight: FontWeight.w400,
-                              ),
-                            ),
-                            if (isOut) ...[
-                              const SizedBox(width: 4),
-                              _buildStatusIcon(message.status, isOut: true),
-                            ],
-                          ],
-                        ),
-                      ),
-                    ),
                   ],
                 ),
               ),
@@ -490,9 +509,240 @@ class ChatBubble extends StatelessWidget {
     );
   }
 
+  bool _isImageMessage() {
+    if (message.contentType != MessageContentType.attachment) return false;
+    final path = message.attachmentPath ?? '';
+    final name = (message.attachmentName ?? '').toUpperCase();
+    return path.startsWith('data:image') ||
+        name.endsWith('.JPG') ||
+        name.endsWith('.JPEG') ||
+        name.endsWith('.PNG') ||
+        name.endsWith('.WEBP') ||
+        name.endsWith('.GIF') ||
+        path.endsWith('.jpg') ||
+        path.endsWith('.jpeg') ||
+        path.endsWith('.png') ||
+        path.endsWith('.webp');
+  }
+
+  bool _hasImageCaption() {
+    if (!_isImageMessage()) return false;
+    final clean = message.content.trim();
+    if (clean.isEmpty ||
+        clean == '📷 Foto' ||
+        clean == 'Foto' ||
+        clean == 'Foto.jpg' ||
+        clean == (message.attachmentName ?? '').trim() ||
+        clean.startsWith('📷 Foto') ||
+        clean.startsWith('📷 ${(message.attachmentName ?? '').trim()}')) {
+      return false;
+    }
+    return true;
+  }
+
+  Widget _buildImageContent(BuildContext context, bool isDark, bool isOut, String timeStr) {
+    Widget imageWidget;
+    final path = message.attachmentPath ?? '';
+
+    if (path.startsWith('data:image')) {
+      try {
+        final b64 = path.split(',').last;
+        final bytes = base64Decode(b64);
+        imageWidget = Image.memory(
+          bytes,
+          fit: BoxFit.cover,
+          width: double.infinity,
+          height: double.infinity,
+          errorBuilder: (_, __, stackTrace) => _buildImagePlaceholder(isDark),
+        );
+      } catch (_) {
+        imageWidget = _buildImagePlaceholder(isDark);
+      }
+    } else if (File(path).existsSync()) {
+      imageWidget = Image.file(
+        File(path),
+        fit: BoxFit.cover,
+        width: double.infinity,
+        height: double.infinity,
+        errorBuilder: (_, __, stackTrace) => _buildImagePlaceholder(isDark),
+      );
+    } else {
+      imageWidget = _buildImagePlaceholder(isDark);
+    }
+
+    final hasCaption = _hasImageCaption();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Image Canvas
+        GestureDetector(
+          onTap: () {
+            if (path.isNotEmpty) {
+              LajuImageViewer.show(
+                context,
+                imagePath: path,
+                title: isOut
+                    ? 'Anda'
+                    : (message.senderName.isNotEmpty ? message.senderName : 'Foto'),
+                subtitle: DateFormat('dd MMMM yyyy, HH:mm').format(message.timestamp.toLocal()),
+              );
+            }
+          },
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(14),
+            child: Container(
+              constraints: const BoxConstraints(
+                maxHeight: 280,
+                maxWidth: 280,
+                minWidth: 200,
+                minHeight: 140,
+              ),
+              color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF1F5F9),
+              child: Stack(
+                fit: StackFit.passthrough,
+                children: [
+                  imageWidget,
+
+                  // Subtle gradient shadow at bottom for timestamp readability if no caption
+                  if (!hasCaption)
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      height: 40,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [
+                              Colors.transparent,
+                              Colors.black.withValues(alpha: 0.60),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+
+                  // Floating Timestamp Pill Overlay (if no caption)
+                  if (!hasCaption)
+                    Positioned(
+                      bottom: 6,
+                      right: 7,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.50),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (message.isDisappearing) ...[
+                              const Icon(Icons.timer_outlined, size: 11, color: Colors.white70),
+                              const SizedBox(width: 3),
+                            ],
+                            Text(
+                              timeStr,
+                              style: const TextStyle(
+                                fontSize: 10.5,
+                                color: Colors.white,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            if (isOut) ...[
+                              const SizedBox(width: 4),
+                              _buildStatusIcon(message.status, isOut: true, forcedWhite: true),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ),
+
+        // Caption & Timestamp (if caption exists)
+        if (hasCaption) ...[
+          const SizedBox(height: 6),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: Text(
+              message.content,
+              style: TextStyle(
+                fontSize: 14.5 * ChatAppearanceController.instance.fontScale,
+                color: isOut ? Colors.white : (isDark ? Colors.white : const Color(0xFF0F172A)),
+                height: 1.35,
+              ),
+            ),
+          ),
+          const SizedBox(height: 2),
+          Align(
+            alignment: Alignment.bottomRight,
+            child: Padding(
+              padding: const EdgeInsets.only(right: 2),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (message.isDisappearing) ...[
+                    Icon(Icons.timer_outlined, size: 11, color: isOut ? Colors.white70 : AppColors.cyan),
+                    const SizedBox(width: 3),
+                  ],
+                  if (message.isEdited) ...[
+                    Text(
+                      'diedit ',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontStyle: FontStyle.italic,
+                        color: isOut
+                            ? Colors.white.withValues(alpha: 0.75)
+                            : (isDark ? const Color(0xFF94A3B8) : const Color(0xFF6B7280)),
+                      ),
+                    ),
+                  ],
+                  Text(
+                    timeStr,
+                    style: TextStyle(
+                      fontSize: 10.5,
+                      color: isOut
+                          ? Colors.white.withValues(alpha: 0.8)
+                          : (isDark ? const Color(0xFF94A3B8) : const Color(0xFF6B7280)),
+                      fontWeight: FontWeight.w400,
+                    ),
+                  ),
+                  if (isOut) ...[
+                    const SizedBox(width: 4),
+                    _buildStatusIcon(message.status, isOut: true),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildImagePlaceholder(bool isDark) {
+    return Container(
+      height: 180,
+      width: 240,
+      color: isDark ? const Color(0xFF1E293B) : const Color(0xFFE2E8F0),
+      child: const Center(
+        child: Icon(Icons.broken_image_rounded, size: 40, color: Colors.grey),
+      ),
+    );
+  }
+
   bool _shouldShowMessageContent() {
     if (message.contentType == MessageContentType.voiceNote && message.attachmentPath != null) {
       return false;
+    }
+    if (_isImageMessage()) {
+      return _hasImageCaption();
     }
     if (message.contentType != MessageContentType.attachment) {
       return message.content.isNotEmpty;

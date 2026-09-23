@@ -403,11 +403,76 @@ export class ConversationsService {
       }
     });
 
+    // Check if other members are currently typing in this conversation
+    let isTyping = false;
+    const typingUsers: string[] = [];
+    const convTyping = this.typingMap.get(conversationId);
+    if (convTyping) {
+      const now = Date.now();
+      for (const [tUserId, tInfo] of Array.from(convTyping.entries())) {
+        if (now - tInfo.timestamp > 3500) {
+          convTyping.delete(tUserId);
+        } else if (tUserId !== userId) {
+          isTyping = true;
+          if (tInfo.username) {
+            typingUsers.push(tInfo.username);
+          }
+        }
+      }
+    }
+
     return {
       conversationId,
       messages,
-      count: messages.length
+      count: messages.length,
+      isTyping,
+      typingUsers
     };
+  }
+
+  private readonly typingMap = new Map<string, Map<string, { timestamp: number; username?: string }>>();
+
+  async setTyping(userId: string, conversationId: string, isTyping: boolean) {
+    const member = await this.prisma.conversationMember.findFirst({
+      where: { conversationId, userId, leftAt: null },
+      include: { user: { select: { username: true } } }
+    });
+    if (!member) {
+      throw new ForbiddenException('Not a member of this conversation');
+    }
+
+    if (!this.typingMap.has(conversationId)) {
+      this.typingMap.set(conversationId, new Map());
+    }
+    const convTyping = this.typingMap.get(conversationId)!;
+
+    if (isTyping) {
+      convTyping.set(userId, { timestamp: Date.now(), username: member.user?.username });
+    } else {
+      convTyping.delete(userId);
+    }
+
+    try {
+      const publisher = this.redis.getClient();
+      if (publisher) {
+        const otherMembers = await this.prisma.conversationMember.findMany({
+          where: { conversationId, leftAt: null, userId: { not: userId } },
+          select: { userId: true }
+        });
+        const payload = JSON.stringify({
+          type: 'TYPING',
+          conversationId,
+          userId,
+          username: member.user?.username,
+          isTyping
+        });
+        for (const m of otherMembers) {
+          publisher.publish(`user:${m.userId}`, payload).catch(() => {});
+        }
+      }
+    } catch (_) {}
+
+    return { success: true };
   }
 
   async deleteConversation(userId: string, conversationId: string) {

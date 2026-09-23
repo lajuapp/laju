@@ -14,6 +14,7 @@ import '../../../conversations/domain/conversation_service.dart';
 import '../../../settings/presentation/screens/wallpaper_settings_screen.dart';
 import '../../../../core/services/voice_note_service.dart';
 import 'disappearing_messages_screen.dart';
+import 'image_preview_send_screen.dart';
 
 class GroupChatScreen extends StatefulWidget {
   final String groupId;
@@ -111,6 +112,8 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
 
   @override
   void dispose() {
+    ConversationService.instance.sendTypingStatus(widget.groupId, false);
+    ConversationService.instance.setTyping(widget.groupId, false);
     if (ConversationService.instance.currentActiveConversationId == widget.groupId) {
       ConversationService.instance.currentActiveConversationId = null;
     }
@@ -169,31 +172,16 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
       }
     }
 
-    final merged = List<MessageModel>.from(_messages);
-    for (final inc in incoming) {
-      final idx = merged.indexWhere((m) =>
-          m.id == inc.id ||
-          (inc.clientMessageId != null && (m.id == inc.clientMessageId || m.clientMessageId == inc.clientMessageId)));
-
-      if (idx != -1) {
-        merged[idx] = inc.copyWith(
-          attachmentPath: merged[idx].attachmentPath ?? inc.attachmentPath,
-          attachmentName: merged[idx].attachmentName ?? inc.attachmentName,
-          replyTo: merged[idx].replyTo ?? inc.replyTo,
-        );
-      } else {
-        merged.add(inc);
-      }
-    }
-
-    merged.sort((a, b) => a.timestamp.compareTo(b.timestamp));
+    final combined = List<MessageModel>.from(_messages)..addAll(incoming);
+    final merged = MessageModel.deduplicate(combined);
 
     bool hasChanged = merged.length != _messages.length;
     if (!hasChanged) {
       for (int i = 0; i < merged.length; i++) {
         if (merged[i].id != _messages[i].id ||
             merged[i].status != _messages[i].status ||
-            merged[i].reactions.length != _messages[i].reactions.length) {
+            merged[i].reactions.length != _messages[i].reactions.length ||
+            merged[i].content != _messages[i].content) {
           hasChanged = true;
           break;
         }
@@ -217,6 +205,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
   }
 
   void _sendMessage(String text) async {
+    ConversationService.instance.sendTypingStatus(widget.groupId, false);
     LajuSoundService.playOutgoingTone();
     final localId = 'g-${DateTime.now().millisecondsSinceEpoch}';
     final localMsg = MessageModel(
@@ -402,13 +391,26 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
           _syncMessages();
         }
       } else if (result.type == AttachmentType.camera || result.type == AttachmentType.gallery) {
+        if (filePath == null) return;
+        final previewResult = await Navigator.push<ImagePreviewResult>(
+          context,
+          MaterialPageRoute(
+            builder: (_) => ImagePreviewSendScreen(
+              imagePath: filePath,
+              recipientName: widget.groupName ?? 'Grup',
+            ),
+          ),
+        );
+        if (previewResult == null) return; // User cancelled
+
+        final caption = previewResult.caption;
         final imgId = 'img-${DateTime.now().millisecondsSinceEpoch}';
         final imgMsg = MessageModel(
           id: imgId,
           clientMessageId: imgId,
           conversationId: widget.groupId,
           senderName: 'You',
-          content: '📷 ${result.title} (${result.fileSize ?? ""})',
+          content: caption,
           attachmentName: result.title,
           attachmentSize: result.fileSize,
           attachmentPath: filePath,
@@ -424,7 +426,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
 
         final sent = await ConversationService.instance.sendMessage(
           conversationId: widget.groupId,
-          text: '📷 ${result.title} (${result.fileSize ?? ""})',
+          text: caption,
           clientMessageId: imgId,
           messageType: 'IMAGE',
           attachmentPath: filePath,
@@ -828,12 +830,29 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                                   color: isDark ? Colors.white : const Color(0xFF111827),
                                 ),
                               ),
-                              Text(
-                                '$memberCount ${context.tr('members')}',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  color: isDark ? AppColors.darkTextSecondary : const Color(0xFF6B7280),
-                                ),
+                              ValueListenableBuilder<Map<String, bool>>(
+                                valueListenable: ConversationService.instance.typingStatusNotifier,
+                                builder: (context, typings, _) {
+                                  final isTyping = typings[widget.groupId] == true;
+                                  if (isTyping) {
+                                    return const Text(
+                                      'sedang mengetik...',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: AppColors.primary,
+                                        fontWeight: FontWeight.w600,
+                                        fontStyle: FontStyle.italic,
+                                      ),
+                                    );
+                                  }
+                                  return Text(
+                                    '$memberCount ${context.tr('members')}',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: isDark ? AppColors.darkTextSecondary : const Color(0xFF6B7280),
+                                    ),
+                                  );
+                                },
                               ),
                             ],
                           ),
@@ -1115,7 +1134,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                   onCancelEdit: _cancelEdit,
                   onConfirmEdit: _confirmEditMessage,
                   onTypingChanged: (isTyping) {
-                    ConversationService.instance.setTyping(widget.groupId, isTyping);
+                    ConversationService.instance.sendTypingStatus(widget.groupId, isTyping);
                   },
                 )
               else

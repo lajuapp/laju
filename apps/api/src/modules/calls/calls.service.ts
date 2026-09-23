@@ -10,6 +10,11 @@ import { GotifyService } from '../../infrastructure/gotify/gotify.service';
 
 @Injectable()
 export class CallsService {
+  // In-memory real-time media exchange for zero-latency audio & video streaming
+  private audioBuffers = new Map<string, Map<string, string[]>>(); // callId -> (userId -> chunks[])
+  private videoFrames = new Map<string, Map<string, { frame: string; updatedAt: number }>>(); // callId -> (userId -> frame)
+  private callParticipantsCache = new Map<string, Set<string>>(); // callId -> Set<userId>
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly redis: RedisService,
@@ -216,6 +221,10 @@ export class CallsService {
       }
     } catch (_) {}
 
+    this.audioBuffers.delete(callId);
+    this.videoFrames.delete(callId);
+    this.callParticipantsCache.delete(callId);
+
     return { success: true };
   }
 
@@ -275,22 +284,65 @@ export class CallsService {
     return [];
   }
 
+  private async verifyParticipantCached(callId: string, userId: string): Promise<boolean> {
+    let participants = this.callParticipantsCache.get(callId);
+    if (!participants) {
+      const parts = await this.prisma.callParticipant.findMany({
+        where: { callId },
+        select: { userId: true }
+      });
+      participants = new Set(parts.map((p) => p.userId));
+      this.callParticipantsCache.set(callId, participants);
+    }
+    return participants.has(userId);
+  }
+
+  private async getOtherParticipantId(callId: string, userId: string): Promise<string | null> {
+    let participants = this.callParticipantsCache.get(callId);
+    if (!participants) {
+      const parts = await this.prisma.callParticipant.findMany({
+        where: { callId },
+        select: { userId: true }
+      });
+      participants = new Set(parts.map((p) => p.userId));
+      this.callParticipantsCache.set(callId, participants);
+    }
+    for (const id of participants) {
+      if (id !== userId) return id;
+    }
+    return null;
+  }
+
   async pushAudioChunk(userId: string, callId: string, chunkBase64: string) {
-    const participant = await this.prisma.callParticipant.findFirst({
-      where: { callId, userId }
-    });
-    if (!participant) {
+    const isParticipant = await this.verifyParticipantCached(callId, userId);
+    if (!isParticipant) {
       throw new ForbiddenException('Not a participant in this call');
     }
 
+    // Fast in-memory buffer (<1ms, zero DB latency)
+    let callQueues = this.audioBuffers.get(callId);
+    if (!callQueues) {
+      callQueues = new Map();
+      this.audioBuffers.set(callId, callQueues);
+    }
+    let userQueue = callQueues.get(userId);
+    if (!userQueue) {
+      userQueue = [];
+      callQueues.set(userId, userQueue);
+    }
+    userQueue.push(chunkBase64);
+    if (userQueue.length > 30) {
+      userQueue.shift();
+    }
+
+    // Non-blocking Redis sync if available
     try {
       const redisClient = this.redis.getClient();
       if (redisClient) {
         const key = `call:${callId}:audio:${userId}`;
-        await redisClient.rpush(key, chunkBase64);
-        // Keep queue bounded to last 30 chunks
-        await redisClient.ltrim(key, -30, -1);
-        await redisClient.expire(key, 10);
+        redisClient.rpush(key, chunkBase64).catch(() => {});
+        redisClient.ltrim(key, -30, -1).catch(() => {});
+        redisClient.expire(key, 10).catch(() => {});
       }
     } catch (_) {}
 
@@ -298,18 +350,27 @@ export class CallsService {
   }
 
   async getAudioChunks(userId: string, callId: string) {
-    // Return audio chunks from the OTHER participant
-    const otherParticipant = await this.prisma.callParticipant.findFirst({
-      where: { callId, userId: { not: userId } }
-    });
-    if (!otherParticipant) {
+    const otherUserId = await this.getOtherParticipantId(callId, userId);
+    if (!otherUserId) {
       return { chunks: [] };
     }
 
+    // Return from in-memory queue first (instant, guaranteed)
+    const callQueues = this.audioBuffers.get(callId);
+    if (callQueues) {
+      const otherQueue = callQueues.get(otherUserId);
+      if (otherQueue && otherQueue.length > 0) {
+        const chunks = [...otherQueue];
+        otherQueue.length = 0; // drain
+        return { chunks };
+      }
+    }
+
+    // Redis fallback
     try {
       const redisClient = this.redis.getClient();
       if (redisClient) {
-        const key = `call:${callId}:audio:${otherParticipant.userId}`;
+        const key = `call:${callId}:audio:${otherUserId}`;
         const chunks = await redisClient.lrange(key, 0, -1);
         if (chunks.length > 0) {
           await redisClient.del(key);
@@ -319,6 +380,78 @@ export class CallsService {
     } catch (_) {}
 
     return { chunks: [] };
+  }
+
+  async pushVideoFrame(userId: string, callId: string, frameBase64: string) {
+    const isParticipant = await this.verifyParticipantCached(callId, userId);
+    if (!isParticipant) {
+      throw new ForbiddenException('Not a participant in this call');
+    }
+
+    let callFrames = this.videoFrames.get(callId);
+    if (!callFrames) {
+      callFrames = new Map();
+      this.videoFrames.set(callId, callFrames);
+    }
+    callFrames.set(userId, {
+      frame: frameBase64,
+      updatedAt: Date.now()
+    });
+
+    try {
+      const redisClient = this.redis.getClient();
+      if (redisClient) {
+        const key = `call:${callId}:video:${userId}`;
+        redisClient.set(key, frameBase64, 'EX', 6).catch(() => {});
+      }
+    } catch (_) {}
+
+    return { success: true };
+  }
+
+  async getVideoFrame(userId: string, callId: string) {
+    const otherUserId = await this.getOtherParticipantId(callId, userId);
+    if (!otherUserId) {
+      return { frame: null };
+    }
+
+    const callFrames = this.videoFrames.get(callId);
+    if (callFrames) {
+      const data = callFrames.get(otherUserId);
+      if (data && (Date.now() - data.updatedAt) < 6000) {
+        return { frame: data.frame, timestamp: data.updatedAt };
+      }
+    }
+
+    try {
+      const redisClient = this.redis.getClient();
+      if (redisClient) {
+        const key = `call:${callId}:video:${otherUserId}`;
+        const frame = await redisClient.get(key);
+        if (frame) {
+          return { frame };
+        }
+      }
+    } catch (_) {}
+
+    return { frame: null };
+  }
+
+  async syncMediaStream(userId: string, callId: string, data: { audioChunk?: string; videoFrame?: string }) {
+    if (data.audioChunk) {
+      await this.pushAudioChunk(userId, callId, data.audioChunk);
+    }
+    if (data.videoFrame) {
+      await this.pushVideoFrame(userId, callId, data.videoFrame);
+    }
+
+    const audio = await this.getAudioChunks(userId, callId);
+    const video = await this.getVideoFrame(userId, callId);
+
+    return {
+      audioChunks: audio.chunks,
+      videoFrame: video.frame
+    };
   }
 
   async getIncomingCall(userId: string) {

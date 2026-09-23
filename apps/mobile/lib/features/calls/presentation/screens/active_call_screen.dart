@@ -1,5 +1,10 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:typed_data';
+import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
-import 'package:mobile_scanner/mobile_scanner.dart';
+import 'package:flutter/services.dart';
+import '../../../../core/core.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/theme_controller.dart';
 import '../../../../core/widgets/laju_glass.dart';
@@ -29,9 +34,15 @@ class ActiveCallScreen extends StatefulWidget {
 
 class _ActiveCallScreenState extends State<ActiveCallScreen> {
   late bool _isVideoEnabled;
-  MobileScannerController? _cameraController;
+  CameraController? _cameraController;
   bool _isFrontCamera = true;
   bool _isCameraInMainView = true;
+
+  Uint8List? _remoteVideoBytes;
+  int _lastRemoteFrameTime = 0;
+  Timer? _remoteVideoPoller;
+  bool _isConvertingFrame = false;
+  int _lastFrameSentTime = 0;
 
   @override
   void initState() {
@@ -40,6 +51,7 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
 
     if (_isVideoEnabled) {
       _startCamera();
+      _startRemoteVideoPoller();
     }
 
     final session = CallSessionController.instance;
@@ -56,26 +68,124 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
     }
   }
 
-  void _startCamera() {
-    _cameraController?.dispose();
-    _cameraController = MobileScannerController(
-      facing: _isFrontCamera ? CameraFacing.front : CameraFacing.back,
-      detectionSpeed: DetectionSpeed.noDuplicates,
-      torchEnabled: false,
-    );
+  void _startCamera() async {
+    try {
+      final cameras = await availableCameras();
+      if (cameras.isEmpty) return;
+
+      final selectedCamera = cameras.firstWhere(
+        (c) => c.lensDirection == (_isFrontCamera ? CameraLensDirection.front : CameraLensDirection.back),
+        orElse: () => cameras.first,
+      );
+
+      final old = _cameraController;
+      _cameraController = null;
+      await old?.dispose();
+
+      final controller = CameraController(
+        selectedCamera,
+        ResolutionPreset.medium,
+        enableAudio: false,
+        imageFormatGroup: ImageFormatGroup.yuv420,
+      );
+
+      await controller.initialize();
+      if (!mounted) {
+        controller.dispose();
+        return;
+      }
+
+      _cameraController = controller;
+      setState(() {});
+
+      _startImageStreaming();
+    } catch (e) {
+      debugPrint('[ActiveCallScreen] Camera initialization error: $e');
+    }
+  }
+
+  void _startImageStreaming() {
+    if (_cameraController == null || !_cameraController!.value.isInitialized) return;
+
+    try {
+      _cameraController!.startImageStream((CameraImage image) async {
+        if (!_isVideoEnabled || !mounted) return;
+        final now = DateTime.now().millisecondsSinceEpoch;
+        if (now - _lastFrameSentTime < 160) return; // ~6 FPS
+        if (_isConvertingFrame) return;
+        _isConvertingFrame = true;
+        _lastFrameSentTime = now;
+
+        try {
+          final Uint8List? jpeg = await const MethodChannel('com.laju/call_audio').invokeMethod('convertYuvToJpeg', {
+            'y': image.planes[0].bytes,
+            'u': image.planes[1].bytes,
+            'v': image.planes[2].bytes,
+            'width': image.width,
+            'height': image.height,
+            'yRowStride': image.planes[0].bytesPerRow,
+            'uvRowStride': image.planes[1].bytesPerRow,
+            'uvPixelStride': image.planes[1].bytesPerPixel ?? 1,
+            'quality': 62,
+            'isFront': _isFrontCamera,
+          });
+
+          if (jpeg != null && jpeg.isNotEmpty) {
+            final curCallId = CallSessionController.instance.callId;
+            if (curCallId != null && !curCallId.startsWith('call-') && !curCallId.startsWith('group-')) {
+              final b64 = base64Encode(jpeg);
+              ApiClient.instance.post(
+                ApiEndpoints.callVideoFrame(curCallId),
+                body: {'frame': b64},
+              ).catchError((_) {});
+            }
+          }
+        } catch (_) {
+        } finally {
+          _isConvertingFrame = false;
+        }
+      });
+    } catch (e) {
+      debugPrint('[ActiveCallScreen] startImageStream error: $e');
+    }
+  }
+
+  void _startRemoteVideoPoller() {
+    _remoteVideoPoller?.cancel();
+    _remoteVideoPoller = Timer.periodic(const Duration(milliseconds: 140), (_) async {
+      if (!mounted || !_isVideoEnabled) return;
+      final curCallId = CallSessionController.instance.callId;
+      if (curCallId == null || curCallId.startsWith('call-') || curCallId.startsWith('group-')) return;
+      if (CallSessionController.instance.status != CallStatus.connected) return;
+
+      try {
+        final resp = await ApiClient.instance.get(ApiEndpoints.callVideoFrame(curCallId));
+        if (resp.isSuccess && resp.rawJson is Map) {
+          final b64 = resp.rawJson['frame'] as String?;
+          if (b64 != null && b64.isNotEmpty) {
+            final bytes = base64Decode(b64);
+            if (mounted) {
+              setState(() {
+                _remoteVideoBytes = bytes;
+                _lastRemoteFrameTime = DateTime.now().millisecondsSinceEpoch;
+              });
+            }
+          }
+        }
+      } catch (_) {}
+    });
   }
 
   void _stopCamera() {
+    _remoteVideoPoller?.cancel();
+    _remoteVideoPoller = null;
     _cameraController?.dispose();
     _cameraController = null;
   }
 
   void _switchCamera() async {
     _isFrontCamera = !_isFrontCamera;
-    try {
-      await _cameraController?.switchCamera();
-    } catch (_) {}
-    if (mounted) setState(() {});
+    _startCamera();
   }
 
   void _swapViews() {
@@ -99,6 +209,7 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
         _isVideoEnabled = session.isVideoOn;
         if (_isVideoEnabled) {
           _startCamera();
+          _startRemoteVideoPoller();
         } else {
           _stopCamera();
         }
@@ -305,41 +416,36 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
                                   borderRadius: BorderRadius.circular(25),
                                   child: Stack(
                                     children: [
-                                      if (_isCameraInMainView) ...[
-                                        if (_cameraController != null)
-                                          Positioned.fill(
-                                            child: MobileScanner(
-                                              controller: _cameraController!,
-                                              fit: BoxFit.cover,
-                                            ),
-                                          )
-                                        else
-                                          const Center(
-                                            child: CircularProgressIndicator(color: AppColors.primary),
+                                      Positioned.fill(
+                                        child: _isCameraInMainView
+                                            ? _buildLocalCameraPreview(isPip: false)
+                                            : _buildRemoteVideoView(isPip: false, textPrimary: textPrimary, textSecondary: textSecondary),
+                                      ),
+                                      // Camera label (Top Left)
+                                      Positioned(
+                                        top: 12,
+                                        left: 14,
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                          decoration: BoxDecoration(
+                                            color: Colors.black54,
+                                            borderRadius: BorderRadius.circular(12),
                                           ),
-                                        // Camera label & flip button
-                                        Positioned(
-                                          top: 12,
-                                          left: 14,
-                                          child: Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                            decoration: BoxDecoration(
-                                              color: Colors.black54,
-                                              borderRadius: BorderRadius.circular(12),
-                                            ),
-                                            child: const Row(
-                                              mainAxisSize: MainAxisSize.min,
-                                              children: [
-                                                Icon(Icons.videocam_rounded, size: 14, color: AppColors.primary),
-                                                SizedBox(width: 5),
-                                                Text(
-                                                  'Kamera Anda (HD Live)',
-                                                  style: TextStyle(color: Colors.white, fontSize: 11.5, fontWeight: FontWeight.w600),
-                                                ),
-                                              ],
-                                            ),
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              const Icon(Icons.videocam_rounded, size: 14, color: AppColors.primary),
+                                              const SizedBox(width: 5),
+                                              Text(
+                                                _isCameraInMainView ? 'Kamera Anda (HD Live)' : '${widget.contactName} (Live)',
+                                                style: const TextStyle(color: Colors.white, fontSize: 11.5, fontWeight: FontWeight.w600),
+                                              ),
+                                            ],
                                           ),
                                         ),
+                                      ),
+                                      // Flip camera button (Bottom Left)
+                                      if (_isCameraInMainView)
                                         Positioned(
                                           bottom: 12,
                                           left: 14,
@@ -348,7 +454,7 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
                                             child: Container(
                                               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                                               decoration: BoxDecoration(
-                                                color: Colors.black60,
+                                                color: Colors.black.withValues(alpha: 0.6),
                                                 borderRadius: BorderRadius.circular(14),
                                                 border: Border.all(color: Colors.white24),
                                               ),
@@ -366,53 +472,6 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
                                             ),
                                           ),
                                         ),
-                                      ] else ...[
-                                        // Remote contact view on main stage
-                                        Center(
-                                          child: Column(
-                                            mainAxisAlignment: MainAxisAlignment.center,
-                                            children: [
-                                              ModernAvatar(
-                                                name: widget.contactName,
-                                                radius: 50,
-                                                isVerified: true,
-                                              ),
-                                              const SizedBox(height: 14),
-                                              Text(
-                                                widget.contactName,
-                                                style: TextStyle(
-                                                  fontSize: 17,
-                                                  fontWeight: FontWeight.w700,
-                                                  color: textPrimary,
-                                                ),
-                                              ),
-                                              const SizedBox(height: 4),
-                                              Row(
-                                                mainAxisSize: MainAxisSize.min,
-                                                children: [
-                                                  Container(
-                                                    width: 7,
-                                                    height: 7,
-                                                    decoration: const BoxDecoration(
-                                                      shape: BoxShape.circle,
-                                                      color: Color(0xFF10B981),
-                                                    ),
-                                                  ),
-                                                  const SizedBox(width: 6),
-                                                  Text(
-                                                    '1080p 60fps • Terenkripsi E2EE',
-                                                    style: TextStyle(
-                                                      fontSize: 12,
-                                                      fontWeight: FontWeight.w600,
-                                                      color: textSecondary,
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                      ],
                                     ],
                                   ),
                                 ),
@@ -447,17 +506,12 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
                                     borderRadius: BorderRadius.circular(16),
                                     child: Stack(
                                       children: [
-                                        if (!_isCameraInMainView) ...[
-                                          if (_cameraController != null)
-                                            MobileScanner(
-                                              controller: _cameraController!,
-                                              fit: BoxFit.cover,
-                                            )
-                                          else
-                                            const Center(
-                                              child: Icon(Icons.videocam_rounded, color: Colors.white54, size: 28),
-                                            ),
-                                          // Flip button
+                                        Positioned.fill(
+                                          child: !_isCameraInMainView
+                                              ? _buildLocalCameraPreview(isPip: true)
+                                              : _buildRemoteVideoView(isPip: true, textPrimary: textPrimary, textSecondary: textSecondary),
+                                        ),
+                                        if (!_isCameraInMainView)
                                           Positioned(
                                             bottom: 6,
                                             right: 6,
@@ -477,39 +531,21 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
                                               ),
                                             ),
                                           ),
-                                        ] else ...[
-                                          // Remote contact mini avatar
-                                          Container(
-                                            color: const Color(0xFF1E293B),
-                                            child: Center(
-                                              child: Column(
-                                                mainAxisAlignment: MainAxisAlignment.center,
-                                                children: [
-                                                  ModernAvatar(
-                                                    name: widget.contactName,
-                                                    radius: 26,
-                                                    isVerified: true,
-                                                  ),
-                                                  const SizedBox(height: 6),
-                                                  Padding(
-                                                    padding: const EdgeInsets.symmetric(horizontal: 4),
-                                                    child: Text(
-                                                      widget.contactName,
-                                                      maxLines: 1,
-                                                      overflow: TextOverflow.ellipsis,
-                                                      style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
-                                                    ),
-                                                  ),
-                                                  const SizedBox(height: 2),
-                                                  const Text(
-                                                    'Tukar (Ketuk)',
-                                                    style: TextStyle(color: AppColors.primary, fontSize: 9.5, fontWeight: FontWeight.w600),
-                                                  ),
-                                                ],
-                                              ),
+                                        Positioned(
+                                          top: 6,
+                                          left: 6,
+                                          child: Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                                            decoration: BoxDecoration(
+                                              color: Colors.black54,
+                                              borderRadius: BorderRadius.circular(6),
+                                            ),
+                                            child: const Text(
+                                              'Tukar',
+                                              style: TextStyle(color: Colors.white, fontSize: 8.5, fontWeight: FontWeight.bold),
                                             ),
                                           ),
-                                        ],
+                                        ),
                                       ],
                                     ),
                                   ),
@@ -691,6 +727,100 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildLocalCameraPreview({required bool isPip}) {
+    if (_cameraController != null && _cameraController!.value.isInitialized) {
+      return SizedBox.expand(
+        child: FittedBox(
+          fit: BoxFit.cover,
+          child: SizedBox(
+            width: _cameraController!.value.previewSize?.height ?? 1,
+            height: _cameraController!.value.previewSize?.width ?? 1,
+            child: CameraPreview(_cameraController!),
+          ),
+        ),
+      );
+    }
+    return Container(
+      color: Colors.black,
+      child: const Center(
+        child: CircularProgressIndicator(color: AppColors.primary, strokeWidth: 2),
+      ),
+    );
+  }
+
+  Widget _buildRemoteVideoView({required bool isPip, required Color textPrimary, required Color textSecondary}) {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final hasLiveFrame = _remoteVideoBytes != null && (now - _lastRemoteFrameTime < 6000);
+
+    if (hasLiveFrame) {
+      return Image.memory(
+        _remoteVideoBytes!,
+        fit: BoxFit.cover,
+        gaplessPlayback: true,
+        width: double.infinity,
+        height: double.infinity,
+      );
+    }
+
+    // Modern placeholder while waiting for peer's camera feed
+    return Container(
+      color: const Color(0xFF0F172A),
+      width: double.infinity,
+      height: double.infinity,
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            ModernAvatar(
+              name: widget.contactName,
+              radius: isPip ? 26 : 48,
+              isVerified: true,
+            ),
+            SizedBox(height: isPip ? 6 : 14),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 6),
+              child: Text(
+                widget.contactName,
+                style: TextStyle(
+                  fontSize: isPip ? 11 : 16,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            const SizedBox(height: 3),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: isPip ? 5 : 7,
+                  height: isPip ? 5 : 7,
+                  decoration: const BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Color(0xFF10B981),
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  CallSessionController.instance.status == CallStatus.connected
+                      ? 'Menghubungkan video...'
+                      : 'Memanggil...',
+                  style: TextStyle(
+                    fontSize: isPip ? 9 : 12,
+                    fontWeight: FontWeight.w600,
+                    color: const Color(0xFF94A3B8),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }

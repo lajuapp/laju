@@ -74,8 +74,34 @@ class StatusScreenState extends State<StatusScreen> with AutomaticKeepAliveClien
       }
     }
     _loadStatuses();
-    // Background polling every 8 seconds for live updates from contacts
-    _pollingTimer = Timer.periodic(const Duration(seconds: 8), (_) => _loadStatuses());
+    // Background polling every 15 seconds for live updates from contacts
+    _pollingTimer = Timer.periodic(const Duration(seconds: 15), (_) => _loadStatuses());
+  }
+
+  bool _areMyStoriesEqual(List<StatusStoryItem> a, List<StatusStoryItem> b) {
+    if (identical(a, b)) return true;
+    if (a.length != b.length) return false;
+    for (int i = 0; i < a.length; i++) {
+      if (a[i].id != b[i].id || a[i].text != b[i].text || a[i].time != b[i].time) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  bool _areContactGroupsEqual(List<StatusContactGroup> a, List<StatusContactGroup> b) {
+    if (identical(a, b)) return true;
+    if (a.length != b.length) return false;
+    for (int i = 0; i < a.length; i++) {
+      if (a[i].name != b[i].name ||
+          a[i].avatarUrl != b[i].avatarUrl ||
+          a[i].time != b[i].time ||
+          a[i].storyCount != b[i].storyCount ||
+          a[i].isViewed != b[i].isViewed) {
+        return false;
+      }
+    }
+    return true;
   }
 
   Future<void> _loadStatuses() async {
@@ -84,21 +110,34 @@ class StatusScreenState extends State<StatusScreen> with AutomaticKeepAliveClien
       final contactGroups = await StatusService.instance.getContactsStatuses();
 
       if (!mounted) return;
-      setState(() {
-        _myStories
-          ..clear()
-          ..addAll(myStatuses);
 
-        _recentUpdates.clear();
-        _viewedUpdates.clear();
-        for (final group in contactGroups) {
-          if (group.isViewed) {
-            _viewedUpdates.add(group);
-          } else {
-            _recentUpdates.add(group);
-          }
+      final newRecent = <StatusContactGroup>[];
+      final newViewed = <StatusContactGroup>[];
+      for (final group in contactGroups) {
+        if (group.isViewed) {
+          newViewed.add(group);
+        } else {
+          newRecent.add(group);
         }
-      });
+      }
+
+      final myStoriesChanged = !_areMyStoriesEqual(_myStories, myStatuses);
+      final recentChanged = !_areContactGroupsEqual(_recentUpdates, newRecent);
+      final viewedChanged = !_areContactGroupsEqual(_viewedUpdates, newViewed);
+
+      if (myStoriesChanged || recentChanged || viewedChanged) {
+        setState(() {
+          _myStories
+            ..clear()
+            ..addAll(myStatuses);
+          _recentUpdates
+            ..clear()
+            ..addAll(newRecent);
+          _viewedUpdates
+            ..clear()
+            ..addAll(newViewed);
+        });
+      }
     } catch (e) {
       debugPrint('[StatusScreen] _loadStatuses error: $e');
     }
@@ -1218,6 +1257,7 @@ class StatusScreenState extends State<StatusScreen> with AutomaticKeepAliveClien
     required List<StatusStoryItem> stories,
   }) {
     return ListTile(
+      key: ValueKey('status_${name}_$time'),
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       leading: Container(
         padding: const EdgeInsets.all(2.5),

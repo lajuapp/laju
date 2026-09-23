@@ -36,6 +36,9 @@ class ModernAvatar extends StatelessWidget {
     [Color(0xFFF97316), Color(0xFFC2410C)], // Sunset Orange
   ];
 
+  // Static in-memory cache to prevent re-decoding base64 or creating duplicate ImageProviders on every rebuild
+  static final Map<String, ImageProvider> _imageProviderCache = {};
+
   List<Color> _resolveGradient(String text) {
     if (customGradient != null && customGradient!.length >= 2) {
       return customGradient!;
@@ -47,6 +50,51 @@ class ModernAvatar extends StatelessWidget {
     return _avatarGradients[hash % _avatarGradients.length];
   }
 
+  static ImageProvider? _resolveProvider(String? rawPath) {
+    if (rawPath == null || rawPath.trim().isEmpty) return null;
+    final trimmed = rawPath.trim();
+
+    if (_imageProviderCache.containsKey(trimmed)) {
+      return _imageProviderCache[trimmed];
+    }
+
+    String normalizedPath = trimmed;
+    if (trimmed.startsWith('file://')) {
+      try {
+        normalizedPath = Uri.parse(trimmed).toFilePath();
+      } catch (_) {
+        normalizedPath = trimmed.replaceFirst('file://', '');
+      }
+    }
+
+    final isNetwork = normalizedPath.startsWith('http://') || normalizedPath.startsWith('https://');
+    final isBase64 = normalizedPath.startsWith('data:image') || normalizedPath.startsWith('data:application');
+    final isLocalFile = !isNetwork && !isBase64 && File(normalizedPath).existsSync();
+
+    ImageProvider? provider;
+    if (isNetwork) {
+      provider = NetworkImage(normalizedPath);
+    } else if (isBase64) {
+      try {
+        final b64 = normalizedPath.split(',').last;
+        final bytes = base64Decode(b64);
+        provider = MemoryImage(bytes);
+      } catch (_) {}
+    } else if (isLocalFile) {
+      provider = FileImage(File(normalizedPath));
+    }
+
+    if (provider != null) {
+      // Limit cache size to prevent unbounded memory growth
+      if (_imageProviderCache.length > 200) {
+        _imageProviderCache.clear();
+      }
+      _imageProviderCache[trimmed] = provider;
+    }
+
+    return provider;
+  }
+
   @override
   Widget build(BuildContext context) {
     final effectiveRadius = size != null ? (size! / 2) : radius;
@@ -56,32 +104,7 @@ class ModernAvatar extends StatelessWidget {
         : '?';
 
     final gradientColors = _resolveGradient(name);
-
-    final rawPath = imagePath?.trim();
-    String? normalizedPath = rawPath;
-    if (rawPath != null && rawPath.startsWith('file://')) {
-      try {
-        normalizedPath = Uri.parse(rawPath).toFilePath();
-      } catch (_) {
-        normalizedPath = rawPath.replaceFirst('file://', '');
-      }
-    }
-
-    final isNetwork = normalizedPath != null && (normalizedPath.startsWith('http://') || normalizedPath.startsWith('https://'));
-    final isBase64 = normalizedPath != null && (normalizedPath.startsWith('data:image') || normalizedPath.startsWith('data:application'));
-    final isLocalFile = !isNetwork && !isBase64 && normalizedPath != null && normalizedPath.isNotEmpty && File(normalizedPath).existsSync();
-    final hasValidImage = isNetwork || isBase64 || isLocalFile;
-    ImageProvider? avatarProvider;
-    if (isNetwork) {
-      avatarProvider = NetworkImage(normalizedPath);
-    } else if (isBase64) {
-      try {
-        final b64 = normalizedPath.split(',').last;
-        avatarProvider = MemoryImage(base64Decode(b64));
-      } catch (_) {}
-    } else if (isLocalFile) {
-      avatarProvider = FileImage(File(normalizedPath));
-    }
+    final avatarProvider = _resolveProvider(imagePath);
 
     return Stack(
       clipBehavior: Clip.none,
@@ -91,50 +114,77 @@ class ModernAvatar extends StatelessWidget {
           height: effectiveRadius * 2,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            gradient: hasValidImage
-                ? null
-                : LinearGradient(
-                    colors: gradientColors,
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-            image: hasValidImage && avatarProvider != null
-                ? DecorationImage(
-                    image: avatarProvider,
-                    fit: BoxFit.cover,
-                  )
-                : null,
+            // Always retain the gradient background so there is NEVER a transparent/white flash
+            gradient: LinearGradient(
+              colors: gradientColors,
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
             border: Border.all(
               color: Colors.white.withValues(alpha: 0.35),
               width: 1.5,
             ),
             boxShadow: [
               BoxShadow(
-                color: (hasValidImage ? AppColors.primary : gradientColors[0]).withValues(alpha: 0.28),
+                color: gradientColors[0].withValues(alpha: 0.28),
                 blurRadius: 8,
                 offset: const Offset(0, 2),
               ),
             ],
           ),
           alignment: Alignment.center,
-          child: hasValidImage
-              ? null
-              : Text(
-                  initials,
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: effectiveRadius * 0.72,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 0.5,
-                    shadows: const [
-                      Shadow(
-                        color: Colors.black26,
-                        offset: Offset(0, 1),
-                        blurRadius: 2,
+          child: ClipOval(
+            child: SizedBox(
+              width: effectiveRadius * 2,
+              height: effectiveRadius * 2,
+              child: avatarProvider != null
+                  ? Image(
+                      image: avatarProvider,
+                      width: effectiveRadius * 2,
+                      height: effectiveRadius * 2,
+                      fit: BoxFit.cover,
+                      gaplessPlayback: true, // Prevents glitch/blink during rebuilds!
+                      errorBuilder: (context, error, stackTrace) {
+                        return Center(
+                          child: Text(
+                            initials,
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: effectiveRadius * 0.72,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 0.5,
+                              shadows: const [
+                                Shadow(
+                                  color: Colors.black26,
+                                  offset: Offset(0, 1),
+                                  blurRadius: 2,
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    )
+                  : Center(
+                      child: Text(
+                        initials,
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: effectiveRadius * 0.72,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.5,
+                          shadows: const [
+                            Shadow(
+                              color: Colors.black26,
+                              offset: Offset(0, 1),
+                              blurRadius: 2,
+                            ),
+                          ],
+                        ),
                       ),
-                    ],
-                  ),
-                ),
+                    ),
+            ),
+          ),
         ),
         if (isOnline)
           Positioned(

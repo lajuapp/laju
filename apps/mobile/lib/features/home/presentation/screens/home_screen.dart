@@ -55,7 +55,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void _onConversationsSync() {
     if (mounted && _currentBottomNavIndex == 0 && !_isSearchExpanded) {
       final apiConvs = ConversationService.instance.conversationsNotifier.value;
-      if (apiConvs.isNotEmpty) {
+      if (apiConvs.isNotEmpty && !ConversationModel.areListsEqual(_conversations, apiConvs)) {
         setState(() {
           _conversations = apiConvs;
         });
@@ -98,13 +98,19 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       final apiConvs = await ConversationService.instance.fetchConversations();
       if (mounted) {
-        setState(() {
-          if (apiConvs.isNotEmpty) _conversations = apiConvs;
-          _isLoadingConversations = false;
-        });
+        if (!ConversationModel.areListsEqual(_conversations, apiConvs)) {
+          setState(() {
+            if (apiConvs.isNotEmpty) _conversations = apiConvs;
+            _isLoadingConversations = false;
+          });
+        } else if (_isLoadingConversations) {
+          setState(() {
+            _isLoadingConversations = false;
+          });
+        }
       }
     } catch (_) {
-      if (mounted) {
+      if (mounted && _isLoadingConversations) {
         setState(() {
           _isLoadingConversations = false;
         });
@@ -789,6 +795,7 @@ class _HomeScreenState extends State<HomeScreen> {
           }
           final conv = _filteredConversations[index - 1];
           return ConversationTile(
+            key: ValueKey(conv.id),
             conversation: conv,
             onTap: () => _openChat(conv),
             onLongPress: () => _handleConversationOptions(conv),
@@ -796,6 +803,7 @@ class _HomeScreenState extends State<HomeScreen> {
         }
         final conv = _filteredConversations[index];
         return ConversationTile(
+          key: ValueKey(conv.id),
           conversation: conv,
           onTap: () => _openChat(conv),
           onLongPress: () => _handleConversationOptions(conv),

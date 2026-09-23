@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
 import '../../features/conversations/domain/models/conversation_model.dart';
@@ -49,6 +50,7 @@ class LocalDatabase {
   static const String _createMessages = '''
     CREATE TABLE IF NOT EXISTS messages (
       id               TEXT PRIMARY KEY,
+      client_message_id TEXT,
       conversation_id  TEXT NOT NULL,
       sender_name      TEXT NOT NULL DEFAULT '',
       content          TEXT NOT NULL DEFAULT '',
@@ -95,6 +97,7 @@ class LocalDatabase {
         await db.execute(_createMessages);
         await db.execute(_createCallLogs);
         await db.execute('CREATE INDEX IF NOT EXISTS idx_messages_conv ON messages(conversation_id)');
+        await db.execute('CREATE INDEX IF NOT EXISTS idx_messages_client ON messages(client_message_id)');
         await db.execute('CREATE INDEX IF NOT EXISTS idx_calls_ts ON call_logs(timestamp)');
       },
       onOpen: (db) async {
@@ -103,6 +106,12 @@ class LocalDatabase {
         } catch (_) {}
         try {
           await db.execute('CREATE INDEX IF NOT EXISTS idx_calls_ts ON call_logs(timestamp)');
+        } catch (_) {}
+        try {
+          await db.execute('ALTER TABLE messages ADD COLUMN client_message_id TEXT');
+        } catch (_) {}
+        try {
+          await db.execute('CREATE INDEX IF NOT EXISTS idx_messages_client ON messages(client_message_id)');
         } catch (_) {}
         try {
           await db.execute('ALTER TABLE conversations ADD COLUMN avatar_url TEXT');
@@ -175,7 +184,8 @@ class LocalDatabase {
         whereArgs: [conversationId],
         orderBy: 'timestamp ASC',
       );
-      return rows.map(_rowToMessage).toList();
+      final rawList = rows.map(_rowToMessage).toList();
+      return MessageModel.deduplicate(rawList);
     } catch (_) {
       return [];
     }
@@ -184,9 +194,17 @@ class LocalDatabase {
   /// Insert or replace a list of messages. Evicts oldest if over [_maxMessagesPerConv].
   Future<void> upsertMessages(String conversationId, List<MessageModel> messages) async {
     if (messages.isEmpty) return;
+    final deduplicated = MessageModel.deduplicate(messages);
     final now = DateTime.now().millisecondsSinceEpoch;
     final batch = _database.batch();
-    for (final m in messages) {
+    for (final m in deduplicated) {
+      if (m.clientMessageId != null && m.clientMessageId!.isNotEmpty) {
+        batch.delete(
+          'messages',
+          where: '(id = ? OR client_message_id = ?) AND id != ?',
+          whereArgs: [m.clientMessageId, m.clientMessageId, m.id],
+        );
+      }
       batch.insert(
         'messages',
         _messageToRow(m, now),
@@ -207,13 +225,32 @@ class LocalDatabase {
     );
   }
 
+  /// Atomically replace an optimistic message with the server-confirmed message
+  Future<void> replaceOptimisticMessage(String clientMessageId, MessageModel serverMessage) async {
+    try {
+      final now = DateTime.now().millisecondsSinceEpoch;
+      await _database.delete(
+        'messages',
+        where: 'id = ? OR client_message_id = ?',
+        whereArgs: [clientMessageId, clientMessageId],
+      );
+      await _database.insert(
+        'messages',
+        _messageToRow(serverMessage.copyWith(clientMessageId: clientMessageId), now),
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    } catch (e) {
+      debugPrint('[LocalDatabase] replaceOptimisticMessage error: $e');
+    }
+  }
+
   /// Update the delivery status of a specific message.
   Future<void> updateMessageStatus(String messageId, MessageDeliveryStatus status) async {
     await _database.update(
       'messages',
       {'status': status.name},
-      where: 'id = ?',
-      whereArgs: [messageId],
+      where: 'id = ? OR client_message_id = ?',
+      whereArgs: [messageId, messageId],
     );
   }
 
@@ -322,6 +359,7 @@ class LocalDatabase {
   Map<String, dynamic> _messageToRow(MessageModel m, int cachedAt) {
     return {
       'id': m.id,
+      'client_message_id': m.clientMessageId,
       'conversation_id': m.conversationId,
       'sender_name': m.senderName,
       'content': m.content,
@@ -342,6 +380,7 @@ class LocalDatabase {
   MessageModel _rowToMessage(Map<String, dynamic> row) {
     return MessageModel(
       id: row['id'] as String,
+      clientMessageId: row['client_message_id'] as String?,
       conversationId: row['conversation_id'] as String,
       senderName: row['sender_name'] as String,
       content: row['content'] as String,

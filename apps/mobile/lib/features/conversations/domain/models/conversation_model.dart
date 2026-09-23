@@ -93,4 +93,47 @@ class ConversationModel {
       participantTrustScore: participantTrustScore ?? this.participantTrustScore,
     );
   }
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    return other is ConversationModel &&
+        other.id == id &&
+        other.title == title &&
+        other.avatarUrl == avatarUrl &&
+        other.lastMessage == lastMessage &&
+        other.lastMessageTime.millisecondsSinceEpoch == lastMessageTime.millisecondsSinceEpoch &&
+        other.unreadCount == unreadCount &&
+        other.isPinned == isPinned &&
+        other.isMuted == isMuted &&
+        other.isOnline == isOnline &&
+        other.isLocked == isLocked &&
+        other.isArchived == isArchived;
+  }
+
+  @override
+  int get hashCode {
+    return Object.hash(
+      id,
+      title,
+      avatarUrl,
+      lastMessage,
+      lastMessageTime.millisecondsSinceEpoch,
+      unreadCount,
+      isPinned,
+      isMuted,
+      isOnline,
+    );
+  }
+
+  static bool areListsEqual(List<ConversationModel>? a, List<ConversationModel>? b) {
+    if (identical(a, b)) return true;
+    if (a == null || b == null) return false;
+    if (a.length != b.length) return false;
+    for (int i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
+  }
 }
+

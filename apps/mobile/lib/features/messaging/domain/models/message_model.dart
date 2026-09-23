@@ -92,4 +92,80 @@ class MessageModel {
       isEdited: isEdited ?? this.isEdited,
     );
   }
+
+  /// Deduplicates a list of messages, collapsing optimistic temporary IDs
+  /// with confirmed server messages, and removing redundant duplicates.
+  static List<MessageModel> deduplicate(List<MessageModel> list) {
+    if (list.isEmpty) return [];
+
+    final result = <MessageModel>[];
+    final sorted = List<MessageModel>.from(list)
+      ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+
+    for (final inc in sorted) {
+      final idx = result.indexWhere((m) {
+        if (m.id == inc.id) return true;
+
+        if (inc.clientMessageId != null && inc.clientMessageId!.isNotEmpty) {
+          if (m.id == inc.clientMessageId || m.clientMessageId == inc.clientMessageId) {
+            return true;
+          }
+        }
+        if (m.clientMessageId != null && m.clientMessageId!.isNotEmpty) {
+          if (inc.id == m.clientMessageId || inc.clientMessageId == m.clientMessageId) {
+            return true;
+          }
+        }
+
+        // Match outgoing messages with same content and timestamp within 15 seconds
+        if (m.isOutgoing && inc.isOutgoing &&
+            m.contentType == inc.contentType &&
+            m.content.trim() == inc.content.trim() &&
+            (m.timestamp.difference(inc.timestamp).abs().inSeconds < 15)) {
+          return true;
+        }
+
+        return false;
+      });
+
+      if (idx != -1) {
+        final existing = result[idx];
+        final isExistingTemp = existing.id.startsWith('msg-') ||
+            existing.id.startsWith('img-') ||
+            existing.id.startsWith('doc-') ||
+            existing.id.startsWith('aud-') ||
+            existing.id.startsWith('voice-');
+        final isIncTemp = inc.id.startsWith('msg-') ||
+            inc.id.startsWith('img-') ||
+            inc.id.startsWith('doc-') ||
+            inc.id.startsWith('aud-') ||
+            inc.id.startsWith('voice-');
+
+        if (isExistingTemp && !isIncTemp) {
+          result[idx] = inc.copyWith(
+            clientMessageId: inc.clientMessageId ?? existing.clientMessageId ?? existing.id,
+            attachmentPath: existing.attachmentPath ?? inc.attachmentPath,
+            attachmentName: existing.attachmentName ?? inc.attachmentName,
+            attachmentSize: existing.attachmentSize ?? inc.attachmentSize,
+            replyTo: existing.replyTo ?? inc.replyTo,
+          );
+        } else {
+          result[idx] = existing.copyWith(
+            clientMessageId: existing.clientMessageId ?? inc.clientMessageId,
+            status: inc.status != MessageDeliveryStatus.sending ? inc.status : existing.status,
+            reactions: inc.reactions.isNotEmpty ? inc.reactions : existing.reactions,
+            attachmentPath: existing.attachmentPath ?? inc.attachmentPath,
+            attachmentName: existing.attachmentName ?? inc.attachmentName,
+            attachmentSize: existing.attachmentSize ?? inc.attachmentSize,
+            replyTo: existing.replyTo ?? inc.replyTo,
+          );
+        }
+      } else {
+        result.add(inc);
+      }
+    }
+
+    return result;
+  }
 }
+
