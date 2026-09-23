@@ -172,17 +172,19 @@ class ChatBubble extends StatelessWidget {
     );
   }
 
-  Widget _buildStatusIcon(MessageDeliveryStatus status, {bool isOut = false, bool forcedWhite = false}) {
-    final defaultColor = forcedWhite ? Colors.white : (isOut ? Colors.white70 : AppColors.textSecondary);
+  Widget _buildStatusIcon(MessageDeliveryStatus status, {bool isOut = false, bool forcedWhite = false, bool isDark = true}) {
+    final defaultColor = forcedWhite
+        ? Colors.white
+        : (isOut ? (isDark ? Colors.white70 : const Color(0xFF667781)) : AppColors.textSecondary);
     switch (status) {
       case MessageDeliveryStatus.sending:
-        return Icon(Icons.access_time_rounded, size: 12, color: forcedWhite ? Colors.white70 : (isOut ? Colors.white60 : AppColors.textTertiary));
+        return Icon(Icons.access_time_rounded, size: 12, color: forcedWhite ? Colors.white70 : (isOut ? (isDark ? Colors.white60 : const Color(0xFF8696A0)) : AppColors.textTertiary));
       case MessageDeliveryStatus.sent:
         return Icon(Icons.check_rounded, size: 13, color: defaultColor);
       case MessageDeliveryStatus.delivered:
         return Icon(Icons.done_all_rounded, size: 13, color: defaultColor);
       case MessageDeliveryStatus.read:
-        return const Icon(Icons.done_all_rounded, size: 13, color: Color(0xFF67E8F9));
+        return const Icon(Icons.done_all_rounded, size: 13, color: Color(0xFF53BDEB));
       case MessageDeliveryStatus.failed:
         return const Icon(Icons.error_outline_rounded, size: 13, color: AppColors.danger);
     }
@@ -233,10 +235,10 @@ class ChatBubble extends StatelessWidget {
       child: GestureDetector(
         onLongPress: () => _showMessageOptions(context),
         child: Container(
-          margin: const EdgeInsets.symmetric(vertical: 2.5),
+          margin: const EdgeInsets.symmetric(vertical: 1.5),
           padding: EdgeInsets.only(
-            left: isOut ? 48 : 12,
-            right: isOut ? 12 : 48,
+            left: isOut ? 52 : 8,
+            right: isOut ? 8 : 52,
           ),
           child: Stack(
             clipBehavior: Clip.none,
@@ -244,56 +246,26 @@ class ChatBubble extends StatelessWidget {
               Container(
                 padding: isImage
                     ? (_hasImageCaption()
-                        ? const EdgeInsets.fromLTRB(4, 4, 4, 8)
-                        : const EdgeInsets.all(4))
-                    : const EdgeInsets.fromLTRB(14, 10, 14, 8),
+                        ? const EdgeInsets.fromLTRB(4, 4, 4, 6)
+                        : const EdgeInsets.all(3))
+                    : (message.contentType == MessageContentType.location
+                        ? const EdgeInsets.all(4)
+                        : const EdgeInsets.fromLTRB(9, 6, 9, 5)),
                 decoration: BoxDecoration(
-                  gradient: isOut
-                      ? LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: isDark
-                              ? [
-                                  const Color(0xFF065F46).withValues(alpha: 0.85),
-                                  const Color(0xFF047857).withValues(alpha: 0.75),
-                                ]
-                              : [
-                                  const Color(0xFF059669).withValues(alpha: 0.88),
-                                  const Color(0xFF10B981).withValues(alpha: 0.78),
-                                ],
-                        )
-                      : LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: isDark
-                              ? [
-                                  const Color(0xFF1E293B).withValues(alpha: 0.82),
-                                  const Color(0xFF0F172A).withValues(alpha: 0.72),
-                                ]
-                              : [
-                                  Colors.white.withValues(alpha: 0.92),
-                                  Colors.white.withValues(alpha: 0.78),
-                                ],
-                        ),
+                  color: isOut
+                      ? (isDark ? const Color(0xFF005C4B) : const Color(0xFFD9FDD3))
+                      : (isDark ? const Color(0xFF202C33) : Colors.white),
                   borderRadius: BorderRadius.only(
-                    topLeft: const Radius.circular(18),
-                    topRight: const Radius.circular(18),
-                    bottomLeft: Radius.circular(isOut ? 18 : 4),
-                    bottomRight: Radius.circular(isOut ? 4 : 18),
-                  ),
-                  border: Border.all(
-                    color: isOut
-                        ? (isDark ? const Color(0xFF34D399).withValues(alpha: 0.35) : Colors.white.withValues(alpha: 0.45))
-                        : (isDark ? Colors.white.withValues(alpha: 0.12) : Colors.white.withValues(alpha: 0.65)),
-                    width: 1.1,
+                    topLeft: const Radius.circular(10),
+                    topRight: const Radius.circular(10),
+                    bottomLeft: Radius.circular(isOut ? 10 : 2),
+                    bottomRight: Radius.circular(isOut ? 2 : 10),
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: isOut
-                          ? AppColors.primary.withValues(alpha: isDark ? 0.25 : 0.15)
-                          : Colors.black.withValues(alpha: isDark ? 0.20 : 0.04),
-                      blurRadius: 10,
-                      offset: const Offset(0, 3),
+                      color: Colors.black.withValues(alpha: isDark ? 0.20 : 0.08),
+                      blurRadius: 1.5,
+                      offset: const Offset(0, 1),
                     ),
                   ],
                 ),
@@ -306,12 +278,12 @@ class ChatBubble extends StatelessWidget {
                         padding: EdgeInsets.only(
                           left: isImage ? 8 : 0,
                           top: isImage ? 4 : 0,
-                          bottom: 4,
+                          bottom: 3,
                         ),
                         child: Text(
                           message.senderName,
                           style: TextStyle(
-                            fontSize: 12.5,
+                            fontSize: 12,
                             fontWeight: FontWeight.w700,
                             color: isDark ? AppColors.primaryLight : AppColors.primaryDark,
                             letterSpacing: 0.2,
@@ -327,16 +299,16 @@ class ChatBubble extends StatelessWidget {
                           left: isImage ? 4 : 0,
                           right: isImage ? 4 : 0,
                           top: isImage ? 4 : 0,
-                          bottom: 6,
+                          bottom: 5,
                         ),
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
                         decoration: BoxDecoration(
                           color: isDark
-                              ? Colors.black.withValues(alpha: 0.3)
+                              ? Colors.black.withValues(alpha: 0.25)
                               : (isOut ? Colors.black.withValues(alpha: 0.05) : const Color(0xFFF1F5F9)),
-                          borderRadius: BorderRadius.circular(8),
+                          borderRadius: BorderRadius.circular(6),
                           border: const Border(
-                            left: BorderSide(color: AppColors.primary, width: 3.5),
+                            left: BorderSide(color: AppColors.primary, width: 3),
                           ),
                         ),
                         child: Column(
@@ -346,7 +318,7 @@ class ChatBubble extends StatelessWidget {
                             Text(
                               message.replyTo!.senderName,
                               style: const TextStyle(
-                                fontSize: 11.5,
+                                fontSize: 11,
                                 fontWeight: FontWeight.w700,
                                 color: AppColors.primary,
                               ),
@@ -357,7 +329,7 @@ class ChatBubble extends StatelessWidget {
                             Text(
                               message.replyTo!.content,
                               style: TextStyle(
-                                fontSize: 11.5,
+                                fontSize: 11,
                                 color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
                               ),
                               maxLines: 2,
@@ -368,12 +340,16 @@ class ChatBubble extends StatelessWidget {
                       ),
                     ],
 
-                    // Image Message Content (Modern, edge-to-edge look with optional caption & floating pill)
+                    // Image Message Content
                     if (isImage)
                       _buildImageContent(context, isDark, isOut, timeStr),
 
-                    if (!isImage) ...[
-                      // Attachment Preview (Refined Card)
+                    // Location Message Content (OpenStreetMap card)
+                    if (message.contentType == MessageContentType.location)
+                      _buildLocationContent(context, isDark, isOut, timeStr),
+
+                    if (!isImage && message.contentType != MessageContentType.location) ...[
+                      // Attachment Preview
                       if (message.contentType == MessageContentType.attachment)
                         _buildAttachmentPreview(context, isDark, isOut),
 
@@ -386,63 +362,52 @@ class ChatBubble extends StatelessWidget {
                           isDark: isDark,
                         ),
 
-                      // Message Content (Deduplicated so attachment title is not repeated)
-                      if (_shouldShowMessageContent()) ...[
-                        if (message.contentType == MessageContentType.attachment)
-                          const SizedBox(height: 4),
-                        Text(
-                          message.content,
-                          style: TextStyle(
-                            fontSize: 14.5 * ChatAppearanceController.instance.fontScale,
-                            color: isOut ? Colors.white : (isDark ? Colors.white : const Color(0xFF0F172A)),
-                            height: 1.35,
+                      // Text message with inline timestamp (WhatsApp style)
+                      if (message.contentType == MessageContentType.text)
+                        _buildTextMessageContent(context, isDark, isOut, timeStr)
+                      else ...[
+                        // Non-text attachment / voice note content & timestamp below
+                        if (_shouldShowMessageContent()) ...[
+                          const SizedBox(height: 3),
+                          Text(
+                            message.content,
+                            style: TextStyle(
+                              fontSize: 14 * ChatAppearanceController.instance.fontScale,
+                              color: isOut
+                                  ? (isDark ? Colors.white : const Color(0xFF111827))
+                                  : (isDark ? const Color(0xFFE9EDEF) : const Color(0xFF111827)),
+                              height: 1.32,
+                            ),
                           ),
-                        ),
-                      ],
-                      const SizedBox(height: 4),
-
-                      // Timestamp & Status Icon (Right-aligned WhatsApp style)
-                      Align(
-                        alignment: Alignment.bottomRight,
-                        child: Padding(
-                          padding: const EdgeInsets.only(top: 2),
+                        ],
+                        const SizedBox(height: 2),
+                        Align(
+                          alignment: Alignment.bottomRight,
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               if (message.isDisappearing) ...[
-                                Icon(Icons.timer_outlined, size: 11, color: isOut ? Colors.white70 : AppColors.cyan),
-                                const SizedBox(width: 3),
-                              ],
-                              if (message.isEdited) ...[
-                                Text(
-                                  'diedit ',
-                                  style: TextStyle(
-                                    fontSize: 10,
-                                    fontStyle: FontStyle.italic,
-                                    color: isOut
-                                        ? Colors.white.withValues(alpha: 0.75)
-                                        : (isDark ? const Color(0xFF94A3B8) : const Color(0xFF6B7280)),
-                                  ),
-                                ),
+                                Icon(Icons.timer_outlined, size: 10.5, color: isOut ? Colors.white70 : AppColors.cyan),
+                                const SizedBox(width: 2.5),
                               ],
                               Text(
                                 timeStr,
                                 style: TextStyle(
-                                  fontSize: 10.5,
+                                  fontSize: 10,
                                   color: isOut
-                                      ? Colors.white.withValues(alpha: 0.8)
-                                      : (isDark ? const Color(0xFF94A3B8) : const Color(0xFF6B7280)),
+                                      ? (isDark ? Colors.white.withValues(alpha: 0.7) : const Color(0xFF667781))
+                                      : (isDark ? const Color(0xFF8696A0) : const Color(0xFF667781)),
                                   fontWeight: FontWeight.w400,
                                 ),
                               ),
                               if (isOut) ...[
-                                const SizedBox(width: 4),
-                                _buildStatusIcon(message.status, isOut: true),
+                                const SizedBox(width: 3.5),
+                                _buildStatusIcon(message.status, isOut: true, isDark: isDark),
                               ],
                             ],
                           ),
                         ),
-                      ),
+                      ],
                     ],
                   ],
                 ),
@@ -737,7 +702,236 @@ class ChatBubble extends StatelessWidget {
     );
   }
 
+  Widget _buildTextMessageContent(BuildContext context, bool isDark, bool isOut, String timeStr) {
+    final textColor = isOut
+        ? (isDark ? const Color(0xFFE9EDEF) : const Color(0xFF111B21))
+        : (isDark ? const Color(0xFFE9EDEF) : const Color(0xFF111B21));
+
+    final timeColor = isOut
+        ? (isDark ? Colors.white.withValues(alpha: 0.65) : const Color(0xFF667781))
+        : (isDark ? const Color(0xFF8696A0) : const Color(0xFF667781));
+
+    final fontScale = ChatAppearanceController.instance.fontScale;
+
+    return RichText(
+      text: TextSpan(
+        children: [
+          TextSpan(
+            text: message.content,
+            style: TextStyle(
+              fontSize: 14.5 * fontScale,
+              color: textColor,
+              height: 1.32,
+            ),
+          ),
+          const WidgetSpan(
+            alignment: PlaceholderAlignment.middle,
+            child: SizedBox(width: 8),
+          ),
+          WidgetSpan(
+            alignment: PlaceholderAlignment.bottom,
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 0.5),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  if (message.isDisappearing) ...[
+                    Icon(Icons.timer_outlined, size: 10.5, color: timeColor),
+                    const SizedBox(width: 2.5),
+                  ],
+                  if (message.isEdited) ...[
+                    Text(
+                      'diedit ',
+                      style: TextStyle(
+                        fontSize: 9.5,
+                        fontStyle: FontStyle.italic,
+                        color: timeColor,
+                      ),
+                    ),
+                  ],
+                  Text(
+                    timeStr,
+                    style: TextStyle(
+                      fontSize: 10.5,
+                      color: timeColor,
+                      fontWeight: FontWeight.w400,
+                    ),
+                  ),
+                  if (isOut) ...[
+                    const SizedBox(width: 3.5),
+                    _buildStatusIcon(message.status, isOut: true, isDark: isDark),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLocationContent(BuildContext context, bool isDark, bool isOut, String timeStr) {
+    LocationData loc;
+    try {
+      loc = LocationData.fromJson(message.content);
+    } catch (_) {
+      loc = LocationData(
+        latitude: -6.2088,
+        longitude: 106.8456,
+        name: message.attachmentName ?? 'Lokasi Terkini',
+        address: message.attachmentSize ?? '',
+      );
+    }
+
+    final tileUrl = loc.getOsmTileUrl(zoom: 16);
+    final isLive = loc.isLive;
+    final timeColor = isOut
+        ? (isDark ? Colors.white.withValues(alpha: 0.7) : const Color(0xFF667781))
+        : (isDark ? const Color(0xFF8696A0) : const Color(0xFF667781));
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(8),
+        onTap: () => LocationService.instance.openMap(loc.latitude, loc.longitude, label: loc.name),
+        child: SizedBox(
+          width: 245,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // OpenStreetMap Mini Map Preview
+              ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: SizedBox(
+                  width: double.infinity,
+                  height: 120,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      Image.network(
+                        tileUrl,
+                        fit: BoxFit.cover,
+                        headers: const {
+                          'User-Agent': 'LajuMobileApp/1.0 (Privacy-First Secure Messenger)',
+                        },
+                        errorBuilder: (context, error, stackTrace) => Container(
+                          color: isDark ? const Color(0xFF1E293B) : const Color(0xFFE2E8F0),
+                          child: const Center(
+                            child: Icon(Icons.map_rounded, color: Colors.grey, size: 36),
+                          ),
+                        ),
+                      ),
+                      // Center Pin
+                      Center(
+                        child: Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: BoxDecoration(
+                            color: isLive ? const Color(0xFF10B981) : AppColors.danger,
+                            shape: BoxShape.circle,
+                            boxShadow: const [BoxShadow(color: Colors.black38, blurRadius: 4)],
+                          ),
+                          child: Icon(
+                            isLive ? Icons.share_location_rounded : Icons.location_on_rounded,
+                            color: Colors.white,
+                            size: 16,
+                          ),
+                        ),
+                      ),
+                      // Attribution tag
+                      Positioned(
+                        top: 4,
+                        left: 4,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: (isLive ? const Color(0xFF10B981) : Colors.black87).withValues(alpha: 0.85),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            isLive ? 'LIVE' : '© OpenStreetMap',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 8.5,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 5),
+              // Location Info & Timestamp
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      loc.name.isNotEmpty ? loc.name : 'Lokasi Terkini',
+                      style: TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w700,
+                        color: isOut
+                            ? (isDark ? Colors.white : const Color(0xFF111827))
+                            : (isDark ? Colors.white : const Color(0xFF111827)),
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    if (loc.address.isNotEmpty) ...[
+                      const SizedBox(height: 1),
+                      Text(
+                        loc.address,
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: isOut
+                              ? (isDark ? Colors.white70 : const Color(0xFF475569))
+                              : (isDark ? const Color(0xFF94A3B8) : const Color(0xFF475569)),
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                    const SizedBox(height: 2),
+                    Align(
+                      alignment: Alignment.bottomRight,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            timeStr,
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: timeColor,
+                              fontWeight: FontWeight.w400,
+                            ),
+                          ),
+                          if (isOut) ...[
+                            const SizedBox(width: 3.5),
+                            _buildStatusIcon(message.status, isOut: true, isDark: isDark),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   bool _shouldShowMessageContent() {
+    if (message.contentType == MessageContentType.location) {
+      return false;
+    }
     if (message.contentType == MessageContentType.voiceNote && message.attachmentPath != null) {
       return false;
     }

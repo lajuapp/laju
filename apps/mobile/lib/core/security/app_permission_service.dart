@@ -8,6 +8,7 @@ enum AppPermissionType {
   microphone,
   notification,
   contacts,
+  location,
 }
 
 class AppPermissionService {
@@ -20,6 +21,7 @@ class AppPermissionService {
     AppPermissionType.microphone: false,
     AppPermissionType.notification: false,
     AppPermissionType.contacts: false,
+    AppPermissionType.location: false,
   };
 
   bool isGranted(AppPermissionType type) => _granted[type] ?? false;
@@ -34,6 +36,11 @@ class AppPermissionService {
   }) async {
     if (type == AppPermissionType.camera) {
       final hasNative = await DeviceMediaService.hasCameraPermission();
+      if (hasNative && instance.isGranted(type)) {
+        return true;
+      }
+    } else if (type == AppPermissionType.location) {
+      final hasNative = await LocationService.instance.hasPermission();
       if (hasNative && instance.isGranted(type)) {
         return true;
       }
@@ -76,6 +83,12 @@ class AppPermissionService {
         desc = 'Izin kontak diperlukan untuk memilih dan membagikan kontak dari buku telepon Anda.';
         icon = Icons.contacts_rounded;
         color = const Color(0xFF0284C7);
+        break;
+      case AppPermissionType.location:
+        title = 'Akses Lokasi Perangkat';
+        desc = 'Izin lokasi diperlukan untuk membagikan lokasi Anda (OpenStreetMap) kepada kontak secara aman.';
+        icon = Icons.location_on_rounded;
+        color = const Color(0xFF10B981);
         break;
     }
 
@@ -179,6 +192,18 @@ class AppPermissionService {
                             instance.setGranted(type, false);
                             if (ctx.mounted) {
                               LajuToast.error(ctx, 'Izin kamera belum disetujui');
+                              Navigator.pop(ctx, false);
+                            }
+                          }
+                        } else if (type == AppPermissionType.location) {
+                          final nativeGranted = await LocationService.instance.requestPermission();
+                          if (nativeGranted) {
+                            instance.setGranted(type, true);
+                            if (ctx.mounted) Navigator.pop(ctx, true);
+                          } else {
+                            instance.setGranted(type, false);
+                            if (ctx.mounted) {
+                              LajuToast.error(ctx, 'Izin lokasi belum disetujui');
                               Navigator.pop(ctx, false);
                             }
                           }

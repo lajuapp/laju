@@ -11,6 +11,7 @@ enum MessageContentType {
   attachment,
   voiceNote,
   systemNotice,
+  location,
 }
 
 class MessageModel {
@@ -134,12 +135,14 @@ class MessageModel {
             existing.id.startsWith('img-') ||
             existing.id.startsWith('doc-') ||
             existing.id.startsWith('aud-') ||
-            existing.id.startsWith('voice-');
+            existing.id.startsWith('voice-') ||
+            existing.id.startsWith('loc-');
         final isIncTemp = inc.id.startsWith('msg-') ||
             inc.id.startsWith('img-') ||
             inc.id.startsWith('doc-') ||
             inc.id.startsWith('aud-') ||
-            inc.id.startsWith('voice-');
+            inc.id.startsWith('voice-') ||
+            inc.id.startsWith('loc-');
 
         if (isExistingTemp && !isIncTemp) {
           result[idx] = inc.copyWith(

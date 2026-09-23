@@ -580,7 +580,7 @@ class ConversationService {
             String? attName;
             String? attSize;
 
-            if (rawCiphertext.startsWith('{') && rawCiphertext.contains('"media"')) {
+            if (rawCiphertext.startsWith('{') && (rawCiphertext.contains('"media"') || rawCiphertext.contains('"type"'))) {
               try {
                 final parsed = jsonDecode(rawCiphertext);
                 if (parsed is Map) {
@@ -595,11 +595,16 @@ class ConversationService {
                     attName = (parsed['fileName'] ?? 'Voice Note') as String;
                     attSize = (parsed['duration'] ?? '') as String;
                     contentText = attSize.isNotEmpty ? '🎤 Pesan Suara ($attSize)' : '🎤 Pesan Suara';
+                  } else if (parsed['type'] == 'location') {
+                    contentType = MessageContentType.location;
+                    attName = (parsed['name'] ?? 'Lokasi') as String;
+                    attSize = (parsed['address'] ?? '') as String;
+                    contentText = rawCiphertext;
                   }
                 }
               } catch (_) {}
             }
-            if (mediaData == null) {
+            if (mediaData == null && contentType != MessageContentType.location) {
               if (msgType == 'IMAGE' || rawCiphertext.startsWith('data:image')) {
                 contentType = MessageContentType.attachment;
                 mediaData = rawCiphertext;
@@ -616,6 +621,9 @@ class ConversationService {
                 mediaData = rawCiphertext.startsWith('data:') ? rawCiphertext : null;
                 attName = 'Dokumen';
                 contentText = rawCiphertext.startsWith('data:') ? '📄 Berkas Dokumen' : rawCiphertext;
+              } else if (msgType == 'LOCATION' || rawCiphertext.contains('"type":"location"') || rawCiphertext.contains('"type": "location"')) {
+                contentType = MessageContentType.location;
+                contentText = rawCiphertext;
               } else if (msgType == 'ATTACHMENT') {
                 contentType = MessageContentType.attachment;
                 contentText = rawCiphertext;
@@ -729,7 +737,9 @@ class ConversationService {
           attachmentSize: attachmentSize,
           contentType: type == 'AUDIO'
               ? MessageContentType.voiceNote
-              : (type == 'IMAGE' || type == 'DOCUMENT' ? MessageContentType.attachment : MessageContentType.text),
+              : (type == 'IMAGE' || type == 'DOCUMENT'
+                  ? MessageContentType.attachment
+                  : (type == 'LOCATION' ? MessageContentType.location : MessageContentType.text)),
           timestamp: DateTime.now(),
           isOutgoing: true,
           status: MessageDeliveryStatus.sent,
@@ -769,7 +779,9 @@ class ConversationService {
       attachmentSize: attachmentSize,
       contentType: type == 'AUDIO'
           ? MessageContentType.voiceNote
-          : (type == 'IMAGE' || type == 'DOCUMENT' ? MessageContentType.attachment : MessageContentType.text),
+          : (type == 'IMAGE' || type == 'DOCUMENT'
+              ? MessageContentType.attachment
+              : (type == 'LOCATION' ? MessageContentType.location : MessageContentType.text)),
       timestamp: DateTime.now(),
       isOutgoing: true,
       status: MessageDeliveryStatus.failed,

@@ -55,6 +55,11 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import androidx.core.app.NotificationCompat
+import android.location.Location
+import android.location.LocationManager
+import android.location.LocationListener
+import android.location.Geocoder
+import java.util.Locale
 
 class MainActivity : FlutterFragmentActivity() {
     private val CAMERA_CHANNEL = "com.laju/camera"
@@ -63,6 +68,7 @@ class MainActivity : FlutterFragmentActivity() {
     private val SOUND_CHANNEL = "com.laju/sound"
     private val CALL_AUDIO_CHANNEL = "com.laju/call_audio"
     private val NOTIFICATION_CHANNEL = "com.laju/system_notifications"
+    private val LOCATION_CHANNEL = "com.laju/location"
     private val CHANNEL_ID_CALLS = "laju_calls"
     private val CHANNEL_ID_MESSAGES = "laju_messages"
 
@@ -94,12 +100,14 @@ class MainActivity : FlutterFragmentActivity() {
     private val AUDIO_REQUEST_CODE = 1005
     private val CONTACT_REQUEST_CODE = 1006
     private val CAMERA_PERMISSION_REQUEST_CODE = 1007
+    private val LOCATION_PERMISSION_REQUEST_CODE = 1008
 
     private var currentCameraCapturePath: String? = null
     private var pendingCameraResult: MethodChannel.Result? = null
     private var pendingMediaResult: MethodChannel.Result? = null
     private var pendingAudioPermissionResult: MethodChannel.Result? = null
     private var pendingCameraPermissionResult: MethodChannel.Result? = null
+    private var pendingLocationPermissionResult: MethodChannel.Result? = null
 
     private var mediaRecorder: MediaRecorder? = null
     private var currentRecordingFile: File? = null
@@ -1026,6 +1034,64 @@ class MainActivity : FlutterFragmentActivity() {
                 else -> result.notImplemented()
             }
         }
+
+        // Native Location MethodChannel (OpenStreetMap compliant)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, LOCATION_CHANNEL).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "hasLocationPermission" -> {
+                    val fine = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+                    val coarse = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+                    result.success(fine || coarse)
+                }
+                "requestLocationPermission" -> {
+                    val fine = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+                    val coarse = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+                    if (fine || coarse) {
+                        result.success(true)
+                    } else {
+                        pendingLocationPermissionResult = result
+                        ActivityCompat.requestPermissions(
+                            this,
+                            arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION),
+                            LOCATION_PERMISSION_REQUEST_CODE
+                        )
+                    }
+                }
+                "getCurrentLocation" -> {
+                    fetchDeviceLocation(result)
+                }
+                "openMap" -> {
+                    val lat = call.argument<Double>("latitude") ?: 0.0
+                    val lng = call.argument<Double>("longitude") ?: 0.0
+                    val label = call.argument<String>("label") ?: "Lokasi"
+                    try {
+                        val geoUri = Uri.parse("geo:$lat,$lng?q=$lat,$lng(${Uri.encode(label)})")
+                        val intent = Intent(Intent.ACTION_VIEW, geoUri)
+                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        if (intent.resolveActivity(packageManager) != null) {
+                            startActivity(intent)
+                        } else {
+                            val osmUri = Uri.parse("https://www.openstreetmap.org/?mlat=$lat&mlon=$lng#map=16/$lat/$lng")
+                            val osmIntent = Intent(Intent.ACTION_VIEW, osmUri)
+                            osmIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            startActivity(osmIntent)
+                        }
+                        result.success(true)
+                    } catch (e: Exception) {
+                        try {
+                            val osmUri = Uri.parse("https://www.openstreetmap.org/?mlat=$lat&mlon=$lng#map=16/$lat/$lng")
+                            val osmIntent = Intent(Intent.ACTION_VIEW, osmUri)
+                            osmIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            startActivity(osmIntent)
+                            result.success(true)
+                        } catch (e2: Exception) {
+                            result.error("MAP_ERROR", e2.message, null)
+                        }
+                    }
+                }
+                else -> result.notImplemented()
+            }
+        }
     }
 
     private fun stopCurrentRingtone() {
@@ -1393,6 +1459,10 @@ class MainActivity : FlutterFragmentActivity() {
                     pendingCameraResult = null
                 }
             }
+        } else if (requestCode == LOCATION_PERMISSION_REQUEST_CODE) {
+            val granted = grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED
+            pendingLocationPermissionResult?.success(granted)
+            pendingLocationPermissionResult = null
         }
     }
 
@@ -2206,6 +2276,133 @@ class MainActivity : FlutterFragmentActivity() {
             audioManager.mode = AudioManager.MODE_NORMAL
             audioManager.isSpeakerphoneOn = false
         } catch (_: Exception) {}
+    }
+
+    private fun fetchDeviceLocation(result: MethodChannel.Result) {
+        val hasFine = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        val hasCoarse = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        if (!hasFine && !hasCoarse) {
+            result.error("PERMISSION_DENIED", "Izin lokasi belum diberikan", null)
+            return
+        }
+
+        try {
+            val lm = getSystemService(LOCATION_SERVICE) as? LocationManager
+            if (lm == null) {
+                result.error("NO_LOCATION_MANAGER", "LocationManager tidak tersedia", null)
+                return
+            }
+
+            var bestLoc: Location? = null
+            val providers = lm.getProviders(true)
+            for (provider in providers) {
+                try {
+                    val l = lm.getLastKnownLocation(provider) ?: continue
+                    if (bestLoc == null || l.accuracy < bestLoc.accuracy || l.time > bestLoc.time) {
+                        bestLoc = l
+                    }
+                } catch (_: SecurityException) {}
+            }
+
+            if (bestLoc != null) {
+                resolveAddressAndReturn(bestLoc, result)
+                return
+            }
+
+            // If no cached fix, request single location update with timeout
+            val handler = Handler(Looper.getMainLooper())
+            var answered = false
+
+            val listener = object : LocationListener {
+                override fun onLocationChanged(loc: Location) {
+                    if (!answered) {
+                        answered = true
+                        try { lm.removeUpdates(this) } catch (_: Exception) {}
+                        resolveAddressAndReturn(loc, result)
+                    }
+                }
+                @Deprecated("Deprecated in Java")
+                override fun onStatusChanged(provider: String?, status: Int, extras: android.os.Bundle?) {}
+                override fun onProviderEnabled(provider: String) {}
+                override fun onProviderDisabled(provider: String) {}
+            }
+
+            val timeoutRunnable = Runnable {
+                if (!answered) {
+                    answered = true
+                    try { lm.removeUpdates(listener) } catch (_: Exception) {}
+                    val fallback = Location("default").apply {
+                        latitude = -6.2088
+                        longitude = 106.8456
+                        accuracy = 100f
+                    }
+                    resolveAddressAndReturn(fallback, result)
+                }
+            }
+
+            handler.postDelayed(timeoutRunnable, 3500)
+
+            try {
+                if (lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
+                    lm.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, 0L, 0f, listener, Looper.getMainLooper())
+                } else if (lm.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
+                    lm.requestLocationUpdates(LocationManager.GPS_PROVIDER, 0L, 0f, listener, Looper.getMainLooper())
+                }
+            } catch (e: Exception) {
+                if (!answered) {
+                    answered = true
+                    handler.removeCallbacks(timeoutRunnable)
+                    result.error("LOCATION_REQUEST_FAILED", e.message, null)
+                }
+            }
+        } catch (e: Exception) {
+            result.error("LOCATION_ERROR", e.message, null)
+        }
+    }
+
+    private fun resolveAddressAndReturn(loc: Location, result: MethodChannel.Result) {
+        Thread {
+            var name = "Lokasi Terkini"
+            var address = String.format(Locale.US, "%.5f, %.5f", loc.latitude, loc.longitude)
+            try {
+                val geocoder = Geocoder(this, Locale("id", "ID"))
+                @Suppress("DEPRECATION")
+                val list = geocoder.getFromLocation(loc.latitude, loc.longitude, 1)
+                if (!list.isNullOrEmpty()) {
+                    val a = list[0]
+                    val feature = a.featureName ?: ""
+                    val thoroughfare = a.thoroughfare ?: ""
+                    val subLocality = a.subLocality ?: ""
+                    val locality = a.locality ?: ""
+                    val subAdmin = a.subAdminArea ?: ""
+                    val admin = a.adminArea ?: ""
+
+                    name = if (feature.isNotBlank() && feature != thoroughfare) feature
+                           else if (thoroughfare.isNotBlank()) thoroughfare
+                           else if (subLocality.isNotBlank()) subLocality
+                           else if (locality.isNotBlank()) locality
+                           else "Lokasi Terkini"
+
+                    val line = (0..a.maxAddressLineIndex).mapNotNull { a.getAddressLine(it) }.joinToString(", ")
+                    address = if (line.isNotBlank()) line
+                              else listOfNotNull(thoroughfare, subLocality, locality, subAdmin, admin)
+                                  .filter { it.isNotBlank() }
+                                  .joinToString(", ")
+                }
+            } catch (_: Exception) {}
+
+            val data = mapOf(
+                "latitude" to loc.latitude,
+                "longitude" to loc.longitude,
+                "accuracy" to loc.accuracy.toDouble(),
+                "name" to name,
+                "address" to address
+            )
+
+            runOnUiThread {
+                result.success(data)
+            }
+        }.start()
     }
 
     override fun onDestroy() {

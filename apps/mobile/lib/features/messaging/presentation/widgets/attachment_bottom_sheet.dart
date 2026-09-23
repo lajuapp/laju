@@ -290,14 +290,27 @@ class AttachmentBottomSheet extends StatelessWidget {
     }
   }
 
-  void _handleLocationPick(BuildContext context) async {
-    Navigator.pop(context); // Close attachment sheet first
-    final locResult = await Navigator.push(
+  Future<void> _handleLocationPick(BuildContext context) async {
+    final granted = await AppPermissionService.requestPermission(
+      context,
+      type: AppPermissionType.location,
+    );
+    if (!granted || !context.mounted) return;
+
+    final locResult = await Navigator.push<LocationData>(
       context,
       MaterialPageRoute(builder: (context) => const ShareLocationScreen()),
     );
     if (locResult != null && context.mounted) {
-      LajuToast.success(context, 'Lokasi terenkripsi dibagikan');
+      Navigator.pop(
+        context,
+        AttachmentResult(
+          type: AttachmentType.location,
+          title: locResult.name,
+          subtitle: locResult.address,
+          data: locResult,
+        ),
+      );
     }
   }
 

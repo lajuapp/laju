@@ -50,6 +50,7 @@ class _ChatScreenState extends State<ChatScreen> {
   MessageModel? _editingMessage;
   Timer? _pollTimer;
   bool _showScrollToBottom = false;
+  bool _initialScrollDone = false;
 
   bool _isSearching = false;
   final TextEditingController _inChatSearchController = TextEditingController();
@@ -65,6 +66,10 @@ class _ChatScreenState extends State<ChatScreen> {
     _messages = mem != null ? List<MessageModel>.from(mem) : [];
     _loadMessagesFromApi();
     _startPolling();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _scrollToBottom(immediate: true);
+    });
 
     _derivedSafetyNumber = (widget.safetyNumber != null && widget.safetyNumber != '4812 ••• 9901')
         ? widget.safetyNumber!
@@ -137,9 +142,18 @@ class _ChatScreenState extends State<ChatScreen> {
       });
       ConversationService.instance.updateMemoryMessages(widget.conversationId, merged);
       _markIncomingAsRead(merged);
-      Future.delayed(const Duration(milliseconds: 60), _scrollToBottom);
+      if (!_initialScrollDone) {
+        _initialScrollDone = true;
+        _scrollToBottom(immediate: true);
+      } else {
+        Future.delayed(const Duration(milliseconds: 50), _scrollToBottom);
+      }
     } else {
       ConversationService.instance.updateMemoryMessages(widget.conversationId, merged);
+      if (!_initialScrollDone && merged.isNotEmpty) {
+        _initialScrollDone = true;
+        _scrollToBottom(immediate: true);
+      }
     }
 
     if (hasNewIncoming) {
@@ -174,10 +188,18 @@ class _ChatScreenState extends State<ChatScreen> {
     final cached = await ConversationService.instance.getMessagesFromCache(widget.conversationId);
     if (mounted && cached.isNotEmpty) {
       _mergeAndSetMessages(cached);
+      if (!_initialScrollDone) {
+        _initialScrollDone = true;
+        _scrollToBottom(immediate: true);
+      }
     }
 
     // Step 2: Fetch fresh messages from API
-    _syncMessages();
+    await _syncMessages();
+    if (mounted && !_initialScrollDone) {
+      _initialScrollDone = true;
+      _scrollToBottom(immediate: true);
+    }
   }
 
   void _sendMessage(String text) async {
@@ -330,13 +352,27 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  void _scrollToBottom() {
-    if (_scrollController.hasClients) {
-      _scrollController.animateTo(
-        _scrollController.position.maxScrollExtent,
-        duration: const Duration(milliseconds: 250),
-        curve: Curves.easeOut,
-      );
+  void _scrollToBottom({bool immediate = false}) {
+    void doScroll() {
+      if (!_scrollController.hasClients) return;
+      final maxScroll = _scrollController.position.maxScrollExtent;
+      if (immediate) {
+        _scrollController.jumpTo(maxScroll);
+      } else {
+        _scrollController.animateTo(
+          maxScroll,
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOut,
+        );
+      }
+    }
+
+    if (immediate) {
+      doScroll();
+      Future.delayed(const Duration(milliseconds: 50), doScroll);
+      Future.delayed(const Duration(milliseconds: 150), doScroll);
+    } else {
+      doScroll();
     }
   }
 
@@ -512,6 +548,48 @@ class _ChatScreenState extends State<ChatScreen> {
         }
       } else if (result.type == AttachmentType.contact) {
         _sendMessage(result.title);
+      } else if (result.type == AttachmentType.location) {
+        final loc = result.data is LocationData ? result.data as LocationData : null;
+        if (loc != null) {
+          final locId = 'loc-${DateTime.now().millisecondsSinceEpoch}';
+          final locJson = loc.toJson();
+          final locMsg = MessageModel(
+            id: locId,
+            clientMessageId: locId,
+            conversationId: widget.conversationId,
+            senderName: 'You',
+            content: locJson,
+            attachmentName: loc.name,
+            attachmentSize: loc.address,
+            timestamp: DateTime.now(),
+            isOutgoing: true,
+            contentType: MessageContentType.location,
+            status: MessageDeliveryStatus.sending,
+          );
+          setState(() {
+            _messages.add(locMsg);
+          });
+          await LocalDatabase.instance.insertSentMessage(locMsg);
+          _scrollToBottom(immediate: false);
+
+          final sent = await ConversationService.instance.sendMessage(
+            conversationId: widget.conversationId,
+            text: locJson,
+            clientMessageId: locId,
+            messageType: 'LOCATION',
+            attachmentName: loc.name,
+            attachmentSize: loc.address,
+          );
+          if (mounted && sent != null) {
+            setState(() {
+              final idx = _messages.indexWhere((m) => m.id == locId || m.clientMessageId == locId);
+              if (idx != -1) {
+                _messages[idx] = sent;
+              }
+            });
+            _syncMessages();
+          }
+        }
       }
     }
   }
