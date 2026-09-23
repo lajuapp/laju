@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 import 'dart:typed_data';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
@@ -38,7 +39,7 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
   late bool _isVideoEnabled;
   CameraController? _cameraController;
   bool _isFrontCamera = true;
-  bool _isCameraInMainView = true;
+  bool _isCameraInMainView = false;
 
   Uint8List? _remoteVideoBytes;
   int _lastRemoteFrameTime = 0;
@@ -873,7 +874,7 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
 
   Widget _buildLocalCameraPreview({required bool isPip}) {
     if (_cameraController != null && _cameraController!.value.isInitialized) {
-      return SizedBox.expand(
+      Widget preview = SizedBox.expand(
         child: FittedBox(
           fit: BoxFit.cover,
           child: SizedBox(
@@ -883,6 +884,16 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
           ),
         ),
       );
+
+      if (_isFrontCamera) {
+        preview = Transform(
+          alignment: Alignment.center,
+          transform: Matrix4.rotationY(math.pi),
+          child: preview,
+        );
+      }
+
+      return preview;
     }
     return Container(
       color: Colors.black,
