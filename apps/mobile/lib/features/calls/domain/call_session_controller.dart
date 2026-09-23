@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import '../../../core/core.dart';
 import '../presentation/screens/active_call_screen.dart';
@@ -21,6 +22,18 @@ class CallSessionController extends ChangeNotifier {
     checkLaunchPayload();
   }
   static final CallSessionController instance = CallSessionController._();
+
+  @override
+  void notifyListeners() {
+    final binding = WidgetsBinding.instance;
+    if (binding.schedulerPhase == SchedulerPhase.persistentCallbacks) {
+      binding.addPostFrameCallback((_) {
+        super.notifyListeners();
+      });
+      return;
+    }
+    super.notifyListeners();
+  }
 
   static const MethodChannel _audioChannel = MethodChannel('com.laju/call_audio');
   static const MethodChannel _systemNotifChannel = MethodChannel('com.laju/system_notifications');

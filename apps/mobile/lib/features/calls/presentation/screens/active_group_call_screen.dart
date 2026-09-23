@@ -70,11 +70,14 @@ class _ActiveGroupCallScreenState extends State<ActiveGroupCallScreen>
 
     final session = CallSessionController.instance;
     if (!session.isActive || session.callId == null || !session.isGroup) {
-      session.startGroupCall(
-        groupName: widget.groupName,
-        initialParticipants: widget.initialParticipants,
-        isVideo: widget.isVideo,
-      );
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        session.startGroupCall(
+          groupName: widget.groupName,
+          initialParticipants: widget.initialParticipants,
+          isVideo: widget.isVideo,
+        );
+      });
     } else {
       _isSelfMuted = session.isMuted;
       _isSpeakerOn = session.isSpeaker;
