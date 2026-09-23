@@ -414,12 +414,6 @@ class CallSessionController extends ChangeNotifier {
     if (curCallId != null) {
       _dispatchEndCallToBackend(curCallId);
     }
-
-    // Auto-pop active call screen if visible
-    final nav = AppNavigation.navigatorKey.currentState;
-    if (nav != null && nav.canPop()) {
-      nav.maybePop();
-    }
   }
 
   void _saveCallLog({required String status, int? duration}) {

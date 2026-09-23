@@ -231,9 +231,15 @@ class _ActiveGroupCallScreenState extends State<ActiveGroupCallScreen>
     return '$minutes:$secs';
   }
 
+  bool _isExiting = false;
+
   void _minimizeCall() {
+    if (_isExiting) return;
+    _isExiting = true;
     CallSessionController.instance.minimize();
-    Navigator.pop(context);
+    if (Navigator.of(context).canPop()) {
+      Navigator.pop(context);
+    }
   }
 
   void _endCall() {
@@ -242,11 +248,28 @@ class _ActiveGroupCallScreenState extends State<ActiveGroupCallScreen>
   }
 
   void _exitCall() {
+    if (_isExiting) return;
+    _isExiting = true;
+
+    if (!mounted) return;
+
     if (widget.returnToCallsScreen) {
       HomeScreen.activeTabNotifier.value = 2;
-      Navigator.of(context).popUntil((route) => route.isFirst);
+      if (Navigator.of(context).canPop()) {
+        Navigator.of(context).popUntil((route) => route.isFirst);
+      } else {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => const HomeScreen()),
+        );
+      }
     } else {
-      Navigator.pop(context);
+      if (Navigator.of(context).canPop()) {
+        Navigator.of(context).pop();
+      } else {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => const HomeScreen()),
+        );
+      }
     }
   }
 

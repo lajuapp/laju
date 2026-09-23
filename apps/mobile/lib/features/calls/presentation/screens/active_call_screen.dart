@@ -204,6 +204,8 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
     super.dispose();
   }
 
+  bool _isExiting = false;
+
   void _onSessionUpdated() {
     if (!mounted) return;
     final session = CallSessionController.instance;
@@ -219,7 +221,7 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
       });
     }
     if (session.status == CallStatus.rejected || session.status == CallStatus.ended) {
-      Future.delayed(const Duration(milliseconds: 1200), () {
+      Future.delayed(const Duration(milliseconds: 700), () {
         if (mounted) {
           _exitCall();
         }
@@ -228,8 +230,12 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
   }
 
   void _minimizeCall() {
+    if (_isExiting) return;
+    _isExiting = true;
     CallSessionController.instance.minimize();
-    Navigator.pop(context);
+    if (Navigator.of(context).canPop()) {
+      Navigator.pop(context);
+    }
   }
 
   void _endCall() {
@@ -238,11 +244,28 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
   }
 
   void _exitCall() {
+    if (_isExiting) return;
+    _isExiting = true;
+
+    if (!mounted) return;
+
     if (widget.returnToCallsScreen) {
       HomeScreen.activeTabNotifier.value = 2;
-      Navigator.of(context).popUntil((route) => route.isFirst);
+      if (Navigator.of(context).canPop()) {
+        Navigator.of(context).popUntil((route) => route.isFirst);
+      } else {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => const HomeScreen()),
+        );
+      }
     } else {
-      Navigator.pop(context);
+      if (Navigator.of(context).canPop()) {
+        Navigator.of(context).pop();
+      } else {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => const HomeScreen()),
+        );
+      }
     }
   }
 

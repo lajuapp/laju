@@ -341,16 +341,35 @@ class ConversationService {
               ? item['messages'][0]['ciphertext'] ?? 'Encrypted Message'
               : 'No messages yet';
           String lastMsg = lastMsgRaw;
-          if (lastMsg.startsWith('{') && lastMsg.contains('"media"')) {
+          if (lastMsg.startsWith('{') && (lastMsg.contains('"media"') || lastMsg.contains('"type"'))) {
             try {
               final parsed = jsonDecode(lastMsg);
+              final msgType = parsed['type'] as String?;
               final cap = (parsed['caption'] ?? '') as String;
-              lastMsg = cap.isNotEmpty ? cap : 'Foto';
+              if (cap.isNotEmpty) {
+                lastMsg = cap;
+              } else if (msgType == 'audio') {
+                lastMsg = 'Pesan Suara';
+              } else if (msgType == 'document') {
+                lastMsg = (parsed['fileName'] as String?) ?? 'Dokumen';
+              } else if (msgType == 'location') {
+                lastMsg = 'Berbagi Lokasi';
+              } else {
+                lastMsg = 'Foto';
+              }
             } catch (_) {
               lastMsg = 'Foto';
             }
           } else if (lastMsg.startsWith('data:image')) {
             lastMsg = 'Foto';
+          } else if (lastMsg.startsWith('data:audio')) {
+            lastMsg = 'Pesan Suara';
+          } else if (lastMsg.startsWith('data:')) {
+            lastMsg = 'Berkas Dokumen';
+          }
+
+          if (lastMsg.length > 250) {
+            lastMsg = '${lastMsg.substring(0, 250)}...';
           }
 
           final convId = item['id'] as String? ?? '';

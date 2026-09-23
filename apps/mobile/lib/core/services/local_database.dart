@@ -133,6 +133,20 @@ class LocalDatabase {
         try {
           await db.execute('ALTER TABLE conversations ADD COLUMN participant_trust_score INTEGER');
         } catch (_) {}
+
+        // Fix existing corrupted oversized rows from prior sessions that break SQLite CursorWindow (2MB limit)
+        try {
+          await db.execute('UPDATE conversations SET last_message = SUBSTR(last_message, 1, 300) WHERE LENGTH(last_message) > 500');
+        } catch (_) {}
+        try {
+          await db.execute('UPDATE conversations SET avatar_url = NULL WHERE avatar_url IS NOT NULL AND LENGTH(avatar_url) > 2000');
+        } catch (_) {}
+        try {
+          await db.execute('UPDATE messages SET reply_to_json = NULL WHERE reply_to_json IS NOT NULL AND LENGTH(reply_to_json) > 5000');
+        } catch (_) {}
+        try {
+          await db.execute('UPDATE messages SET content = SUBSTR(content, 1, 1000) WHERE LENGTH(content) > 20000');
+        } catch (_) {}
       },
     );
   }
@@ -152,8 +166,19 @@ class LocalDatabase {
         orderBy: 'last_message_time DESC',
       );
       return rows.map(_rowToConversation).toList();
-    } catch (_) {
-      return [];
+    } catch (e) {
+      debugPrint('[LocalDatabase] getConversations error: $e');
+      try {
+        await _database.execute('UPDATE conversations SET last_message = SUBSTR(last_message, 1, 300) WHERE LENGTH(last_message) > 500');
+        await _database.execute('UPDATE conversations SET avatar_url = NULL WHERE avatar_url IS NOT NULL AND LENGTH(avatar_url) > 2000');
+        final rows = await _database.query('conversations', orderBy: 'last_message_time DESC');
+        return rows.map(_rowToConversation).toList();
+      } catch (_) {
+        try {
+          await _database.delete('conversations');
+        } catch (_) {}
+        return [];
+      }
     }
   }
 
@@ -320,11 +345,17 @@ class LocalDatabase {
   }
 
   Map<String, dynamic> _conversationToRow(ConversationModel c, int cachedAt) {
+    final safeLastMsg = c.lastMessage.length > 300 ? c.lastMessage.substring(0, 300) : c.lastMessage;
+    final safeAvatarUrl = (c.avatarUrl != null && c.avatarUrl!.length > 2000) ? null : c.avatarUrl;
+    final safeAbout = (c.participantAbout != null && c.participantAbout!.length > 500)
+        ? c.participantAbout!.substring(0, 500)
+        : c.participantAbout;
+
     return {
       'id': c.id,
-      'title': c.title,
-      'avatar_url': c.avatarUrl,
-      'last_message': c.lastMessage,
+      'title': c.title.length > 100 ? c.title.substring(0, 100) : c.title,
+      'avatar_url': safeAvatarUrl,
+      'last_message': safeLastMsg,
       'last_message_time': c.lastMessageTime.millisecondsSinceEpoch,
       'unread_count': c.unreadCount,
       'is_group': c.isGroup ? 1 : 0,
@@ -339,7 +370,7 @@ class LocalDatabase {
       'disappearing_seconds': c.disappearingSeconds,
       'participant_user_id': c.participantUserId,
       'participant_phone': c.participantPhone,
-      'participant_about': c.participantAbout,
+      'participant_about': safeAbout,
       'participant_trust_score': c.participantTrustScore,
       'cached_at': cachedAt,
     };
@@ -374,10 +405,13 @@ class LocalDatabase {
     String? replyToJson;
     if (m.replyTo != null) {
       try {
+        final safeReplyContent = m.replyTo!.content.length > 300
+            ? m.replyTo!.content.substring(0, 300)
+            : m.replyTo!.content;
         replyToJson = jsonEncode({
           'id': m.replyTo!.id,
           'sender_name': m.replyTo!.senderName,
-          'content': m.replyTo!.content,
+          'content': safeReplyContent,
           'content_type': m.replyTo!.contentType.name,
           'attachment_name': m.replyTo!.attachmentName,
           'attachment_size': m.replyTo!.attachmentSize,
@@ -386,12 +420,14 @@ class LocalDatabase {
       } catch (_) {}
     }
 
+    final safeContent = m.content.length > 20000 ? m.content.substring(0, 20000) : m.content;
+
     return {
       'id': m.id,
       'client_message_id': m.clientMessageId,
       'conversation_id': m.conversationId,
       'sender_name': m.senderName,
-      'content': m.content,
+      'content': safeContent,
       'timestamp': m.timestamp.millisecondsSinceEpoch,
       'is_outgoing': m.isOutgoing ? 1 : 0,
       'status': m.status.name,
