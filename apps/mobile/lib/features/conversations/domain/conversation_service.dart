@@ -44,8 +44,6 @@ class ConversationService {
   /// Current conversation screen open by user to prevent banner popup for active chat
   String? currentActiveConversationId;
 
-  /// Keeps track of latest known message ID per conversation to detect new arrivals
-  final Map<String, String> _lastKnownMessageIds = {};
   bool _isInitialSyncComplete = false;
   final Set<String> _seenMessageIds = {};
 
@@ -142,6 +140,22 @@ class ConversationService {
     }
   }
 
+  /// Updates local state of a conversation (pin, lock, archive, mute, read) and persists to SQLite and memory
+  Future<void> updateConversationLocally(ConversationModel updated) async {
+    if (inMemoryConversations != null) {
+      final idx = inMemoryConversations!.indexWhere((c) => c.id == updated.id);
+      if (idx != -1) {
+        inMemoryConversations![idx] = updated;
+      } else {
+        inMemoryConversations!.add(updated);
+      }
+    } else {
+      inMemoryConversations = [updated];
+    }
+    await LocalDatabase.instance.upsertConversations([updated]);
+    conversationsNotifier.value = List.from(inMemoryConversations!);
+  }
+
   /// Blocks a user locally and adds to blocked list
   Future<void> blockUser(String userId) async {
     try {
@@ -186,6 +200,19 @@ class ConversationService {
         final list = response.rawJson as List;
         final currentUserId = ApiClient.instance.userId;
 
+        // Load existing conversations from memory or SQLite to preserve user settings:
+        // isPinned, isLocked, isArchived, isMuted, unreadCount
+        final cachedMap = <String, ConversationModel>{};
+        if (inMemoryConversations != null && inMemoryConversations!.isNotEmpty) {
+          for (final c in inMemoryConversations!) {
+            cachedMap[c.id] = c;
+          }
+        }
+        final dbConvs = await LocalDatabase.instance.getConversations();
+        for (final c in dbConvs) {
+          cachedMap.putIfAbsent(c.id, () => c);
+        }
+
         // Check for new incoming messages across conversations and trigger notifications
         for (final item in list) {
           final convId = item['id'] as String?;
@@ -202,7 +229,8 @@ class ConversationService {
                 _seenMessageIds.add(latestMsgId);
 
                 // If initial sync is complete and user is not currently in this chat, trigger notification!
-                if (_isInitialSyncComplete && currentActiveConversationId != convId) {
+                final isConvMuted = cachedMap[convId]?.isMuted ?? false;
+                if (_isInitialSyncComplete && currentActiveConversationId != convId && !isConvMuted) {
                   final isGroup = item['type'] == 'GROUP';
                   String notifTitle = item['title'] ?? '';
                   String? avatarUrl;
@@ -226,16 +254,16 @@ class ConversationService {
                     try {
                       final parsed = jsonDecode(preview);
                       final cap = (parsed['caption'] ?? '') as String;
-                      preview = cap.isNotEmpty ? '📷 $cap' : '📷 Foto';
+                      preview = cap.isNotEmpty ? cap : 'Foto';
                     } catch (_) {
-                      preview = '📷 Foto';
+                      preview = 'Foto';
                     }
                   } else if (preview.startsWith('data:image')) {
-                    preview = '📷 Foto';
+                    preview = 'Foto';
                   } else if (preview.startsWith('data:audio')) {
-                    preview = '🎤 Pesan Suara';
+                    preview = 'Pesan Suara';
                   } else if (preview.startsWith('data:') || preview.startsWith('📄')) {
-                    preview = '📄 Berkas Dokumen';
+                    preview = 'Berkas Dokumen';
                   }
 
                   AppNotificationService.instance.showIncomingMessage(
@@ -317,12 +345,12 @@ class ConversationService {
             try {
               final parsed = jsonDecode(lastMsg);
               final cap = (parsed['caption'] ?? '') as String;
-              lastMsg = cap.isNotEmpty ? '📷 $cap' : '📷 Foto';
+              lastMsg = cap.isNotEmpty ? cap : 'Foto';
             } catch (_) {
-              lastMsg = '📷 Foto';
+              lastMsg = 'Foto';
             }
           } else if (lastMsg.startsWith('data:image')) {
-            lastMsg = '📷 Foto';
+            lastMsg = 'Foto';
           }
 
           final convId = item['id'] as String? ?? '';
@@ -330,16 +358,27 @@ class ConversationService {
             SafetyNumberHelper.deriveSafetyNumber(convId, participantUserId ?? currentUserId ?? 'peer'),
           );
 
+          final old = cachedMap[convId];
+          final isPinned = old?.isPinned ?? false;
+          final isLocked = old?.isLocked ?? false;
+          final isArchived = old?.isArchived ?? false;
+          final isMuted = old?.isMuted ?? false;
+          final unreadCount = old?.unreadCount ?? 0;
+
           return ConversationModel(
             id: convId,
             title: title,
             lastMessage: lastMsg,
             lastMessageTime: DateHelper.parseUtc(item['updatedAt']),
-            unreadCount: 0,
+            unreadCount: unreadCount,
             isGroup: isGroup,
             isOnline: true,
             isKeyVerified: true,
-            avatarUrl: avatarUrl,
+            isPinned: isPinned,
+            isLocked: isLocked,
+            isArchived: isArchived,
+            isMuted: isMuted,
+            avatarUrl: avatarUrl ?? old?.avatarUrl,
             safetyNumberPreview: safetyPreview,
             participantUserId: participantUserId,
             participantPhone: participantPhone,
@@ -356,11 +395,13 @@ class ConversationService {
               orElse: () => ConversationModel(id: '', title: '', lastMessage: '', lastMessageTime: DateTime.fromMillisecondsSinceEpoch(0)),
             );
             if (old.id.isNotEmpty && conv.lastMessageTime.isAfter(old.lastMessageTime) && conv.lastMessage != old.lastMessage) {
-              PushNotificationService.showMessageNotification(
-                conversationId: conv.id,
-                title: conv.title,
-                message: conv.lastMessage,
-              );
+              if (!conv.isMuted) {
+                PushNotificationService.showMessageNotification(
+                  conversationId: conv.id,
+                  title: conv.title,
+                  message: conv.lastMessage,
+                );
+              }
             }
           }
         }
@@ -579,11 +620,28 @@ class ConversationService {
             String? mediaData;
             String? attName;
             String? attSize;
+            MessageModel? parsedReplyTo;
 
-            if (rawCiphertext.startsWith('{') && (rawCiphertext.contains('"media"') || rawCiphertext.contains('"type"'))) {
+            if (rawCiphertext.startsWith('{')) {
               try {
                 final parsed = jsonDecode(rawCiphertext);
                 if (parsed is Map) {
+                  if (parsed['replyTo'] is Map) {
+                    final r = parsed['replyTo'] as Map;
+                    parsedReplyTo = MessageModel(
+                      id: (r['id'] ?? '') as String,
+                      conversationId: conversationId,
+                      senderName: (r['senderName'] ?? 'Contact') as String,
+                      content: (r['content'] ?? '') as String,
+                      timestamp: DateTime.now(),
+                      isOutgoing: false,
+                      contentType: MessageContentType.values.firstWhere(
+                        (ct) => ct.name == r['contentType'],
+                        orElse: () => MessageContentType.text,
+                      ),
+                    );
+                  }
+
                   if (parsed['type'] == 'image') {
                     contentType = MessageContentType.attachment;
                     mediaData = parsed['media'] as String?;
@@ -594,12 +652,14 @@ class ConversationService {
                     mediaData = parsed['media'] as String?;
                     attName = (parsed['fileName'] ?? 'Voice Note') as String;
                     attSize = (parsed['duration'] ?? '') as String;
-                    contentText = attSize.isNotEmpty ? '🎤 Pesan Suara ($attSize)' : '🎤 Pesan Suara';
+                    contentText = attSize.isNotEmpty ? 'Pesan Suara ($attSize)' : 'Pesan Suara';
                   } else if (parsed['type'] == 'location') {
                     contentType = MessageContentType.location;
                     attName = (parsed['name'] ?? 'Lokasi') as String;
                     attSize = (parsed['address'] ?? '') as String;
                     contentText = rawCiphertext;
+                  } else if (parsed['type'] == 'reply') {
+                    contentText = (parsed['text'] ?? '') as String;
                   }
                 }
               } catch (_) {}
@@ -614,13 +674,13 @@ class ConversationService {
                 contentType = MessageContentType.voiceNote;
                 mediaData = rawCiphertext;
                 attName = 'Voice Note';
-                contentText = '🎤 Pesan Suara';
+                contentText = 'Pesan Suara';
                 attSize = '0:00';
               } else if (msgType == 'DOCUMENT' || rawCiphertext.startsWith('data:') || rawCiphertext.startsWith('📄')) {
                 contentType = MessageContentType.attachment;
                 mediaData = rawCiphertext.startsWith('data:') ? rawCiphertext : null;
                 attName = 'Dokumen';
-                contentText = rawCiphertext.startsWith('data:') ? '📄 Berkas Dokumen' : rawCiphertext;
+                contentText = rawCiphertext.startsWith('data:') ? 'Berkas Dokumen' : rawCiphertext;
               } else if (msgType == 'LOCATION' || rawCiphertext.contains('"type":"location"') || rawCiphertext.contains('"type": "location"')) {
                 contentType = MessageContentType.location;
                 contentText = rawCiphertext;
@@ -643,6 +703,7 @@ class ConversationService {
               timestamp: DateHelper.parseUtc(m['createdAt']),
               isOutgoing: isOutgoing,
               status: MessageDeliveryStatus.delivered,
+              replyTo: parsedReplyTo,
               reactions: reactionsList,
             );
           }).toList();
@@ -660,19 +721,30 @@ class ConversationService {
     return [];
   }
 
-  /// Send message to conversation (supports text, images, audio voice notes, and documents)
+  /// Send message to conversation (supports text, images, audio voice notes, documents, and replies)
   Future<MessageModel?> sendMessage({
     required String conversationId,
     required String text,
     String? clientMessageId,
-    String? messageType, // 'TEXT', 'IMAGE', 'AUDIO', 'DOCUMENT'
+    String? messageType, // 'TEXT', 'IMAGE', 'AUDIO', 'DOCUMENT', 'LOCATION'
     String? attachmentPath,
     String? attachmentName,
     String? attachmentSize,
+    MessageModel? replyTo,
   }) async {
     final id = clientMessageId ?? 'msg-${DateTime.now().millisecondsSinceEpoch}';
     final type = messageType ?? 'TEXT';
     String payloadCiphertext = text;
+
+    Map<String, dynamic>? replyToMap;
+    if (replyTo != null) {
+      replyToMap = {
+        'id': replyTo.id,
+        'senderName': replyTo.senderName,
+        'content': replyTo.displaySnippet,
+        'contentType': replyTo.contentType.name,
+      };
+    }
 
     // Convert local media files to base64 data URI for instant cross-device transfer
     if (attachmentPath != null && (type == 'IMAGE' || type == 'AUDIO' || type == 'DOCUMENT')) {
@@ -693,6 +765,7 @@ class ConversationService {
               'type': 'image',
               'media': 'data:$mime;base64,$b64',
               'caption': text.trim(),
+              if (replyToMap != null) 'replyTo': replyToMap,
             });
           } else if (type == 'AUDIO') {
             payloadCiphertext = jsonEncode({
@@ -700,12 +773,40 @@ class ConversationService {
               'media': 'data:$mime;base64,$b64',
               'duration': attachmentSize ?? '0:00',
               'fileName': attachmentName ?? 'Voice Note',
+              if (replyToMap != null) 'replyTo': replyToMap,
             });
           } else {
-            payloadCiphertext = 'data:$mime;base64,$b64';
+            payloadCiphertext = jsonEncode({
+              'type': 'document',
+              'media': 'data:$mime;base64,$b64',
+              'fileName': attachmentName ?? 'Dokumen',
+              if (replyToMap != null) 'replyTo': replyToMap,
+            });
           }
         }
       } catch (_) {}
+    } else if (replyToMap != null) {
+      if (type == 'LOCATION' || payloadCiphertext.startsWith('{')) {
+        try {
+          final parsed = jsonDecode(payloadCiphertext);
+          if (parsed is Map) {
+            parsed['replyTo'] = replyToMap;
+            payloadCiphertext = jsonEncode(parsed);
+          }
+        } catch (_) {
+          payloadCiphertext = jsonEncode({
+            'type': 'reply',
+            'text': text,
+            'replyTo': replyToMap,
+          });
+        }
+      } else {
+        payloadCiphertext = jsonEncode({
+          'type': 'reply',
+          'text': text,
+          'replyTo': replyToMap,
+        });
+      }
     }
 
     try {
@@ -735,6 +836,7 @@ class ConversationService {
           attachmentPath: attachmentPath,
           attachmentName: attachmentName,
           attachmentSize: attachmentSize,
+          replyTo: replyTo,
           contentType: type == 'AUDIO'
               ? MessageContentType.voiceNote
               : (type == 'IMAGE' || type == 'DOCUMENT'
@@ -777,6 +879,7 @@ class ConversationService {
       attachmentPath: attachmentPath,
       attachmentName: attachmentName,
       attachmentSize: attachmentSize,
+      replyTo: replyTo,
       contentType: type == 'AUDIO'
           ? MessageContentType.voiceNote
           : (type == 'IMAGE' || type == 'DOCUMENT'

@@ -375,14 +375,30 @@ class _ChatInputBarState extends State<ChatInputBar> with SingleTickerProviderSt
                                 ],
                               ),
                               const SizedBox(height: 2),
-                              Text(
-                                widget.replyingTo!.content,
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: hintCol,
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
+                              Row(
+                                children: [
+                                  if (widget.replyingTo!.contentType == MessageContentType.voiceNote) ...[
+                                    Icon(Icons.mic_rounded, size: 13, color: hintCol),
+                                    const SizedBox(width: 3),
+                                  ] else if (widget.replyingTo!.contentType == MessageContentType.location) ...[
+                                    Icon(Icons.location_on_rounded, size: 13, color: hintCol),
+                                    const SizedBox(width: 3),
+                                  ] else if (widget.replyingTo!.contentType == MessageContentType.attachment) ...[
+                                    Icon(Icons.photo_camera_rounded, size: 13, color: hintCol),
+                                    const SizedBox(width: 3),
+                                  ],
+                                  Expanded(
+                                    child: Text(
+                                      widget.replyingTo!.displaySnippet,
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: hintCol,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ],
                           ),

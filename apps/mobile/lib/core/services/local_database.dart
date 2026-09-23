@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
@@ -63,6 +64,7 @@ class LocalDatabase {
       attachment_name  TEXT,
       attachment_size  TEXT,
       attachment_path  TEXT,
+      reply_to_json    TEXT,
       is_edited        INTEGER NOT NULL DEFAULT 0,
       cached_at        INTEGER NOT NULL DEFAULT 0
     )
@@ -112,6 +114,9 @@ class LocalDatabase {
         } catch (_) {}
         try {
           await db.execute('CREATE INDEX IF NOT EXISTS idx_messages_client ON messages(client_message_id)');
+        } catch (_) {}
+        try {
+          await db.execute('ALTER TABLE messages ADD COLUMN reply_to_json TEXT');
         } catch (_) {}
         try {
           await db.execute('ALTER TABLE conversations ADD COLUMN avatar_url TEXT');
@@ -263,6 +268,15 @@ class LocalDatabase {
     );
   }
 
+  /// Clear all messages for a specific conversation from local cache.
+  Future<void> clearMessages(String conversationId) async {
+    await _database.delete(
+      'messages',
+      where: 'conversation_id = ?',
+      whereArgs: [conversationId],
+    );
+  }
+
   /// Update content of an edited message in local cache.
   Future<void> updateMessageContent(String messageId, String newContent) async {
     await _database.update(
@@ -357,6 +371,21 @@ class LocalDatabase {
   }
 
   Map<String, dynamic> _messageToRow(MessageModel m, int cachedAt) {
+    String? replyToJson;
+    if (m.replyTo != null) {
+      try {
+        replyToJson = jsonEncode({
+          'id': m.replyTo!.id,
+          'sender_name': m.replyTo!.senderName,
+          'content': m.replyTo!.content,
+          'content_type': m.replyTo!.contentType.name,
+          'attachment_name': m.replyTo!.attachmentName,
+          'attachment_size': m.replyTo!.attachmentSize,
+          'attachment_path': m.replyTo!.attachmentPath,
+        });
+      } catch (_) {}
+    }
+
     return {
       'id': m.id,
       'client_message_id': m.clientMessageId,
@@ -372,12 +401,38 @@ class LocalDatabase {
       'attachment_name': m.attachmentName,
       'attachment_size': m.attachmentSize,
       'attachment_path': m.attachmentPath,
+      'reply_to_json': replyToJson,
       'is_edited': m.isEdited ? 1 : 0,
       'cached_at': cachedAt,
     };
   }
 
   MessageModel _rowToMessage(Map<String, dynamic> row) {
+    MessageModel? replyTo;
+    final rRaw = row['reply_to_json'] as String?;
+    if (rRaw != null && rRaw.isNotEmpty) {
+      try {
+        final rMap = jsonDecode(rRaw);
+        if (rMap is Map) {
+          replyTo = MessageModel(
+            id: rMap['id'] as String? ?? '',
+            conversationId: row['conversation_id'] as String,
+            senderName: rMap['sender_name'] as String? ?? 'Contact',
+            content: rMap['content'] as String? ?? '',
+            attachmentName: rMap['attachment_name'] as String?,
+            attachmentSize: rMap['attachment_size'] as String?,
+            attachmentPath: rMap['attachment_path'] as String?,
+            contentType: MessageContentType.values.firstWhere(
+              (t) => t.name == rMap['content_type'],
+              orElse: () => MessageContentType.text,
+            ),
+            timestamp: DateTime.fromMillisecondsSinceEpoch(row['timestamp'] as int),
+            isOutgoing: false,
+          );
+        }
+      } catch (_) {}
+    }
+
     return MessageModel(
       id: row['id'] as String,
       clientMessageId: row['client_message_id'] as String?,
@@ -399,6 +454,7 @@ class LocalDatabase {
       attachmentName: row['attachment_name'] as String?,
       attachmentSize: row['attachment_size'] as String?,
       attachmentPath: row['attachment_path'] as String?,
+      replyTo: replyTo,
       isEdited: (row['is_edited'] as int) == 1,
     );
   }

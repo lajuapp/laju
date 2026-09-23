@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 import 'dart:typed_data';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
@@ -11,6 +12,18 @@ import '../../../../core/widgets/laju_glass.dart';
 import '../../../../core/widgets/modern_avatar.dart';
 import '../../../home/presentation/screens/home_screen.dart';
 import '../../domain/call_session_controller.dart';
+
+enum BeautyPreset {
+  glow('Glow Natural', Icons.auto_awesome_rounded, Color(0xFFF59E0B)),
+  rosy('Soft Rosy', Icons.favorite_rounded, Color(0xFFEC4899)),
+  clean('Clean Sharp', Icons.wb_sunny_rounded, Color(0xFF06B6D4)),
+  off('Normal', Icons.block_rounded, Color(0xFF94A3B8));
+
+  final String label;
+  final IconData icon;
+  final Color color;
+  const BeautyPreset(this.label, this.icon, this.color);
+}
 
 class ActiveCallScreen extends StatefulWidget {
   final String contactName;
@@ -37,6 +50,8 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
   CameraController? _cameraController;
   bool _isFrontCamera = true;
   bool _isCameraInMainView = true;
+  bool _isMirrorEnabled = false; // Default: false (tampilan asli, non-mirror)
+  BeautyPreset _beautyPreset = BeautyPreset.glow; // Default: Glow Natural (tampak ganteng/cantik)
 
   Uint8List? _remoteVideoBytes;
   int _lastRemoteFrameTime = 0;
@@ -84,7 +99,7 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
 
       final controller = CameraController(
         selectedCamera,
-        ResolutionPreset.medium,
+        ResolutionPreset.high,
         enableAudio: false,
         imageFormatGroup: ImageFormatGroup.yuv420,
       );
@@ -126,8 +141,10 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
             'yRowStride': image.planes[0].bytesPerRow,
             'uvRowStride': image.planes[1].bytesPerRow,
             'uvPixelStride': image.planes[1].bytesPerPixel ?? 1,
-            'quality': 62,
+            'quality': 78,
             'isFront': _isFrontCamera,
+            'isMirror': _isMirrorEnabled,
+            'isBeauty': _beautyPreset != BeautyPreset.off,
           });
 
           if (jpeg != null && jpeg.isNotEmpty) {
@@ -137,7 +154,7 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
               ApiClient.instance.post(
                 ApiEndpoints.callVideoFrame(curCallId),
                 body: {'frame': b64},
-              ).catchError((_) {});
+              ).catchError((_) => ApiResponse<dynamic>.error(500, 'Video frame error'));
             }
           }
         } catch (_) {
@@ -192,6 +209,57 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
     setState(() {
       _isCameraInMainView = !_isCameraInMainView;
     });
+  }
+
+  void _toggleMirror() {
+    setState(() {
+      _isMirrorEnabled = !_isMirrorEnabled;
+    });
+    LajuToast.info(
+      context,
+      _isMirrorEnabled
+          ? 'Mode Cermin Diaktifkan'
+          : 'Mode Non-Mirror / Asli Aktif (Wajah Sesuai Asli)',
+    );
+  }
+
+  void _cycleBeautyPreset() {
+    setState(() {
+      final nextIndex = (_beautyPreset.index + 1) % BeautyPreset.values.length;
+      _beautyPreset = BeautyPreset.values[nextIndex];
+    });
+    LajuToast.info(
+      context,
+      'Efek Kamera: ${_beautyPreset.label}',
+    );
+  }
+
+  List<double>? _getBeautyMatrix(BeautyPreset preset) {
+    switch (preset) {
+      case BeautyPreset.glow:
+        return const [
+          1.06, 0.0,  0.0,  0.0, 10.0,
+          0.0,  1.03, 0.0,  0.0, 7.0,
+          0.0,  0.0,  0.98, 0.0, 3.0,
+          0.0,  0.0,  0.0,  1.0, 0.0,
+        ];
+      case BeautyPreset.rosy:
+        return const [
+          1.08, 0.0,  0.0,  0.0, 12.0,
+          0.0,  1.02, 0.0,  0.0, 5.0,
+          0.0,  0.0,  1.01, 0.0, 4.0,
+          0.0,  0.0,  0.0,  1.0, 0.0,
+        ];
+      case BeautyPreset.clean:
+        return const [
+          1.05, 0.0,  0.0,  0.0, 8.0,
+          0.0,  1.05, 0.0,  0.0, 8.0,
+          0.0,  0.0,  1.04, 0.0, 8.0,
+          0.0,  0.0,  0.0,  1.0, 0.0,
+        ];
+      case BeautyPreset.off:
+        return null;
+    }
   }
 
   @override
@@ -444,6 +512,103 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
                                           ),
                                         ),
                                       ),
+                                      // Quick Beauty & Mirror Toolbar (Top Right)
+                                      if (_isCameraInMainView)
+                                        Positioned(
+                                          top: 10,
+                                          right: 12,
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              // Beauty Mode Button
+                                              GestureDetector(
+                                                onTap: _cycleBeautyPreset,
+                                                child: Container(
+                                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                                                  decoration: BoxDecoration(
+                                                    color: Colors.black.withValues(alpha: 0.65),
+                                                    borderRadius: BorderRadius.circular(14),
+                                                    border: Border.all(
+                                                      color: _beautyPreset != BeautyPreset.off
+                                                          ? _beautyPreset.color
+                                                          : Colors.white24,
+                                                      width: 1.2,
+                                                    ),
+                                                    boxShadow: _beautyPreset != BeautyPreset.off
+                                                        ? [
+                                                            BoxShadow(
+                                                              color: _beautyPreset.color.withValues(alpha: 0.35),
+                                                              blurRadius: 8,
+                                                              spreadRadius: 1,
+                                                            )
+                                                          ]
+                                                        : null,
+                                                  ),
+                                                  child: Row(
+                                                    mainAxisSize: MainAxisSize.min,
+                                                    children: [
+                                                      Icon(
+                                                        _beautyPreset.icon,
+                                                        size: 13,
+                                                        color: _beautyPreset != BeautyPreset.off
+                                                            ? _beautyPreset.color
+                                                            : Colors.white70,
+                                                      ),
+                                                      const SizedBox(width: 4),
+                                                      Text(
+                                                        _beautyPreset.label,
+                                                        style: TextStyle(
+                                                          color: _beautyPreset != BeautyPreset.off
+                                                              ? Colors.white
+                                                              : Colors.white70,
+                                                          fontSize: 10.5,
+                                                          fontWeight: FontWeight.w700,
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                              ),
+                                              if (_isFrontCamera) ...[
+                                                const SizedBox(width: 6),
+                                                // Mirror Mode Toggle
+                                                GestureDetector(
+                                                  onTap: _toggleMirror,
+                                                  child: Container(
+                                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                                                    decoration: BoxDecoration(
+                                                      color: Colors.black.withValues(alpha: 0.65),
+                                                      borderRadius: BorderRadius.circular(14),
+                                                      border: Border.all(
+                                                        color: _isMirrorEnabled ? AppColors.primary : Colors.white24,
+                                                        width: 1.2,
+                                                      ),
+                                                    ),
+                                                    child: Row(
+                                                      mainAxisSize: MainAxisSize.min,
+                                                      children: [
+                                                        Icon(
+                                                          _isMirrorEnabled ? Icons.flip_rounded : Icons.crop_free_rounded,
+                                                          size: 13,
+                                                          color: _isMirrorEnabled ? AppColors.primary : Colors.white70,
+                                                        ),
+                                                        const SizedBox(width: 4),
+                                                        Text(
+                                                          _isMirrorEnabled ? 'Cermin' : 'Asli',
+                                                          style: TextStyle(
+                                                            color: _isMirrorEnabled ? AppColors.primary : Colors.white,
+                                                            fontSize: 10.5,
+                                                            fontWeight: FontWeight.w700,
+                                                          ),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  ),
+                                                ),
+                                              ],
+                                            ],
+                                          ),
+                                        ),
                                       // Flip camera button (Bottom Left)
                                       if (_isCameraInMainView)
                                         Positioned(
@@ -511,7 +676,7 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
                                               ? _buildLocalCameraPreview(isPip: true)
                                               : _buildRemoteVideoView(isPip: true, textPrimary: textPrimary, textSecondary: textSecondary),
                                         ),
-                                        if (!_isCameraInMainView)
+                                        if (!_isCameraInMainView) ...[
                                           Positioned(
                                             bottom: 6,
                                             right: 6,
@@ -531,6 +696,34 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
                                               ),
                                             ),
                                           ),
+                                          Positioned(
+                                            top: 6,
+                                            right: 6,
+                                            child: GestureDetector(
+                                              onTap: _cycleBeautyPreset,
+                                              child: Container(
+                                                padding: const EdgeInsets.all(4),
+                                                decoration: BoxDecoration(
+                                                  color: Colors.black.withValues(alpha: 0.7),
+                                                  shape: BoxShape.circle,
+                                                  border: Border.all(
+                                                    color: _beautyPreset != BeautyPreset.off
+                                                        ? _beautyPreset.color
+                                                        : Colors.white24,
+                                                    width: 1,
+                                                  ),
+                                                ),
+                                                child: Icon(
+                                                  _beautyPreset.icon,
+                                                  color: _beautyPreset != BeautyPreset.off
+                                                      ? _beautyPreset.color
+                                                      : Colors.white70,
+                                                  size: 12,
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ],
                                         Positioned(
                                           top: 6,
                                           left: 6,
@@ -733,7 +926,7 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
 
   Widget _buildLocalCameraPreview({required bool isPip}) {
     if (_cameraController != null && _cameraController!.value.isInitialized) {
-      return SizedBox.expand(
+      Widget cameraWidget = SizedBox.expand(
         child: FittedBox(
           fit: BoxFit.cover,
           child: SizedBox(
@@ -742,6 +935,52 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
             child: CameraPreview(_cameraController!),
           ),
         ),
+      );
+
+      // Invert mirror if front camera and user chose non-mirror (default false)
+      if (_isFrontCamera && !_isMirrorEnabled) {
+        cameraWidget = Transform(
+          alignment: Alignment.center,
+          transform: Matrix4.rotationY(math.pi),
+          child: cameraWidget,
+        );
+      }
+
+      // Apply Beauty Filter Matrix
+      final matrix = _getBeautyMatrix(_beautyPreset);
+      if (matrix != null) {
+        cameraWidget = ColorFiltered(
+          colorFilter: ColorFilter.matrix(matrix),
+          child: cameraWidget,
+        );
+      }
+
+      return Stack(
+        fit: StackFit.expand,
+        children: [
+          cameraWidget,
+
+          // Studio Lighting & Radiance Overlay when Beauty is active
+          if (_beautyPreset != BeautyPreset.off)
+            IgnorePointer(
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: RadialGradient(
+                    center: const Alignment(0.0, -0.1),
+                    radius: isPip ? 0.9 : 0.8,
+                    colors: [
+                      _beautyPreset == BeautyPreset.rosy
+                          ? const Color(0xFFF43F5E).withValues(alpha: 0.08)
+                          : const Color(0xFFF59E0B).withValues(alpha: 0.08),
+                      Colors.transparent,
+                      Colors.black.withValues(alpha: isPip ? 0.14 : 0.22),
+                    ],
+                    stops: const [0.0, 0.55, 1.0],
+                  ),
+                ),
+              ),
+            ),
+        ],
       );
     }
     return Container(

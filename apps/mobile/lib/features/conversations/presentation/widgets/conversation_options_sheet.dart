@@ -72,6 +72,7 @@ class ConversationOptionsSheet {
                       children: [
                         ModernAvatar(
                           name: conversation.title,
+                          imagePath: conversation.avatarUrl,
                           radius: 24,
                           isOnline: conversation.isOnline,
                           isVerified: conversation.isKeyVerified,

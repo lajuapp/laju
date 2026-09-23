@@ -13,6 +13,9 @@ class ChatBubble extends StatelessWidget {
   final ValueChanged<MessageModel>? onReply;
   final ValueChanged<MessageModel>? onEdit;
   final VoidCallback? onDelete;
+  final bool isGroup;
+  final double topMargin;
+  final double bottomMargin;
 
   const ChatBubble({
     super.key,
@@ -21,6 +24,9 @@ class ChatBubble extends StatelessWidget {
     this.onReply,
     this.onEdit,
     this.onDelete,
+    this.isGroup = false,
+    this.topMargin = 1.0,
+    this.bottomMargin = 1.0,
   });
 
   static const List<String> kQuickReactions = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
@@ -235,10 +241,13 @@ class ChatBubble extends StatelessWidget {
       child: GestureDetector(
         onLongPress: () => _showMessageOptions(context),
         child: Container(
-          margin: const EdgeInsets.symmetric(vertical: 1.5),
+          margin: EdgeInsets.only(
+            top: topMargin,
+            bottom: bottomMargin,
+          ),
           padding: EdgeInsets.only(
-            left: isOut ? 52 : 8,
-            right: isOut ? 8 : 52,
+            left: isOut ? 48 : 6,
+            right: isOut ? 6 : 48,
           ),
           child: Stack(
             clipBehavior: Clip.none,
@@ -246,11 +255,11 @@ class ChatBubble extends StatelessWidget {
               Container(
                 padding: isImage
                     ? (_hasImageCaption()
-                        ? const EdgeInsets.fromLTRB(4, 4, 4, 6)
+                        ? const EdgeInsets.fromLTRB(4, 4, 4, 5)
                         : const EdgeInsets.all(3))
                     : (message.contentType == MessageContentType.location
                         ? const EdgeInsets.all(4)
-                        : const EdgeInsets.fromLTRB(9, 6, 9, 5)),
+                        : const EdgeInsets.fromLTRB(8, 4, 8, 4)),
                 decoration: BoxDecoration(
                   color: isOut
                       ? (isDark ? const Color(0xFF005C4B) : const Color(0xFFD9FDD3))
@@ -272,13 +281,13 @@ class ChatBubble extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Sender Name (Incoming in group or user chat)
-                    if (!isOut && message.senderName.isNotEmpty) ...[
+                    // Sender Name (Only shown in group chats for incoming messages)
+                    if (isGroup && !isOut && message.senderName.isNotEmpty) ...[
                       Padding(
                         padding: EdgeInsets.only(
                           left: isImage ? 8 : 0,
                           top: isImage ? 4 : 0,
-                          bottom: 3,
+                          bottom: 2,
                         ),
                         child: Text(
                           message.senderName,
@@ -294,50 +303,7 @@ class ChatBubble extends StatelessWidget {
 
                     // Quoted Message Box (Reply)
                     if (message.replyTo != null) ...[
-                      Container(
-                        margin: EdgeInsets.only(
-                          left: isImage ? 4 : 0,
-                          right: isImage ? 4 : 0,
-                          top: isImage ? 4 : 0,
-                          bottom: 5,
-                        ),
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-                        decoration: BoxDecoration(
-                          color: isDark
-                              ? Colors.black.withValues(alpha: 0.25)
-                              : (isOut ? Colors.black.withValues(alpha: 0.05) : const Color(0xFFF1F5F9)),
-                          borderRadius: BorderRadius.circular(6),
-                          border: const Border(
-                            left: BorderSide(color: AppColors.primary, width: 3),
-                          ),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              message.replyTo!.senderName,
-                              style: const TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w700,
-                                color: AppColors.primary,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              message.replyTo!.content,
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
-                              ),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ],
-                        ),
-                      ),
+                      _buildQuotedReplyBox(context, isDark, isOut, isImage),
                     ],
 
                     // Image Message Content
@@ -698,6 +664,119 @@ class ChatBubble extends StatelessWidget {
       color: isDark ? const Color(0xFF1E293B) : const Color(0xFFE2E8F0),
       child: const Center(
         child: Icon(Icons.broken_image_rounded, size: 40, color: Colors.grey),
+      ),
+    );
+  }
+
+  Widget _buildQuotedReplyBox(BuildContext context, bool isDark, bool isOut, bool isImage) {
+    final reply = message.replyTo!;
+    final accentColor = isOut
+        ? (isDark ? const Color(0xFF00A884) : const Color(0xFF008069))
+        : (isDark ? const Color(0xFF53BDEB) : const Color(0xFF027EB5));
+
+    final replyBg = isDark
+        ? (isOut ? Colors.black.withValues(alpha: 0.32) : Colors.black.withValues(alpha: 0.22))
+        : (isOut ? const Color(0xFFE4F8DD) : const Color(0xFFF0F2F5));
+
+    final senderNameColor = isOut
+        ? (isDark ? const Color(0xFF25D366) : const Color(0xFF008069))
+        : (isDark ? const Color(0xFF53BDEB) : const Color(0xFF027EB5));
+
+    final snippetColor = isDark
+        ? Colors.white.withValues(alpha: 0.88)
+        : const Color(0xFF111B21).withValues(alpha: 0.78);
+
+    final snippetText = reply.displaySnippet;
+
+    IconData? snippetIcon;
+    if (reply.contentType == MessageContentType.voiceNote) {
+      snippetIcon = Icons.mic_rounded;
+    } else if (reply.contentType == MessageContentType.location) {
+      snippetIcon = Icons.location_on_rounded;
+    } else if (reply.contentType == MessageContentType.attachment) {
+      final name = (reply.attachmentName ?? '').toLowerCase();
+      snippetIcon = (name.endsWith('.pdf') || name.endsWith('.doc') || name.endsWith('.docx'))
+          ? Icons.insert_drive_file_rounded
+          : Icons.photo_camera_rounded;
+    }
+
+    return Container(
+      margin: EdgeInsets.only(
+        left: isImage ? 4 : 0,
+        right: isImage ? 4 : 0,
+        top: isImage ? 4 : 0,
+        bottom: 3,
+      ),
+      decoration: BoxDecoration(
+        color: replyBg,
+        borderRadius: BorderRadius.circular(6),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: IntrinsicHeight(
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Vertical WhatsApp Accent Bar
+            Container(
+              width: 3.5,
+              color: accentColor,
+            ),
+            // Text content
+            Flexible(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3.5),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.reply_rounded, size: 11, color: senderNameColor),
+                        const SizedBox(width: 3),
+                        Flexible(
+                          child: Text(
+                            reply.senderName.isNotEmpty ? reply.senderName : 'Pesan',
+                            style: TextStyle(
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w700,
+                              color: senderNameColor,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 1),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (snippetIcon != null) ...[
+                          Icon(snippetIcon, size: 12, color: snippetColor),
+                          const SizedBox(width: 3),
+                        ],
+                        Flexible(
+                          child: Text(
+                            snippetText.isNotEmpty ? snippetText : '...',
+                            style: TextStyle(
+                              fontSize: 11.5,
+                              color: snippetColor,
+                              height: 1.25,
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -244,6 +244,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
     ConversationService.instance.sendTypingStatus(widget.groupId, false);
     LajuSoundService.playOutgoingTone();
     final localId = 'g-${DateTime.now().millisecondsSinceEpoch}';
+    final replyingToMsg = _replyingTo;
     final localMsg = MessageModel(
       id: localId,
       clientMessageId: localId,
@@ -253,7 +254,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
       timestamp: DateTime.now(),
       isOutgoing: true,
       status: MessageDeliveryStatus.sending,
-      replyTo: _replyingTo,
+      replyTo: replyingToMsg,
     );
 
     setState(() {
@@ -269,6 +270,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
       conversationId: widget.groupId,
       text: text,
       clientMessageId: localId,
+      replyTo: replyingToMsg,
     );
 
     if (mounted && sent != null) {
@@ -287,7 +289,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
       id: 'voice-${DateTime.now().millisecondsSinceEpoch}',
       conversationId: widget.groupId,
       senderName: 'You',
-      content: '🎤 Voice Message (${result.formattedDuration})',
+      content: 'Voice Message (${result.formattedDuration})',
       timestamp: DateTime.now(),
       isOutgoing: true,
       contentType: MessageContentType.voiceNote,
@@ -305,7 +307,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
 
     final sent = await ConversationService.instance.sendMessage(
       conversationId: widget.groupId,
-      text: '🎤 Voice Message (${result.formattedDuration})',
+      text: 'Voice Message (${result.formattedDuration})',
       clientMessageId: voiceMsg.id,
       messageType: 'AUDIO',
       attachmentPath: result.filePath,
@@ -394,7 +396,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
           clientMessageId: docId,
           conversationId: widget.groupId,
           senderName: 'You',
-          content: result.subtitle ?? '📄 ${result.title}',
+          content: result.subtitle ?? result.title,
           attachmentName: result.title,
           attachmentSize: result.fileSize ?? '',
           attachmentPath: filePath,
@@ -410,7 +412,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
 
         final sent = await ConversationService.instance.sendMessage(
           conversationId: widget.groupId,
-          text: '📄 ${result.title} (${result.fileSize ?? ""})',
+          text: '${result.title} (${result.fileSize ?? ""})',
           clientMessageId: docId,
           messageType: 'DOCUMENT',
           attachmentPath: filePath,
@@ -1167,15 +1169,24 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
 
                           return ListView.builder(
                             controller: _scrollController,
-                            padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 4),
+                            padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
                             itemCount: displayedMsgs.length,
                             itemBuilder: (context, index) {
                               final msg = displayedMsgs[index];
                               final isFirstOrDiffDay = index == 0 ||
                                   !DateHelper.isSameDay(msg.timestamp, displayedMsgs[index - 1].timestamp);
 
+                              final isSameSenderAsPrev = index > 0 &&
+                                  !isFirstOrDiffDay &&
+                                  displayedMsgs[index - 1].isOutgoing == msg.isOutgoing &&
+                                  displayedMsgs[index - 1].senderName == msg.senderName;
+                              final topMargin = isSameSenderAsPrev ? 1.0 : 4.0;
+
                               final bubble = ChatBubble(
                                 message: msg,
+                                isGroup: true,
+                                topMargin: topMargin,
+                                bottomMargin: 1.0,
                                 onReactionSelected: (emoji) => _handleReaction(msg, emoji),
                                 onReply: _handleReply,
                                 onEdit: _handleEditMessage,

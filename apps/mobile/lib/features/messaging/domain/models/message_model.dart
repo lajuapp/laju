@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 enum MessageDeliveryStatus {
   sending,
   sent,
@@ -92,6 +94,56 @@ class MessageModel {
       reactions: reactions ?? this.reactions,
       isEdited: isEdited ?? this.isEdited,
     );
+  }
+
+  /// Clean, human-readable snippet for quotes, reply previews, and notifications
+  String get displaySnippet {
+    if (contentType == MessageContentType.voiceNote) {
+      return attachmentSize != null && attachmentSize!.isNotEmpty
+          ? 'Pesan Suara ($attachmentSize)'
+          : 'Pesan Suara';
+    }
+    if (contentType == MessageContentType.location ||
+        content.contains('"type":"location"') ||
+        content.contains('"type": "location"')) {
+      try {
+        final parsed = jsonDecode(content);
+        if (parsed is Map && parsed['name'] != null && (parsed['name'] as String).isNotEmpty) {
+          return parsed['name'] as String;
+        }
+      } catch (_) {}
+      return 'Lokasi';
+    }
+    if (contentType == MessageContentType.attachment) {
+      if (attachmentName != null &&
+          attachmentName!.isNotEmpty &&
+          attachmentName != 'Foto.jpg' &&
+          !attachmentName!.toLowerCase().endsWith('.jpg') &&
+          !attachmentName!.toLowerCase().endsWith('.png')) {
+        return attachmentName!;
+      }
+      if (content.isNotEmpty && !content.startsWith('{')) {
+        return content;
+      }
+      return 'Foto';
+    }
+    if (content.startsWith('{') && content.contains('"caption"')) {
+      try {
+        final parsed = jsonDecode(content);
+        if (parsed is Map && parsed['caption'] != null && (parsed['caption'] as String).isNotEmpty) {
+          return parsed['caption'] as String;
+        }
+      } catch (_) {}
+    }
+    if (content.startsWith('{') && content.contains('"text"')) {
+      try {
+        final parsed = jsonDecode(content);
+        if (parsed is Map && parsed['text'] != null && (parsed['text'] as String).isNotEmpty) {
+          return parsed['text'] as String;
+        }
+      } catch (_) {}
+    }
+    return content;
   }
 
   /// Deduplicates a list of messages, collapsing optimistic temporary IDs

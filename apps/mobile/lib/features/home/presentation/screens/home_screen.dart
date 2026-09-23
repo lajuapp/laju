@@ -15,10 +15,10 @@ import '../../../calls/presentation/screens/active_call_screen.dart';
 import '../../../status/presentation/screens/status_screen.dart';
 import '../../../settings/presentation/screens/settings_screen.dart';
 import '../../../conversations/presentation/screens/new_chat_screen.dart';
-import '../../../security/presentation/screens/key_verification_screen.dart';
 import '../../../settings/presentation/screens/my_qr_code_screen.dart';
 import '../../../lock/presentation/screens/app_lock_screen.dart';
 import '../../../conversations/presentation/screens/locked_chats_screen.dart';
+import '../../../conversations/presentation/screens/archived_chats_screen.dart';
 import '../../../calls/presentation/screens/new_call_contact_picker_screen.dart';
 import '../../../calls/domain/call_session_controller.dart';
 import '../../../settings/domain/account_controller.dart';
@@ -188,67 +188,352 @@ class _HomeScreenState extends State<HomeScreen> {
     final index = _conversations.indexWhere((c) => c.id == conv.id);
     if (index == -1) return;
 
-    setState(() {
-      switch (action) {
-        case ConversationActionType.togglePin:
-          final newPinned = !_conversations[index].isPinned;
-          _conversations[index] = _conversations[index].copyWith(isPinned: newPinned);
-          LajuToast.info(context, newPinned ? 'Chat disematkan ke posisi paling atas' : 'Sematan chat dilepas');
-          break;
-        case ConversationActionType.lockChat:
-          final updated = _conversations[index].copyWith(isLocked: true);
+    switch (action) {
+      case ConversationActionType.togglePin:
+        final newPinned = !_conversations[index].isPinned;
+        final updated = _conversations[index].copyWith(isPinned: newPinned);
+        setState(() {
           _conversations[index] = updated;
-          LocalDatabase.instance.upsertConversations([updated]);
+        });
+        await ConversationService.instance.updateConversationLocally(updated);
+        if (mounted) {
+          LajuToast.info(context, newPinned ? 'Chat disematkan ke posisi paling atas' : 'Sematan chat dilepas');
+        }
+        break;
+
+      case ConversationActionType.lockChat:
+        final updated = _conversations[index].copyWith(isLocked: true);
+        setState(() {
+          _conversations[index] = updated;
+        });
+        await ConversationService.instance.updateConversationLocally(updated);
+        if (mounted) {
           LajuToast.info(context, 'Chat dikunci dan dipindahkan ke Locked Chats');
-          break;
-        case ConversationActionType.toggleArchive:
-          final newArchived = !_conversations[index].isArchived;
-          _conversations[index] = _conversations[index].copyWith(isArchived: newArchived);
+        }
+        break;
+
+      case ConversationActionType.toggleArchive:
+        final newArchived = !_conversations[index].isArchived;
+        final updated = _conversations[index].copyWith(isArchived: newArchived);
+        setState(() {
+          _conversations[index] = updated;
+        });
+        await ConversationService.instance.updateConversationLocally(updated);
+        if (mounted) {
           LajuToast.info(context, newArchived ? 'Chat dipindahkan ke arsip' : 'Chat dibuka dari arsip');
-          break;
-        case ConversationActionType.toggleMute:
-          final newMuted = !_conversations[index].isMuted;
-          _conversations[index] = _conversations[index].copyWith(isMuted: newMuted);
+        }
+        break;
+
+      case ConversationActionType.toggleMute:
+        final newMuted = !_conversations[index].isMuted;
+        final updated = _conversations[index].copyWith(isMuted: newMuted);
+        setState(() {
+          _conversations[index] = updated;
+        });
+        await ConversationService.instance.updateConversationLocally(updated);
+        if (mounted) {
           LajuToast.info(context, newMuted ? 'Notifikasi obrolan dibisukan' : 'Notifikasi obrolan aktif kembali');
-          break;
-        case ConversationActionType.toggleRead:
-          final isUnread = _conversations[index].unreadCount > 0;
-          _conversations[index] = _conversations[index].copyWith(unreadCount: isUnread ? 0 : 1);
+        }
+        break;
+
+      case ConversationActionType.toggleRead:
+        final isUnread = _conversations[index].unreadCount > 0;
+        final updated = _conversations[index].copyWith(unreadCount: isUnread ? 0 : 1);
+        setState(() {
+          _conversations[index] = updated;
+        });
+        await ConversationService.instance.updateConversationLocally(updated);
+        if (mounted) {
           LajuToast.info(context, isUnread ? 'Ditandai sudah dibaca' : 'Ditandai belum dibaca');
-          break;
-        case ConversationActionType.addLabel:
-          LajuToast.info(context, 'Label kategori obrolan diperbarui');
-          break;
-        case ConversationActionType.clearChat:
-          _conversations[index] = _conversations[index].copyWith(lastMessage: 'Pesan telah dibersihkan');
-          LajuToast.info(context, 'Riwayat pesan obrolan dibersihkan');
-          break;
-        case ConversationActionType.deleteChat:
-          final targetConv = _conversations[index];
-          _conversations.removeAt(index);
-          ConversationService.instance.deleteConversation(targetConv.id);
-          LajuToast.info(context, 'Obrolan telah dihapus');
-          break;
-        case ConversationActionType.exitGroup:
-          final targetGroup = _conversations[index];
-          _conversations.removeAt(index);
-          ConversationService.instance.leaveGroup(targetGroup.id);
-          LajuToast.info(context, 'Anda telah keluar dari grup');
-          break;
-        case ConversationActionType.blockContact:
-          AccountController.instance.addBlockedContact(conv.title);
-          _conversations.removeAt(index);
-          LajuToast.info(context, 'Kontak ${conv.title} telah diblokir');
-          break;
-        case ConversationActionType.reportContact:
-          showReportUserSheet(
-            context,
-            reportedUserId: conv.id,
-            reportedUserName: conv.title,
-          );
-          break;
-      }
-    });
+        }
+        break;
+
+      case ConversationActionType.addLabel:
+        LajuToast.info(context, 'Label kategori obrolan diperbarui');
+        break;
+
+      case ConversationActionType.clearChat:
+        _showClearChatConfirmation(_conversations[index]);
+        break;
+
+      case ConversationActionType.deleteChat:
+        _showDeleteChatConfirmation(_conversations[index]);
+        break;
+
+      case ConversationActionType.exitGroup:
+        _showExitGroupConfirmation(_conversations[index]);
+        break;
+
+      case ConversationActionType.blockContact:
+        _showBlockContactConfirmation(_conversations[index]);
+        break;
+
+      case ConversationActionType.reportContact:
+        showReportUserSheet(
+          context,
+          reportedUserId: conv.id,
+          reportedUserName: conv.title,
+        );
+        break;
+    }
+  }
+
+  void _showDeleteChatConfirmation(ConversationModel conv) {
+    final isDark = ThemeModeController.instance.isDarkMode(context);
+    showDialog(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        backgroundColor: isDark ? AppColors.darkSurface : Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: const Color(0xFFEF4444).withValues(alpha: 0.15),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.delete_outline_rounded, color: Color(0xFFEF4444), size: 22),
+            ),
+            const SizedBox(width: 12),
+            const Text(
+              'Hapus Chat?',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+          ],
+        ),
+        content: Text(
+          'Riwayat pesan dan media dengan "${conv.title}" akan dihapus secara permanen dari perangkat ini.',
+          style: TextStyle(
+            color: isDark ? AppColors.darkTextSecondary : const Color(0xFF64748B),
+            fontSize: 14,
+            height: 1.4,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogCtx),
+            child: Text(
+              'Batal',
+              style: TextStyle(color: isDark ? Colors.white70 : const Color(0xFF64748B)),
+            ),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFEF4444),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            onPressed: () async {
+              Navigator.pop(dialogCtx);
+              setState(() {
+                _conversations.removeWhere((c) => c.id == conv.id);
+              });
+              await ConversationService.instance.deleteConversation(conv.id);
+              await LocalDatabase.instance.deleteConversation(conv.id);
+              if (mounted) {
+                LajuToast.info(context, 'Obrolan telah dihapus');
+              }
+            },
+            child: const Text('Hapus Chat'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showClearChatConfirmation(ConversationModel conv) {
+    final isDark = ThemeModeController.instance.isDarkMode(context);
+    showDialog(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        backgroundColor: isDark ? AppColors.darkSurface : Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF59E0B).withValues(alpha: 0.15),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.cleaning_services_rounded, color: Color(0xFFF59E0B), size: 22),
+            ),
+            const SizedBox(width: 12),
+            const Text(
+              'Bersihkan Pesan?',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+          ],
+        ),
+        content: Text(
+          'Semua isi pesan di dalam obrolan "${conv.title}" akan dibersihkan.',
+          style: TextStyle(
+            color: isDark ? AppColors.darkTextSecondary : const Color(0xFF64748B),
+            fontSize: 14,
+            height: 1.4,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogCtx),
+            child: Text(
+              'Batal',
+              style: TextStyle(color: isDark ? Colors.white70 : const Color(0xFF64748B)),
+            ),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFF59E0B),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            onPressed: () async {
+              Navigator.pop(dialogCtx);
+              await LocalDatabase.instance.clearMessages(conv.id);
+              final idx = _conversations.indexWhere((c) => c.id == conv.id);
+              if (idx != -1) {
+                final updated = _conversations[idx].copyWith(lastMessage: 'Pesan telah dibersihkan');
+                setState(() {
+                  _conversations[idx] = updated;
+                });
+                await ConversationService.instance.updateConversationLocally(updated);
+              }
+              if (mounted) {
+                LajuToast.info(context, 'Riwayat pesan telah dibersihkan');
+              }
+            },
+            child: const Text('Bersihkan'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showExitGroupConfirmation(ConversationModel conv) {
+    final isDark = ThemeModeController.instance.isDarkMode(context);
+    showDialog(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        backgroundColor: isDark ? AppColors.darkSurface : Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: const Color(0xFFEF4444).withValues(alpha: 0.15),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.exit_to_app_rounded, color: Color(0xFFEF4444), size: 22),
+            ),
+            const SizedBox(width: 12),
+            const Text(
+              'Keluar dari Grup?',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+          ],
+        ),
+        content: Text(
+          'Anda tidak akan lagi menerima pesan dari grup "${conv.title}".',
+          style: TextStyle(
+            color: isDark ? AppColors.darkTextSecondary : const Color(0xFF64748B),
+            fontSize: 14,
+            height: 1.4,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogCtx),
+            child: Text(
+              'Batal',
+              style: TextStyle(color: isDark ? Colors.white70 : const Color(0xFF64748B)),
+            ),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFEF4444),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            onPressed: () async {
+              Navigator.pop(dialogCtx);
+              setState(() {
+                _conversations.removeWhere((c) => c.id == conv.id);
+              });
+              await ConversationService.instance.leaveGroup(conv.id);
+              if (mounted) {
+                LajuToast.info(context, 'Anda telah keluar dari grup');
+              }
+            },
+            child: const Text('Keluar Grup'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showBlockContactConfirmation(ConversationModel conv) {
+    final isDark = ThemeModeController.instance.isDarkMode(context);
+    showDialog(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        backgroundColor: isDark ? AppColors.darkSurface : Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: const Color(0xFFEF4444).withValues(alpha: 0.15),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.block_rounded, color: Color(0xFFEF4444), size: 22),
+            ),
+            const SizedBox(width: 12),
+            const Text(
+              'Blokir Kontak?',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+          ],
+        ),
+        content: Text(
+          'Kontak "${conv.title}" tidak akan dapat mengirim pesan atau melakukan panggilan kepada Anda.',
+          style: TextStyle(
+            color: isDark ? AppColors.darkTextSecondary : const Color(0xFF64748B),
+            fontSize: 14,
+            height: 1.4,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogCtx),
+            child: Text(
+              'Batal',
+              style: TextStyle(color: isDark ? Colors.white70 : const Color(0xFF64748B)),
+            ),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFEF4444),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            onPressed: () async {
+              Navigator.pop(dialogCtx);
+              AccountController.instance.addBlockedContact(conv.title);
+              setState(() {
+                _conversations.removeWhere((c) => c.id == conv.id);
+              });
+              if (mounted) {
+                LajuToast.info(context, 'Kontak ${conv.title} telah diblokir');
+              }
+            },
+            child: const Text('Blokir'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _openChat(ConversationModel conv) async {
@@ -650,16 +935,37 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     }
 
-    if (_filteredConversations.isEmpty) {
-      final isSearching = _searchController.text.trim().isNotEmpty;
+    final isSearching = _searchController.text.trim().isNotEmpty;
+    final archivedCount = _conversations.where((c) => c.isArchived == true).length;
 
+    // Headers shown at top of the conversation list
+    final List<Widget> headers = [];
+    if (_selectedFilter == 'All' && !isSearching) {
+      headers.add(
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+          child: _buildLockedChatsBanner(isDark),
+        ),
+      );
+      if (archivedCount > 0) {
+        headers.add(
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            child: _buildArchivedChatsBanner(isDark, archivedCount),
+          ),
+        );
+      }
+    }
+
+    if (_filteredConversations.isEmpty) {
       return ListView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+        padding: const EdgeInsets.only(bottom: 96),
         children: [
+          ...headers,
           Center(
             child: Padding(
-              padding: const EdgeInsets.only(top: 40),
+              padding: const EdgeInsets.only(top: 40, left: 24, right: 24),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -705,103 +1011,29 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     }
 
+    final totalItemCount = headers.length + _filteredConversations.length;
+
     return ListView.separated(
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.only(bottom: 96),
-      itemCount: _filteredConversations.length + (_selectedFilter == 'All' ? 1 : 0),
-      separatorBuilder: (context, index) => Padding(
-        padding: const EdgeInsets.only(left: 78),
-        child: Divider(
-          height: 1,
-          color: isDark ? Colors.white.withValues(alpha: 0.06) : const Color(0xFFE2E8F0).withValues(alpha: 0.6),
-        ),
-      ),
-      itemBuilder: (context, index) {
-        if (_selectedFilter == 'All') {
-          if (index == 0) {
-            return Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-              child: LajuGlassCard(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                borderRadius: 16,
-                blurSigma: 10,
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => AppLockScreen(
-                        onUnlocked: () {
-                          Navigator.pop(context);
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => const LockedChatsScreen(),
-                            ),
-                          ).then((_) => _loadConversations());
-                        },
-                      ),
-                    ),
-                  );
-                },
-                child: Row(
-                  children: [
-                    Container(
-                      width: 42,
-                      height: 42,
-                      decoration: BoxDecoration(
-                        color: AppColors.primary.withValues(alpha: isDark ? 0.20 : 0.12),
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: AppColors.primary.withValues(alpha: 0.3),
-                        ),
-                      ),
-                      child: const Center(
-                        child: Icon(Icons.lock_rounded, color: AppColors.primary, size: 20),
-                      ),
-                    ),
-                    const SizedBox(width: 14),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Locked chats',
-                            style: TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w700,
-                              color: isDark ? Colors.white : const Color(0xFF111827),
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            'Tap to unlock with fingerprint / PIN',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: isDark ? AppColors.darkTextSecondary : const Color(0xFF6B7280),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Icon(
-                      Icons.chevron_right_rounded,
-                      color: isDark ? AppColors.darkTextSecondary : const Color(0xFF9CA3AF),
-                      size: 20,
-                    ),
-                  ],
-                ),
-              ),
-            );
-          }
-          final conv = _filteredConversations[index - 1];
-          return ConversationTile(
-            key: ValueKey(conv.id),
-            conversation: conv,
-            onTap: () => _openChat(conv),
-            onLongPress: () => _handleConversationOptions(conv),
-          );
+      itemCount: totalItemCount,
+      separatorBuilder: (context, index) {
+        if (index < headers.length) {
+          return const SizedBox(height: 2);
         }
-        final conv = _filteredConversations[index];
+        return Padding(
+          padding: const EdgeInsets.only(left: 78),
+          child: Divider(
+            height: 1,
+            color: isDark ? Colors.white.withValues(alpha: 0.06) : const Color(0xFFE2E8F0).withValues(alpha: 0.6),
+          ),
+        );
+      },
+      itemBuilder: (context, index) {
+        if (index < headers.length) {
+          return headers[index];
+        }
+        final conv = _filteredConversations[index - headers.length];
         return ConversationTile(
           key: ValueKey(conv.id),
           conversation: conv,
@@ -809,6 +1041,158 @@ class _HomeScreenState extends State<HomeScreen> {
           onLongPress: () => _handleConversationOptions(conv),
         );
       },
+    );
+  }
+
+  Widget _buildLockedChatsBanner(bool isDark) {
+    return LajuGlassCard(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      borderRadius: 16,
+      blurSigma: 10,
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => AppLockScreen(
+              onUnlocked: () {
+                Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const LockedChatsScreen(),
+                  ),
+                ).then((_) => _loadConversations());
+              },
+            ),
+          ),
+        );
+      },
+      child: Row(
+        children: [
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: AppColors.primary.withValues(alpha: isDark ? 0.20 : 0.12),
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: AppColors.primary.withValues(alpha: 0.3),
+              ),
+            ),
+            child: const Center(
+              child: Icon(Icons.lock_rounded, color: AppColors.primary, size: 20),
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Chat Dikunci',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: isDark ? Colors.white : const Color(0xFF111827),
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Ketuk untuk membuka dengan sidik jari / PIN',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: isDark ? AppColors.darkTextSecondary : const Color(0xFF6B7280),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Icon(
+            Icons.chevron_right_rounded,
+            color: isDark ? AppColors.darkTextSecondary : const Color(0xFF9CA3AF),
+            size: 20,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildArchivedChatsBanner(bool isDark, int count) {
+    return LajuGlassCard(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      borderRadius: 16,
+      blurSigma: 10,
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => const ArchivedChatsScreen(),
+          ),
+        ).then((_) => _loadConversations());
+      },
+      child: Row(
+        children: [
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: const Color(0xFFF59E0B).withValues(alpha: isDark ? 0.20 : 0.12),
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: const Color(0xFFF59E0B).withValues(alpha: 0.3),
+              ),
+            ),
+            child: const Center(
+              child: Icon(Icons.archive_outlined, color: Color(0xFFF59E0B), size: 20),
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Diarsipkan',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: isDark ? Colors.white : const Color(0xFF111827),
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Obrolan yang disimpan di arsip',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: isDark ? AppColors.darkTextSecondary : const Color(0xFF6B7280),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF59E0B).withValues(alpha: 0.18),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              '$count',
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFFF59E0B),
+              ),
+            ),
+          ),
+          const SizedBox(width: 4),
+          Icon(
+            Icons.chevron_right_rounded,
+            color: isDark ? AppColors.darkTextSecondary : const Color(0xFF9CA3AF),
+            size: 20,
+          ),
+        ],
+      ),
     );
   }
 
