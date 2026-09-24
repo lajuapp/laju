@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import '../../../../core/core.dart';
-import '../../../../core/services/local_database.dart';
 import '../../../conversations/domain/models/conversation_model.dart';
 import '../../../conversations/domain/conversation_service.dart';
 import '../../../conversations/presentation/widgets/conversation_tile.dart';
@@ -64,10 +63,11 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _onCallSessionChanged() {
-    if (mounted && _currentBottomNavIndex == 2) {
+    if (mounted) {
       _loadCallLogs();
     }
   }
+
 
   Future<void> _loadCallLogs() async {
     try {
@@ -1416,14 +1416,13 @@ class _HomeScreenState extends State<HomeScreen> {
                       : 'Panggilan';
                   final phone = call['contact_phone'] as String?;
                   final userId = (call['contact_id'] ?? call['contact_user_id']) as String?;
-                  final direction = call['direction'] as String? ?? 'outgoing';
+                  final isOutgoing = call['is_outgoing'] == 1 || call['is_outgoing'] == true || call['direction'] == 'outgoing';
+                  final isIncoming = !isOutgoing || call['direction'] == 'incoming';
+                  final isVideo = call['is_video'] == 1 || call['is_video'] == true || call['call_type'] == 'video';
                   final status = call['status'] as String? ?? 'completed';
-                  final callType = call['call_type'] as String? ?? 'audio';
-                  final isVideo = callType == 'video';
-                  final isIncoming = direction == 'incoming';
                   final isMissed = status == 'missed' || status == 'rejected';
                   final duration = (call['duration_seconds'] as num?)?.toInt() ?? 0;
-                  final createdAt = (call['created_at'] as num?)?.toInt() ?? (call['timestamp'] as num?)?.toInt();
+                  final createdAt = (call['timestamp'] as num?)?.toInt() ?? (call['created_at'] as num?)?.toInt();
                   final timeStr = _formatCallTimestamp(createdAt);
                   final isLast = index == _callLogs.length - 1;
 
@@ -1455,13 +1454,15 @@ class _HomeScreenState extends State<HomeScreen> {
 
                   String statusDesc;
                   if (status == 'rejected') {
-                    statusDesc = 'Ditolak';
+                    statusDesc = isIncoming ? 'Panggilan ditolak' : 'Ditolak';
                   } else if (status == 'missed') {
-                    statusDesc = 'Tak terjawab';
+                    statusDesc = isIncoming ? 'Panggilan tak terjawab' : 'Tidak terjawab';
+                  } else if (status == 'cancelled') {
+                    statusDesc = 'Dibatalkan';
                   } else if (duration > 0) {
                     statusDesc = _formatCallDuration(duration);
                   } else {
-                    statusDesc = isIncoming ? 'Masuk' : 'Keluar';
+                    statusDesc = isIncoming ? 'Panggilan masuk' : 'Panggilan keluar';
                   }
 
                   final subtitleText = timeStr.isNotEmpty ? '$timeStr • $statusDesc' : statusDesc;

@@ -66,6 +66,12 @@ class CallSessionController extends ChangeNotifier {
   Timer? _statusPoller;
   String? _declinedCallId;
   String? _lastRingingCallId;
+  String? _lastRingingCallerName;
+  String? _lastRingingCallerId;
+  String? _lastRingingCallerPhone;
+  String? _lastRingingCallerAvatar;
+  bool _lastRingingIsVideo = false;
+  bool _hasLoggedCurrentCall = false;
 
   // Getters
   String? get callId => _callId;
@@ -157,6 +163,7 @@ class CallSessionController extends ChangeNotifier {
     _isOutgoing = true;
     _participants = [contactName];
     _durationSeconds = 0;
+    _hasLoggedCurrentCall = false;
     _isMuted = false;
     _isVideoOn = isVideo;
     _isSpeaker = isVideo;
@@ -437,6 +444,8 @@ class CallSessionController extends ChangeNotifier {
       _saveCallLog(status: 'completed', duration: finalDur);
     } else if (finalStatus == CallStatus.ringing || finalStatus == CallStatus.connecting) {
       _saveCallLog(status: _isOutgoing ? 'cancelled' : 'missed', duration: 0);
+    } else if (finalStatus == CallStatus.ended) {
+      _saveCallLog(status: finalDur > 0 ? 'completed' : (_isOutgoing ? 'cancelled' : 'missed'), duration: finalDur);
     }
 
     WebRTCCallService.instance.dispose().catchError((_) {});
@@ -455,7 +464,8 @@ class CallSessionController extends ChangeNotifier {
   }
 
   void _saveCallLog({required String status, int? duration}) {
-    if (_title.isEmpty) return;
+    if (_title.isEmpty || _hasLoggedCurrentCall) return;
+    _hasLoggedCurrentCall = true;
     final resolvedAvatar = _avatarUrl ?? _resolveAvatar(_contactUserId, _contactPhone, _title);
     LocalDatabase.instance.insertCallLog(
       id: 'call-log-${DateTime.now().millisecondsSinceEpoch}',
@@ -468,7 +478,9 @@ class CallSessionController extends ChangeNotifier {
       status: status,
       durationSeconds: duration ?? _durationSeconds,
       timestamp: DateTime.now().millisecondsSinceEpoch,
-    );
+    ).then((_) {
+      notifyListeners();
+    });
   }
 
   void _dispatchCallToBackend(String callee, {bool isVideo = false}) async {
@@ -516,6 +528,11 @@ class CallSessionController extends ChangeNotifier {
             incomingCallId != _lastRingingCallId &&
             incomingCallId != _declinedCallId) {
           _lastRingingCallId = incomingCallId;
+          _lastRingingCallerName = callerName;
+          _lastRingingCallerId = callerId;
+          _lastRingingCallerPhone = callerPhone;
+          _lastRingingCallerAvatar = resolvedAvatar;
+          _lastRingingIsVideo = isVideo;
 
           // Trigger native Android system notification with ringing tone and full-screen heads-up
           _systemNotifChannel.invokeMethod('showCallNotification', {
@@ -549,11 +566,37 @@ class CallSessionController extends ChangeNotifier {
       } else {
         _declinedCallId = null;
         if (_lastRingingCallId != null) {
+          // Caller ended or cancelled before receiver answered -> Log as missed call!
+          final missedName = _lastRingingCallerName ?? 'Panggilan';
+          final missedId = _lastRingingCallerId;
+          final missedPhone = _lastRingingCallerPhone;
+          final missedAvatar = _lastRingingCallerAvatar ?? _resolveAvatar(missedId, missedPhone, missedName);
+          final missedIsVideo = _lastRingingIsVideo;
+
+          LocalDatabase.instance.insertCallLog(
+            id: 'call-log-${DateTime.now().millisecondsSinceEpoch}',
+            contactName: missedName,
+            contactId: missedId,
+            contactPhone: missedPhone,
+            avatarUrl: missedAvatar,
+            isVideo: missedIsVideo,
+            isOutgoing: false,
+            status: 'missed',
+            durationSeconds: 0,
+            timestamp: DateTime.now().millisecondsSinceEpoch,
+          );
+
           _lastRingingCallId = null;
+          _lastRingingCallerName = null;
+          _lastRingingCallerId = null;
+          _lastRingingCallerPhone = null;
+          _lastRingingCallerAvatar = null;
           AppNotificationService.instance.dismiss();
           _systemNotifChannel.invokeMethod('cancelNotification', {'id': 9999}).catchError((_) {});
+          notifyListeners();
         }
       }
+
     } catch (_) {}
   }
 
@@ -616,6 +659,12 @@ class CallSessionController extends ChangeNotifier {
     _isVideoOn = isVideo;
     _isSpeaker = isVideo;
     _durationSeconds = 0;
+    _hasLoggedCurrentCall = false;
+    _lastRingingCallId = null;
+    _lastRingingCallerName = null;
+    _lastRingingCallerId = null;
+    _lastRingingCallerPhone = null;
+    _lastRingingCallerAvatar = null;
     _status = CallStatus.connected;
     _startTimer();
     _initCallAudio();
@@ -653,6 +702,10 @@ class CallSessionController extends ChangeNotifier {
 
     _declinedCallId = incomingCallId;
     _lastRingingCallId = null;
+    _lastRingingCallerName = null;
+    _lastRingingCallerId = null;
+    _lastRingingCallerPhone = null;
+    _lastRingingCallerAvatar = null;
     final resolvedAvatar = avatarUrl ?? _resolveAvatar(callerId, callerPhone, callerName);
     LocalDatabase.instance.insertCallLog(
       id: 'call-log-${DateTime.now().millisecondsSinceEpoch}',
