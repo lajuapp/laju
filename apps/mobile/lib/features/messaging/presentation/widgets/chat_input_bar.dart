@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import '../../../../core/services/voice_note_service.dart';
@@ -18,6 +20,7 @@ class ChatInputBar extends StatefulWidget {
   final VoidCallback? onCancelEdit;
   final Function(String newText)? onConfirmEdit;
   final ValueChanged<bool>? onTypingChanged;
+  final VoidCallback? onStickerTap;
 
   const ChatInputBar({
     super.key,
@@ -31,6 +34,7 @@ class ChatInputBar extends StatefulWidget {
     this.onCancelEdit,
     this.onConfirmEdit,
     this.onTypingChanged,
+    this.onStickerTap,
   });
 
   @override
@@ -377,7 +381,10 @@ class _ChatInputBarState extends State<ChatInputBar> with SingleTickerProviderSt
                               const SizedBox(height: 2),
                               Row(
                                 children: [
-                                  if (widget.replyingTo!.contentType == MessageContentType.voiceNote) ...[
+                                  if (widget.replyingTo!.contentType == MessageContentType.sticker) ...[
+                                    Icon(Icons.sticky_note_2_rounded, size: 13, color: hintCol),
+                                    const SizedBox(width: 3),
+                                  ] else if (widget.replyingTo!.contentType == MessageContentType.voiceNote) ...[
                                     Icon(Icons.mic_rounded, size: 13, color: hintCol),
                                     const SizedBox(width: 3),
                                   ] else if (widget.replyingTo!.contentType == MessageContentType.location) ...[
@@ -403,6 +410,18 @@ class _ChatInputBarState extends State<ChatInputBar> with SingleTickerProviderSt
                             ],
                           ),
                         ),
+                        if (widget.replyingTo!.attachmentPath != null && widget.replyingTo!.attachmentPath!.isNotEmpty) ...[
+                          const SizedBox(width: 8),
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(6),
+                            child: SizedBox(
+                              width: 38,
+                              height: 38,
+                              child: _buildReplyThumbnail(widget.replyingTo!.attachmentPath!),
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                        ],
                         IconButton(
                           icon: Icon(Icons.close_rounded, size: 18, color: hintCol),
                           visualDensity: VisualDensity.compact,
@@ -534,6 +553,19 @@ class _ChatInputBarState extends State<ChatInputBar> with SingleTickerProviderSt
                           onPressed: widget.onAttach,
                           tooltip: 'Attach Encrypted Content',
                         ),
+                        if (widget.onStickerTap != null) ...[
+                          IconButton(
+                            icon: const Icon(Icons.sticky_note_2_rounded, color: AppColors.primary, size: 24),
+                            splashRadius: 22,
+                            onPressed: () {
+                              _focusNode.unfocus();
+                              FocusManager.instance.primaryFocus?.unfocus();
+                              FocusScope.of(context).unfocus();
+                              widget.onStickerTap!();
+                            },
+                            tooltip: 'Stiker LAJU',
+                          ),
+                        ],
                         const SizedBox(width: 4),
 
                         // Clean Input Text Field
@@ -641,6 +673,44 @@ class _ChatInputBarState extends State<ChatInputBar> with SingleTickerProviderSt
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildReplyThumbnail(String path) {
+    if (path.startsWith('data:image')) {
+      try {
+        final b64 = path.contains(',') ? path.split(',').last : path;
+        return Image.memory(
+          base64Decode(b64),
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => const Icon(Icons.image, size: 18, color: Colors.grey),
+        );
+      } catch (_) {}
+    }
+    if (path.startsWith('http://') || path.startsWith('https://')) {
+      return Image.network(
+        path,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => const Icon(Icons.image, size: 18, color: Colors.grey),
+      );
+    }
+    if (File(path).existsSync()) {
+      return Image.file(
+        File(path),
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => const Icon(Icons.image, size: 18, color: Colors.grey),
+      );
+    }
+    if (path.startsWith('assets/')) {
+      return Image.asset(
+        path,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => const Icon(Icons.image, size: 18, color: Colors.grey),
+      );
+    }
+    return Container(
+      color: Colors.black12,
+      child: const Icon(Icons.image, size: 18, color: Colors.grey),
     );
   }
 }

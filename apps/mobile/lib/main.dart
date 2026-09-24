@@ -7,6 +7,7 @@ import 'features/calls/presentation/widgets/floating_call_overlay.dart';
 import 'features/home/presentation/screens/home_screen.dart';
 import 'features/settings/domain/account_controller.dart';
 import 'features/settings/domain/data_storage_controller.dart';
+import 'features/settings/domain/privacy_controller.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -18,6 +19,7 @@ void main() async {
   await DataStorageController.instance.init();
   await AppLockController.instance.init();
   await AccountController.instance.init();
+  await PrivacyController.instance.init();
   await AuthController.instance.initSession();
   await PushNotificationService.instance.init();
   ForegroundSyncService.instance.init();

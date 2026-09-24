@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../../../core/core.dart';
+import '../../auth/domain/auth_controller.dart';
 
 class PasskeyItem {
   final String id;
@@ -16,6 +17,56 @@ class PasskeyItem {
     required this.device,
     required this.createdAt,
   });
+}
+
+class LajuContactItem {
+  final String id;
+  final String username;
+  final String? displayName;
+  final String? avatarUrl;
+  final String? about;
+  final String? phoneNumber;
+  final int trustScore;
+  final bool isVerified;
+  final DateTime addedAt;
+
+  const LajuContactItem({
+    required this.id,
+    required this.username,
+    this.displayName,
+    this.avatarUrl,
+    this.about,
+    this.phoneNumber,
+    this.trustScore = 100,
+    this.isVerified = true,
+    required this.addedAt,
+  });
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'username': username,
+        'displayName': displayName,
+        'avatarUrl': avatarUrl,
+        'about': about,
+        'phoneNumber': phoneNumber,
+        'trustScore': trustScore,
+        'isVerified': isVerified,
+        'addedAt': addedAt.toIso8601String(),
+      };
+
+  factory LajuContactItem.fromJson(Map<String, dynamic> json) => LajuContactItem(
+        id: json['id'] ?? '',
+        username: json['username'] ?? '',
+        displayName: json['displayName'],
+        avatarUrl: json['avatarUrl'],
+        about: json['about'],
+        phoneNumber: json['phoneNumber'],
+        trustScore: json['trustScore'] ?? 100,
+        isVerified: json['isVerified'] ?? true,
+        addedAt: json['addedAt'] != null
+            ? DateTime.tryParse(json['addedAt']) ?? DateTime.now()
+            : DateTime.now(),
+      );
 }
 
 class AccountController extends ChangeNotifier {
@@ -48,11 +99,24 @@ class AccountController extends ChangeNotifier {
   // Blocked Contacts
   final List<String> _blockedContacts = [];
 
+  // Saved Contacts (Local LAJU Directory)
+  final List<LajuContactItem> _savedContacts = [];
+
   // Getters
-  String get userName => _userName;
+  String get userName {
+    if (_userName.isNotEmpty && _userName != 'User') return _userName;
+    final authName = AuthController.instance.currentUser?.username;
+    if (authName != null && authName.isNotEmpty) return authName;
+    return _userName;
+  }
   String get phoneNumber => _phoneNumber;
   String get about => _about;
-  String get avatarUrl => _avatarUrl;
+  String get avatarUrl {
+    if (_avatarUrl.isNotEmpty) return _avatarUrl;
+    final authAvatar = AuthController.instance.currentUser?.avatarUrl;
+    if (authAvatar != null && authAvatar.isNotEmpty) return authAvatar;
+    return '';
+  }
   int get trustScore => _trustScore;
   String get email => _email;
   bool get isEmailVerified => _isEmailVerified;
@@ -64,6 +128,7 @@ class AccountController extends ChangeNotifier {
   String get accountReportStatus => _accountReportStatus;
   DateTime? get accountReportRequestedDate => _accountReportRequestedDate;
   List<String> get blockedContacts => List.unmodifiable(_blockedContacts);
+  List<LajuContactItem> get savedContacts => List.unmodifiable(_savedContacts);
 
   String getDetectedDeviceModel() => 'Android Device';
 
@@ -86,6 +151,15 @@ class AccountController extends ChangeNotifier {
       if (blocked != null) {
         _blockedContacts.clear();
         _blockedContacts.addAll(blocked);
+      }
+      final savedContactsRaw = prefs.getStringList('laju_saved_contacts_list');
+      if (savedContactsRaw != null) {
+        _savedContacts.clear();
+        for (final item in savedContactsRaw) {
+          try {
+            _savedContacts.add(LajuContactItem.fromJson(jsonDecode(item) as Map<String, dynamic>));
+          } catch (_) {}
+        }
       }
       notifyListeners();
       syncProfileFromBackend();
@@ -184,7 +258,7 @@ class AccountController extends ChangeNotifier {
       if (response.isSuccess && response.rawJson is Map) {
         final data = response.rawJson as Map<String, dynamic>;
         final bAvatar = data['avatarUrl'] as String? ?? data['avatar'] as String?;
-        if (bAvatar != null && bAvatar.isNotEmpty && _avatarUrl.isEmpty) {
+        if (bAvatar != null && bAvatar.isNotEmpty) {
           _avatarUrl = bAvatar;
           final prefs = await SharedPreferences.getInstance();
           await prefs.setString('laju_avatar_url', _avatarUrl);
@@ -298,6 +372,40 @@ class AccountController extends ChangeNotifier {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setStringList('laju_blocked_contacts', _blockedContacts);
+    } catch (_) {}
+  }
+
+  bool isContactSaved(String userIdOrUsername) {
+    final query = userIdOrUsername.trim().toLowerCase().replaceFirst('@', '');
+    return _savedContacts.any((c) =>
+        c.id.toLowerCase() == query || c.username.toLowerCase() == query);
+  }
+
+  Future<void> addSavedContact(LajuContactItem contact) async {
+    final existingIdx = _savedContacts.indexWhere(
+        (c) => c.id == contact.id || c.username.toLowerCase() == contact.username.toLowerCase());
+    if (existingIdx >= 0) {
+      _savedContacts[existingIdx] = contact;
+    } else {
+      _savedContacts.insert(0, contact);
+    }
+    notifyListeners();
+    await _persistSavedContacts();
+  }
+
+  Future<void> removeSavedContact(String contactIdOrUsername) async {
+    final q = contactIdOrUsername.trim().toLowerCase().replaceFirst('@', '');
+    _savedContacts.removeWhere(
+        (c) => c.id.toLowerCase() == q || c.username.toLowerCase() == q);
+    notifyListeners();
+    await _persistSavedContacts();
+  }
+
+  Future<void> _persistSavedContacts() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final list = _savedContacts.map((c) => jsonEncode(c.toJson())).toList();
+      await prefs.setStringList('laju_saved_contacts_list', list);
     } catch (_) {}
   }
 

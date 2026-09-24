@@ -89,6 +89,7 @@ class StatusService {
         for (final item in list) {
           if (item is! Map<String, dynamic>) continue;
           final username = item['username'] ?? 'Kontak';
+          final userId = (item['userId'] ?? item['id']) as String?;
           final avatarUrl = item['avatarUrl'] as String? ?? item['avatar'] as String?;
           final storiesRaw = item['stories'] as List? ?? [];
           final stories = storiesRaw
@@ -111,6 +112,7 @@ class StatusService {
           groups.add(
             StatusContactGroup(
               name: username,
+              userId: userId,
               avatarUrl: avatarUrl,
               time: lastStory.time,
               storyCount: stories.length,

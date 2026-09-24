@@ -15,6 +15,9 @@ import '../../../settings/presentation/screens/wallpaper_settings_screen.dart';
 import '../../../../core/services/voice_note_service.dart';
 import 'disappearing_messages_screen.dart';
 import 'image_preview_send_screen.dart';
+import 'document_preview_send_screen.dart';
+import '../widgets/sticker_picker_sheet.dart';
+import '../../domain/models/sticker_model.dart';
 
 class GroupChatScreen extends StatefulWidget {
   final String groupId;
@@ -390,15 +393,30 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
     if (result != null) {
       final filePath = result.data is String ? result.data as String : null;
       if (result.type == AttachmentType.document) {
+        if (filePath == null || !mounted) return;
+        final previewResult = await Navigator.push<DocumentPreviewResult>(
+          context,
+          MaterialPageRoute(
+            builder: (_) => DocumentPreviewSendScreen(
+              filePath: filePath,
+              fileName: result.title,
+              fileSize: result.fileSize ?? '',
+              recipientName: widget.groupName ?? 'Grup',
+            ),
+          ),
+        );
+        if (previewResult == null || !mounted) return; // User cancelled
+
+        final caption = previewResult.caption;
         final docId = 'doc-${DateTime.now().millisecondsSinceEpoch}';
         final docMsg = MessageModel(
           id: docId,
           clientMessageId: docId,
           conversationId: widget.groupId,
           senderName: 'You',
-          content: result.subtitle ?? result.title,
-          attachmentName: result.title,
-          attachmentSize: result.fileSize ?? '',
+          content: caption,
+          attachmentName: previewResult.fileName,
+          attachmentSize: previewResult.fileSize,
           attachmentPath: filePath,
           timestamp: DateTime.now(),
           isOutgoing: true,
@@ -409,15 +427,16 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
           _messages.add(docMsg);
         });
         await LocalDatabase.instance.insertSentMessage(docMsg);
+        Future.delayed(const Duration(milliseconds: 50), _scrollToBottom);
 
         final sent = await ConversationService.instance.sendMessage(
           conversationId: widget.groupId,
-          text: '${result.title} (${result.fileSize ?? ""})',
+          text: caption,
           clientMessageId: docId,
           messageType: 'DOCUMENT',
           attachmentPath: filePath,
-          attachmentName: result.title,
-          attachmentSize: result.fileSize,
+          attachmentName: previewResult.fileName,
+          attachmentSize: previewResult.fileSize,
         );
         if (mounted && sent != null) {
           setState(() {
@@ -481,15 +500,30 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
           _syncMessages();
         }
       } else if (result.type == AttachmentType.audio) {
+        if (filePath == null || !mounted) return;
+        final previewResult = await Navigator.push<DocumentPreviewResult>(
+          context,
+          MaterialPageRoute(
+            builder: (_) => DocumentPreviewSendScreen(
+              filePath: filePath,
+              fileName: result.title,
+              fileSize: result.fileSize ?? '',
+              recipientName: widget.groupName ?? 'Grup',
+            ),
+          ),
+        );
+        if (previewResult == null || !mounted) return; // User cancelled
+
+        final caption = previewResult.caption;
         final audId = 'aud-${DateTime.now().millisecondsSinceEpoch}';
         final audMsg = MessageModel(
           id: audId,
           clientMessageId: audId,
           conversationId: widget.groupId,
           senderName: 'You',
-          content: '🎵 ${result.title} (${result.fileSize ?? ""})',
-          attachmentName: result.title,
-          attachmentSize: result.fileSize,
+          content: caption,
+          attachmentName: previewResult.fileName,
+          attachmentSize: previewResult.fileSize,
           attachmentPath: filePath,
           timestamp: DateTime.now(),
           isOutgoing: true,
@@ -500,15 +534,16 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
           _messages.add(audMsg);
         });
         await LocalDatabase.instance.insertSentMessage(audMsg);
+        Future.delayed(const Duration(milliseconds: 50), _scrollToBottom);
 
         final sent = await ConversationService.instance.sendMessage(
           conversationId: widget.groupId,
-          text: '🎵 ${result.title} (${result.fileSize ?? ""})',
+          text: caption,
           clientMessageId: audId,
           messageType: 'AUDIO',
           attachmentPath: filePath,
-          attachmentName: result.title,
-          attachmentSize: result.fileSize,
+          attachmentName: previewResult.fileName,
+          attachmentSize: previewResult.fileSize,
         );
         if (mounted && sent != null) {
           setState(() {
@@ -563,7 +598,62 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
             _syncMessages();
           }
         }
+      } else if (result.type == AttachmentType.sticker) {
+        _openStickerPicker();
       }
+    }
+  }
+
+  void _openStickerPicker() {
+    StickerPickerSheet.show(
+      context: context,
+      onStickerSelected: _sendSticker,
+    );
+  }
+
+  void _sendSticker(StickerItem sticker) async {
+    final stkId = 'stk-${DateTime.now().millisecondsSinceEpoch}';
+    final replyToCopy = _replyingTo;
+    final stickerMsg = MessageModel(
+      id: stkId,
+      clientMessageId: stkId,
+      conversationId: widget.groupId,
+      senderName: 'You',
+      content: sticker.name,
+      attachmentName: sticker.id,
+      attachmentPath: sticker.assetPath,
+      timestamp: DateTime.now(),
+      isOutgoing: true,
+      contentType: MessageContentType.sticker,
+      status: MessageDeliveryStatus.sending,
+      replyTo: replyToCopy,
+    );
+
+    setState(() {
+      _messages.add(stickerMsg);
+      _replyingTo = null;
+    });
+    await LocalDatabase.instance.insertSentMessage(stickerMsg);
+    Future.delayed(const Duration(milliseconds: 50), () => _scrollToBottom(immediate: true));
+
+    final sent = await ConversationService.instance.sendMessage(
+      conversationId: widget.groupId,
+      text: sticker.name,
+      clientMessageId: stkId,
+      messageType: 'STICKER',
+      attachmentPath: sticker.assetPath,
+      attachmentName: sticker.id,
+      replyTo: replyToCopy,
+    );
+
+    if (mounted && sent != null) {
+      setState(() {
+        final idx = _messages.indexWhere((m) => m.id == stkId || m.clientMessageId == stkId);
+        if (idx != -1) {
+          _messages[idx] = sent.copyWith(attachmentPath: sticker.assetPath);
+        }
+      });
+      _syncMessages();
     }
   }
 
@@ -1216,6 +1306,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                 ChatInputBar(
                   onSend: _sendMessage,
                   onAttach: _openAttachmentMenu,
+                  onStickerTap: _openStickerPicker,
                   onSendVoiceNote: _handleSendVoiceNote,
                   replyingTo: _replyingTo,
                   onCancelReply: _cancelReply,

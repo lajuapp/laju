@@ -53,7 +53,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _onConversationsSync() {
-    if (mounted && _currentBottomNavIndex == 0 && !_isSearchExpanded) {
+    if (mounted && !_isSearchExpanded) {
       final apiConvs = ConversationService.instance.conversationsNotifier.value;
       if (apiConvs.isNotEmpty && !ConversationModel.areListsEqual(_conversations, apiConvs)) {
         setState(() {
@@ -81,17 +81,17 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _loadConversations() async {
-    // Step 1: If in-memory cache is empty, check SQLite cache
-    if (_conversations.isEmpty) {
-      final cached = await ConversationService.instance.getConversationsFromCache();
-      if (mounted && cached.isNotEmpty) {
+    // Step 1: Always check local SQLite cache so local mutations (unlock/pin/archive) apply instantly
+    final cached = await ConversationService.instance.getConversationsFromCache();
+    if (mounted && cached.isNotEmpty) {
+      if (!ConversationModel.areListsEqual(_conversations, cached)) {
         setState(() {
           _conversations = cached;
           _isLoadingConversations = false;
         });
-      } else if (mounted && _conversations.isEmpty) {
-        setState(() => _isLoadingConversations = true);
       }
+    } else if (mounted && _conversations.isEmpty) {
+      setState(() => _isLoadingConversations = true);
     }
 
     // Step 2: Fetch from server in background silently (stale-while-revalidate)
@@ -202,13 +202,14 @@ class _HomeScreenState extends State<HomeScreen> {
         break;
 
       case ConversationActionType.lockChat:
-        final updated = _conversations[index].copyWith(isLocked: true);
+        final newLocked = !_conversations[index].isLocked;
+        final updated = _conversations[index].copyWith(isLocked: newLocked);
         setState(() {
           _conversations[index] = updated;
         });
         await ConversationService.instance.updateConversationLocally(updated);
         if (mounted) {
-          LajuToast.info(context, 'Chat dikunci dan dipindahkan ke Locked Chats');
+          LajuToast.info(context, newLocked ? 'Chat dikunci dan dipindahkan ke Locked Chats' : 'Kunci chat dibuka');
         }
         break;
 

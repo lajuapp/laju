@@ -153,10 +153,12 @@ class ConversationOptionsSheet {
                   // Action 2: Locked Chat (Kunci Chat)
                   _buildOptionTile(
                     context: ctx,
-                    icon: Icons.lock_outline_rounded,
+                    icon: conversation.isLocked ? Icons.lock_open_rounded : Icons.lock_outline_rounded,
                     iconColor: const Color(0xFF10B981),
-                    title: 'Kunci Chat (Locked Chat)',
-                    subtitle: 'Amankan obrolan ini di folder terkunci dengan sidik jari/PIN',
+                    title: conversation.isLocked ? 'Buka Kunci Chat (Unlock Chat)' : 'Kunci Chat (Locked Chat)',
+                    subtitle: conversation.isLocked
+                        ? 'Pindahkan kembali ke daftar obrolan utama'
+                        : 'Amankan obrolan ini di folder terkunci dengan sidik jari/PIN',
                     onTap: () => Navigator.pop(ctx, ConversationActionType.lockChat),
                     titleCol: titleCol,
                     subCol: subCol,

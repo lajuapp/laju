@@ -14,6 +14,7 @@ enum MessageContentType {
   voiceNote,
   systemNotice,
   location,
+  sticker,
 }
 
 class MessageModel {
@@ -98,6 +99,11 @@ class MessageModel {
 
   /// Clean, human-readable snippet for quotes, reply previews, and notifications
   String get displaySnippet {
+    if (contentType == MessageContentType.sticker ||
+        content.startsWith('sticker:') ||
+        (attachmentName != null && (attachmentName!.startsWith('cat_') || attachmentName!.contains('sticker')))) {
+      return '💟 Stiker';
+    }
     if (contentType == MessageContentType.voiceNote) {
       return attachmentSize != null && attachmentSize!.isNotEmpty
           ? 'Pesan Suara ($attachmentSize)'
@@ -120,9 +126,16 @@ class MessageModel {
           attachmentName != 'Foto.jpg' &&
           !attachmentName!.toLowerCase().endsWith('.jpg') &&
           !attachmentName!.toLowerCase().endsWith('.png')) {
+        final clean = content.trim();
+        if (clean.isNotEmpty &&
+            !clean.startsWith('{') &&
+            !clean.startsWith('data:') &&
+            !clean.startsWith('Berkas Dokumen Asli')) {
+          return clean;
+        }
         return attachmentName!;
       }
-      if (content.isNotEmpty && !content.startsWith('{')) {
+      if (content.isNotEmpty && !content.startsWith('{') && !content.startsWith('data:')) {
         return content;
       }
       return 'Foto';
@@ -188,13 +201,15 @@ class MessageModel {
             existing.id.startsWith('doc-') ||
             existing.id.startsWith('aud-') ||
             existing.id.startsWith('voice-') ||
-            existing.id.startsWith('loc-');
+            existing.id.startsWith('loc-') ||
+            existing.id.startsWith('stk-');
         final isIncTemp = inc.id.startsWith('msg-') ||
             inc.id.startsWith('img-') ||
             inc.id.startsWith('doc-') ||
             inc.id.startsWith('aud-') ||
             inc.id.startsWith('voice-') ||
-            inc.id.startsWith('loc-');
+            inc.id.startsWith('loc-') ||
+            inc.id.startsWith('stk-');
 
         if (isExistingTemp && !isIncTemp) {
           result[idx] = inc.copyWith(

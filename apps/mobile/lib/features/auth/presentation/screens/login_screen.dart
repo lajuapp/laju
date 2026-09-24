@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../../../core/core.dart';
 import '../../../home/presentation/screens/home_screen.dart';
 import '../../domain/auth_controller.dart';
 import 'onboarding_screen.dart';
-import 'register_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -23,7 +23,11 @@ class _LoginScreenState extends State<LoginScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 3, vsync: this, initialIndex: 0);
+    _tabController.addListener(() {
+      setState(() {});
+    });
+    _recoveryKeyController.addListener(() => setState(() {}));
     _checkBiometrics();
   }
 
@@ -43,13 +47,31 @@ class _LoginScreenState extends State<LoginScreen>
     super.dispose();
   }
 
+  Future<void> _pasteFromClipboard() async {
+    try {
+      final data = await Clipboard.getData(Clipboard.kTextPlain);
+      if (data?.text != null && data!.text!.trim().isNotEmpty) {
+        _recoveryKeyController.text = data.text!.trim();
+        HapticFeedback.lightImpact();
+        if (mounted) {
+          LajuToast.info(context, 'Kunci berhasil ditempel dari papan klip');
+        }
+      } else {
+        if (mounted) {
+          LajuToast.warning(context, 'Papan klip kosong');
+        }
+      }
+    } catch (_) {}
+  }
+
   /// Flow 1: Device Cryptographic Authentication (Biometrics or 6-digit PIN)
   Future<void> _handleDeviceKeystoreAuth() async {
-    // 1. Check biometric / device credentials availability
-    final availability = _biometricInfo ?? await BiometricService.instance.checkAvailability();
+    HapticFeedback.lightImpact();
+
+    final availability =
+        _biometricInfo ?? await BiometricService.instance.checkAvailability();
     bool authenticated = false;
 
-    // 1. If device supports biometric, use biometric exclusively!
     if (availability.isAvailable) {
       final bioLabel = availability.biometricLabel.isNotEmpty
           ? availability.biometricLabel
@@ -58,7 +80,8 @@ class _LoginScreenState extends State<LoginScreen>
       authenticated = await BiometricService.instance.authenticate(
         title: 'Verifikasi Pemilik Perangkat',
         subtitle: 'Pindai $bioLabel atau kunci layar HP ini',
-        description: 'Autentikasi biometrik diperlukan untuk memastikan Anda adalah pemilik sah HP ini sebelum masuk.',
+        description:
+            'Autentikasi biometrik diperlukan untuk memastikan Anda adalah pemilik sah HP ini sebelum masuk.',
         allowDeviceCredential: true,
         negativeButtonText: 'Batal',
       );
@@ -73,17 +96,16 @@ class _LoginScreenState extends State<LoginScreen>
         return;
       }
     } else {
-      // 2. Only if device has NO biometric hardware or biometrics is disabled, fallback to 6-digit PIN!
       if (AppLockController.instance.hasSetPin) {
         if (mounted) {
           authenticated = await SecurityAuthHelper.promptVerifyPin(
             context,
             title: 'Verifikasi PIN Keamanan',
-            subtitle: 'HP tidak mendukung biometrik. Masukkan 6-digit PIN Anda untuk masuk',
+            subtitle:
+                'HP tidak mendukung biometrik. Masukkan 6-digit PIN Anda untuk masuk',
           );
         }
       } else {
-        // If device has no PIN set yet, prompt to set one now
         if (mounted) {
           final newPin = await SecurityAuthHelper.promptSetupPin(
             context,
@@ -138,6 +160,8 @@ class _LoginScreenState extends State<LoginScreen>
 
   /// Flow 2: QR Migration Handshake (Move from Old Phone)
   Future<void> _startMigrationHandshake() async {
+    HapticFeedback.lightImpact();
+
     final scannedPayload = await Navigator.push<String>(
       context,
       MaterialPageRoute(
@@ -151,17 +175,20 @@ class _LoginScreenState extends State<LoginScreen>
 
     setState(() => _isLoading = true);
 
-    // Handle different scanned QR formats
     String migrationId = '';
     if (scannedPayload.startsWith('laju://migrate/')) {
-      migrationId = scannedPayload.replaceFirst('laju://migrate/', '').split('?').first.trim();
+      migrationId = scannedPayload
+          .replaceFirst('laju://migrate/', '')
+          .split('?')
+          .first
+          .trim();
     } else if (scannedPayload.contains('mig-')) {
       final match = RegExp(r'mig-[a-zA-Z0-9_-]+').firstMatch(scannedPayload);
       if (match != null) migrationId = match.group(0)!;
     } else if (scannedPayload.startsWith('laju://')) {
-      // User scanned a profile contact QR instead of a migration QR
       setState(() => _isLoading = false);
-      final contactUser = scannedPayload.replaceFirst('laju://', '').split('?').first;
+      final contactUser =
+          scannedPayload.replaceFirst('laju://', '').split('?').first;
       LajuToast.error(
         context,
         'Ini kode QR kontak (@$contactUser), bukan QR Migrasi Akun. Untuk migrasi, buka menu Pengaturan > Keamanan > Migrasi Perangkat di HP lama Anda.',
@@ -185,8 +212,6 @@ class _LoginScreenState extends State<LoginScreen>
     }
 
     final sasCode = joinRes['sasCode'].toString();
-
-    // Show Mutual SAS Verification Bottom Sheet
     _showSasVerificationBottomSheet(sasCode, migrationId);
   }
 
@@ -200,11 +225,11 @@ class _LoginScreenState extends State<LoginScreen>
       builder: (ctx) {
         return Container(
           decoration: BoxDecoration(
-            color: isDark ? const Color(0xFF1B2232) : Colors.white,
+            color: isDark ? AppColors.darkSurface : Colors.white,
             borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.4),
+                color: Colors.black.withValues(alpha: 0.35),
                 blurRadius: 24,
                 offset: const Offset(0, -6),
               ),
@@ -214,38 +239,37 @@ class _LoginScreenState extends State<LoginScreen>
             top: false,
             child: SingleChildScrollView(
               padding: EdgeInsets.fromLTRB(
-                22,
+                24,
                 14,
-                22,
+                24,
                 24 + MediaQuery.of(ctx).viewInsets.bottom,
               ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Container(
-                    width: 42,
+                    width: 40,
                     height: 4,
                     decoration: BoxDecoration(
                       color: isDark ? Colors.white24 : Colors.black12,
                       borderRadius: BorderRadius.circular(2),
                     ),
                   ),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 18),
 
-                  // Tactical Shield Icon
                   Container(
-                    padding: const EdgeInsets.all(10),
+                    padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: AppColors.primary.withValues(alpha: 0.15),
+                      color: AppColors.primary.withValues(alpha: 0.12),
                       shape: BoxShape.circle,
                     ),
                     child: const Icon(
                       Icons.verified_user_rounded,
                       color: AppColors.primary,
-                      size: 28,
+                      size: 32,
                     ),
                   ),
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 12),
 
                   Text(
                     context.tr('sasModalTitle'),
@@ -257,7 +281,7 @@ class _LoginScreenState extends State<LoginScreen>
                       letterSpacing: -0.3,
                     ),
                   ),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 8),
 
                   Text(
                     context.tr('sasModalDesc'),
@@ -267,22 +291,21 @@ class _LoginScreenState extends State<LoginScreen>
                       color: isDark
                           ? AppColors.darkTextSecondary
                           : const Color(0xFF4B5563),
-                      height: 1.35,
+                      height: 1.4,
                     ),
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 18),
 
-                  // SAS Code Visual Display Box
                   Container(
                     width: double.infinity,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    padding: const EdgeInsets.symmetric(vertical: 16),
                     decoration: BoxDecoration(
                       color: isDark
-                          ? const Color(0xFF121724)
-                          : const Color(0xFFF3F4F6),
+                          ? AppColors.darkBackground
+                          : const Color(0xFFF0FDF4),
                       borderRadius: BorderRadius.circular(16),
                       border: Border.all(
-                        color: AppColors.primary.withValues(alpha: 0.4),
+                        color: AppColors.primary.withValues(alpha: 0.35),
                         width: 1.5,
                       ),
                     ),
@@ -291,20 +314,19 @@ class _LoginScreenState extends State<LoginScreen>
                         sasCode,
                         style: const TextStyle(
                           fontFamily: 'monospace',
-                          fontSize: 28,
+                          fontSize: 32,
                           fontWeight: FontWeight.w900,
-                          letterSpacing: 6,
+                          letterSpacing: 8,
                           color: AppColors.primary,
                         ),
                       ),
                     ),
                   ),
-                  const SizedBox(height: 18),
+                  const SizedBox(height: 20),
 
-                  // Confirm and Commit 2PC Button
                   SizedBox(
                     width: double.infinity,
-                    height: 50,
+                    height: 52,
                     child: ElevatedButton(
                       style: ElevatedButton.styleFrom(
                         backgroundColor: AppColors.primary,
@@ -329,13 +351,16 @@ class _LoginScreenState extends State<LoginScreen>
 
                         if (success) {
                           if (!AppLockController.instance.hasSetPin) {
-                            final newPin = await SecurityAuthHelper.promptSetupPin(
+                            final newPin =
+                                await SecurityAuthHelper.promptSetupPin(
                               context,
                               title: 'Atur PIN Keamanan (6-Digit)',
                             );
                             if (newPin != null && newPin.length == 6) {
-                              await AppLockController.instance.setPinCode(newPin);
-                              await AppLockController.instance.setAppLockEnabled(true);
+                              await AppLockController.instance
+                                  .setPinCode(newPin);
+                              await AppLockController.instance
+                                  .setAppLockEnabled(true);
                             }
                           }
                           if (mounted) {
@@ -352,7 +377,8 @@ class _LoginScreenState extends State<LoginScreen>
                             );
                           }
                         } else {
-                          LajuToast.error(context, context.tr('migrationCommitFailed'));
+                          LajuToast.error(
+                              context, context.tr('migrationCommitFailed'));
                         }
                       },
                       child: Text(
@@ -362,6 +388,21 @@ class _LoginScreenState extends State<LoginScreen>
                           fontWeight: FontWeight.w700,
                           letterSpacing: 0.2,
                         ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+
+                  TextButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    child: Text(
+                      'Batal',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: isDark
+                            ? AppColors.darkTextSecondary
+                            : const Color(0xFF6B7280),
                       ),
                     ),
                   ),
@@ -376,6 +417,7 @@ class _LoginScreenState extends State<LoginScreen>
 
   /// Flow 3: Restore with Identity Secret / Seed Phrase
   Future<void> _handleRestoreSecret() async {
+    HapticFeedback.lightImpact();
     final secret = _recoveryKeyController.text.trim();
     if (secret.isEmpty) {
       LajuToast.error(context, context.tr('fillAllRequired'));
@@ -427,210 +469,211 @@ class _LoginScreenState extends State<LoginScreen>
     }
   }
 
+  VoidCallback? _getBottomButtonAction() {
+    switch (_tabController.index) {
+      case 0:
+        return _handleDeviceKeystoreAuth;
+      case 1:
+        return _startMigrationHandshake;
+      case 2:
+        return _handleRestoreSecret;
+      default:
+        return _handleDeviceKeystoreAuth;
+    }
+  }
+
+  String _getBottomButtonLabel(bool isBioAvailable, String bioLabel) {
+    if (_isLoading) {
+      switch (_tabController.index) {
+        case 0:
+          return 'Memverifikasi Perangkat...';
+        case 1:
+          return 'Menghubungkan Perangkat...';
+        case 2:
+          return 'Memulihkan Akun...';
+        default:
+          return 'Memproses...';
+      }
+    }
+
+    switch (_tabController.index) {
+      case 0:
+        return isBioAvailable ? 'Masuk dengan $bioLabel' : 'Masuk dengan PIN';
+      case 1:
+        return 'Pindai Kode QR HP Lama';
+      case 2:
+        return 'Pulihkan Akun';
+      default:
+        return 'Lanjutkan';
+    }
+  }
+
+  IconData _getBottomButtonIcon(bool isBioAvailable, bool hasFace) {
+    switch (_tabController.index) {
+      case 0:
+        return isBioAvailable
+            ? (hasFace ? Icons.face_rounded : Icons.fingerprint_rounded)
+            : Icons.lock_outline_rounded;
+      case 1:
+        return Icons.camera_alt_outlined;
+      case 2:
+        return Icons.restore_page_rounded;
+      default:
+        return Icons.arrow_forward_rounded;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = ThemeModeController.instance.isDarkMode(context);
+    final cardColor = isDark ? AppColors.darkSurface : Colors.white;
     final textPrimary = isDark ? Colors.white : const Color(0xFF111827);
     final textSecondary =
         isDark ? AppColors.darkTextSecondary : const Color(0xFF6B7280);
 
+    final isBioAvailable = _biometricInfo?.isAvailable == true;
+    final hasFace = _biometricInfo?.hasFace == true &&
+        _biometricInfo?.hasFingerprint != true;
+    final bioLabel = isBioAvailable
+        ? (_biometricInfo?.biometricLabel.isNotEmpty == true
+            ? _biometricInfo!.biometricLabel
+            : (hasFace ? 'Pengenalan Wajah' : 'Sidik Jari'))
+        : 'PIN Keamanan';
+
     return Scaffold(
-      backgroundColor: isDark ? AppColors.darkBackground : Colors.white,
+      backgroundColor: isDark ? AppColors.darkBackground : const Color(0xFFF8FAFC),
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
+        backgroundColor: cardColor,
+        elevation: 0.5,
         leading: IconButton(
           icon: Icon(Icons.arrow_back_rounded, color: textPrimary),
           onPressed: () => Navigator.pop(context),
+        ),
+        title: Text(
+          'Masuk',
+          style: TextStyle(
+            color: textPrimary,
+            fontSize: 18,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        centerTitle: true,
+        bottom: TabBar(
+          controller: _tabController,
+          indicatorColor: AppColors.primary,
+          indicatorWeight: 2.5,
+          labelColor: AppColors.primary,
+          unselectedLabelColor: isDark ? AppColors.darkTextSecondary : const Color(0xFF6B7280),
+          labelStyle: const TextStyle(
+            fontWeight: FontWeight.w700,
+            fontSize: 13.5,
+          ),
+          unselectedLabelStyle: const TextStyle(
+            fontWeight: FontWeight.w500,
+            fontSize: 13.5,
+          ),
+          tabs: [
+            Tab(text: context.tr('deviceAuthTab')),
+            Tab(text: context.tr('qrMigrationTab')),
+            Tab(text: context.tr('recoverySecretTab')),
+          ],
         ),
       ),
       body: SafeArea(
         child: Column(
           children: [
-            // Top Header
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Image.asset(
-                        'assets/images/logo_no_bg.png',
-                        width: 44,
-                        height: 44,
-                        fit: BoxFit.contain,
-                      ),
-                      const SizedBox(width: 12),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'LAJU IDENTITY',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: 1.5,
-                              color: AppColors.primary,
-                            ),
-                          ),
-                          Text(
-                            context.tr('loginTitle'),
-                            style: TextStyle(
-                              fontSize: 22,
-                              fontWeight: FontWeight.w900,
-                              color: textPrimary,
-                              letterSpacing: -0.5,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    context.tr('loginSub'),
-                    style: TextStyle(
-                      fontSize: 13.5,
-                      color: textSecondary,
-                      height: 1.35,
-                    ),
-                  ),
-                  const SizedBox(height: 18),
-
-                  // 3-Mode Modern Segment Tab Bar
-                  Container(
-                    height: 46,
-                    decoration: BoxDecoration(
-                      color: isDark
-                          ? AppColors.darkSurfaceElevated
-                          : const Color(0xFFF3F4F6),
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(
-                        color: isDark
-                            ? AppColors.darkSurfaceBorder
-                            : const Color(0xFFE5E7EB),
-                      ),
-                    ),
-                    child: TabBar(
-                      controller: _tabController,
-                      indicator: BoxDecoration(
-                        color: AppColors.primary,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      labelColor: Colors.white,
-                      unselectedLabelColor: textSecondary,
-                      indicatorSize: TabBarIndicatorSize.tab,
-                      dividerColor: Colors.transparent,
-                      labelStyle: const TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 12.5,
-                      ),
-                      tabs: [
-                        Tab(
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              const Icon(Icons.qr_code_scanner_rounded,
-                                  size: 15),
-                              const SizedBox(width: 5),
-                              Flexible(
-                                child: Text(
-                                  context.tr('qrMigrationTab'),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        Tab(
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              const Icon(Icons.phonelink_lock_rounded,
-                                  size: 15),
-                              const SizedBox(width: 5),
-                              Flexible(
-                                child: Text(
-                                  context.tr('deviceAuthTab'),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        Tab(
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              const Icon(Icons.vpn_key_outlined, size: 15),
-                              const SizedBox(width: 5),
-                              Flexible(
-                                child: Text(
-                                  context.tr('recoverySecretTab'),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 12),
-
-            // Main Tab Content Area
+            // Tab Content Area
             Expanded(
               child: TabBarView(
                 controller: _tabController,
                 children: [
-                  // Tab 1: QR Migration View
-                  _buildQrMigrationTab(isDark, textPrimary, textSecondary),
-
-                  // Tab 2: Hardware Keystore Device Auth
-                  _buildDeviceKeystoreTab(isDark, textPrimary, textSecondary),
-
-                  // Tab 3: Recovery Key / Seed
-                  _buildRecoverySecretTab(isDark, textPrimary, textSecondary),
+                  _buildDeviceKeystoreTab(isDark, cardColor, textPrimary, textSecondary, isBioAvailable, bioLabel, hasFace),
+                  _buildQrMigrationTab(isDark, cardColor, textPrimary, textSecondary),
+                  _buildRecoverySecretTab(isDark, cardColor, textPrimary, textSecondary),
                 ],
               ),
             ),
 
-            // Bottom Switch to Register
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    context.tr('dontHaveAccount'),
-                    style: TextStyle(
-                      fontSize: 13.5,
-                      color: textSecondary,
-                      fontWeight: FontWeight.w500,
-                    ),
+            // Fixed Bottom Action Area (Consistent across all tabs)
+            Container(
+              padding: const EdgeInsets.fromLTRB(24, 12, 24, 16),
+              decoration: BoxDecoration(
+                color: isDark ? AppColors.darkBackground : const Color(0xFFF8FAFC),
+                border: Border(
+                  top: BorderSide(
+                    color: isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05),
                   ),
-                  const SizedBox(width: 4),
-                  GestureDetector(
-                    onTap: () {
-                      Navigator.pushReplacement(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => const OnboardingScreen(),
+                ),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox(
+                    width: double.infinity,
+                    height: 52,
+                    child: ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.primary,
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
                         ),
-                      );
-                    },
-                    child: Text(
-                      context.tr('register'),
-                      style: const TextStyle(
-                        fontSize: 13.5,
-                        color: AppColors.primary,
-                        fontWeight: FontWeight.w700,
+                      ),
+                      onPressed: _isLoading ? null : _getBottomButtonAction(),
+                      icon: _isLoading
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                color: Colors.white,
+                                strokeWidth: 2,
+                              ),
+                            )
+                          : Icon(_getBottomButtonIcon(isBioAvailable, hasFace), size: 20),
+                      label: Text(
+                        _getBottomButtonLabel(isBioAvailable, bioLabel),
+                        style: const TextStyle(
+                          fontSize: 15.5,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 0.2,
+                        ),
                       ),
                     ),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        context.tr('dontHaveAccount'),
+                        style: TextStyle(
+                          fontSize: 13.5,
+                          color: textSecondary,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      const SizedBox(width: 5),
+                      GestureDetector(
+                        onTap: () {
+                          // Route through Get Started / Onboarding to review TnC and concepts
+                          Navigator.pushReplacement(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const OnboardingScreen(),
+                            ),
+                          );
+                        },
+                        child: Text(
+                          context.tr('register'),
+                          style: const TextStyle(
+                            fontSize: 13.5,
+                            color: AppColors.primary,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -641,274 +684,116 @@ class _LoginScreenState extends State<LoginScreen>
     );
   }
 
-  /// Widget for Tab 1: QR Migration from Old Phone
-  Widget _buildQrMigrationTab(
-      bool isDark, Color textPrimary, Color textSecondary) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-      child: Column(
-        children: [
-          // Step-by-Step Info Card
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: isDark
-                  ? const Color(0xFF1B2232)
-                  : const Color(0xFFF9FAFB),
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(
-                color: isDark
-                    ? AppColors.darkSurfaceBorder
-                    : const Color(0xFFE5E7EB),
-              ),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(7),
-                      decoration: BoxDecoration(
-                        color: AppColors.primary.withValues(alpha: 0.15),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(
-                        Icons.sync_alt_rounded,
-                        color: AppColors.primary,
-                        size: 18,
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        context.tr('qrMigrationCardTitle'),
-                        style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w700,
-                          color: textPrimary,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                Text(
-                  context.tr('qrMigrationCardDesc'),
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: textSecondary,
-                    height: 1.4,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 20),
-
-          // High-Tech Scanner Viewfinder Simulation Box
-          Container(
-            width: 220,
-            height: 220,
-            decoration: BoxDecoration(
-              color: isDark ? const Color(0xFF0F1420) : const Color(0xFFF3F4F6),
-              borderRadius: BorderRadius.circular(24),
-              border: Border.all(
-                color: AppColors.primary.withValues(alpha: 0.7),
-                width: 2,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: AppColors.primary.withValues(alpha: 0.15),
-                  blurRadius: 20,
-                  spreadRadius: 2,
-                ),
-              ],
-            ),
-            child: Stack(
-              alignment: Alignment.center,
-              children: [
-                // Corner tactical markers
-                Positioned(
-                  top: 12,
-                  left: 12,
-                  child: Icon(Icons.crop_free_rounded,
-                      color: AppColors.primary, size: 28),
-                ),
-                Positioned(
-                  top: 12,
-                  right: 12,
-                  child: Icon(Icons.crop_free_rounded,
-                      color: AppColors.primary, size: 28),
-                ),
-                Positioned(
-                  bottom: 12,
-                  left: 12,
-                  child: Icon(Icons.crop_free_rounded,
-                      color: AppColors.primary, size: 28),
-                ),
-                Positioned(
-                  bottom: 12,
-                  right: 12,
-                  child: Icon(Icons.crop_free_rounded,
-                      color: AppColors.primary, size: 28),
-                ),
-
-                // Center animated pulse scanner line
-                Center(
-                  child: Container(
-                    width: 170,
-                    height: 2,
-                    decoration: BoxDecoration(
-                      color: AppColors.primary,
-                      boxShadow: [
-                        BoxShadow(
-                          color: AppColors.primary.withValues(alpha: 0.8),
-                          blurRadius: 10,
-                          spreadRadius: 1,
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-
-                Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      Icons.qr_code_2_rounded,
-                      size: 64,
-                      color: AppColors.primary.withValues(alpha: 0.6),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      context.tr('readyToScan'),
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: 0.5,
-                        color: isDark ? Colors.white60 : Colors.black54,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 24),
-
-          // Main Button: Scan QR from Camera / Gallery
-          SizedBox(
-            width: double.infinity,
-            height: 50,
-            child: ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                foregroundColor: Colors.white,
-                elevation: 0,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-              ),
-              icon: _isLoading
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(
-                        color: Colors.white,
-                        strokeWidth: 2,
-                      ),
-                    )
-                  : const Icon(Icons.camera_alt_outlined, size: 20),
-              label: Text(
-                _isLoading
-                    ? context.tr('verifyingDevice')
-                    : context.tr('scanQrButton'),
-                style: const TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              onPressed: _isLoading
-                  ? null
-                  : _startMigrationHandshake,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// Widget for Tab 2: Hardware Keystore Device Auth
+  /// Tab 0: Perangkat Ini (Biometric / PIN)
   Widget _buildDeviceKeystoreTab(
-      bool isDark, Color textPrimary, Color textSecondary) {
-    final isBioAvailable = _biometricInfo?.isAvailable == true;
-    final hasFace = _biometricInfo?.hasFace == true && _biometricInfo?.hasFingerprint != true;
-    final bioLabel = isBioAvailable ? (_biometricInfo?.biometricLabel ?? 'Biometrik') : 'PIN Keamanan';
+      bool isDark,
+      Color cardColor,
+      Color textPrimary,
+      Color textSecondary,
+      bool isBioAvailable,
+      String bioLabel,
+      bool hasFace) {
     final mainIcon = isBioAvailable
         ? (hasFace ? Icons.face_rounded : Icons.fingerprint_rounded)
         : Icons.lock_outline_rounded;
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 26),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Hardware TEE / StrongBox & Biometric/PIN Protection Badge
+          Center(
+            child: Container(
+              width: 76,
+              height: 76,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: AppColors.primary.withValues(alpha: 0.12),
+                border: Border.all(
+                  color: AppColors.primary.withValues(alpha: 0.28),
+                  width: 2,
+                ),
+              ),
+              child: Center(
+                child: Icon(
+                  mainIcon,
+                  color: AppColors.primary,
+                  size: 38,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          Text(
+            isBioAvailable ? 'Masuk dengan $bioLabel' : 'Masuk dengan PIN',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 21,
+              fontWeight: FontWeight.w800,
+              letterSpacing: -0.3,
+              color: textPrimary,
+            ),
+          ),
+          const SizedBox(height: 8),
+
+          Text(
+            isBioAvailable
+                ? 'Verifikasi biometrik pemilik untuk membuka kunci akun kriptografis yang tersimpan di HP ini.'
+                : 'Masukkan 6-digit PIN keamanan layar Anda untuk membuka akun di perangkat ini.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 13.5,
+              color: textSecondary,
+              height: 1.45,
+            ),
+          ),
+          const SizedBox(height: 24),
+
           Container(
-            width: double.infinity,
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: isDark
-                  ? const Color(0xFF1B2232)
-                  : const Color(0xFFF9FAFB),
-              borderRadius: BorderRadius.circular(18),
+              color: cardColor,
+              borderRadius: BorderRadius.circular(16),
               border: Border.all(
-                color: isDark
-                    ? AppColors.darkSurfaceBorder
-                    : const Color(0xFFE5E7EB),
+                color: isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.08),
               ),
             ),
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
                   children: [
                     Container(
-                      padding: const EdgeInsets.all(7),
+                      padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF10B981).withValues(alpha: 0.15),
+                        color: const Color(0xFF10B981).withValues(alpha: 0.12),
                         shape: BoxShape.circle,
                       ),
                       child: const Icon(
                         Icons.verified_user_rounded,
                         color: Color(0xFF10B981),
-                        size: 18,
+                        size: 20,
                       ),
                     ),
-                    const SizedBox(width: 10),
+                    const SizedBox(width: 14),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            isBioAvailable
-                                ? 'Proteksi Biometrik Pemilik Perangkat'
-                                : 'Proteksi PIN Keamanan Pemilik',
+                            'Hardware Enclave Terlindungi',
                             style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: textSecondary,
+                              fontSize: 13.5,
+                              fontWeight: FontWeight.w700,
+                              color: textPrimary,
                             ),
                           ),
+                          const SizedBox(height: 2),
                           Text(
-                            isBioAvailable
-                                ? '$bioLabel Aktif'
-                                : 'PIN 6-Digit Aktif',
-                            style: const TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w800,
-                              color: Color(0xFF10B981),
+                            'Kunci privat terikat di Android Keystore / Secure Enclave',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: textSecondary,
                             ),
                           ),
                         ],
@@ -916,103 +801,65 @@ class _LoginScreenState extends State<LoginScreen>
                     ),
                   ],
                 ),
-                const SizedBox(height: 12),
-                Text(
-                  isBioAvailable
-                      ? 'Wajib memverifikasi sidik jari, wajah, atau kunci layar HP ini untuk membuktikan Anda adalah pemilik sah sebelum masuk ke akun.'
-                      : 'Perangkat ini tidak mendukung sensor biometrik. Verifikasi 6-digit PIN keamanan pemilik diperlukan untuk membuka akun.',
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: textSecondary,
-                    height: 1.4,
-                  ),
+                Divider(
+                  height: 22,
+                  color: isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.06),
+                ),
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: AppColors.primary.withValues(alpha: 0.12),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        mainIcon,
+                        color: AppColors.primary,
+                        size: 20,
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            isBioAvailable ? 'Sensor $bioLabel Siap' : 'PIN Keamanan Aktif',
+                            style: TextStyle(
+                              fontSize: 13.5,
+                              fontWeight: FontWeight.w700,
+                              color: textPrimary,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            isBioAvailable
+                                ? 'Ketuk tombol di bawah untuk memindai'
+                                : 'Verifikasi PIN 6-digit untuk membuka sesi',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: textSecondary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 36),
+          const SizedBox(height: 16),
 
-          // Big Sensor / Keypad Tactile Center Button
-          GestureDetector(
-            onTap: _isLoading ? null : _handleDeviceKeystoreAuth,
-            child: Container(
-              width: 120,
-              height: 120,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: RadialGradient(
-                  colors: [
-                    AppColors.primary.withValues(alpha: 0.25),
-                    AppColors.primary.withValues(alpha: 0.05),
-                  ],
-                ),
-                border: Border.all(
-                  color: AppColors.primary.withValues(alpha: 0.6),
-                  width: 2.5,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: AppColors.primary.withValues(alpha: 0.2),
-                    blurRadius: 24,
-                    spreadRadius: 4,
-                  ),
-                ],
+          Center(
+            child: Text(
+              'Ingin transfer akun dari HP lain? Pilih tab "Pindah via QR"',
+              style: TextStyle(
+                fontSize: 12,
+                color: textSecondary,
+                fontWeight: FontWeight.w500,
               ),
-              child: Center(
-                child: _isLoading
-                    ? const CircularProgressIndicator(
-                        color: AppColors.primary,
-                        strokeWidth: 3,
-                      )
-                    : Icon(
-                        mainIcon,
-                        color: AppColors.primary,
-                        size: 64,
-                      ),
-              ),
-            ),
-          ),
-          const SizedBox(height: 20),
-
-          Text(
-            isBioAvailable
-                ? (_biometricInfo?.deviceModel.isNotEmpty == true
-                    ? 'Sensor: $bioLabel (${_biometricInfo!.deviceModel})'
-                    : 'Sentuh sensor untuk verifikasi biometrik')
-                : 'Sentuh tombol untuk verifikasi PIN 6-digit',
-            style: TextStyle(
-              fontSize: 12.5,
-              fontWeight: FontWeight.w600,
-              color: textSecondary,
-              letterSpacing: 0.3,
-            ),
-          ),
-          const SizedBox(height: 28),
-
-          // Unlock Button
-          SizedBox(
-            width: double.infinity,
-            height: 50,
-            child: ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                foregroundColor: Colors.white,
-                elevation: 0,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-              ),
-              icon: Icon(mainIcon, size: 20),
-              label: Text(
-                _isLoading
-                    ? context.tr('verifyingDevice')
-                    : (isBioAvailable ? 'Buka dengan $bioLabel' : 'Buka dengan PIN Keamanan'),
-                style: const TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              onPressed: _isLoading ? null : _handleDeviceKeystoreAuth,
             ),
           ),
         ],
@@ -1020,145 +867,372 @@ class _LoginScreenState extends State<LoginScreen>
     );
   }
 
-  /// Widget for Tab 3: Recovery Key / Seed
-  Widget _buildRecoverySecretTab(
-      bool isDark, Color textPrimary, Color textSecondary) {
+  /// Tab 1: Pindah via QR (QR Migration)
+  Widget _buildQrMigrationTab(
+      bool isDark, Color cardColor, Color textPrimary, Color textSecondary) {
     return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 26),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          Center(
+            child: Container(
+              width: 76,
+              height: 76,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: AppColors.primary.withValues(alpha: 0.12),
+                border: Border.all(
+                  color: AppColors.primary.withValues(alpha: 0.28),
+                  width: 2,
+                ),
+              ),
+              child: const Center(
+                child: Icon(
+                  Icons.qr_code_scanner_rounded,
+                  color: AppColors.primary,
+                  size: 38,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          Text(
+            'Pindah Akun dari HP Lama',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 21,
+              fontWeight: FontWeight.w800,
+              letterSpacing: -0.3,
+              color: textPrimary,
+            ),
+          ),
+          const SizedBox(height: 8),
+
+          Text(
+            'Transfer akun secara instan dan terenkripsi peer-to-peer tanpa melalui server penyimpanan.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 13.5,
+              color: textSecondary,
+              height: 1.45,
+            ),
+          ),
+          const SizedBox(height: 24),
+
           Container(
-            width: double.infinity,
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: isDark
-                  ? const Color(0xFF1B2232)
-                  : const Color(0xFFF9FAFB),
-              borderRadius: BorderRadius.circular(18),
+              color: cardColor,
+              borderRadius: BorderRadius.circular(16),
               border: Border.all(
-                color: isDark
-                    ? AppColors.darkSurfaceBorder
-                    : const Color(0xFFE5E7EB),
+                color: isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.08),
+              ),
+            ),
+            child: Column(
+              children: [
+                _buildGuideItem(
+                  number: '1',
+                  title: 'Buka HP Lama',
+                  subtitle: 'Buka aplikasi LAJU yang aktif di HP lama Anda.',
+                  textPrimary: textPrimary,
+                  textSecondary: textSecondary,
+                ),
+                Divider(
+                  height: 22,
+                  color: isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.06),
+                ),
+                _buildGuideItem(
+                  number: '2',
+                  title: 'Tampilkan QR Migrasi',
+                  subtitle: 'Masuk ke Pengaturan > Keamanan > Pindah Perangkat.',
+                  textPrimary: textPrimary,
+                  textSecondary: textSecondary,
+                ),
+                Divider(
+                  height: 22,
+                  color: isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.06),
+                ),
+                _buildGuideItem(
+                  number: '3',
+                  title: 'Pindai Kode QR',
+                  subtitle: 'Ketuk tombol di bawah dan arahkan kamera ke HP lama.',
+                  textPrimary: textPrimary,
+                  textSecondary: textSecondary,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(
+                Icons.lock_clock_outlined,
+                size: 14,
+                color: AppColors.primary,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                'Dilindungi verifikasi angka SAS (Short Authentication String)',
+                style: TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w600,
+                  color: textSecondary,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildGuideItem({
+    required String number,
+    required String title,
+    required String subtitle,
+    required Color textPrimary,
+    required Color textSecondary,
+  }) {
+    return Row(
+      children: [
+        Container(
+          width: 26,
+          height: 26,
+          decoration: BoxDecoration(
+            color: AppColors.primary.withValues(alpha: 0.14),
+            shape: BoxShape.circle,
+          ),
+          child: Center(
+            child: Text(
+              number,
+              style: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w800,
+                color: AppColors.primary,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 14),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: TextStyle(
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w700,
+                  color: textPrimary,
+                ),
+              ),
+              const SizedBox(height: 1.5),
+              Text(
+                subtitle,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: textSecondary,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Tab 2: Kunci Cadangan (Recovery Secret)
+  Widget _buildRecoverySecretTab(
+      bool isDark, Color cardColor, Color textPrimary, Color textSecondary) {
+    final hasText = _recoveryKeyController.text.trim().isNotEmpty;
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 26),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Center(
+            child: Container(
+              width: 76,
+              height: 76,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: const Color(0xFFF59E0B).withValues(alpha: 0.12),
+                border: Border.all(
+                  color: const Color(0xFFF59E0B).withValues(alpha: 0.28),
+                  width: 2,
+                ),
+              ),
+              child: const Center(
+                child: Icon(
+                  Icons.vpn_key_rounded,
+                  color: Color(0xFFF59E0B),
+                  size: 38,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          Text(
+            'Pulihkan Kunci Cadangan',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 21,
+              fontWeight: FontWeight.w800,
+              letterSpacing: -0.3,
+              color: textPrimary,
+            ),
+          ),
+          const SizedBox(height: 8),
+
+          Text(
+            'Gunakan 32-byte secret atau recovery seed jika HP lama hilang atau rusak total.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 13.5,
+              color: textSecondary,
+              height: 1.45,
+            ),
+          ),
+          const SizedBox(height: 24),
+
+          Container(
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              color: cardColor,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.08),
               ),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Container(
-                      padding: const EdgeInsets.all(7),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF59E0B).withValues(alpha: 0.15),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(
-                        Icons.key_rounded,
-                        color: Color(0xFFF59E0B),
-                        size: 18,
+                    Text(
+                      'KUNCI IDENTITAS RAHASIA',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.5,
+                        color: textSecondary,
                       ),
                     ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        context.tr('recoveryKeyTitle'),
-                        style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w700,
-                          color: textPrimary,
+                    InkWell(
+                      onTap: _pasteFromClipboard,
+                      borderRadius: BorderRadius.circular(8),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: AppColors.primary.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: const [
+                            Icon(
+                              Icons.content_paste_rounded,
+                              size: 13,
+                              color: AppColors.primary,
+                            ),
+                            SizedBox(width: 4),
+                            Text(
+                              'Tempel',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.primary,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 8),
-                Text(
-                  context.tr('recoveryKeyDesc'),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _recoveryKeyController,
+                  maxLines: 3,
                   style: TextStyle(
-                    fontSize: 13,
-                    color: textSecondary,
-                    height: 1.4,
+                    color: textPrimary,
+                    fontSize: 13.5,
+                    fontFamily: 'monospace',
+                    letterSpacing: 0.5,
+                  ),
+                  decoration: InputDecoration(
+                    hintText: context.tr('recoveryKeyInputHint'),
+                    hintStyle: TextStyle(
+                      color: isDark
+                          ? AppColors.darkTextSecondary.withValues(alpha: 0.6)
+                          : const Color(0xFF9CA3AF),
+                      fontSize: 13,
+                      fontFamily: 'monospace',
+                    ),
+                    filled: true,
+                    fillColor: isDark
+                        ? AppColors.darkBackground
+                        : const Color(0xFFF9FAFC),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(
+                        color: isDark ? Colors.white10 : Colors.black12,
+                      ),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(
+                        color: isDark ? Colors.white10 : Colors.black12,
+                      ),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(
+                        color: AppColors.primary,
+                        width: 1.5,
+                      ),
+                    ),
+                    suffixIcon: hasText
+                        ? IconButton(
+                            icon: const Icon(Icons.clear_rounded, size: 18),
+                            onPressed: () {
+                              _recoveryKeyController.clear();
+                              setState(() {});
+                            },
+                          )
+                        : null,
                   ),
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 16),
 
-          // Recovery Input TextField
-          TextField(
-            controller: _recoveryKeyController,
-            maxLines: 3,
-            style: TextStyle(
-              color: textPrimary,
-              fontSize: 14,
-              fontFamily: 'monospace',
-            ),
-            decoration: InputDecoration(
-              hintText: context.tr('recoveryKeyInputHint'),
-              hintStyle: TextStyle(
-                color: isDark
-                    ? AppColors.darkTextSecondary
-                    : const Color(0xFF9CA3AF),
-                fontSize: 13,
-                fontFamily: 'monospace',
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.shield_outlined,
+                size: 14,
+                color: textSecondary,
               ),
-              filled: true,
-              fillColor: isDark
-                  ? AppColors.darkSurfaceElevated
-                  : const Color(0xFFF9FAFB),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(16),
-                borderSide: BorderSide(
-                  color: isDark
-                      ? AppColors.darkSurfaceBorder
-                      : const Color(0xFFE5E7EB),
+              const SizedBox(width: 6),
+              Text(
+                'Kunci dihitung secara lokal dan tidak dikirim ke server',
+                style: TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w500,
+                  color: textSecondary,
                 ),
               ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(16),
-                borderSide: BorderSide(
-                  color: isDark
-                      ? AppColors.darkSurfaceBorder
-                      : const Color(0xFFE5E7EB),
-                ),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(16),
-                borderSide: const BorderSide(
-                  color: AppColors.primary,
-                  width: 1.5,
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(height: 22),
-
-          SizedBox(
-            width: double.infinity,
-            height: 50,
-            child: ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                foregroundColor: Colors.white,
-                elevation: 0,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-              ),
-              icon: const Icon(Icons.restore_page_rounded, size: 20),
-              label: Text(
-                _isLoading
-                    ? context.tr('verifyingDevice')
-                    : context.tr('restoreAccountButton'),
-                style: const TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              onPressed: _isLoading ? null : _handleRestoreSecret,
-            ),
+            ],
           ),
         ],
       ),

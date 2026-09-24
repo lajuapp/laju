@@ -10,6 +10,7 @@ enum AttachmentType {
   audio,
   location,
   contact,
+  sticker,
 }
 
 class AttachmentResult {
@@ -41,14 +42,21 @@ class AttachmentBottomSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final sheetBg = isDark ? const Color(0xFF1E293B) : Colors.white;
+    final titleColor = isDark ? Colors.white : const Color(0xFF111827);
+    final labelColor = isDark ? Colors.white.withValues(alpha: 0.85) : const Color(0xFF374151);
+    final handleColor = isDark ? Colors.white.withValues(alpha: 0.2) : const Color(0xFFE5E7EB);
+
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: sheetBg,
         borderRadius: BorderRadius.circular(24),
+        border: isDark ? Border.all(color: Colors.white.withValues(alpha: 0.1), width: 1) : null,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.12),
+            color: Colors.black.withValues(alpha: isDark ? 0.35 : 0.12),
             blurRadius: 20,
             offset: const Offset(0, -4),
           ),
@@ -66,7 +74,7 @@ class AttachmentBottomSheet extends StatelessWidget {
                 width: 36,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFE5E7EB),
+                  color: handleColor,
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -76,12 +84,12 @@ class AttachmentBottomSheet extends StatelessWidget {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text(
+                  Text(
                     'Attach Content',
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w700,
-                      color: Color(0xFF111827),
+                      color: titleColor,
                     ),
                   ),
                 ],
@@ -97,6 +105,7 @@ class AttachmentBottomSheet extends StatelessWidget {
                     icon: Icons.insert_drive_file_rounded,
                     label: 'Document',
                     bgColor: const Color(0xFF6366F1),
+                    labelColor: labelColor,
                     onTap: () => _handleDocumentPick(context),
                   ),
                   _buildAttachmentOption(
@@ -104,6 +113,7 @@ class AttachmentBottomSheet extends StatelessWidget {
                     icon: Icons.camera_alt_rounded,
                     label: 'Camera',
                     bgColor: const Color(0xFFEC4899),
+                    labelColor: labelColor,
                     onTap: () => _handleCameraPick(context),
                   ),
                   _buildAttachmentOption(
@@ -111,6 +121,7 @@ class AttachmentBottomSheet extends StatelessWidget {
                     icon: Icons.photo_library_rounded,
                     label: 'Gallery',
                     bgColor: const Color(0xFF8B5CF6),
+                    labelColor: labelColor,
                     onTap: () => _handleGalleryPick(context),
                   ),
                 ],
@@ -124,6 +135,7 @@ class AttachmentBottomSheet extends StatelessWidget {
                     icon: Icons.headphones_rounded,
                     label: 'Audio',
                     bgColor: const Color(0xFFF59E0B),
+                    labelColor: labelColor,
                     onTap: () => _handleAudioPick(context),
                   ),
                   _buildAttachmentOption(
@@ -131,6 +143,7 @@ class AttachmentBottomSheet extends StatelessWidget {
                     icon: Icons.location_on_rounded,
                     label: 'Location',
                     bgColor: AppColors.primary,
+                    labelColor: labelColor,
                     onTap: () => _handleLocationPick(context),
                   ),
                   _buildAttachmentOption(
@@ -138,7 +151,42 @@ class AttachmentBottomSheet extends StatelessWidget {
                     icon: Icons.person_rounded,
                     label: 'Contact',
                     bgColor: const Color(0xFF0284C7),
+                    labelColor: labelColor,
                     onTap: () => _handleContactPick(context),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 18),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: [
+                  _buildAttachmentOption(
+                    context: context,
+                    icon: Icons.sticky_note_2_rounded,
+                    label: 'Sticker',
+                    bgColor: const Color(0xFF10B981),
+                    labelColor: labelColor,
+                    onTap: () {
+                      Navigator.pop(
+                        context,
+                        AttachmentResult(
+                          type: AttachmentType.sticker,
+                          title: 'Stiker',
+                        ),
+                      );
+                    },
+                  ),
+                  const Opacity(
+                    opacity: 0.0,
+                    child: IgnorePointer(
+                      child: SizedBox(width: 76, height: 86),
+                    ),
+                  ),
+                  const Opacity(
+                    opacity: 0.0,
+                    child: IgnorePointer(
+                      child: SizedBox(width: 76, height: 86),
+                    ),
                   ),
                 ],
               ),
@@ -155,6 +203,7 @@ class AttachmentBottomSheet extends StatelessWidget {
     required IconData icon,
     required String label,
     required Color bgColor,
+    required Color labelColor,
     required VoidCallback onTap,
   }) {
     return InkWell(
@@ -186,10 +235,10 @@ class AttachmentBottomSheet extends StatelessWidget {
             const SizedBox(height: 8),
             Text(
               label,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 12.5,
                 fontWeight: FontWeight.w600,
-                color: Color(0xFF374151),
+                color: labelColor,
               ),
             ),
           ],

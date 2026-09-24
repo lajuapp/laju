@@ -14,6 +14,7 @@ import 'camera_status_screen.dart';
 
 class StatusContactGroup {
   final String name;
+  final String? userId;
   final String? avatarUrl;
   final String time;
   final int storyCount;
@@ -23,6 +24,7 @@ class StatusContactGroup {
 
   const StatusContactGroup({
     required this.name,
+    this.userId,
     this.avatarUrl,
     required this.time,
     required this.storyCount,
@@ -432,13 +434,23 @@ class StatusScreenState extends State<StatusScreen> with AutomaticKeepAliveClien
               leading: const Icon(Icons.remove_red_eye_outlined, color: AppColors.primary),
               title: Text('Lihat Status Saya', style: TextStyle(color: isDark ? Colors.white : const Color(0xFF111827))),
               onTap: () {
+                final myAvatarUrl = AccountController.instance.avatarUrl;
+                final myName = AccountController.instance.userName;
+                final storyPhotos = _myStories.where((s) => s.isPhoto && s.imageAsset != null && s.imageAsset!.isNotEmpty).toList();
+                final effectiveMyAvatar = myAvatarUrl.isNotEmpty
+                    ? myAvatarUrl
+                    : (storyPhotos.isNotEmpty ? storyPhotos.first.imageAsset : null);
+
                 Navigator.pop(ctx);
                 Navigator.push(
                   context,
                   MaterialPageRoute(
                     builder: (_) => StatusViewScreen(
-                      contactName: 'My Status (You)',
+                      contactName: myName.isNotEmpty ? myName : 'My Status (You)',
+                      avatarUrl: effectiveMyAvatar,
                       stories: _myStories,
+                      isMyStatus: true,
+                      onStatusDeleted: _loadStatuses,
                     ),
                   ),
                 );
@@ -870,6 +882,10 @@ class StatusScreenState extends State<StatusScreen> with AutomaticKeepAliveClien
                 builder: (context, _) {
                   final myAvatarUrl = AccountController.instance.avatarUrl;
                   final myName = AccountController.instance.userName;
+                  final storyPhotos = _myStories.where((s) => s.isPhoto && s.imageAsset != null && s.imageAsset!.isNotEmpty).toList();
+                  final effectiveMyAvatar = myAvatarUrl.isNotEmpty
+                      ? myAvatarUrl
+                      : (storyPhotos.isNotEmpty ? storyPhotos.first.imageAsset : null);
 
                   return LajuGlassCard(
                     borderRadius: 18,
@@ -884,8 +900,11 @@ class StatusScreenState extends State<StatusScreen> with AutomaticKeepAliveClien
                             context,
                             MaterialPageRoute(
                               builder: (context) => StatusViewScreen(
-                                contactName: 'My Status (You)',
+                                contactName: myName.isNotEmpty ? myName : 'My Status (You)',
+                                avatarUrl: effectiveMyAvatar,
                                 stories: _myStories,
+                                isMyStatus: true,
+                                onStatusDeleted: _loadStatuses,
                               ),
                             ),
                           );
@@ -898,7 +917,7 @@ class StatusScreenState extends State<StatusScreen> with AutomaticKeepAliveClien
                                   children: [
                                     ModernAvatar(
                                       name: myName,
-                                      imagePath: myAvatarUrl.isNotEmpty ? myAvatarUrl : null,
+                                      imagePath: effectiveMyAvatar,
                                       radius: 25,
                                       isVerified: true,
                                     ),
@@ -946,7 +965,7 @@ class StatusScreenState extends State<StatusScreen> with AutomaticKeepAliveClien
                                   ),
                                   child: ModernAvatar(
                                     name: myName,
-                                    imagePath: myAvatarUrl.isNotEmpty ? myAvatarUrl : null,
+                                    imagePath: effectiveMyAvatar,
                                     radius: 23,
                                     isVerified: true,
                                   ),
@@ -1084,6 +1103,7 @@ class StatusScreenState extends State<StatusScreen> with AutomaticKeepAliveClien
                           context: context,
                           isDark: isDark,
                           name: item.name,
+                          contactUserId: item.userId,
                           avatarUrl: item.avatarUrl,
                           time: item.time,
                           storyCount: item.storyCount,
@@ -1152,6 +1172,7 @@ class StatusScreenState extends State<StatusScreen> with AutomaticKeepAliveClien
                           context: context,
                           isDark: isDark,
                           name: item.name,
+                          contactUserId: item.userId,
                           avatarUrl: item.avatarUrl,
                           time: item.time,
                           storyCount: item.storyCount,
@@ -1250,6 +1271,7 @@ class StatusScreenState extends State<StatusScreen> with AutomaticKeepAliveClien
     required BuildContext context,
     required bool isDark,
     required String name,
+    String? contactUserId,
     String? avatarUrl,
     required String time,
     required int storyCount,
@@ -1274,7 +1296,12 @@ class StatusScreenState extends State<StatusScreen> with AutomaticKeepAliveClien
         ),
         child: ModernAvatar(
           name: name,
-          imagePath: avatarUrl,
+          imagePath: (avatarUrl != null && avatarUrl.isNotEmpty)
+              ? avatarUrl
+              : (stories.cast<StatusStoryItem?>().firstWhere(
+                  (s) => s != null && s.isPhoto && s.imageAsset != null && s.imageAsset!.isNotEmpty,
+                  orElse: () => null,
+                )?.imageAsset),
           radius: 22,
           isVerified: true,
         ),
@@ -1300,12 +1327,20 @@ class StatusScreenState extends State<StatusScreen> with AutomaticKeepAliveClien
         color: isDark ? Colors.white24 : const Color(0xFFCBD5E1),
       ),
       onTap: () {
+        final storyPhotos = stories.where((s) => s.isPhoto && s.imageAsset != null && s.imageAsset!.isNotEmpty).toList();
+        final effectiveAvatar = (avatarUrl != null && avatarUrl.isNotEmpty)
+            ? avatarUrl
+            : (storyPhotos.isNotEmpty ? storyPhotos.first.imageAsset : null);
+
         Navigator.push(
           context,
           MaterialPageRoute(
             builder: (context) => StatusViewScreen(
               contactName: name,
+              avatarUrl: effectiveAvatar,
               stories: stories,
+              isMyStatus: false,
+              contactUserId: contactUserId,
             ),
           ),
         );

@@ -39,6 +39,7 @@ class UserProfileScreen extends StatefulWidget {
 
 class _UserProfileScreenState extends State<UserProfileScreen> {
   bool _isMuted = false;
+  bool _isLocked = false;
   bool _isLoading = false;
 
   String? _resolvedUserId;
@@ -61,6 +62,15 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     _resolvedStatus = widget.status;
     _resolvedAvatarUrl = widget.avatarUrl;
     _resolvedTrustScore = widget.trustScore ?? 100;
+
+    if (widget.conversationId != null) {
+      final convs = ConversationService.instance.conversationsNotifier.value;
+      final match = convs.where((c) => c.id == widget.conversationId).toList();
+      if (match.isNotEmpty) {
+        _isLocked = match.first.isLocked;
+        _isMuted = match.first.isMuted;
+      }
+    }
 
     // Derive deterministic safety number
     final myId = ApiClient.instance.userId ?? 'me';
@@ -794,6 +804,48 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                                 builder: (context) => const DisappearingMessagesScreen(initialTimer: 'Off'),
                               ),
                             );
+                          },
+                        ),
+                        Divider(height: 1, indent: 64, color: isDark ? Colors.white10 : Colors.black12),
+                        SwitchListTile(
+                          secondary: Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF10B981).withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: const Icon(Icons.lock_rounded, color: Color(0xFF10B981), size: 20),
+                          ),
+                          title: Text(
+                            'Kunci Chat',
+                            style: TextStyle(fontWeight: FontWeight.w600, color: textPrimary, fontSize: 14.5),
+                          ),
+                          subtitle: Text(
+                            _isLocked
+                                ? 'Obrolan ini terkunci di folder Locked Chats'
+                                : 'Kunci dan sembunyikan obrolan ini dengan sidik jari/PIN',
+                            style: TextStyle(color: textSecondary, fontSize: 12),
+                          ),
+                          value: _isLocked,
+                          activeColor: const Color(0xFF10B981),
+                          onChanged: (val) async {
+                            setState(() => _isLocked = val);
+                            if (widget.conversationId != null) {
+                              final convs = ConversationService.instance.conversationsNotifier.value;
+                              final match = convs.where((c) => c.id == widget.conversationId).toList();
+                              if (match.isNotEmpty) {
+                                final updated = match.first.copyWith(isLocked: val);
+                                await ConversationService.instance.updateConversationLocally(updated);
+                              }
+                            }
+                            if (mounted) {
+                              LajuToast.info(
+                                context,
+                                val
+                                    ? 'Chat dikunci dan dipindahkan ke Locked Chats'
+                                    : 'Kunci chat dibuka, chat kembali ke daftar utama',
+                              );
+                            }
                           },
                         ),
                       ],

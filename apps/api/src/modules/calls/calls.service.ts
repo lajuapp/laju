@@ -7,6 +7,7 @@ import {
 import { PrismaService } from '../../infrastructure/prisma/prisma.service';
 import { RedisService } from '../../infrastructure/redis/redis.service';
 import { GotifyService } from '../../infrastructure/gotify/gotify.service';
+import { CallSignalingGateway } from './calls.gateway';
 
 @Injectable()
 export class CallsService {
@@ -18,7 +19,8 @@ export class CallsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly redis: RedisService,
-    @Optional() private readonly gotifyService?: GotifyService
+    @Optional() private readonly gotifyService?: GotifyService,
+    @Optional() private readonly callGateway?: CallSignalingGateway
   ) {}
 
   async createCall(callerUserId: string, callerDeviceId: string, calleeUserId: string, isVideo?: boolean) {
@@ -83,17 +85,22 @@ export class CallsService {
         select: { username: true }
       });
 
+      const incomingPayload = {
+        type: 'CALL_INCOMING',
+        callId: call.id,
+        initiatorId: callerUserId,
+        initiatorName: caller?.username || 'Kontak',
+        callerDeviceId,
+        isVideo: !!isVideo
+      };
+
       await this.redis.publish(
         `user:${resolvedCalleeUserId}`,
-        JSON.stringify({
-          type: 'CALL_INCOMING',
-          callId: call.id,
-          initiatorId: callerUserId,
-          initiatorName: caller?.username || 'Kontak',
-          callerDeviceId,
-          isVideo: !!isVideo
-        })
+        JSON.stringify(incomingPayload)
       );
+
+      // Notify callee via WebSocket gateway directly (instant, no polling needed)
+      this.callGateway?.notifyUser(resolvedCalleeUserId, incomingPayload);
 
       // Trigger high-priority push notification (Priority 8 - Call Wakeup)
       if (this.gotifyService) {
@@ -129,15 +136,25 @@ export class CallsService {
       })
     ]);
 
-    await this.redis.publish(
-      `call:${callId}`,
-      JSON.stringify({
-        type: 'CALL_ACCEPTED',
-        callId,
-        participantId: calleeUserId,
-        deviceId: calleeDeviceId
-      })
-    );
+    const acceptedPayload = {
+      type: 'CALL_ACCEPTED',
+      callId,
+      participantId: calleeUserId,
+      deviceId: calleeDeviceId
+    };
+
+    await this.redis.publish(`call:${callId}`, JSON.stringify(acceptedPayload));
+
+    // Notify all call participants via WebSocket gateway
+    this.callGateway?.notifyCallRoom(callId, acceptedPayload);
+
+    // Also notify the initiator directly if known
+    try {
+      const call = await this.prisma.call.findUnique({ where: { id: callId } });
+      if (call?.initiatorId) {
+        this.callGateway?.notifyUser(call.initiatorId, acceptedPayload);
+      }
+    } catch (_) {}
 
     return { success: true };
   }
@@ -154,14 +171,13 @@ export class CallsService {
       })
     ]);
 
-    await this.redis.publish(
-      `call:${callId}`,
-      JSON.stringify({
-        type: 'CALL_REJECTED',
-        callId,
-        userId
-      })
-    );
+    const rejectedPayload = {
+      type: 'CALL_REJECTED',
+      callId,
+      userId
+    };
+
+    await this.redis.publish(`call:${callId}`, JSON.stringify(rejectedPayload));
 
     try {
       const participants = await this.prisma.callParticipant.findMany({
@@ -169,14 +185,8 @@ export class CallsService {
         select: { userId: true }
       });
       for (const p of participants) {
-        await this.redis.publish(
-          `user:${p.userId}`,
-          JSON.stringify({
-            type: 'CALL_REJECTED',
-            callId,
-            userId
-          })
-        );
+        await this.redis.publish(`user:${p.userId}`, JSON.stringify(rejectedPayload));
+        this.callGateway?.notifyUser(p.userId, rejectedPayload);
       }
     } catch (_) {}
 
@@ -195,14 +205,13 @@ export class CallsService {
       })
     ]);
 
-    await this.redis.publish(
-      `call:${callId}`,
-      JSON.stringify({
-        type: 'CALL_ENDED',
-        callId,
-        userId
-      })
-    );
+    const endedPayload = {
+      type: 'CALL_ENDED',
+      callId,
+      userId
+    };
+
+    await this.redis.publish(`call:${callId}`, JSON.stringify(endedPayload));
 
     try {
       const participants = await this.prisma.callParticipant.findMany({
@@ -210,14 +219,8 @@ export class CallsService {
         select: { userId: true }
       });
       for (const p of participants) {
-        await this.redis.publish(
-          `user:${p.userId}`,
-          JSON.stringify({
-            type: 'CALL_ENDED',
-            callId,
-            userId
-          })
-        );
+        await this.redis.publish(`user:${p.userId}`, JSON.stringify(endedPayload));
+        this.callGateway?.notifyUser(p.userId, endedPayload);
       }
     } catch (_) {}
 
@@ -255,6 +258,9 @@ export class CallsService {
     } catch (_) {}
 
     await this.redis.publish(`call:${callId}`, JSON.stringify(payload));
+
+    // Broadcast signal via WebSocket gateway for real-time delivery
+    this.callGateway?.notifyCallRoom(callId, payload, undefined);
 
     return { success: true };
   }

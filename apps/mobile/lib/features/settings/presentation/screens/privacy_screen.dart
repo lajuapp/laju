@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../../../../core/core.dart';
 import '../../domain/account_controller.dart';
+import '../../domain/privacy_controller.dart';
 import 'biometric_settings_screen.dart';
 import 'blocked_contacts_screen.dart';
 
@@ -13,23 +13,6 @@ class PrivacyScreen extends StatefulWidget {
 }
 
 class _PrivacyScreenState extends State<PrivacyScreen> {
-  bool _readReceipts = true;
-  String _lastSeen = 'My contacts';
-  String _profilePhoto = 'My contacts';
-  String _disappearingTimer = 'Off';
-
-  @override
-  void initState() {
-    super.initState();
-    SharedPreferences.getInstance().then((prefs) {
-      if (mounted) {
-        setState(() {
-          _disappearingTimer = prefs.getString('privacy_disappearing_timer') ?? 'Off';
-        });
-      }
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
     final isDark = ThemeModeController.instance.isDarkMode(context);
@@ -52,117 +35,120 @@ class _PrivacyScreenState extends State<PrivacyScreen> {
       ),
       body: LajuGlassBackground(
         showOrbs: true,
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(14, 12, 14, 40),
-          children: [
-            // Section 1: Visibility Settings
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
-              child: Text(
-                context.tr('privacyTitle').toUpperCase(),
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w800,
-                  color: isDark ? AppColors.darkTextSecondary : const Color(0xFF6B7280),
-                  letterSpacing: 0.8,
-                ),
-              ),
-            ),
-            LajuGlassCard(
-              padding: EdgeInsets.zero,
-              borderRadius: 20,
-              blurSigma: 16,
-              child: Column(
-                children: [
-                  _buildPrivacyRow(
-                    context,
-                    context.tr('lastSeenOnline'),
-                    _lastSeen,
-                    isFirst: true,
-                    onTap: () {
-                      _showSelectionDialog(
-                        context.tr('lastSeenOnline'),
-                        ['Everyone', 'My contacts', 'My contacts except...', 'Nobody'],
-                        _lastSeen,
-                        (val) => setState(() => _lastSeen = val),
-                      );
-                    },
-                  ),
-                  _buildDivider(isDark),
-                  _buildPrivacyRow(
-                    context,
-                    context.tr('profilePhoto'),
-                    _profilePhoto,
-                    onTap: () {
-                      _showSelectionDialog(
-                        context.tr('profilePhoto'),
-                        ['Everyone', 'My contacts', 'Nobody'],
-                        _profilePhoto,
-                        (val) => setState(() => _profilePhoto = val),
-                      );
-                    },
-                  ),
-                  _buildDivider(isDark),
-                  _buildPrivacyRow(
-                    context,
-                    context.tr('disappearingTimer'),
-                    _disappearingTimer,
-                    isLast: true,
-                    onTap: () {
-                      _showSelectionDialog(
-                        context.tr('disappearingTimer'),
-                        ['Off', '24 hours', '7 days', '90 days'],
-                        _disappearingTimer,
-                        (val) {
-                          setState(() => _disappearingTimer = val);
-                          SharedPreferences.getInstance().then((prefs) {
-                            prefs.setString('privacy_disappearing_timer', val);
-                          });
-                        },
-                      );
-                    },
-                  ),
-                ],
-              ),
-            ),
+        child: ListenableBuilder(
+          listenable: PrivacyController.instance,
+          builder: (context, _) {
+            final privacy = PrivacyController.instance;
 
-            const SizedBox(height: 14),
-
-            // Section 2: Messaging / Receipts
-            LajuGlassCard(
-              padding: EdgeInsets.zero,
-              borderRadius: 20,
-              blurSigma: 16,
-              child: Material(
-                color: Colors.transparent,
-                child: SwitchListTile(
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                  activeThumbColor: AppColors.primary,
-                  activeTrackColor: AppColors.primary.withValues(alpha: 0.4),
-                  title: Text(
-                    context.tr('readReceipts'),
+            return ListView(
+              padding: const EdgeInsets.fromLTRB(14, 12, 14, 40),
+              children: [
+                // Section 1: Visibility Settings
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+                  child: Text(
+                    context.tr('privacyTitle').toUpperCase(),
                     style: TextStyle(
-                      fontSize: 15.5,
-                      fontWeight: FontWeight.w600,
-                      color: isDark ? Colors.white : const Color(0xFF111827),
-                    ),
-                  ),
-                  subtitle: Text(
-                    context.tr('readReceiptsSub'),
-                    style: TextStyle(
-                      fontSize: 12.5,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
                       color: isDark ? AppColors.darkTextSecondary : const Color(0xFF6B7280),
+                      letterSpacing: 0.8,
                     ),
                   ),
-                  value: _readReceipts,
-                  onChanged: (val) {
-                    setState(() => _readReceipts = val);
-                    LajuToast.info(context, 'Read receipts ${val ? 'enabled' : 'disabled'}');
-                  },
                 ),
-              ),
-            ),
+                LajuGlassCard(
+                  padding: EdgeInsets.zero,
+                  borderRadius: 20,
+                  blurSigma: 16,
+                  child: Column(
+                    children: [
+                      _buildPrivacyRow(
+                        context,
+                        context.tr('lastSeenOnline'),
+                        privacy.lastSeen,
+                        isFirst: true,
+                        onTap: () {
+                          _showSelectionDialog(
+                            context.tr('lastSeenOnline'),
+                            ['Everyone', 'My contacts', 'My contacts except...', 'Nobody'],
+                            privacy.lastSeen,
+                            (val) => privacy.setLastSeen(val),
+                          );
+                        },
+                      ),
+                      _buildDivider(isDark),
+                      _buildPrivacyRow(
+                        context,
+                        context.tr('profilePhoto'),
+                        privacy.profilePhoto,
+                        onTap: () {
+                          _showSelectionDialog(
+                            context.tr('profilePhoto'),
+                            ['Everyone', 'My contacts', 'Nobody'],
+                            privacy.profilePhoto,
+                            (val) => privacy.setProfilePhoto(val),
+                          );
+                        },
+                      ),
+                      _buildDivider(isDark),
+                      _buildPrivacyRow(
+                        context,
+                        context.tr('disappearingTimer'),
+                        privacy.disappearingTimer,
+                        isLast: true,
+                        onTap: () {
+                          _showSelectionDialog(
+                            context.tr('disappearingTimer'),
+                            ['Off', '24 hours', '7 days', '90 days'],
+                            privacy.disappearingTimer,
+                            (val) => privacy.setDisappearingTimer(val),
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 14),
+
+                // Section 2: Messaging / Receipts
+                LajuGlassCard(
+                  padding: EdgeInsets.zero,
+                  borderRadius: 20,
+                  blurSigma: 16,
+                  child: Material(
+                    color: Colors.transparent,
+                    child: SwitchListTile(
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                      activeThumbColor: AppColors.primary,
+                      activeTrackColor: AppColors.primary.withValues(alpha: 0.4),
+                      title: Text(
+                        context.tr('readReceipts'),
+                        style: TextStyle(
+                          fontSize: 15.5,
+                          fontWeight: FontWeight.w600,
+                          color: isDark ? Colors.white : const Color(0xFF111827),
+                        ),
+                      ),
+                      subtitle: Text(
+                        context.tr('readReceiptsSub'),
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          color: isDark ? AppColors.darkTextSecondary : const Color(0xFF6B7280),
+                        ),
+                      ),
+                      value: privacy.readReceipts,
+                      onChanged: (val) {
+                        privacy.setReadReceipts(val);
+                        LajuToast.info(
+                          context,
+                          val ? 'Laporan dibaca diaktifkan' : 'Laporan dibaca dinonaktifkan',
+                        );
+                      },
+                    ),
+                  ),
+                ),
 
             const SizedBox(height: 14),
 
@@ -308,6 +294,8 @@ class _PrivacyScreenState extends State<PrivacyScreen> {
               ),
             ),
           ],
+            );
+          },
         ),
       ),
     );

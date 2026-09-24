@@ -7,12 +7,14 @@ class ConversationTile extends StatelessWidget {
   final ConversationModel conversation;
   final VoidCallback onTap;
   final VoidCallback? onLongPress;
+  final Widget? trailing;
 
   const ConversationTile({
     super.key,
     required this.conversation,
     required this.onTap,
     this.onLongPress,
+    this.trailing,
   });
 
   String _formatTime(DateTime time) {
@@ -188,6 +190,10 @@ class ConversationTile extends StatelessWidget {
                   ],
                 ),
               ),
+              if (trailing != null) ...[
+                const SizedBox(width: 8),
+                trailing!,
+              ],
             ],
           ),
         ),

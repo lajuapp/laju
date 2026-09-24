@@ -1,17 +1,14 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
-import 'dart:typed_data';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_webrtc/flutter_webrtc.dart';
 import '../../../../core/core.dart';
-import '../../../../core/theme/app_colors.dart';
-import '../../../../core/theme/theme_controller.dart';
-import '../../../../core/widgets/laju_glass.dart';
-import '../../../../core/widgets/modern_avatar.dart';
 import '../../../home/presentation/screens/home_screen.dart';
 import '../../domain/call_session_controller.dart';
+import '../../domain/webrtc_call_service.dart';
 
 class ActiveCallScreen extends StatefulWidget {
   final String contactName;
@@ -109,6 +106,7 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
       setState(() {});
 
       _startImageStreaming();
+      // Camera streaming handled by WebRTC - legacy image stream kept as fallback
     } catch (e) {
       debugPrint('[ActiveCallScreen] Camera initialization error: $e');
     }
@@ -195,6 +193,7 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
 
   void _switchCamera() async {
     _isFrontCamera = !_isFrontCamera;
+    WebRTCCallService.instance.switchCamera();
     _startCamera();
   }
 
@@ -873,6 +872,10 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
   }
 
   Widget _buildLocalCameraPreview({required bool isPip}) {
+    if (WebRTCCallService.instance.localRenderer != null) {
+      return RTCVideoView(WebRTCCallService.instance.localRenderer!, mirror: true, objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover);
+    }
+
     if (_cameraController != null && _cameraController!.value.isInitialized) {
       Widget preview = SizedBox.expand(
         child: FittedBox(
@@ -904,6 +907,10 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
   }
 
   Widget _buildRemoteVideoView({required bool isPip, required Color textPrimary, required Color textSecondary}) {
+    if (WebRTCCallService.instance.remoteRenderer != null) {
+      return RTCVideoView(WebRTCCallService.instance.remoteRenderer!, objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover);
+    }
+
     final now = DateTime.now().millisecondsSinceEpoch;
     final hasLiveFrame = _remoteVideoBytes != null && (now - _lastRemoteFrameTime < 6000);
 

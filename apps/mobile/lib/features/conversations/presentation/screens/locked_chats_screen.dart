@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../../core/core.dart';
 import '../../domain/models/conversation_model.dart';
+import '../../domain/conversation_service.dart';
 import '../widgets/conversation_tile.dart';
 import '../../../messaging/presentation/screens/chat_screen.dart';
 import '../../../messaging/presentation/screens/group_chat_screen.dart';
@@ -65,11 +66,51 @@ class _LockedChatsScreenState extends State<LockedChatsScreen> {
 
   void _unlockChat(ConversationModel conv) async {
     final unlocked = conv.copyWith(isLocked: false);
-    await LocalDatabase.instance.upsertConversations([unlocked]);
+    await ConversationService.instance.updateConversationLocally(unlocked);
     if (mounted) {
-      LajuToast.success(context, 'Obrolan "${conv.title}" telah dibuka dari Locked Chats');
+      LajuToast.success(context, 'Obrolan "${conv.title}" telah dipindahkan kembali ke daftar obrolan utama');
       _loadLockedChats();
     }
+  }
+
+  void _showUnlockDialog(ConversationModel conv) {
+    final isDark = ThemeModeController.instance.isDarkMode(context);
+    showDialog(
+      context: context,
+      builder: (dlgCtx) => AlertDialog(
+        backgroundColor: isDark ? AppColors.darkSurface : Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(
+          'Buka Kunci Obrolan?',
+          style: TextStyle(
+            color: isDark ? Colors.white : const Color(0xFF111827),
+            fontSize: 17,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        content: Text(
+          'Obrolan "${conv.title}" akan dibuka kuncinya dan dipindahkan kembali ke daftar obrolan utama.',
+          style: TextStyle(
+            color: isDark ? AppColors.darkTextSecondary : const Color(0xFF6B7280),
+            fontSize: 14,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dlgCtx),
+            child: const Text('Batal'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary),
+            onPressed: () {
+              Navigator.pop(dlgCtx);
+              _unlockChat(conv);
+            },
+            child: const Text('Buka Kunci', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -161,37 +202,12 @@ class _LockedChatsScreenState extends State<LockedChatsScreen> {
                     return ConversationTile(
                       conversation: conv,
                       onTap: () => _openChat(conv),
-                      onLongPress: () {
-                        showModalBottomSheet(
-                          context: context,
-                          backgroundColor: cardColor,
-                          shape: const RoundedRectangleBorder(
-                            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-                          ),
-                          builder: (bCtx) => SafeArea(
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 12),
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  ListTile(
-                                    leading: const Icon(Icons.lock_open_rounded, color: AppColors.primary),
-                                    title: Text(
-                                      'Buka Kunci Obrolan',
-                                      style: TextStyle(fontWeight: FontWeight.w600, color: textPrimary),
-                                    ),
-                                    subtitle: const Text('Pindahkan kembali ke daftar obrolan utama'),
-                                    onTap: () {
-                                      Navigator.pop(bCtx);
-                                      _unlockChat(conv);
-                                    },
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        );
-                      },
+                      onLongPress: () => _showUnlockDialog(conv),
+                      trailing: IconButton(
+                        icon: const Icon(Icons.lock_open_rounded, color: AppColors.primary, size: 22),
+                        tooltip: 'Buka Kunci Obrolan',
+                        onPressed: () => _showUnlockDialog(conv),
+                      ),
                     );
                   },
                 ),

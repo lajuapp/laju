@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import '../../../../core/core.dart';
 import '../../domain/models/message_model.dart';
+import '../../../settings/domain/privacy_controller.dart';
 import 'voice_note_player.dart';
 
 class ChatBubble extends StatelessWidget {
@@ -190,6 +191,9 @@ class ChatBubble extends StatelessWidget {
       case MessageDeliveryStatus.delivered:
         return Icon(Icons.done_all_rounded, size: 13, color: defaultColor);
       case MessageDeliveryStatus.read:
+        if (!PrivacyController.instance.readReceipts) {
+          return Icon(Icons.done_all_rounded, size: 13, color: defaultColor);
+        }
         return const Icon(Icons.done_all_rounded, size: 13, color: Color(0xFF53BDEB));
       case MessageDeliveryStatus.failed:
         return const Icon(Icons.error_outline_rounded, size: 13, color: AppColors.danger);
@@ -233,6 +237,10 @@ class ChatBubble extends StatelessWidget {
     final isOut = message.isOutgoing;
     final isDark = ThemeModeController.instance.isDarkMode(context);
     final timeStr = DateFormat('HH:mm').format(message.timestamp.toLocal());
+
+    if (_isStickerMessage()) {
+      return _buildStickerBubble(context, isDark, isOut, timeStr);
+    }
 
     final isImage = _isImageMessage();
 
@@ -437,6 +445,225 @@ class ChatBubble extends StatelessWidget {
       isDark: isDark,
       onReply: onReply != null ? () => onReply!(message) : null,
       child: bubbleWidget,
+    );
+  }
+
+  bool _isStickerMessage() {
+    if (message.contentType == MessageContentType.sticker) return true;
+    final path = message.attachmentPath ?? '';
+    final name = message.attachmentName ?? '';
+    final content = message.content;
+    return path.contains('stickers/') ||
+        name.startsWith('cat_') ||
+        name.contains('sticker') ||
+        content.startsWith('sticker:');
+  }
+
+  Widget _buildStickerBubble(BuildContext context, bool isDark, bool isOut, String timeStr) {
+    final stickerGraphic = _buildStickerGraphic(context, isDark);
+
+    final bubbleWidget = Align(
+      alignment: isOut ? Alignment.centerRight : Alignment.centerLeft,
+      child: GestureDetector(
+        onLongPress: () => _showMessageOptions(context),
+        child: Container(
+          margin: EdgeInsets.only(
+            top: topMargin,
+            bottom: bottomMargin,
+          ),
+          padding: EdgeInsets.only(
+            left: isOut ? 48 : 12,
+            right: isOut ? 12 : 48,
+          ),
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Column(
+                crossAxisAlignment: isOut ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Quoted Reply Box if replying
+                  if (message.replyTo != null) ...[
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 6),
+                      constraints: const BoxConstraints(maxWidth: 240),
+                      child: _buildQuotedReplyBox(context, isDark, isOut, false),
+                    ),
+                  ],
+
+                  // Sticker Graphic + Floating Timestamp Pill
+                  Stack(
+                    alignment: Alignment.bottomRight,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.all(4.0),
+                        child: stickerGraphic,
+                      ),
+                      Positioned(
+                        bottom: 4,
+                        right: 4,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.55),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: Colors.white12, width: 0.8),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                timeStr,
+                                style: const TextStyle(
+                                  fontSize: 10.5,
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              if (isOut) ...[
+                                const SizedBox(width: 4),
+                                _buildStatusIcon(message.status, isOut: true, forcedWhite: true),
+                              ],
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+
+              // Reaction Badge Pill Overlay
+              if (message.reactions.isNotEmpty)
+                Positioned(
+                  bottom: -10,
+                  right: isOut ? 8 : null,
+                  left: isOut ? null : 8,
+                  child: GestureDetector(
+                    onTap: () => _showMessageOptions(context),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF1E293B),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: AppColors.primary.withValues(alpha: 0.4),
+                          width: 1,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.3),
+                            blurRadius: 4,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            message.reactions.join(' '),
+                            style: const TextStyle(fontSize: 13),
+                          ),
+                          if (message.reactions.length > 1) ...[
+                            const SizedBox(width: 4),
+                            Text(
+                              '${message.reactions.length}',
+                              style: const TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: AppColors.primary,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    return _SwipeToReplyWrapper(
+      isDark: isDark,
+      onReply: onReply != null ? () => onReply!(message) : null,
+      child: bubbleWidget,
+    );
+  }
+
+  Widget _buildStickerGraphic(BuildContext context, bool isDark) {
+    String? assetToUse;
+    final path = message.attachmentPath ?? '';
+    final name = message.attachmentName ?? '';
+    final content = message.content;
+
+    if (path.isNotEmpty) {
+      if (path.startsWith('assets/')) {
+        assetToUse = path;
+      } else if (File(path).existsSync()) {
+        return Image.file(
+          File(path),
+          width: 145,
+          height: 145,
+          fit: BoxFit.contain,
+          errorBuilder: (_, __, ___) => _buildFallbackStickerIcon(isDark),
+        );
+      } else if (path.startsWith('data:image')) {
+        try {
+          final b64 = path.split(',').last;
+          return Image.memory(
+            base64Decode(b64),
+            width: 145,
+            height: 145,
+            fit: BoxFit.contain,
+            errorBuilder: (_, __, ___) => _buildFallbackStickerIcon(isDark),
+          );
+        } catch (_) {}
+      }
+    }
+
+    if (assetToUse == null) {
+      if (name == 'cat_cool' || content.contains('cat_cool') || content.toLowerCase() == 'keren') {
+        assetToUse = 'assets/images/stickers/cat_cool.png';
+      } else if (name == 'cat_cheer' || content.contains('cat_cheer') || content.toLowerCase() == 'semangat') {
+        assetToUse = 'assets/images/stickers/cat_cheer.png';
+      } else {
+        assetToUse = 'assets/images/stickers/cat_thumbs_up.png';
+      }
+    }
+
+    return Image.asset(
+      assetToUse,
+      width: 145,
+      height: 145,
+      fit: BoxFit.contain,
+      errorBuilder: (_, __, ___) {
+        final altPath = assetToUse!.replaceFirst('assets/images/stickers/', 'assets/stickers/');
+        return Image.asset(
+          altPath,
+          width: 145,
+          height: 145,
+          fit: BoxFit.contain,
+          errorBuilder: (_, __, ___) => _buildFallbackStickerIcon(isDark),
+        );
+      },
+    );
+  }
+
+  Widget _buildFallbackStickerIcon(bool isDark) {
+    return Container(
+      width: 120,
+      height: 120,
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: const Center(
+        child: Icon(Icons.sticky_note_2_rounded, size: 48, color: AppColors.primary),
+      ),
     );
   }
 
@@ -689,13 +916,25 @@ class ChatBubble extends StatelessWidget {
     final snippetText = reply.displaySnippet;
 
     IconData? snippetIcon;
-    if (reply.contentType == MessageContentType.voiceNote) {
+    if (reply.contentType == MessageContentType.sticker) {
+      snippetIcon = Icons.sticky_note_2_rounded;
+    } else if (reply.contentType == MessageContentType.voiceNote) {
       snippetIcon = Icons.mic_rounded;
     } else if (reply.contentType == MessageContentType.location) {
       snippetIcon = Icons.location_on_rounded;
     } else if (reply.contentType == MessageContentType.attachment) {
       final name = (reply.attachmentName ?? '').toLowerCase();
-      snippetIcon = (name.endsWith('.pdf') || name.endsWith('.doc') || name.endsWith('.docx'))
+      snippetIcon = (name.endsWith('.pdf') ||
+              name.endsWith('.doc') ||
+              name.endsWith('.docx') ||
+              name.endsWith('.xls') ||
+              name.endsWith('.xlsx') ||
+              name.endsWith('.csv') ||
+              name.endsWith('.ppt') ||
+              name.endsWith('.pptx') ||
+              name.endsWith('.zip') ||
+              name.endsWith('.rar') ||
+              name.endsWith('.txt'))
           ? Icons.insert_drive_file_rounded
           : Icons.photo_camera_rounded;
     }
@@ -775,9 +1014,61 @@ class ChatBubble extends StatelessWidget {
                 ),
               ),
             ),
+            if (reply.attachmentPath != null && reply.attachmentPath!.isNotEmpty) ...[
+              const SizedBox(width: 4),
+              ClipRRect(
+                borderRadius: const BorderRadius.only(
+                  topRight: Radius.circular(6),
+                  bottomRight: Radius.circular(6),
+                ),
+                child: SizedBox(
+                  width: 48,
+                  height: 48,
+                  child: _buildQuotedMediaThumbnail(reply.attachmentPath!),
+                ),
+              ),
+            ],
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildQuotedMediaThumbnail(String path) {
+    if (path.startsWith('data:image')) {
+      try {
+        final b64 = path.contains(',') ? path.split(',').last : path;
+        return Image.memory(
+          base64Decode(b64),
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => const Icon(Icons.image, size: 20, color: Colors.white54),
+        );
+      } catch (_) {}
+    }
+    if (path.startsWith('http://') || path.startsWith('https://')) {
+      return Image.network(
+        path,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => const Icon(Icons.image, size: 20, color: Colors.white54),
+      );
+    }
+    if (File(path).existsSync()) {
+      return Image.file(
+        File(path),
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => const Icon(Icons.image, size: 20, color: Colors.white54),
+      );
+    }
+    if (path.startsWith('assets/')) {
+      return Image.asset(
+        path,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => const Icon(Icons.image, size: 20, color: Colors.white54),
+      );
+    }
+    return Container(
+      color: Colors.black26,
+      child: const Icon(Icons.image, size: 20, color: Colors.white54),
     );
   }
 
@@ -1030,7 +1321,14 @@ class ChatBubble extends StatelessWidget {
         cleanContent == '$attName\nClient-Side Encrypted Document' ||
         cleanContent == '📷 $attName (${message.attachmentSize})' ||
         cleanContent == '🎤 Voice Message' ||
-        cleanContent.startsWith('📷 $attName')) {
+        cleanContent.startsWith('📷 $attName') ||
+        cleanContent.startsWith('Berkas Dokumen Asli') ||
+        cleanContent == 'Berkas Dokumen' ||
+        cleanContent.startsWith('data:') ||
+        (cleanContent.startsWith('{') && cleanContent.contains('"media"')) ||
+        (cleanContent.startsWith('{') && cleanContent.contains('"type"')) ||
+        cleanContent == '$attName (${message.attachmentSize})' ||
+        cleanContent == '${message.attachmentName} (${message.attachmentSize})') {
       return false;
     }
 
@@ -1185,15 +1483,21 @@ class ChatBubble extends StatelessWidget {
                 border: Border.all(color: iconColor.withValues(alpha: 0.25), width: 1),
               ),
               clipBehavior: Clip.antiAlias,
-              child: message.attachmentPath != null && message.attachmentPath!.startsWith('data:image')
+              child: isImage && message.attachmentPath != null && message.attachmentPath!.startsWith('data:image')
                   ? Image.memory(
                       base64Decode(message.attachmentPath!.split(',').last),
                       fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) => Center(
+                        child: Icon(fileIcon, color: iconColor, size: 24),
+                      ),
                     )
-                  : (message.attachmentPath != null && File(message.attachmentPath!).existsSync()
+                  : (isImage && message.attachmentPath != null && File(message.attachmentPath!).existsSync()
                       ? Image.file(
                           File(message.attachmentPath!),
                           fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) => Center(
+                            child: Icon(fileIcon, color: iconColor, size: 24),
+                          ),
                         )
                       : Center(
                           child: Icon(fileIcon, color: iconColor, size: 24),
@@ -1220,7 +1524,9 @@ class ChatBubble extends StatelessWidget {
                   Row(
                     children: [
                       Text(
-                        '${message.attachmentSize ?? '2.4 MB'} • $ext',
+                        (message.attachmentSize != null && message.attachmentSize!.isNotEmpty)
+                            ? '${message.attachmentSize} • $ext'
+                            : ext,
                         style: TextStyle(
                           fontSize: 11.5,
                           fontWeight: FontWeight.w500,

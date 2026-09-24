@@ -7,6 +7,7 @@ import '../../../../core/core.dart';
 import '../domain/models/conversation_model.dart';
 import '../../messaging/domain/models/message_model.dart';
 import '../../messaging/presentation/screens/chat_screen.dart';
+import '../../settings/domain/privacy_controller.dart';
 
 class UserDirectoryItem {
   final String id;
@@ -200,17 +201,17 @@ class ConversationService {
         final list = response.rawJson as List;
         final currentUserId = ApiClient.instance.userId;
 
-        // Load existing conversations from memory or SQLite to preserve user settings:
+        // Load existing conversations from SQLite and memory to preserve user settings:
         // isPinned, isLocked, isArchived, isMuted, unreadCount
         final cachedMap = <String, ConversationModel>{};
+        final dbConvs = await LocalDatabase.instance.getConversations();
+        for (final c in dbConvs) {
+          cachedMap[c.id] = c;
+        }
         if (inMemoryConversations != null && inMemoryConversations!.isNotEmpty) {
           for (final c in inMemoryConversations!) {
             cachedMap[c.id] = c;
           }
-        }
-        final dbConvs = await LocalDatabase.instance.getConversations();
-        for (final c in dbConvs) {
-          cachedMap.putIfAbsent(c.id, () => c);
         }
 
         // Check for new incoming messages across conversations and trigger notifications
@@ -250,13 +251,23 @@ class ConversationService {
                   if (notifTitle.isEmpty) notifTitle = isGroup ? 'Group Chat' : 'Pesan Baru';
 
                   String preview = (latest['ciphertext'] ?? '') as String;
-                  if (preview.startsWith('{') && preview.contains('"media"')) {
+                  if (preview.startsWith('{') && (preview.contains('"media"') || preview.contains('"type"'))) {
                     try {
                       final parsed = jsonDecode(preview);
+                      final msgType = parsed['type'] as String?;
                       final cap = (parsed['caption'] ?? '') as String;
-                      preview = cap.isNotEmpty ? cap : 'Foto';
+                      if (msgType == 'document') {
+                        final fn = (parsed['fileName'] as String?) ?? 'Dokumen';
+                        preview = cap.isNotEmpty ? cap : fn;
+                      } else if (msgType == 'audio') {
+                        preview = 'Pesan Suara';
+                      } else if (cap.isNotEmpty) {
+                        preview = cap;
+                      } else {
+                        preview = 'Foto';
+                      }
                     } catch (_) {
-                      preview = 'Foto';
+                      preview = 'Lampiran';
                     }
                   } else if (preview.startsWith('data:image')) {
                     preview = 'Foto';
@@ -346,14 +357,17 @@ class ConversationService {
               final parsed = jsonDecode(lastMsg);
               final msgType = parsed['type'] as String?;
               final cap = (parsed['caption'] ?? '') as String;
-              if (cap.isNotEmpty) {
-                lastMsg = cap;
-              } else if (msgType == 'audio') {
+              if (msgType == 'audio') {
                 lastMsg = 'Pesan Suara';
+              } else if (msgType == 'sticker') {
+                lastMsg = '💟 Stiker';
               } else if (msgType == 'document') {
-                lastMsg = (parsed['fileName'] as String?) ?? 'Dokumen';
+                final fn = (parsed['fileName'] as String?) ?? 'Dokumen';
+                lastMsg = cap.isNotEmpty ? cap : fn;
               } else if (msgType == 'location') {
                 lastMsg = 'Berbagi Lokasi';
+              } else if (cap.isNotEmpty) {
+                lastMsg = cap;
               } else {
                 lastMsg = 'Foto';
               }
@@ -667,24 +681,58 @@ class ConversationService {
                     attName = 'Foto.jpg';
                     contentText = (parsed['caption'] ?? '') as String;
                   } else if (parsed['type'] == 'audio') {
-                    contentType = MessageContentType.voiceNote;
+                    final fn = (parsed['fileName'] ?? 'Voice Note') as String;
+                    final isAudioFile = fn != 'Voice Note' &&
+                        (fn.toLowerCase().endsWith('.mp3') ||
+                         fn.toLowerCase().endsWith('.wav') ||
+                         fn.toLowerCase().endsWith('.m4a') ||
+                         fn.toLowerCase().endsWith('.aac') ||
+                         fn.toLowerCase().endsWith('.ogg') ||
+                         fn.toLowerCase().endsWith('.flac'));
+                    contentType = isAudioFile ? MessageContentType.attachment : MessageContentType.voiceNote;
                     mediaData = parsed['media'] as String?;
-                    attName = (parsed['fileName'] ?? 'Voice Note') as String;
+                    attName = fn;
                     attSize = (parsed['duration'] ?? '') as String;
-                    contentText = attSize.isNotEmpty ? 'Pesan Suara ($attSize)' : 'Pesan Suara';
+                    final cap = (parsed['caption'] ?? '') as String;
+                    contentText = isAudioFile
+                        ? cap
+                        : (attSize.isNotEmpty ? 'Pesan Suara ($attSize)' : 'Pesan Suara');
+                  } else if (parsed['type'] == 'document') {
+                    contentType = MessageContentType.attachment;
+                    mediaData = parsed['media'] as String?;
+                    attName = (parsed['fileName'] ?? 'Dokumen') as String;
+                    attSize = (parsed['fileSize'] ?? '') as String;
+                    contentText = (parsed['caption'] ?? '') as String;
+                    if (attSize.isEmpty && mediaData != null && mediaData.contains(',')) {
+                      final b64Part = mediaData.split(',').last;
+                      final approxBytes = (b64Part.length * 3) ~/ 4;
+                      if (approxBytes > 0) {
+                        attSize = approxBytes < 1024 * 1024
+                            ? '${(approxBytes / 1024).toStringAsFixed(1)} KB'
+                            : '${(approxBytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+                      }
+                    }
                   } else if (parsed['type'] == 'location') {
                     contentType = MessageContentType.location;
                     attName = (parsed['name'] ?? 'Lokasi') as String;
                     attSize = (parsed['address'] ?? '') as String;
                     contentText = rawCiphertext;
+                  } else if (parsed['type'] == 'sticker') {
+                    contentType = MessageContentType.sticker;
+                    attName = (parsed['stickerId'] ?? 'cat_thumbs_up') as String;
+                    mediaData = parsed['assetPath'] as String? ?? parsed['media'] as String?;
+                    contentText = (parsed['caption'] ?? '') as String;
                   } else if (parsed['type'] == 'reply') {
                     contentText = (parsed['text'] ?? '') as String;
                   }
                 }
               } catch (_) {}
             }
-            if (mediaData == null && contentType != MessageContentType.location) {
-              if (msgType == 'IMAGE' || rawCiphertext.startsWith('data:image')) {
+            if (mediaData == null && contentType != MessageContentType.location && contentType != MessageContentType.sticker) {
+              if (msgType == 'STICKER') {
+                contentType = MessageContentType.sticker;
+                attName = rawCiphertext;
+              } else if (msgType == 'IMAGE' || rawCiphertext.startsWith('data:image')) {
                 contentType = MessageContentType.attachment;
                 mediaData = rawCiphertext;
                 attName = 'Foto.jpg';
@@ -699,13 +747,33 @@ class ConversationService {
                 contentType = MessageContentType.attachment;
                 mediaData = rawCiphertext.startsWith('data:') ? rawCiphertext : null;
                 attName = 'Dokumen';
-                contentText = rawCiphertext.startsWith('data:') ? 'Berkas Dokumen' : rawCiphertext;
+                contentText = '';
               } else if (msgType == 'LOCATION' || rawCiphertext.contains('"type":"location"') || rawCiphertext.contains('"type": "location"')) {
                 contentType = MessageContentType.location;
                 contentText = rawCiphertext;
               } else if (msgType == 'ATTACHMENT') {
                 contentType = MessageContentType.attachment;
-                contentText = rawCiphertext;
+                if (rawCiphertext.startsWith('{')) {
+                  try {
+                    final parsed = jsonDecode(rawCiphertext);
+                    if (parsed is Map) {
+                      mediaData = parsed['media'] as String?;
+                      attName = (parsed['fileName'] ?? 'Dokumen') as String;
+                      attSize = (parsed['fileSize'] ?? '') as String;
+                      contentText = (parsed['caption'] ?? '') as String;
+                    } else {
+                      contentText = '';
+                    }
+                  } catch (_) {
+                    contentText = '';
+                  }
+                } else if (rawCiphertext.startsWith('data:')) {
+                  mediaData = rawCiphertext;
+                  attName = 'Dokumen';
+                  contentText = '';
+                } else {
+                  contentText = rawCiphertext;
+                }
               }
             }
 
@@ -766,7 +834,15 @@ class ConversationService {
     }
 
     // Convert local media files to base64 data URI for instant cross-device transfer
-    if (attachmentPath != null && (type == 'IMAGE' || type == 'AUDIO' || type == 'DOCUMENT')) {
+    if (type == 'STICKER') {
+      payloadCiphertext = jsonEncode({
+        'type': 'sticker',
+        'stickerId': attachmentName ?? text,
+        'assetPath': attachmentPath,
+        'caption': text.trim(),
+        if (replyToMap != null) 'replyTo': replyToMap,
+      });
+    } else if (attachmentPath != null && (type == 'IMAGE' || type == 'AUDIO' || type == 'DOCUMENT')) {
       try {
         String effectivePath = attachmentPath;
         if (type == 'IMAGE') {
@@ -792,6 +868,7 @@ class ConversationService {
               'media': 'data:$mime;base64,$b64',
               'duration': attachmentSize ?? '0:00',
               'fileName': attachmentName ?? 'Voice Note',
+              'caption': text.trim(),
               if (replyToMap != null) 'replyTo': replyToMap,
             });
           } else {
@@ -799,6 +876,8 @@ class ConversationService {
               'type': 'document',
               'media': 'data:$mime;base64,$b64',
               'fileName': attachmentName ?? 'Dokumen',
+              'fileSize': attachmentSize ?? '',
+              'caption': text.trim(),
               if (replyToMap != null) 'replyTo': replyToMap,
             });
           }
@@ -829,9 +908,15 @@ class ConversationService {
     }
 
     try {
-      final backendMessageType = (type == 'IMAGE' || type == 'AUDIO' || type == 'DOCUMENT' || type == 'ATTACHMENT')
+      final backendMessageType = (type == 'IMAGE' || type == 'AUDIO' || type == 'DOCUMENT' || type == 'ATTACHMENT' || type == 'STICKER')
           ? 'ATTACHMENT'
           : (type == 'LOCATION' ? 'LOCATION' : 'TEXT');
+
+      final convList = inMemoryConversations ?? conversationsNotifier.value;
+      final convMatch = convList.where((c) => c.id == conversationId).toList();
+      final effectiveDisappearingSeconds = (convMatch.isNotEmpty && convMatch.first.disappearingSeconds != null)
+          ? convMatch.first.disappearingSeconds
+          : PrivacyController.instance.disappearingSeconds;
 
       final response = await ApiClient.instance.post(
         ApiEndpoints.conversationMessages(conversationId),
@@ -840,6 +925,8 @@ class ConversationService {
           'ciphertext': payloadCiphertext,
           'nonce': base64Encode(List.generate(12, (i) => i)),
           'messageType': backendMessageType,
+          if (effectiveDisappearingSeconds != null && effectiveDisappearingSeconds > 0)
+            'expiresInSeconds': effectiveDisappearingSeconds,
         },
       );
 
@@ -856,14 +943,18 @@ class ConversationService {
           attachmentName: attachmentName,
           attachmentSize: attachmentSize,
           replyTo: replyTo,
-          contentType: type == 'AUDIO'
-              ? MessageContentType.voiceNote
-              : (type == 'IMAGE' || type == 'DOCUMENT'
-                  ? MessageContentType.attachment
-                  : (type == 'LOCATION' ? MessageContentType.location : MessageContentType.text)),
+          contentType: type == 'STICKER'
+              ? MessageContentType.sticker
+              : (type == 'AUDIO'
+                  ? MessageContentType.voiceNote
+                  : (type == 'IMAGE' || type == 'DOCUMENT'
+                      ? MessageContentType.attachment
+                      : (type == 'LOCATION' ? MessageContentType.location : MessageContentType.text))),
           timestamp: DateTime.now(),
           isOutgoing: true,
           status: MessageDeliveryStatus.sent,
+          isDisappearing: effectiveDisappearingSeconds != null && effectiveDisappearingSeconds > 0,
+          remainingSeconds: effectiveDisappearingSeconds,
         );
 
         // Replace optimistic message in SQLite and update status
@@ -899,11 +990,13 @@ class ConversationService {
       attachmentName: attachmentName,
       attachmentSize: attachmentSize,
       replyTo: replyTo,
-      contentType: type == 'AUDIO'
-          ? MessageContentType.voiceNote
-          : (type == 'IMAGE' || type == 'DOCUMENT'
-              ? MessageContentType.attachment
-              : (type == 'LOCATION' ? MessageContentType.location : MessageContentType.text)),
+      contentType: type == 'STICKER'
+          ? MessageContentType.sticker
+          : (type == 'AUDIO'
+              ? MessageContentType.voiceNote
+              : (type == 'IMAGE' || type == 'DOCUMENT'
+                  ? MessageContentType.attachment
+                  : (type == 'LOCATION' ? MessageContentType.location : MessageContentType.text))),
       timestamp: DateTime.now(),
       isOutgoing: true,
       status: MessageDeliveryStatus.failed,
@@ -912,9 +1005,28 @@ class ConversationService {
 
   /// Mark message as read on backend (Read Receipts / Blue Ticks)
   Future<void> markMessageRead(String messageId) async {
+    if (!PrivacyController.instance.readReceipts) {
+      return; // Privacy: Read receipts disabled by user
+    }
     try {
       await ApiClient.instance.post(ApiEndpoints.messageRead(messageId));
     } catch (_) {}
+  }
+
+  /// Update disappearing messages timer for a specific conversation
+  Future<void> updateConversationDisappearingTimer(String conversationId, int? seconds) async {
+    final list = List<ConversationModel>.from(inMemoryConversations ?? conversationsNotifier.value);
+    final idx = list.indexWhere((c) => c.id == conversationId);
+    if (idx != -1) {
+      final updated = list[idx].copyWith(
+        disappearingSeconds: seconds,
+        hasDisappearingMessages: seconds != null && seconds > 0,
+      );
+      list[idx] = updated;
+      inMemoryConversations = list;
+      conversationsNotifier.value = List.unmodifiable(list);
+      await LocalDatabase.instance.upsertConversations([updated]);
+    }
   }
 
   /// Delete a message for everyone

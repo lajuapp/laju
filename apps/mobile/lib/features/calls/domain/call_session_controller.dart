@@ -5,6 +5,8 @@ import 'package:flutter/services.dart';
 import '../../../core/core.dart';
 import '../../conversations/domain/conversation_service.dart';
 import '../presentation/screens/active_call_screen.dart';
+import 'webrtc_call_service.dart';
+import 'package:flutter_webrtc/flutter_webrtc.dart';
 import '../presentation/screens/active_group_call_screen.dart';
 
 enum CallStatus {
@@ -55,6 +57,9 @@ class CallSessionController extends ChangeNotifier {
   bool _isSpeaker = false;
   bool _isMinimized = false;
   bool _isActive = false;
+  bool _webRtcReady = false;
+  RTCVideoRenderer? get webRtcLocalRenderer => WebRTCCallService.instance.localRenderer;
+  RTCVideoRenderer? get webRtcRemoteRenderer => WebRTCCallService.instance.remoteRenderer;
   CallStatus _status = CallStatus.idle;
 
   Timer? _timer;
@@ -338,6 +343,33 @@ class CallSessionController extends ChangeNotifier {
         'token': ApiClient.instance.authToken ?? '',
       });
     } catch (_) {}
+
+    // Initialize WebRTC peer connection for zero-latency media
+    final curCallId = _callId;
+    if (curCallId != null && !curCallId.startsWith('call-') && !curCallId.startsWith('group-') && !_webRtcReady) {
+      _webRtcReady = true;
+      WebRTCCallService.instance.onCallConnected = () {
+        if (_status != CallStatus.connected) {
+          _status = CallStatus.connected;
+          notifyListeners();
+        }
+      };
+      WebRTCCallService.instance.onCallEnded = () {
+        if (_isActive) endCall();
+      };
+      WebRTCCallService.instance.onRendererReady = (local, remote) {
+        notifyListeners();
+      };
+      await WebRTCCallService.instance.initializePeerConnection(
+        isVideo: _isVideo,
+        isAudio: true,
+      ).catchError((_) {});
+      await WebRTCCallService.instance.connectSignaling(
+        callId: curCallId,
+        isInitiator: _isOutgoing,
+        remoteUserId: _contactUserId,
+      ).catchError((_) {});
+    }
   }
 
   Future<void> _stopCallAudio() async {
@@ -396,17 +428,20 @@ class CallSessionController extends ChangeNotifier {
   void toggleMute() {
     _isMuted = !_isMuted;
     _audioChannel.invokeMethod('setMute', {'muted': _isMuted}).catchError((_) {});
+    WebRTCCallService.instance.setMicrophoneMuted(_isMuted);
     notifyListeners();
   }
 
   void toggleVideo() {
     _isVideoOn = !_isVideoOn;
+    WebRTCCallService.instance.setCameraEnabled(_isVideoOn);
     notifyListeners();
   }
 
   void toggleSpeaker() {
     _isSpeaker = !_isSpeaker;
     _audioChannel.invokeMethod('setSpeaker', {'speaker': _isSpeaker}).catchError((_) {});
+    WebRTCCallService.instance.setSpeakerphone(_isSpeaker);
     notifyListeners();
   }
 
@@ -426,6 +461,8 @@ class CallSessionController extends ChangeNotifier {
       _saveCallLog(status: _isOutgoing ? 'cancelled' : 'missed', duration: 0);
     }
 
+    WebRTCCallService.instance.dispose().catchError((_) {});
+    _webRtcReady = false;
     _isActive = false;
     _isMinimized = false;
     _status = CallStatus.ended;

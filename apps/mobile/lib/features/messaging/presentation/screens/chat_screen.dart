@@ -12,8 +12,12 @@ import '../widgets/attachment_bottom_sheet.dart';
 import 'disappearing_messages_screen.dart';
 import '../../../conversations/presentation/screens/user_profile_screen.dart';
 import '../../../settings/presentation/screens/wallpaper_settings_screen.dart';
+import '../../../settings/domain/privacy_controller.dart';
 import '../../../../core/services/voice_note_service.dart';
 import 'image_preview_send_screen.dart';
+import 'document_preview_send_screen.dart';
+import '../widgets/sticker_picker_sheet.dart';
+import '../../domain/models/sticker_model.dart';
 
 class ChatScreen extends StatefulWidget {
   final String conversationId;
@@ -25,6 +29,7 @@ class ChatScreen extends StatefulWidget {
   final String? contactPhone;
   final String? contactAbout;
   final int? contactTrustScore;
+  final MessageModel? initialReplyTo;
 
   const ChatScreen({
     super.key,
@@ -37,6 +42,7 @@ class ChatScreen extends StatefulWidget {
     this.contactPhone,
     this.contactAbout,
     this.contactTrustScore,
+    this.initialReplyTo,
   });
 
   @override
@@ -56,16 +62,32 @@ class _ChatScreenState extends State<ChatScreen> {
   final TextEditingController _inChatSearchController = TextEditingController();
   String _inChatSearchQuery = '';
   late String _derivedSafetyNumber;
+  String? _chatDisappearingTimer;
 
   @override
   void initState() {
     super.initState();
+    if (widget.initialReplyTo != null) {
+      _replyingTo = widget.initialReplyTo;
+    }
     _scrollController.addListener(_onScroll);
     ConversationService.instance.currentActiveConversationId = widget.conversationId;
     final mem = ConversationService.instance.getMemoryMessages(widget.conversationId);
     _messages = mem != null ? List<MessageModel>.from(mem) : [];
     _loadMessagesFromApi();
     _startPolling();
+
+    final convs = ConversationService.instance.conversationsNotifier.value.where((c) => c.id == widget.conversationId).toList();
+    if (convs.isNotEmpty && convs.first.disappearingSeconds != null) {
+      final s = convs.first.disappearingSeconds!;
+      if (s == 86400) {
+        _chatDisappearingTimer = '24 hours';
+      } else if (s == 604800) {
+        _chatDisappearingTimer = '7 days';
+      } else if (s == 7776000) {
+        _chatDisappearingTimer = '90 days';
+      }
+    }
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _scrollToBottom(immediate: true);
@@ -162,6 +184,9 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _markIncomingAsRead(List<MessageModel> msgs) {
+    if (!PrivacyController.instance.readReceipts) {
+      return;
+    }
     for (final m in msgs) {
       if (!m.isOutgoing && m.status != MessageDeliveryStatus.read) {
         ConversationService.instance.markMessageRead(m.id);
@@ -416,15 +441,30 @@ class _ChatScreenState extends State<ChatScreen> {
     if (result != null) {
       final filePath = result.data is String ? result.data as String : null;
       if (result.type == AttachmentType.document) {
+        if (filePath == null || !mounted) return;
+        final previewResult = await Navigator.push<DocumentPreviewResult>(
+          context,
+          MaterialPageRoute(
+            builder: (_) => DocumentPreviewSendScreen(
+              filePath: filePath,
+              fileName: result.title,
+              fileSize: result.fileSize ?? '',
+              recipientName: widget.title,
+            ),
+          ),
+        );
+        if (previewResult == null || !mounted) return; // User cancelled
+
+        final caption = previewResult.caption;
         final docId = 'doc-${DateTime.now().millisecondsSinceEpoch}';
         final docMsg = MessageModel(
           id: docId,
           clientMessageId: docId,
           conversationId: widget.conversationId,
           senderName: 'You',
-          content: result.subtitle ?? result.title,
-          attachmentName: result.title,
-          attachmentSize: result.fileSize ?? '',
+          content: caption,
+          attachmentName: previewResult.fileName,
+          attachmentSize: previewResult.fileSize,
           attachmentPath: filePath,
           timestamp: DateTime.now(),
           isOutgoing: true,
@@ -439,12 +479,12 @@ class _ChatScreenState extends State<ChatScreen> {
 
         final sent = await ConversationService.instance.sendMessage(
           conversationId: widget.conversationId,
-          text: '${result.title} (${result.fileSize ?? ""})',
+          text: caption,
           clientMessageId: docId,
           messageType: 'DOCUMENT',
           attachmentPath: filePath,
-          attachmentName: result.title,
-          attachmentSize: result.fileSize,
+          attachmentName: previewResult.fileName,
+          attachmentSize: previewResult.fileSize,
         );
         if (mounted && sent != null) {
           setState(() {
@@ -509,15 +549,30 @@ class _ChatScreenState extends State<ChatScreen> {
           _syncMessages();
         }
       } else if (result.type == AttachmentType.audio) {
+        if (filePath == null || !mounted) return;
+        final previewResult = await Navigator.push<DocumentPreviewResult>(
+          context,
+          MaterialPageRoute(
+            builder: (_) => DocumentPreviewSendScreen(
+              filePath: filePath,
+              fileName: result.title,
+              fileSize: result.fileSize ?? '',
+              recipientName: widget.title,
+            ),
+          ),
+        );
+        if (previewResult == null || !mounted) return; // User cancelled
+
+        final caption = previewResult.caption;
         final audId = 'aud-${DateTime.now().millisecondsSinceEpoch}';
         final audMsg = MessageModel(
           id: audId,
           clientMessageId: audId,
           conversationId: widget.conversationId,
           senderName: 'You',
-          content: '🎵 ${result.title} (${result.fileSize ?? ""})',
-          attachmentName: result.title,
-          attachmentSize: result.fileSize,
+          content: caption,
+          attachmentName: previewResult.fileName,
+          attachmentSize: previewResult.fileSize,
           attachmentPath: filePath,
           timestamp: DateTime.now(),
           isOutgoing: true,
@@ -532,12 +587,12 @@ class _ChatScreenState extends State<ChatScreen> {
 
         final sent = await ConversationService.instance.sendMessage(
           conversationId: widget.conversationId,
-          text: '🎵 ${result.title} (${result.fileSize ?? ""})',
+          text: caption,
           clientMessageId: audId,
           messageType: 'AUDIO',
           attachmentPath: filePath,
-          attachmentName: result.title,
-          attachmentSize: result.fileSize,
+          attachmentName: previewResult.fileName,
+          attachmentSize: previewResult.fileSize,
         );
         if (mounted && sent != null) {
           setState(() {
@@ -592,7 +647,62 @@ class _ChatScreenState extends State<ChatScreen> {
             _syncMessages();
           }
         }
+      } else if (result.type == AttachmentType.sticker) {
+        _openStickerPicker();
       }
+    }
+  }
+
+  void _openStickerPicker() {
+    StickerPickerSheet.show(
+      context: context,
+      onStickerSelected: _sendSticker,
+    );
+  }
+
+  void _sendSticker(StickerItem sticker) async {
+    final stkId = 'stk-${DateTime.now().millisecondsSinceEpoch}';
+    final replyToCopy = _replyingTo;
+    final stickerMsg = MessageModel(
+      id: stkId,
+      clientMessageId: stkId,
+      conversationId: widget.conversationId,
+      senderName: 'You',
+      content: sticker.name,
+      attachmentName: sticker.id,
+      attachmentPath: sticker.assetPath,
+      timestamp: DateTime.now(),
+      isOutgoing: true,
+      contentType: MessageContentType.sticker,
+      status: MessageDeliveryStatus.sending,
+      replyTo: replyToCopy,
+    );
+
+    setState(() {
+      _messages.add(stickerMsg);
+      _replyingTo = null;
+    });
+    await LocalDatabase.instance.insertSentMessage(stickerMsg);
+    Future.delayed(const Duration(milliseconds: 50), () => _scrollToBottom(immediate: true));
+
+    final sent = await ConversationService.instance.sendMessage(
+      conversationId: widget.conversationId,
+      text: sticker.name,
+      clientMessageId: stkId,
+      messageType: 'STICKER',
+      attachmentPath: sticker.assetPath,
+      attachmentName: sticker.id,
+      replyTo: replyToCopy,
+    );
+
+    if (mounted && sent != null) {
+      setState(() {
+        final idx = _messages.indexWhere((m) => m.id == stkId || m.clientMessageId == stkId);
+        if (idx != -1) {
+          _messages[idx] = sent.copyWith(attachmentPath: sticker.assetPath);
+        }
+      });
+      _syncMessages();
     }
   }
 
@@ -889,7 +999,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       name: widget.title,
                       imagePath: widget.avatarUrl,
                       radius: 19,
-                      isOnline: true,
+                      isOnline: PrivacyController.instance.isOnlineVisible,
                       isVerified: true,
                     ),
                     const SizedBox(width: 10),
@@ -897,15 +1007,30 @@ class _ChatScreenState extends State<ChatScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            widget.title,
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w700,
-                              color: isDark ? Colors.white : const Color(0xFF0F172A),
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
+                          Row(
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  widget.title,
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w700,
+                                    color: isDark ? Colors.white : const Color(0xFF0F172A),
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              if ((_chatDisappearingTimer != null && _chatDisappearingTimer != 'Off') ||
+                                  (PrivacyController.instance.disappearingTimer != 'Off')) ...[
+                                const SizedBox(width: 5),
+                                Icon(
+                                  Icons.timer_outlined,
+                                  size: 13.5,
+                                  color: isDark ? AppColors.primaryLight : AppColors.primary,
+                                ),
+                              ],
+                            ],
                           ),
                           ValueListenableBuilder<Map<String, bool>>(
                             valueListenable: ConversationService.instance.typingStatusNotifier,
@@ -919,6 +1044,16 @@ class _ChatScreenState extends State<ChatScreen> {
                                     color: AppColors.primary,
                                     fontWeight: FontWeight.w600,
                                     fontStyle: FontStyle.italic,
+                                  ),
+                                );
+                              }
+                              if (!PrivacyController.instance.isOnlineVisible) {
+                                return Text(
+                                  'Terenkripsi E2EE 🔒',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: isDark ? Colors.white38 : const Color(0xFF94A3B8),
+                                    fontWeight: FontWeight.w500,
                                   ),
                                 );
                               }
@@ -971,7 +1106,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 PopupMenuButton<String>(
                   color: isDark ? AppColors.darkSurfaceElevated : Colors.white,
                   icon: Icon(Icons.more_vert_rounded, color: isDark ? Colors.white : const Color(0xFF374151)),
-                  onSelected: (value) {
+                  onSelected: (value) async {
                     switch (value) {
                       case 'contact':
                         Navigator.push(
@@ -1011,12 +1146,23 @@ class _ChatScreenState extends State<ChatScreen> {
                         );
                         break;
                       case 'disappearing':
-                        Navigator.push(
+                        final effectiveTimer = _chatDisappearingTimer ?? PrivacyController.instance.disappearingTimer;
+                        final res = await Navigator.push<String>(
                           context,
                           MaterialPageRoute(
-                            builder: (context) => const DisappearingMessagesScreen(initialTimer: 'Off'),
+                            builder: (context) => DisappearingMessagesScreen(initialTimer: effectiveTimer),
                           ),
                         );
+                        if (res != null && mounted) {
+                          setState(() {
+                            _chatDisappearingTimer = res;
+                          });
+                          int? seconds;
+                          if (res == '24 hours') seconds = 86400;
+                          else if (res == '7 days') seconds = 604800;
+                          else if (res == '90 days') seconds = 7776000;
+                          await ConversationService.instance.updateConversationDisappearingTimer(widget.conversationId, seconds);
+                        }
                         break;
                       case 'verify':
                         Navigator.push(
@@ -1232,6 +1378,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   ChatInputBar(
                     onSend: _sendMessage,
                     onAttach: _openAttachmentMenu,
+                    onStickerTap: _openStickerPicker,
                     onSendVoiceNote: _handleSendVoiceNote,
                     replyingTo: _replyingTo,
                     onCancelReply: _cancelReply,

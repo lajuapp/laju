@@ -472,12 +472,33 @@ class LocalDatabase {
       } catch (_) {}
     }
 
+    String content = (row['content'] ?? '') as String;
+    String? attName = row['attachment_name'] as String?;
+    String? attSize = row['attachment_size'] as String?;
+    String? attPath = row['attachment_path'] as String?;
+
+    if (content.startsWith('{') && (content.contains('"media"') || content.contains('"type"'))) {
+      try {
+        final parsed = jsonDecode(content);
+        if (parsed is Map) {
+          content = (parsed['caption'] ?? '') as String;
+          attName ??= parsed['fileName'] as String?;
+          attSize ??= parsed['fileSize'] as String?;
+          attPath ??= parsed['media'] as String?;
+        }
+      } catch (_) {
+        content = '';
+      }
+    } else if (content.startsWith('data:') || content.startsWith('Berkas Dokumen Asli')) {
+      content = '';
+    }
+
     return MessageModel(
       id: row['id'] as String,
       clientMessageId: row['client_message_id'] as String?,
       conversationId: row['conversation_id'] as String,
       senderName: row['sender_name'] as String,
-      content: row['content'] as String,
+      content: content,
       timestamp: DateTime.fromMillisecondsSinceEpoch(row['timestamp'] as int),
       isOutgoing: (row['is_outgoing'] as int) == 1,
       status: MessageDeliveryStatus.values.firstWhere(
@@ -490,9 +511,9 @@ class LocalDatabase {
       ),
       isDisappearing: (row['is_disappearing'] as int) == 1,
       remainingSeconds: row['remaining_seconds'] as int?,
-      attachmentName: row['attachment_name'] as String?,
-      attachmentSize: row['attachment_size'] as String?,
-      attachmentPath: row['attachment_path'] as String?,
+      attachmentName: attName,
+      attachmentSize: attSize,
+      attachmentPath: attPath,
       replyTo: replyTo,
       isEdited: (row['is_edited'] as int) == 1,
     );

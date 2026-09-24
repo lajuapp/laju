@@ -93,6 +93,7 @@ class AppStrings {
 
       // Settings screen
       'account': 'Account',
+      'contacts': 'Contacts',
       'privacy': 'Privacy',
       'security': 'Security',
       'notifications': 'Notifications',
@@ -894,6 +895,7 @@ class AppStrings {
 
       // Settings screen
       'account': 'Akun',
+      'contacts': 'Kontak',
       'privacy': 'Privasi',
       'security': 'Keamanan',
       'notifications': 'Notifikasi',
@@ -1696,6 +1698,7 @@ class AppStrings {
 
       // Settings screen
       'account': 'Аккаунт',
+      'contacts': 'Контакты',
       'privacy': 'Конфиденциальность',
       'security': 'Безопасность',
       'notifications': 'Уведомления',
@@ -2181,6 +2184,7 @@ class AppStrings {
 
       // Settings screen
       'account': '账号',
+      'contacts': '联系人',
       'privacy': '隐私',
       'security': '安全',
       'notifications': '通知',
@@ -2665,6 +2669,7 @@ class AppStrings {
 
       // Settings screen
       'account': 'アカウント',
+      'contacts': '連絡先',
       'privacy': 'プライバシー',
       'security': 'セキュリティ',
       'notifications': '通知',

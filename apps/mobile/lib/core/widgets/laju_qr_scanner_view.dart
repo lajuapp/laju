@@ -568,6 +568,7 @@ class _ScannedResultBottomSheetState extends State<_ScannedResultBottomSheet> {
   String? _resolvedDisplayName;
   String? _resolvedAvatarUrl;
   String? _resolvedPhone;
+  String? _resolvedStatus;
   String? _conversationId;
   String _errorMessage = '';
   bool _isAdding = false;
@@ -607,6 +608,7 @@ class _ScannedResultBottomSheetState extends State<_ScannedResultBottomSheet> {
       String? foundUsername = targetUser;
       String? foundAvatar;
       String? foundPhone = targetPhone;
+      String? foundStatus;
 
       // Check if direct userId profile can be fetched
       if (foundUserId != null && foundUserId.isNotEmpty) {
@@ -615,6 +617,7 @@ class _ScannedResultBottomSheetState extends State<_ScannedResultBottomSheet> {
           foundUsername = profile['username'] ?? foundUsername;
           foundAvatar = profile['avatarUrl'] ?? profile['avatar'];
           foundPhone = profile['phoneNumber'] ?? foundPhone;
+          foundStatus = profile['status'] ?? profile['about'];
         }
       }
 
@@ -627,11 +630,13 @@ class _ScannedResultBottomSheetState extends State<_ScannedResultBottomSheet> {
           foundUsername = exactMatch.first.username;
           foundAvatar = exactMatch.first.avatarUrl;
           foundPhone = exactMatch.first.phoneNumber ?? foundPhone;
+          foundStatus = exactMatch.first.status;
         } else if (users.isNotEmpty) {
           foundUserId = users.first.id;
           foundUsername = users.first.username;
           foundAvatar = users.first.avatarUrl;
           foundPhone = users.first.phoneNumber ?? foundPhone;
+          foundStatus = users.first.status;
         }
       }
 
@@ -643,6 +648,7 @@ class _ScannedResultBottomSheetState extends State<_ScannedResultBottomSheet> {
           foundUsername = users.first.username;
           foundAvatar = users.first.avatarUrl;
           foundPhone = users.first.phoneNumber ?? foundPhone;
+          foundStatus = users.first.status;
         }
       }
 
@@ -657,6 +663,7 @@ class _ScannedResultBottomSheetState extends State<_ScannedResultBottomSheet> {
             foundUsername = match.first.username;
             foundAvatar = match.first.avatarUrl;
             foundPhone = match.first.phoneNumber ?? foundPhone;
+            foundStatus = match.first.status;
           }
         }
       }
@@ -679,6 +686,7 @@ class _ScannedResultBottomSheetState extends State<_ScannedResultBottomSheet> {
             _resolvedDisplayName = foundUsername ?? 'Teman LAJU';
             _resolvedAvatarUrl = foundAvatar;
             _resolvedPhone = foundPhone;
+            _resolvedStatus = foundStatus;
             _step = _SheetStep.userFound;
           });
         }
@@ -718,6 +726,22 @@ class _ScannedResultBottomSheetState extends State<_ScannedResultBottomSheet> {
     try {
       final convId = await ConversationService.instance.createPersonalConversation(uid);
       ConversationService.instance.fetchConversations();
+
+      final uname = _resolvedUsername ?? widget.targetUsername ?? 'user';
+      final dname = _resolvedDisplayName ?? uname;
+      await AccountController.instance.addSavedContact(
+        LajuContactItem(
+          id: uid,
+          username: uname,
+          displayName: dname,
+          avatarUrl: _resolvedAvatarUrl,
+          about: _resolvedStatus ?? 'LAJU Verified User 🔒',
+          phoneNumber: _resolvedPhone ?? widget.targetPhone,
+          trustScore: 100,
+          isVerified: true,
+          addedAt: DateTime.now(),
+        ),
+      );
 
       HapticFeedback.mediumImpact();
       LajuSoundService.triggerVibrate('Pendek');

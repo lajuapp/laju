@@ -6,6 +6,7 @@ import '../../../devices/presentation/screens/linked_devices_screen.dart';
 import 'package:laju_mobile/features/security/presentation/screens/security_screen.dart';
 import '../../domain/account_controller.dart';
 import 'account_screen.dart';
+import 'contacts_screen.dart';
 import 'privacy_screen.dart';
 import 'notifications_settings_screen.dart';
 import 'data_storage_screen.dart';
@@ -145,6 +146,19 @@ class SettingsScreen extends StatelessWidget {
                           Navigator.push(
                             context,
                             MaterialPageRoute(builder: (context) => const AccountScreen()),
+                          );
+                        },
+                      ),
+                      _buildInnerDivider(isDark),
+                      _buildSettingTile(
+                        context,
+                        Icons.people_alt_rounded,
+                        const Color(0xFF10B981),
+                        context.tr('contacts'),
+                        () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (context) => const ContactsScreen()),
                           );
                         },
                       ),
