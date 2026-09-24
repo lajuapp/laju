@@ -57,7 +57,6 @@ class CallSessionController extends ChangeNotifier {
   bool _isSpeaker = false;
   bool _isMinimized = false;
   bool _isActive = false;
-  bool _webRtcReady = false;
   RTCVideoRenderer? get webRtcLocalRenderer => WebRTCCallService.instance.localRenderer;
   RTCVideoRenderer? get webRtcRemoteRenderer => WebRTCCallService.instance.remoteRenderer;
   CallStatus _status = CallStatus.idle;
@@ -348,34 +347,8 @@ class CallSessionController extends ChangeNotifier {
         'token': ApiClient.instance.authToken ?? '',
       });
     } catch (_) {}
-
-    // Initialize WebRTC peer connection for zero-latency media
-    final curCallId = _callId;
-    if (curCallId != null && !curCallId.startsWith('call-') && !curCallId.startsWith('group-') && !_webRtcReady) {
-      _webRtcReady = true;
-      WebRTCCallService.instance.onCallConnected = () {
-        if (_status != CallStatus.connected) {
-          _status = CallStatus.connected;
-          notifyListeners();
-        }
-      };
-      WebRTCCallService.instance.onCallEnded = () {
-        if (_isActive) endCall();
-      };
-      WebRTCCallService.instance.onRendererReady = (local, remote) {
-        notifyListeners();
-      };
-      await WebRTCCallService.instance.initializePeerConnection(
-        isVideo: _isVideo,
-        isAudio: true,
-      ).catchError((_) {});
-      await WebRTCCallService.instance.connectSignaling(
-        callId: curCallId,
-        isInitiator: _isOutgoing,
-        remoteUserId: _contactUserId,
-      ).catchError((_) {});
-    }
   }
+
 
   Future<void> _stopCallAudio() async {
     try {
@@ -467,7 +440,6 @@ class CallSessionController extends ChangeNotifier {
     }
 
     WebRTCCallService.instance.dispose().catchError((_) {});
-    _webRtcReady = false;
     _isActive = false;
     _isMinimized = false;
     _status = CallStatus.ended;

@@ -4,11 +4,9 @@ import 'dart:math' as math;
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_webrtc/flutter_webrtc.dart';
 import '../../../../core/core.dart';
 import '../../../home/presentation/screens/home_screen.dart';
 import '../../domain/call_session_controller.dart';
-import '../../domain/webrtc_call_service.dart';
 
 class ActiveCallScreen extends StatefulWidget {
   final String contactName;
@@ -76,14 +74,6 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
   }
 
   void _startCamera() async {
-    // If WebRTC already acquired local camera stream, no need to lock hardware camera with CameraController
-    if (WebRTCCallService.instance.localStream != null &&
-        WebRTCCallService.instance.localStream!.getVideoTracks().isNotEmpty) {
-      debugPrint('[ActiveCallScreen] WebRTC owns local stream, skipping CameraController');
-      if (mounted) setState(() {});
-      return;
-    }
-
     try {
       final cameras = await availableCameras();
       if (cameras.isEmpty) return;
@@ -99,7 +89,7 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
 
       final controller = CameraController(
         selectedCamera,
-        ResolutionPreset.high,
+        ResolutionPreset.medium,
         enableAudio: false,
         imageFormatGroup: ImageFormatGroup.yuv420,
       );
@@ -120,6 +110,7 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
   }
 
 
+
   void _startImageStreaming() {
     if (_cameraController == null || !_cameraController!.value.isInitialized) return;
 
@@ -127,7 +118,7 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
       _cameraController!.startImageStream((CameraImage image) async {
         if (!_isVideoEnabled || !mounted) return;
         final now = DateTime.now().millisecondsSinceEpoch;
-        if (now - _lastFrameSentTime < 160) return; // ~6 FPS
+        if (now - _lastFrameSentTime < 80) return; // ~12 FPS smooth streaming
         if (_isConvertingFrame) return;
         _isConvertingFrame = true;
         _lastFrameSentTime = now;
@@ -142,7 +133,7 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
             'yRowStride': image.planes[0].bytesPerRow,
             'uvRowStride': image.planes[1].bytesPerRow,
             'uvPixelStride': image.planes[1].bytesPerPixel ?? 1,
-            'quality': 78,
+            'quality': 68,
             'isFront': _isFrontCamera,
           });
 
@@ -168,7 +159,7 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
 
   void _startRemoteVideoPoller() {
     _remoteVideoPoller?.cancel();
-    _remoteVideoPoller = Timer.periodic(const Duration(milliseconds: 140), (_) async {
+    _remoteVideoPoller = Timer.periodic(const Duration(milliseconds: 80), (_) async {
       if (!mounted || !_isVideoEnabled) return;
       final curCallId = CallSessionController.instance.callId;
       if (curCallId == null || curCallId.startsWith('call-') || curCallId.startsWith('group-')) return;
@@ -201,13 +192,9 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
 
   void _switchCamera() async {
     _isFrontCamera = !_isFrontCamera;
-    if (WebRTCCallService.instance.localStream != null) {
-      await WebRTCCallService.instance.switchCamera();
-      if (mounted) setState(() {});
-    } else {
-      _startCamera();
-    }
+    _startCamera();
   }
+
 
 
   void _swapViews() {
@@ -885,17 +872,6 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
   }
 
   Widget _buildLocalCameraPreview({required bool isPip}) {
-    final localRenderer = WebRTCCallService.instance.localRenderer;
-    final hasWebRtcStream = localRenderer != null && localRenderer.srcObject != null;
-
-    if (hasWebRtcStream) {
-      return RTCVideoView(
-        localRenderer,
-        mirror: _isFrontCamera,
-        objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
-      );
-    }
-
     if (_cameraController != null && _cameraController!.value.isInitialized) {
       Widget preview = SizedBox.expand(
         child: FittedBox(
@@ -927,15 +903,7 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
   }
 
   Widget _buildRemoteVideoView({required bool isPip, required Color textPrimary, required Color textSecondary}) {
-    final remoteRenderer = WebRTCCallService.instance.remoteRenderer;
-    final hasWebRtcStream = remoteRenderer != null && remoteRenderer.srcObject != null;
 
-    if (hasWebRtcStream) {
-      return RTCVideoView(
-        remoteRenderer,
-        objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
-      );
-    }
 
     final now = DateTime.now().millisecondsSinceEpoch;
     final hasLiveFrame = _remoteVideoBytes != null && (now - _lastRemoteFrameTime < 6000);
