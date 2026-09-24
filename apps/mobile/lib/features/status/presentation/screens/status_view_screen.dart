@@ -533,7 +533,7 @@ class _StatusViewScreenState extends State<StatusViewScreen>
                   child: ListView.separated(
                     scrollDirection: Axis.horizontal,
                     itemCount: quickReactions.length,
-                    separatorBuilder: (_, __) => const SizedBox(width: 8),
+                    separatorBuilder: (_, _) => const SizedBox(width: 8),
                     itemBuilder: (context, idx) {
                       final emoji = quickReactions[idx];
                       return InkWell(
@@ -643,17 +643,17 @@ class _StatusViewScreenState extends State<StatusViewScreen>
     if (path.startsWith('data:image')) {
       try {
         final b64 = path.contains(',') ? path.split(',').last : path;
-        return Image.memory(base64Decode(b64), fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.image, size: 20, color: Colors.white54));
+        return Image.memory(base64Decode(b64), fit: BoxFit.cover, errorBuilder: (c, e, s) => const Icon(Icons.image, size: 20, color: Colors.white54));
       } catch (_) {}
     }
     if (path.startsWith('http://') || path.startsWith('https://')) {
-      return Image.network(path, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.image, size: 20, color: Colors.white54));
+      return Image.network(path, fit: BoxFit.cover, errorBuilder: (c, e, s) => const Icon(Icons.image, size: 20, color: Colors.white54));
     }
     if (File(path).existsSync()) {
-      return Image.file(File(path), fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.image, size: 20, color: Colors.white54));
+      return Image.file(File(path), fit: BoxFit.cover, errorBuilder: (c, e, s) => const Icon(Icons.image, size: 20, color: Colors.white54));
     }
     if (path.startsWith('assets/')) {
-      return Image.asset(path, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.image, size: 20, color: Colors.white54));
+      return Image.asset(path, fit: BoxFit.cover, errorBuilder: (c, e, s) => const Icon(Icons.image, size: 20, color: Colors.white54));
     }
     return Container(color: Colors.black26, child: const Icon(Icons.image, size: 20, color: Colors.white54));
   }
@@ -764,6 +764,17 @@ class _StatusViewScreenState extends State<StatusViewScreen>
           onLongPressEnd: (_) {
             if (!_isPopping) _animController.forward();
           },
+          onVerticalDragEnd: (details) {
+            if (_isPopping) return;
+            final vy = details.primaryVelocity ?? 0;
+            if (vy < -200 && !widget.isMyStatus) {
+              // Swipe up to reply (like WhatsApp)
+              _showReplyBottomSheet();
+            } else if (vy > 250) {
+              // Swipe down to dismiss
+              _safeClose();
+            }
+          },
           child: Stack(
             children: [
               // Photo Story Visual
@@ -801,7 +812,7 @@ class _StatusViewScreenState extends State<StatusViewScreen>
                   left: 0,
                   right: 0,
                   bottom: 0,
-                  height: 220,
+                  height: 280,
                   child: IgnorePointer(
                     child: Container(
                       decoration: BoxDecoration(
@@ -842,34 +853,6 @@ class _StatusViewScreenState extends State<StatusViewScreen>
                         ],
                       ),
                     ),
-                  ),
-                ),
-
-              // Photo Caption (WhatsApp-style: positioned smoothly at the bottom)
-              if (story.isPhoto && story.text.isNotEmpty)
-                Positioned(
-                  bottom: widget.isMyStatus ? 48 : 82,
-                  left: 20,
-                  right: 20,
-                  child: Text(
-                    story.text,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      fontSize: 16.5,
-                      fontWeight: FontWeight.w500,
-                      color: Colors.white,
-                      height: 1.35,
-                      letterSpacing: 0.2,
-                      shadows: [
-                        Shadow(
-                          color: Colors.black87,
-                          blurRadius: 10,
-                          offset: Offset(0, 1.5),
-                        ),
-                      ],
-                    ),
-                    maxLines: 4,
-                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
 
@@ -979,90 +962,135 @@ class _StatusViewScreenState extends State<StatusViewScreen>
                 ),
               ),
 
-              // Bottom Area
+              // Bottom Unified Area: Photo Caption + Balas / My Status
               Positioned(
-                bottom: 16,
+                bottom: 0,
                 left: 0,
                 right: 0,
                 child: SafeArea(
-                  child: widget.isMyStatus
-                      ? Center(
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withValues(alpha: 0.16),
-                              borderRadius: BorderRadius.circular(20),
-                              border: Border.all(
-                                color: Colors.white.withValues(alpha: 0.22),
-                                width: 1,
-                              ),
-                            ),
-                            child: const Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(Icons.remove_red_eye_outlined, color: Colors.white, size: 16),
-                                SizedBox(width: 6),
-                                Text(
-                                  'Status Saya',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w600,
+                  top: false,
+                  child: Padding(
+                    padding: const EdgeInsets.only(bottom: 12, left: 16, right: 16),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // Photo Caption (WhatsApp style - placed cleanly above Balas/Status button, never overlapping)
+                        if (story.isPhoto && story.text.isNotEmpty) ...[
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 10),
+                            child: Text(
+                              story.text,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w500,
+                                color: Colors.white,
+                                height: 1.35,
+                                letterSpacing: 0.2,
+                                shadows: [
+                                  Shadow(
+                                    color: Colors.black87,
+                                    blurRadius: 10,
+                                    offset: Offset(0, 1.5),
                                   ),
-                                ),
-                              ],
+                                  Shadow(
+                                    color: Colors.black54,
+                                    blurRadius: 4,
+                                    offset: Offset(0, 1),
+                                  ),
+                                ],
+                              ),
+                              maxLines: 4,
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ),
-                        )
-                      : Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            // Reply Pill (WhatsApp style)
-                            GestureDetector(
-                              onTap: _showReplyBottomSheet,
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 9),
-                                decoration: BoxDecoration(
-                                  color: Colors.white.withValues(alpha: 0.18),
-                                  borderRadius: BorderRadius.circular(24),
-                                  border: Border.all(
-                                    color: Colors.white.withValues(alpha: 0.26),
-                                    width: 1.2,
-                                  ),
-                                ),
-                                child: const Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(Icons.keyboard_arrow_up_rounded, color: Colors.white, size: 20),
-                                    SizedBox(width: 6),
-                                    Text(
-                                      'Balas',
-                                      style: TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                  ],
+                          const SizedBox(height: 14),
+                        ],
+
+                        // Balas Pill or My Status View
+                        if (widget.isMyStatus)
+                          Center(
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.16),
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(
+                                  color: Colors.white.withValues(alpha: 0.22),
+                                  width: 1,
                                 ),
                               ),
+                              child: const Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.remove_red_eye_outlined, color: Colors.white, size: 16),
+                                  SizedBox(width: 6),
+                                  Text(
+                                    'Status Saya',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
-                            const SizedBox(height: 10),
-                            const Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(Icons.lock_rounded, size: 11, color: Colors.white60),
-                                SizedBox(width: 5),
-                                Text(
-                                  'End-to-end encrypted',
-                                  style: TextStyle(fontSize: 10.5, color: Colors.white60, letterSpacing: 0.3),
+                          )
+                        else
+                          Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              // Reply Pill (WhatsApp style)
+                              GestureDetector(
+                                onTap: _showReplyBottomSheet,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 9),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withValues(alpha: 0.18),
+                                    borderRadius: BorderRadius.circular(24),
+                                    border: Border.all(
+                                      color: Colors.white.withValues(alpha: 0.26),
+                                      width: 1.2,
+                                    ),
+                                  ),
+                                  child: const Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.keyboard_arrow_up_rounded, color: Colors.white, size: 20),
+                                      SizedBox(width: 6),
+                                      Text(
+                                        'Balas',
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 ),
-                              ],
-                            ),
-                          ],
-                        ),
+                              ),
+                              const SizedBox(height: 10),
+                              const Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.lock_rounded, size: 11, color: Colors.white60),
+                                  SizedBox(width: 5),
+                                  Text(
+                                    'End-to-end encrypted',
+                                    style: TextStyle(fontSize: 10.5, color: Colors.white60, letterSpacing: 0.3),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                      ],
+                    ),
+                  ),
                 ),
               ),
+
             ],
           ),
         ),
