@@ -475,6 +475,7 @@ class _FloatingCallOverlayState extends State<FloatingCallOverlay> with SingleTi
                   ),
                   ModernAvatar(
                     name: item.senderName ?? item.message.split(' • ').first,
+                    imagePath: item.avatarUrl,
                     radius: 23,
                     isVerified: true,
                   ),

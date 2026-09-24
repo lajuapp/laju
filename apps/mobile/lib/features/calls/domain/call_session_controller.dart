@@ -550,6 +550,7 @@ class CallSessionController extends ChangeNotifier {
           AppNotificationService.instance.showIncomingCall(
             callerName: callerName,
             isVideo: isVideo,
+            avatarUrl: resolvedAvatar,
             onAccept: () => answerIncomingCall(
               incomingCallId,
               callerName: callerName,

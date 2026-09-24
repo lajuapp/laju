@@ -135,6 +135,7 @@ class AppNotificationService extends ChangeNotifier {
     required bool isVideo,
     required VoidCallback onAccept,
     required VoidCallback onDecline,
+    String? avatarUrl,
   }) {
     _dismissTimer?.cancel();
     _currentNotification = InAppNotificationItem(
@@ -144,6 +145,8 @@ class AppNotificationService extends ChangeNotifier {
       icon: isVideo ? Icons.videocam_rounded : Icons.call_rounded,
       iconColor: AppColors.primary,
       isCall: true,
+      senderName: callerName,
+      avatarUrl: avatarUrl,
       onAccept: () {
         dismiss();
         onAccept();
@@ -165,6 +168,7 @@ class AppNotificationService extends ChangeNotifier {
       } catch (_) {}
     }
   }
+
 
   void dismiss() {
     _dismissTimer?.cancel();
