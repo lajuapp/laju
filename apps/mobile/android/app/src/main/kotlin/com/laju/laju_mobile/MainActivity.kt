@@ -16,6 +16,7 @@ import android.graphics.Paint
 import android.graphics.Rect
 import android.graphics.YuvImage
 import android.media.AudioDeviceInfo
+import android.media.ExifInterface
 import java.io.ByteArrayOutputStream
 import android.media.MediaPlayer
 import android.media.MediaRecorder
@@ -1327,6 +1328,17 @@ class MainActivity : FlutterFragmentActivity() {
             val sourceFile = File(sourcePath)
             if (!sourceFile.exists() || sourceFile.length() == 0L) return sourcePath
 
+            // 1. Read EXIF orientation before any transformations
+            val orientation = try {
+                val exif = ExifInterface(sourceFile.absolutePath)
+                exif.getAttributeInt(
+                    ExifInterface.TAG_ORIENTATION,
+                    ExifInterface.ORIENTATION_NORMAL
+                )
+            } catch (_: Exception) {
+                ExifInterface.ORIENTATION_NORMAL
+            }
+
             val options = BitmapFactory.Options().apply {
                 inJustDecodeBounds = true
             }
@@ -1347,16 +1359,58 @@ class MainActivity : FlutterFragmentActivity() {
             val decodedBitmap = BitmapFactory.decodeFile(sourceFile.absolutePath, decodeOptions)
                 ?: return sourcePath
 
-            val scale = Math.min(
-                maxDimension.toFloat() / decodedBitmap.width.toFloat(),
-                maxDimension.toFloat() / decodedBitmap.height.toFloat()
-            )
-            val finalBitmap = if (scale < 1.0f) {
-                val targetW = Math.max(1, (decodedBitmap.width * scale).toInt())
-                val targetH = Math.max(1, (decodedBitmap.height * scale).toInt())
-                Bitmap.createScaledBitmap(decodedBitmap, targetW, targetH, true)
+            // 2. Build rotation / flip matrix based on EXIF orientation tag
+            val matrix = Matrix()
+            when (orientation) {
+                ExifInterface.ORIENTATION_ROTATE_90 -> matrix.postRotate(90f)
+                ExifInterface.ORIENTATION_ROTATE_180 -> matrix.postRotate(180f)
+                ExifInterface.ORIENTATION_ROTATE_270 -> matrix.postRotate(270f)
+                ExifInterface.ORIENTATION_FLIP_HORIZONTAL -> matrix.postScale(-1f, 1f)
+                ExifInterface.ORIENTATION_FLIP_VERTICAL -> matrix.postScale(1f, -1f)
+                ExifInterface.ORIENTATION_TRANSPOSE -> {
+                    matrix.postRotate(90f)
+                    matrix.postScale(-1f, 1f)
+                }
+                ExifInterface.ORIENTATION_TRANSVERSE -> {
+                    matrix.postRotate(270f)
+                    matrix.postScale(-1f, 1f)
+                }
+            }
+
+            // 3. Apply matrix transformation to ensure the bitmap is oriented upright
+            val orientedBitmap = if (!matrix.isIdentity) {
+                val rotated = Bitmap.createBitmap(
+                    decodedBitmap,
+                    0,
+                    0,
+                    decodedBitmap.width,
+                    decodedBitmap.height,
+                    matrix,
+                    true
+                )
+                if (rotated != decodedBitmap) {
+                    decodedBitmap.recycle()
+                }
+                rotated
             } else {
                 decodedBitmap
+            }
+
+            // 4. Downsample while preserving upright dimensions
+            val scale = Math.min(
+                maxDimension.toFloat() / orientedBitmap.width.toFloat(),
+                maxDimension.toFloat() / orientedBitmap.height.toFloat()
+            )
+            val finalBitmap = if (scale < 1.0f) {
+                val targetW = Math.max(1, (orientedBitmap.width * scale).toInt())
+                val targetH = Math.max(1, (orientedBitmap.height * scale).toInt())
+                val scaled = Bitmap.createScaledBitmap(orientedBitmap, targetW, targetH, true)
+                if (scaled != orientedBitmap) {
+                    orientedBitmap.recycle()
+                }
+                scaled
+            } else {
+                orientedBitmap
             }
 
             val compressedFile = File(externalCacheDir ?: cacheDir, "img_optimized_${System.currentTimeMillis()}.jpg")
@@ -1365,8 +1419,8 @@ class MainActivity : FlutterFragmentActivity() {
             fos.flush()
             fos.close()
 
-            if (finalBitmap != decodedBitmap) {
-                decodedBitmap.recycle()
+            if (finalBitmap != orientedBitmap) {
+                orientedBitmap.recycle()
             }
             finalBitmap.recycle()
 
