@@ -248,21 +248,26 @@ class CallSessionController extends ChangeNotifier {
               notifyListeners();
             }
 
-            // Fetch signals to discover remote peer's direct IP
+            // Fetch signals to discover remote peer's direct IP & WebRTC signals
             try {
               final sigResp = await ApiClient.instance.get(ApiEndpoints.callSignals(curCallId));
               if (sigResp.isSuccess && sigResp.rawJson is List) {
                 for (final item in sigResp.rawJson) {
                   if (item is Map && item['fromUserId'] != ApiClient.instance.userId) {
                     final sig = item['signal'];
-                    if (sig is Map && sig['type'] == 'AUDIO_P2P') {
-                      final peerIp = (sig['ip'] as String?) ?? (item['clientIp'] as String?) ?? '';
-                      final peerPort = (sig['port'] as int?) ?? (_isOutgoing ? 50006 : 50005);
-                      if (peerIp.isNotEmpty && peerIp != '127.0.0.1' && !peerIp.contains('localhost')) {
-                        _audioChannel.invokeMethod('updatePeerAddress', {
-                          'ip': peerIp,
-                          'port': peerPort,
-                        }).catchError((_) {});
+                    if (sig is Map) {
+                      final type = ((sig['type'] as String?) ?? '').toUpperCase();
+                      if (type == 'WEBRTC_OFFER' || type == 'WEBRTC_ANSWER' || type == 'ICE_CANDIDATE') {
+                        WebRTCCallService.instance.handleRemoteSignal(Map<String, dynamic>.from(sig));
+                      } else if (type == 'AUDIO_P2P') {
+                        final peerIp = (sig['ip'] as String?) ?? (item['clientIp'] as String?) ?? '';
+                        final peerPort = (sig['port'] as int?) ?? (_isOutgoing ? 50006 : 50005);
+                        if (peerIp.isNotEmpty && peerIp != '127.0.0.1' && !peerIp.contains('localhost')) {
+                          _audioChannel.invokeMethod('updatePeerAddress', {
+                            'ip': peerIp,
+                            'port': peerPort,
+                          }).catchError((_) {});
+                        }
                       }
                     }
                   }

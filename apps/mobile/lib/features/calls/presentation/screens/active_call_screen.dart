@@ -76,6 +76,14 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
   }
 
   void _startCamera() async {
+    // If WebRTC already acquired local camera stream, no need to lock hardware camera with CameraController
+    if (WebRTCCallService.instance.localStream != null &&
+        WebRTCCallService.instance.localStream!.getVideoTracks().isNotEmpty) {
+      debugPrint('[ActiveCallScreen] WebRTC owns local stream, skipping CameraController');
+      if (mounted) setState(() {});
+      return;
+    }
+
     try {
       final cameras = await availableCameras();
       if (cameras.isEmpty) return;
@@ -106,11 +114,11 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
       setState(() {});
 
       _startImageStreaming();
-      // Camera streaming handled by WebRTC - legacy image stream kept as fallback
     } catch (e) {
       debugPrint('[ActiveCallScreen] Camera initialization error: $e');
     }
   }
+
 
   void _startImageStreaming() {
     if (_cameraController == null || !_cameraController!.value.isInitialized) return;
@@ -193,9 +201,14 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
 
   void _switchCamera() async {
     _isFrontCamera = !_isFrontCamera;
-    WebRTCCallService.instance.switchCamera();
-    _startCamera();
+    if (WebRTCCallService.instance.localStream != null) {
+      await WebRTCCallService.instance.switchCamera();
+      if (mounted) setState(() {});
+    } else {
+      _startCamera();
+    }
   }
+
 
   void _swapViews() {
     setState(() {
@@ -872,8 +885,15 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
   }
 
   Widget _buildLocalCameraPreview({required bool isPip}) {
-    if (WebRTCCallService.instance.localRenderer != null) {
-      return RTCVideoView(WebRTCCallService.instance.localRenderer!, mirror: true, objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover);
+    final localRenderer = WebRTCCallService.instance.localRenderer;
+    final hasWebRtcStream = localRenderer != null && localRenderer.srcObject != null;
+
+    if (hasWebRtcStream) {
+      return RTCVideoView(
+        localRenderer,
+        mirror: _isFrontCamera,
+        objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
+      );
     }
 
     if (_cameraController != null && _cameraController!.value.isInitialized) {
@@ -907,8 +927,14 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
   }
 
   Widget _buildRemoteVideoView({required bool isPip, required Color textPrimary, required Color textSecondary}) {
-    if (WebRTCCallService.instance.remoteRenderer != null) {
-      return RTCVideoView(WebRTCCallService.instance.remoteRenderer!, objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover);
+    final remoteRenderer = WebRTCCallService.instance.remoteRenderer;
+    final hasWebRtcStream = remoteRenderer != null && remoteRenderer.srcObject != null;
+
+    if (hasWebRtcStream) {
+      return RTCVideoView(
+        remoteRenderer,
+        objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
+      );
     }
 
     final now = DateTime.now().millisecondsSinceEpoch;
