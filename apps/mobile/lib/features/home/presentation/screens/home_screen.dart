@@ -77,7 +77,91 @@ class _HomeScreenState extends State<HomeScreen> {
           _callLogs = logs;
         });
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[HomeScreen] _loadCallLogs local error: $e');
+    }
+
+    // Background sync with backend history
+    try {
+      if (ApiClient.instance.authToken != null) {
+        final resp = await ApiClient.instance.get(ApiEndpoints.callHistory);
+        if (resp.isSuccess && resp.rawJson is List) {
+          for (final item in resp.rawJson) {
+            if (item is Map) {
+              final id = item['id'] as String? ?? '';
+              if (id.isEmpty) continue;
+
+              final isOutgoing = item['isOutgoing'] == true || item['is_outgoing'] == true || item['is_outgoing'] == 1;
+              final contactName = (item['contactName'] as String?) ?? (item['contact_name'] as String?) ?? 'Kontak';
+              final contactId = (item['contactId'] as String?) ?? (item['contact_id'] as String?);
+              final contactPhone = (item['contactPhone'] as String?) ?? (item['contact_phone'] as String?);
+              final isVideo = item['isVideo'] == true || item['is_video'] == true;
+              final state = (item['state'] as String?)?.toUpperCase() ?? '';
+
+              String status = 'completed';
+              if (state == 'REJECTED') {
+                status = 'rejected';
+              } else if (state == 'INITIATED' || state == 'RINGING') {
+                status = isOutgoing ? 'cancelled' : 'missed';
+              }
+
+              int durationSeconds = 0;
+              final startedAtStr = item['startedAt'] as String?;
+              final endedAtStr = item['endedAt'] as String?;
+              int? timestamp;
+              if (startedAtStr != null) {
+                final dt = DateTime.tryParse(startedAtStr);
+                if (dt != null) {
+                  timestamp = dt.millisecondsSinceEpoch;
+                  if (endedAtStr != null) {
+                    final endDt = DateTime.tryParse(endedAtStr);
+                    if (endDt != null) {
+                      durationSeconds = endDt.difference(dt).inSeconds;
+                      if (durationSeconds < 0) durationSeconds = 0;
+                    }
+                  }
+                }
+              }
+
+              // Resolve avatar from existing conversations
+              String? avatarUrl;
+              for (final c in _conversations) {
+                if (contactId != null && contactId.isNotEmpty && c.participantUserId == contactId) {
+                  avatarUrl = c.avatarUrl;
+                  break;
+                }
+                if (contactPhone != null && contactPhone.isNotEmpty && c.participantPhone == contactPhone) {
+                  avatarUrl = c.avatarUrl;
+                  break;
+                }
+              }
+
+              await LocalDatabase.instance.insertCallLog(
+                id: id,
+                contactName: contactName,
+                contactId: contactId,
+                contactPhone: contactPhone,
+                avatarUrl: avatarUrl,
+                isVideo: isVideo,
+                isOutgoing: isOutgoing,
+                status: status,
+                durationSeconds: durationSeconds,
+                timestamp: timestamp,
+              );
+            }
+          }
+
+          final updatedLogs = await LocalDatabase.instance.getCallLogs();
+          if (mounted) {
+            setState(() {
+              _callLogs = updatedLogs;
+            });
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('[HomeScreen] _loadCallLogs remote sync error: $e');
+    }
   }
 
   Future<void> _loadConversations() async {
@@ -566,6 +650,7 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     }
     _loadConversations();
+    _loadCallLogs();
   }
 
   @override
@@ -777,6 +862,9 @@ class _HomeScreenState extends State<HomeScreen> {
                       onTap: () {
                         HapticFeedback.selectionClick();
                         HomeScreen.activeTabNotifier.value = idx;
+                        if (idx == 2) {
+                          _loadCallLogs();
+                        }
                       },
                       behavior: HitTestBehavior.opaque,
                       child: AnimatedContainer(
@@ -1268,9 +1356,12 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       ),
       body: LajuGlassBackground(
-        child: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 110),
-        children: [
+        child: RefreshIndicator(
+          onRefresh: _loadCallLogs,
+          color: AppColors.primary,
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 110),
+            children: [
           // New Call Action in a sleek frosted glass card
           LajuGlassCard(
             borderRadius: 18,
@@ -1569,6 +1660,7 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       ),
     ),
-  );
+  ),
+);
 }
 }

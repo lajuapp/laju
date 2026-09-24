@@ -152,16 +152,22 @@ class CallSessionController extends ChangeNotifier {
     _timer?.cancel();
     _statusPoller?.cancel();
 
+    final resolvedTitle = contactName.trim().isNotEmpty
+        ? contactName.trim()
+        : (contactPhone?.trim().isNotEmpty == true
+            ? contactPhone!.trim()
+            : (calleeUserId?.trim().isNotEmpty == true ? calleeUserId!.trim() : 'Panggilan Keluar'));
+
     _callId = 'call-${DateTime.now().millisecondsSinceEpoch}';
-    _title = contactName;
+    _title = resolvedTitle;
     _contactUserId = calleeUserId;
     _contactPhone = contactPhone;
-    _avatarUrl = avatarUrl ?? _resolveAvatar(calleeUserId, contactPhone, contactName);
+    _avatarUrl = avatarUrl ?? _resolveAvatar(calleeUserId, contactPhone, resolvedTitle);
     _groupName = null;
     _isGroup = false;
     _isVideo = isVideo;
     _isOutgoing = true;
-    _participants = [contactName];
+    _participants = [resolvedTitle];
     _durationSeconds = 0;
     _hasLoggedCurrentCall = false;
     _isMuted = false;
@@ -434,18 +440,24 @@ class CallSessionController extends ChangeNotifier {
     final curCallId = _callId;
     final finalDur = _durationSeconds;
     final finalStatus = _status;
+    final isOut = _isOutgoing;
 
     _timer?.cancel();
     _stopCallStatusPoller();
     _stopCallAudio();
     _playCallTone('stop');
 
-    if (finalStatus == CallStatus.connected) {
-      _saveCallLog(status: 'completed', duration: finalDur);
-    } else if (finalStatus == CallStatus.ringing || finalStatus == CallStatus.connecting) {
-      _saveCallLog(status: _isOutgoing ? 'cancelled' : 'missed', duration: 0);
-    } else if (finalStatus == CallStatus.ended) {
-      _saveCallLog(status: finalDur > 0 ? 'completed' : (_isOutgoing ? 'cancelled' : 'missed'), duration: finalDur);
+    // Ensure call log is recorded if not logged yet
+    if (!_hasLoggedCurrentCall && (_title.isNotEmpty || _contactUserId != null || _contactPhone != null)) {
+      String logStatus;
+      if (finalStatus == CallStatus.connected || finalDur > 0) {
+        logStatus = 'completed';
+      } else if (finalStatus == CallStatus.rejected) {
+        logStatus = 'rejected';
+      } else {
+        logStatus = isOut ? 'cancelled' : 'missed';
+      }
+      _saveCallLog(status: logStatus, duration: finalDur);
     }
 
     WebRTCCallService.instance.dispose().catchError((_) {});
@@ -463,24 +475,36 @@ class CallSessionController extends ChangeNotifier {
     }
   }
 
-  void _saveCallLog({required String status, int? duration}) {
-    if (_title.isEmpty || _hasLoggedCurrentCall) return;
+  Future<void> _saveCallLog({required String status, int? duration}) async {
+    if (_hasLoggedCurrentCall) return;
     _hasLoggedCurrentCall = true;
-    final resolvedAvatar = _avatarUrl ?? _resolveAvatar(_contactUserId, _contactPhone, _title);
-    LocalDatabase.instance.insertCallLog(
-      id: 'call-log-${DateTime.now().millisecondsSinceEpoch}',
-      contactName: _title,
-      contactId: _contactUserId,
-      contactPhone: _contactPhone,
-      avatarUrl: resolvedAvatar,
-      isVideo: _isVideo,
-      isOutgoing: _isOutgoing,
-      status: status,
-      durationSeconds: duration ?? _durationSeconds,
-      timestamp: DateTime.now().millisecondsSinceEpoch,
-    ).then((_) {
-      notifyListeners();
-    });
+
+    final resolvedTitle = _title.trim().isNotEmpty
+        ? _title.trim()
+        : (_contactPhone?.trim().isNotEmpty == true
+            ? _contactPhone!.trim()
+            : (_contactUserId?.trim().isNotEmpty == true ? _contactUserId!.trim() : 'Panggilan Keluar'));
+
+    final resolvedAvatar = _avatarUrl ?? _resolveAvatar(_contactUserId, _contactPhone, resolvedTitle);
+    final logId = 'call-log-${DateTime.now().millisecondsSinceEpoch}';
+
+    try {
+      await LocalDatabase.instance.insertCallLog(
+        id: logId,
+        contactName: resolvedTitle,
+        contactId: _contactUserId,
+        contactPhone: _contactPhone,
+        avatarUrl: resolvedAvatar,
+        isVideo: _isVideo,
+        isOutgoing: _isOutgoing,
+        status: status,
+        durationSeconds: duration ?? _durationSeconds,
+        timestamp: DateTime.now().millisecondsSinceEpoch,
+      );
+    } catch (e) {
+      debugPrint('[CallSessionController] insertCallLog error: $e');
+    }
+    notifyListeners();
   }
 
   void _dispatchCallToBackend(String callee, {bool isVideo = false}) async {

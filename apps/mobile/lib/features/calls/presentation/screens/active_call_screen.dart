@@ -58,16 +58,13 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
     final session = CallSessionController.instance;
     session.addListener(_onSessionUpdated);
     if (!session.isActive || session.callId == null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        session.start1on1Call(
-          contactName: widget.contactName,
-          calleeUserId: widget.calleeUserId,
-          contactPhone: widget.contactPhone,
-          avatarUrl: widget.avatarUrl,
-          isVideo: widget.isVideo,
-        );
-      });
+      session.start1on1Call(
+        contactName: widget.contactName,
+        calleeUserId: widget.calleeUserId,
+        contactPhone: widget.contactPhone,
+        avatarUrl: widget.avatarUrl,
+        isVideo: widget.isVideo,
+      );
     } else {
       _isVideoEnabled = session.isVideoOn;
     }

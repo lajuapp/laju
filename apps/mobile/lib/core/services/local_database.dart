@@ -534,11 +534,17 @@ class LocalDatabase {
     int? timestamp,
   }) async {
     try {
+      final safeName = contactName.trim().isNotEmpty
+          ? contactName.trim()
+          : (contactPhone?.trim().isNotEmpty == true
+              ? contactPhone!.trim()
+              : (contactId?.trim().isNotEmpty == true ? contactId!.trim() : 'Panggilan'));
+
       await _database.insert(
         'call_logs',
         {
           'id': id,
-          'contact_name': contactName,
+          'contact_name': safeName,
           'contact_id': contactId,
           'contact_phone': contactPhone,
           'avatar_url': avatarUrl,
@@ -550,7 +556,10 @@ class LocalDatabase {
         },
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
-    } catch (_) {}
+      debugPrint('[LocalDatabase] insertCallLog saved: $safeName (out=$isOutgoing, status=$status, dur=$durationSeconds)');
+    } catch (e) {
+      debugPrint('[LocalDatabase] insertCallLog error: $e');
+    }
   }
 
   Future<List<Map<String, dynamic>>> getCallLogs() async {
