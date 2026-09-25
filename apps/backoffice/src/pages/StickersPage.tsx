@@ -28,6 +28,7 @@ import { Input } from '../components/ui/Input';
 import { Badge } from '../components/ui/Badge';
 import { StickerPackItem } from '../api/types';
 import { ApngFrameStudioModal } from '../components/stickers/ApngFrameStudioModal';
+import { resolveMediaUrl } from '../api/client';
 
 const packSchema = z.object({
   name: z.string().min(2, 'Nama paket stiker minimal 2 karakter'),
@@ -221,7 +222,14 @@ export function StickersPage() {
                     <div className="flex items-center gap-3 min-w-0">
                       <div className="w-10 h-10 rounded-lg bg-neutral-200 overflow-hidden flex items-center justify-center flex-shrink-0">
                         {pack.coverUrl ? (
-                          <img src={pack.coverUrl} alt={pack.name} className="w-full h-full object-cover" />
+                          <img
+                            src={resolveMediaUrl(pack.coverUrl)}
+                            alt={pack.name}
+                            className="w-full h-full object-cover"
+                            onError={(e) => {
+                              (e.target as HTMLElement).style.display = 'none';
+                            }}
+                          />
                         ) : (
                           <Smile className={`w-5 h-5 ${isSelected ? 'text-white' : 'text-neutral-500'}`} />
                         )}
@@ -258,9 +266,12 @@ export function StickersPage() {
                   <div className="w-12 h-12 rounded-xl bg-neutral-100 overflow-hidden flex items-center justify-center border border-neutral-200/80">
                     {currentActivePack.coverUrl ? (
                       <img
-                        src={currentActivePack.coverUrl}
+                        src={resolveMediaUrl(currentActivePack.coverUrl)}
                         alt={currentActivePack.name}
                         className="w-full h-full object-cover"
+                        onError={(e) => {
+                          (e.target as HTMLElement).style.display = 'none';
+                        }}
                       />
                     ) : (
                       <Smile className="w-6 h-6 text-neutral-600" />
@@ -333,9 +344,12 @@ export function StickersPage() {
 
                         <div className="w-16 h-16 flex items-center justify-center p-1">
                           <img
-                            src={stk.imageUrl}
+                            src={resolveMediaUrl(stk.imageUrl)}
                             alt={stk.name}
                             className="max-w-full max-h-full object-contain"
+                            onError={(e) => {
+                              (e.target as HTMLElement).style.opacity = '0.3';
+                            }}
                           />
                         </div>
 

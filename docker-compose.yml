@@ -12,6 +12,9 @@ services:
       - .env
     environment:
       PORT: "3000"
+      SEAWEEDFS_FILER_URL: ${SEAWEEDFS_FILER_URL:-http://seaweedfs-filer:8888}
+    volumes:
+      - admin_media_data:/app/uploads/admin-media
     expose:
       - "3000"
     healthcheck:
@@ -168,3 +171,4 @@ volumes:
   gotify_data:
   seaweedfs_mdata:
   seaweedfs_vdata:
+  admin_media_data:

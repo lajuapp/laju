@@ -22,6 +22,7 @@ import { Button } from '../components/ui/Button';
 import { Modal } from '../components/ui/Modal';
 import { Input } from '../components/ui/Input';
 import { Badge } from '../components/ui/Badge';
+import { resolveMediaUrl } from '../api/client';
 
 const wallpaperSchema = z.object({
   name: z.string().min(2, 'Nama wallpaper minimal 2 karakter'),
@@ -149,7 +150,7 @@ export function WallpapersPage() {
                 className="h-36 rounded-xl border border-neutral-200/70 overflow-hidden relative flex items-center justify-center shadow-inner"
                 style={{
                   backgroundColor: wp.colorHex || '#1E293B',
-                  backgroundImage: wp.imageUrl ? `url(${wp.imageUrl})` : undefined,
+                  backgroundImage: wp.imageUrl ? `url(${resolveMediaUrl(wp.imageUrl)})` : undefined,
                   backgroundSize: 'cover',
                   backgroundPosition: 'center',
                 }}

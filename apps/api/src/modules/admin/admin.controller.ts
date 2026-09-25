@@ -11,7 +11,9 @@ import {
   Req,
   Res,
   HttpStatus,
-  Optional
+  Optional,
+  Logger,
+  BadRequestException
 } from '@nestjs/common';
 import { Response } from 'express';
 import { AdminService } from './admin.service';
@@ -34,14 +36,26 @@ import { RequirePermissions } from '../../common/decorators/permissions.decorato
 import { AdminAuditInterceptor } from '../../common/interceptors/admin-audit.interceptor';
 import { AdminPermission } from '@secure-messenger/shared-types';
 import * as crypto from 'crypto';
+import * as fs from 'fs';
+import * as path from 'path';
+
+const MEDIA_DIR = process.env.ADMIN_MEDIA_DIR || path.join(process.cwd(), 'uploads', 'admin-media');
 
 @Controller('admin')
 @UseInterceptors(AdminAuditInterceptor)
 export class AdminController {
+  private readonly logger = new Logger(AdminController.name);
+
   constructor(
     private readonly adminService: AdminService,
     @Optional() private readonly seaweedFs?: SeaweedFsService
-  ) {}
+  ) {
+    try {
+      if (!fs.existsSync(MEDIA_DIR)) {
+        fs.mkdirSync(MEDIA_DIR, { recursive: true });
+      }
+    } catch (_) {}
+  }
 
   // ─── AUTHENTICATION ──────────────────────────────────────────────
   @Post('auth/login')
@@ -232,18 +246,37 @@ export class AdminController {
   async uploadMedia(
     @Body() body: { filename: string; mimeType: string; base64Data: string }
   ) {
+    if (!body?.base64Data) {
+      throw new BadRequestException('base64Data is required');
+    }
+
     const rawData = body.base64Data.includes(',')
       ? body.base64Data.split(',')[1]
       : body.base64Data;
     const buffer = Buffer.from(rawData, 'base64');
-    const ext = body.filename?.split('.').pop() || 'png';
-    const blobId = `asset-${crypto.randomBytes(12).toString('hex')}.${ext}`;
+    const rawExt = body.filename?.split('.').pop()?.toLowerCase() || 'png';
+    const cleanExt = rawExt.replace(/[^a-zA-Z0-9]/g, '') || 'png';
+    const blobId = `asset-${crypto.randomBytes(12).toString('hex')}.${cleanExt}`;
     const contentType = body.mimeType || 'image/png';
 
+    // 1. Always persist to local disk storage
+    try {
+      if (!fs.existsSync(MEDIA_DIR)) {
+        fs.mkdirSync(MEDIA_DIR, { recursive: true });
+      }
+      const localFilePath = path.join(MEDIA_DIR, blobId);
+      await fs.promises.writeFile(localFilePath, buffer);
+    } catch (fsErr: any) {
+      this.logger.error(`Error saving media to local disk: ${fsErr.message}`);
+    }
+
+    // 2. Also persist to SeaweedFS if available
     if (this.seaweedFs) {
       try {
         await this.seaweedFs.uploadBlob(blobId, buffer, contentType);
-      } catch (_) {}
+      } catch (swErr: any) {
+        this.logger.warn(`SeaweedFS upload skipped or failed: ${swErr.message}`);
+      }
     }
 
     // Return URL accessible via GET /admin/media/:blobId
@@ -257,21 +290,52 @@ export class AdminController {
 
   @Get('media/:blobId')
   async getMedia(@Param('blobId') blobId: string, @Res() res: Response) {
-    if (this.seaweedFs) {
-      const data = await this.seaweedFs.getBlob(blobId);
-      if (data) {
-        const ext = blobId.split('.').pop()?.toLowerCase();
-        let mime = 'image/png';
-        if (ext === 'jpg' || ext === 'jpeg') mime = 'image/jpeg';
-        else if (ext === 'webp') mime = 'image/webp';
-        else if (ext === 'gif') mime = 'image/gif';
-        else if (ext === 'svg') mime = 'image/svg+xml';
+    const safeBlobId = path.basename(blobId);
+    if (!safeBlobId || safeBlobId.includes('..')) {
+      return res.status(HttpStatus.BAD_REQUEST).json({ error: 'Invalid blob ID' });
+    }
 
-        res.setHeader('Content-Type', mime);
-        res.setHeader('Cache-Control', 'public, max-age=86400');
-        return res.status(HttpStatus.OK).send(Buffer.from(data));
+    const ext = safeBlobId.split('.').pop()?.toLowerCase() || 'png';
+    let mime = 'image/png';
+    if (ext === 'jpg' || ext === 'jpeg') mime = 'image/jpeg';
+    else if (ext === 'webp') mime = 'image/webp';
+    else if (ext === 'gif') mime = 'image/gif';
+    else if (ext === 'svg') mime = 'image/svg+xml';
+    else if (ext === 'apng') mime = 'image/apng';
+
+    res.setHeader('Content-Type', mime);
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+
+    // 1. Check local disk first
+    const localFilePath = path.join(MEDIA_DIR, safeBlobId);
+    if (fs.existsSync(localFilePath)) {
+      try {
+        const stream = fs.createReadStream(localFilePath);
+        return stream.pipe(res);
+      } catch (err: any) {
+        this.logger.error(`Error reading local file: ${err.message}`);
       }
     }
+
+    // 2. Fallback to SeaweedFS
+    if (this.seaweedFs) {
+      try {
+        const data = await this.seaweedFs.getBlob(safeBlobId);
+        if (data) {
+          const buf = Buffer.from(data);
+          // Cache to local disk for fast subsequent access
+          try {
+            await fs.promises.writeFile(localFilePath, buf);
+          } catch (_) {}
+          return res.status(HttpStatus.OK).send(buf);
+        }
+      } catch (swErr: any) {
+        this.logger.error(`Error fetching from SeaweedFS: ${swErr.message}`);
+      }
+    }
+
     return res.status(HttpStatus.NOT_FOUND).json({ error: 'Media not found' });
   }
 
