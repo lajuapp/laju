@@ -75,7 +75,7 @@ class EnvConfig {
 
   /// Default API URL pointing to the live server
   static String get defaultPlatformBaseUrl {
-    return 'https://api-laju.rogatekno.my.id';
+    return 'https://api.laju.chat';
   }
 
   /// HTTP request timeout duration
