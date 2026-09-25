@@ -109,14 +109,16 @@ class _HomeScreenState extends State<HomeScreen> {
               final isVideo = item['isVideo'] == true || item['is_video'] == true;
               final state = (item['state'] as String?)?.toUpperCase() ?? '';
 
-              String status = 'completed';
-              if (state == 'REJECTED') {
-                status = 'rejected';
-              } else if (state == 'INITIATED' || state == 'RINGING') {
-                status = isOutgoing ? 'cancelled' : 'missed';
+              String status = (item['status'] as String?)?.toLowerCase() ?? 'completed';
+              if (item['status'] == null) {
+                if (state == 'REJECTED') {
+                  status = 'rejected';
+                } else if (state == 'INITIATED' || state == 'RINGING') {
+                  status = isOutgoing ? 'cancelled' : 'missed';
+                }
               }
 
-              int durationSeconds = 0;
+              int durationSeconds = (item['durationSeconds'] as num?)?.toInt() ?? 0;
               final startedAtStr = item['startedAt'] as String?;
               final endedAtStr = item['endedAt'] as String?;
               int? timestamp;
@@ -124,7 +126,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 final dt = DateTime.tryParse(startedAtStr);
                 if (dt != null) {
                   timestamp = dt.millisecondsSinceEpoch;
-                  if (endedAtStr != null) {
+                  if (durationSeconds == 0 && endedAtStr != null) {
                     final endDt = DateTime.tryParse(endedAtStr);
                     if (endDt != null) {
                       durationSeconds = endDt.difference(dt).inSeconds;
@@ -161,6 +163,10 @@ class _HomeScreenState extends State<HomeScreen> {
               );
             }
           }
+
+          // Reconcile: remove local calls that were deleted from server
+          final serverIds = resp.rawJson.whereType<Map>().map((m) => m['id'] as String?).whereType<String>().toSet();
+          await LocalDatabase.instance.syncCallLogsWithServerIds(serverIds);
 
           final updatedLogs = await LocalDatabase.instance.getCallLogs();
           if (mounted) {
@@ -1355,6 +1361,18 @@ class _HomeScreenState extends State<HomeScreen> {
             onSelected: (value) async {
               if (value == 'clear') {
                 await LocalDatabase.instance.clearCallLogs();
+                if (mounted) {
+                  setState(() {
+                    _callLogs = [];
+                  });
+                }
+                try {
+                  if (ApiClient.instance.authToken != null) {
+                    await ApiClient.instance.delete(ApiEndpoints.callHistory);
+                  }
+                } catch (e) {
+                  debugPrint('[HomeScreen] clearCallLogs remote error: $e');
+                }
                 _loadCallLogs();
               } else if (value == 'settings') {
                 HomeScreen.activeTabNotifier.value = 3;
@@ -1654,6 +1672,38 @@ class _HomeScreenState extends State<HomeScreen> {
                               ),
                             ),
                           ).then((_) => _loadCallLogs());
+                        },
+                        onLongPress: () {
+                          showDialog(
+                            context: context,
+                            builder: (ctx) => AlertDialog(
+                              backgroundColor: isDark ? AppColors.darkSurfaceElevated : Colors.white,
+                              title: const Text('Hapus Log Panggilan'),
+                              content: Text('Hapus riwayat panggilan dengan $name?'),
+                              actions: [
+                                TextButton(
+                                  onPressed: () => Navigator.pop(ctx),
+                                  child: Text(context.tr('cancel')),
+                                ),
+                                TextButton(
+                                  onPressed: () async {
+                                    Navigator.pop(ctx);
+                                    final callId = call['id'] as String?;
+                                    if (callId != null) {
+                                      await LocalDatabase.instance.deleteCallLog(callId);
+                                      if (!callId.startsWith('call-log-') && ApiClient.instance.authToken != null) {
+                                        try {
+                                          await ApiClient.instance.delete('${ApiEndpoints.calls}/$callId');
+                                        } catch (_) {}
+                                      }
+                                      _loadCallLogs();
+                                    }
+                                  },
+                                  child: const Text('Hapus', style: TextStyle(color: Colors.red)),
+                                ),
+                              ],
+                            ),
+                          );
                         },
                       ),
                       if (!isLast)

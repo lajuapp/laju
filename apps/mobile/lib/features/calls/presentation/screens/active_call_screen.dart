@@ -1,9 +1,5 @@
 import 'dart:async';
-import 'dart:convert';
-import 'dart:math' as math;
-import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import '../../../../core/core.dart';
 import '../../../home/presentation/screens/home_screen.dart';
 import '../../domain/call_session_controller.dart';
@@ -33,15 +29,8 @@ class ActiveCallScreen extends StatefulWidget {
 
 class _ActiveCallScreenState extends State<ActiveCallScreen> {
   late bool _isVideoEnabled;
-  CameraController? _cameraController;
   bool _isFrontCamera = true;
   bool _isCameraInMainView = false;
-
-  Uint8List? _remoteVideoBytes;
-  int _lastRemoteFrameTime = 0;
-  Timer? _remoteVideoPoller;
-  bool _isConvertingFrame = false;
-  int _lastFrameSentTime = 0;
 
   String? get _resolvedAvatarUrl =>
       widget.avatarUrl ?? CallSessionController.instance.avatarUrl;
@@ -50,11 +39,6 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
   void initState() {
     super.initState();
     _isVideoEnabled = widget.isVideo;
-
-    if (_isVideoEnabled) {
-      _startCamera();
-      _startRemoteVideoPoller();
-    }
 
     final session = CallSessionController.instance;
     session.addListener(_onSessionUpdated);
@@ -71,129 +55,12 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
     }
   }
 
-  void _startCamera() async {
-    try {
-      final cameras = await availableCameras();
-      if (cameras.isEmpty) return;
-
-      final selectedCamera = cameras.firstWhere(
-        (c) => c.lensDirection == (_isFrontCamera ? CameraLensDirection.front : CameraLensDirection.back),
-        orElse: () => cameras.first,
-      );
-
-      final old = _cameraController;
-      _cameraController = null;
-      await old?.dispose();
-
-      final controller = CameraController(
-        selectedCamera,
-        ResolutionPreset.medium,
-        enableAudio: false,
-        imageFormatGroup: ImageFormatGroup.yuv420,
-      );
-
-      await controller.initialize();
-      if (!mounted) {
-        controller.dispose();
-        return;
-      }
-
-      _cameraController = controller;
-      setState(() {});
-
-      _startImageStreaming();
-    } catch (e) {
-      debugPrint('[ActiveCallScreen] Camera initialization error: $e');
-    }
-  }
-
-
-
-  void _startImageStreaming() {
-    if (_cameraController == null || !_cameraController!.value.isInitialized) return;
-
-    try {
-      _cameraController!.startImageStream((CameraImage image) async {
-        if (!_isVideoEnabled || !mounted) return;
-        final now = DateTime.now().millisecondsSinceEpoch;
-        if (now - _lastFrameSentTime < 80) return; // ~12 FPS smooth streaming
-        if (_isConvertingFrame) return;
-        _isConvertingFrame = true;
-        _lastFrameSentTime = now;
-
-        try {
-          final Uint8List? jpeg = await const MethodChannel('com.laju/call_audio').invokeMethod('convertYuvToJpeg', {
-            'y': image.planes[0].bytes,
-            'u': image.planes[1].bytes,
-            'v': image.planes[2].bytes,
-            'width': image.width,
-            'height': image.height,
-            'yRowStride': image.planes[0].bytesPerRow,
-            'uvRowStride': image.planes[1].bytesPerRow,
-            'uvPixelStride': image.planes[1].bytesPerPixel ?? 1,
-            'quality': 68,
-            'isFront': _isFrontCamera,
-          });
-
-          if (jpeg != null && jpeg.isNotEmpty) {
-            final curCallId = CallSessionController.instance.callId;
-            if (curCallId != null && !curCallId.startsWith('call-') && !curCallId.startsWith('group-')) {
-              final b64 = base64Encode(jpeg);
-              ApiClient.instance.post(
-                ApiEndpoints.callVideoFrame(curCallId),
-                body: {'frame': b64},
-              ).catchError((_) => ApiResponse<dynamic>.error(500, 'Video frame error'));
-            }
-          }
-        } catch (_) {
-        } finally {
-          _isConvertingFrame = false;
-        }
-      });
-    } catch (e) {
-      debugPrint('[ActiveCallScreen] startImageStream error: $e');
-    }
-  }
-
-  void _startRemoteVideoPoller() {
-    _remoteVideoPoller?.cancel();
-    _remoteVideoPoller = Timer.periodic(const Duration(milliseconds: 80), (_) async {
-      if (!mounted || !_isVideoEnabled) return;
-      final curCallId = CallSessionController.instance.callId;
-      if (curCallId == null || curCallId.startsWith('call-') || curCallId.startsWith('group-')) return;
-      if (CallSessionController.instance.status != CallStatus.connected) return;
-
-      try {
-        final resp = await ApiClient.instance.get(ApiEndpoints.callVideoFrame(curCallId));
-        if (resp.isSuccess && resp.rawJson is Map) {
-          final b64 = resp.rawJson['frame'] as String?;
-          if (b64 != null && b64.isNotEmpty) {
-            final bytes = base64Decode(b64);
-            if (mounted) {
-              setState(() {
-                _remoteVideoBytes = bytes;
-                _lastRemoteFrameTime = DateTime.now().millisecondsSinceEpoch;
-              });
-            }
-          }
-        }
-      } catch (_) {}
-    });
-  }
-
-  void _stopCamera() {
-    _remoteVideoPoller?.cancel();
-    _remoteVideoPoller = null;
-    _cameraController?.dispose();
-    _cameraController = null;
-  }
-
   void _switchCamera() async {
-    _isFrontCamera = !_isFrontCamera;
-    _startCamera();
+    setState(() {
+      _isFrontCamera = !_isFrontCamera;
+    });
+    await CallSessionController.instance.switchCamera();
   }
-
-
 
   void _swapViews() {
     setState(() {
@@ -203,7 +70,6 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
 
   @override
   void dispose() {
-    _stopCamera();
     CallSessionController.instance.removeListener(_onSessionUpdated);
     super.dispose();
   }
@@ -216,12 +82,6 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
     if (_isVideoEnabled != session.isVideoOn) {
       setState(() {
         _isVideoEnabled = session.isVideoOn;
-        if (_isVideoEnabled) {
-          _startCamera();
-          _startRemoteVideoPoller();
-        } else {
-          _stopCamera();
-        }
       });
     }
     if (session.status == CallStatus.rejected || session.status == CallStatus.ended) {
@@ -881,32 +741,27 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
       );
     }
 
-    if (_cameraController != null && _cameraController!.value.isInitialized) {
-      Widget preview = SizedBox.expand(
-        child: FittedBox(
-          fit: BoxFit.cover,
-          child: SizedBox(
-            width: _cameraController!.value.previewSize?.height ?? 1,
-            height: _cameraController!.value.previewSize?.width ?? 1,
-            child: CameraPreview(_cameraController!),
-          ),
-        ),
-      );
-
-      if (_isFrontCamera) {
-        preview = Transform(
-          alignment: Alignment.center,
-          transform: Matrix4.rotationY(math.pi),
-          child: preview,
-        );
-      }
-
-      return preview;
-    }
+    // Elegant placeholder when camera is preparing or off
     return Container(
-      color: Colors.black,
-      child: const Center(
-        child: CircularProgressIndicator(color: AppColors.primary, strokeWidth: 2),
+      color: const Color(0xFF0F172A),
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              session.isVideoOn ? Icons.camera_front_rounded : Icons.videocam_off_rounded,
+              color: Colors.white54,
+              size: isPip ? 22 : 36,
+            ),
+            if (!isPip) ...[
+              const SizedBox(height: 8),
+              Text(
+                session.isVideoOn ? 'Mempersiapkan kamera...' : 'Kamera Anda nonaktif',
+                style: const TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w600),
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }
@@ -922,22 +777,19 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
       );
     }
 
-    final now = DateTime.now().millisecondsSinceEpoch;
-    final hasLiveFrame = _remoteVideoBytes != null && (now - _lastRemoteFrameTime < 6000);
-
-    if (hasLiveFrame) {
-      return Image.memory(
-        _remoteVideoBytes!,
-        fit: BoxFit.cover,
-        gaplessPlayback: true,
-        width: double.infinity,
-        height: double.infinity,
-      );
-    }
-
-    // Modern placeholder while waiting for peer's camera feed
+    // Modern elegant placeholder (gradient + frosted avatar) while waiting for peer or when peer video is off
     return Container(
-      color: const Color(0xFF0F172A),
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Color(0xFF0F172A),
+            Color(0xFF1E293B),
+            Color(0xFF0B132B),
+          ],
+        ),
+      ),
       width: double.infinity,
       height: double.infinity,
       child: Center(
@@ -964,23 +816,23 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
                 overflow: TextOverflow.ellipsis,
               ),
             ),
-            const SizedBox(height: 3),
+            const SizedBox(height: 4),
             Row(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Container(
                   width: isPip ? 5 : 7,
                   height: isPip ? 5 : 7,
-                  decoration: const BoxDecoration(
+                  decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: Color(0xFF10B981),
+                    color: session.status == CallStatus.connected ? const Color(0xFF10B981) : AppColors.primary,
                   ),
                 ),
                 const SizedBox(width: 4),
                 Text(
-                  CallSessionController.instance.status == CallStatus.connected
-                      ? 'Menghubungkan video...'
-                      : 'Memanggil...',
+                  session.status == CallStatus.connected
+                      ? 'Menyambungkan video HD...'
+                      : session.statusLabel,
                   style: TextStyle(
                     fontSize: isPip ? 9 : 12,
                     fontWeight: FontWeight.w600,

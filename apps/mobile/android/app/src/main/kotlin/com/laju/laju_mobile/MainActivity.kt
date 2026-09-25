@@ -309,6 +309,18 @@ class MainActivity : FlutterFragmentActivity() {
                         }
                     }
                 }
+                "openAppSettings" -> {
+                    try {
+                        val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                            data = Uri.fromParts("package", packageName, null)
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                        startActivity(intent)
+                        result.success(true)
+                    } catch (e: Exception) {
+                        result.error("SETTINGS_ERROR", e.message, null)
+                    }
+                }
                 "savePermanentAvatar" -> {
                     val srcPath = call.argument<String>("path")
                     if (srcPath != null) {
@@ -917,6 +929,18 @@ class MainActivity : FlutterFragmentActivity() {
                             arrayOf(Manifest.permission.RECORD_AUDIO),
                             RECORD_AUDIO_REQUEST_CODE
                         )
+                    }
+                }
+                "openAppSettings" -> {
+                    try {
+                        val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                            data = Uri.fromParts("package", packageName, null)
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                        startActivity(intent)
+                        result.success(true)
+                    } catch (e: Exception) {
+                        result.error("SETTINGS_ERROR", e.message, null)
                     }
                 }
                 "convertYuvToJpeg" -> {

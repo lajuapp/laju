@@ -1094,9 +1094,12 @@ class AuthController extends ChangeNotifier {
         _currentUser = response.data;
         notifyListeners();
         return _currentUser;
+      } else if (response.statusCode == 401 || response.statusCode == 404) {
+        debugPrint('[AuthController] fetchProfileAsync: rejected by server (${response.statusCode})');
+        return null;
       }
-    } catch (_) {
-      // Fallback
+    } catch (e) {
+      debugPrint('[AuthController] fetchProfileAsync error: $e');
     }
     return _currentUser;
   }
@@ -1106,6 +1109,10 @@ class AuthController extends ChangeNotifier {
     ApiClient.instance.onAccountSuspended = (reason) {
       markSuspended(reason);
     };
+    ApiClient.instance.onUnauthorized = () {
+      debugPrint('[AuthController] Session unauthorized (401), invalidating session');
+      logout();
+    };
 
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -1113,52 +1120,49 @@ class AuthController extends ChangeNotifier {
       if (hasSession) {
         final token = prefs.getString('laju_auth_token');
         final deviceId = prefs.getString('laju_device_id');
-        final userId = prefs.getString('laju_user_id') ?? 'u-${DateTime.now().millisecondsSinceEpoch}';
-        final username = prefs.getString('laju_username') ?? 'User';
+        final userId = prefs.getString('laju_user_id');
         final email = prefs.getString('laju_email');
         final phone = prefs.getString('laju_phone');
-        final twoFactor = prefs.getBool('laju_2fa') ?? false;
 
-        if (token != null && token.isNotEmpty) {
+        if (token != null && token.isNotEmpty && userId != null && userId.isNotEmpty) {
           ApiClient.instance.setAuth(
             token: token,
             deviceId: deviceId,
             userId: userId,
           );
 
-          // Re-register device in background to ensure session stays valid.
-          // This fixes stale deviceId issues after UUID was inconsistent.
+          // Verify token and account validity with backend
+          final userProfile = await fetchProfileAsync();
+          if (userProfile == null) {
+            // User does not exist or token expired/invalidated
+            debugPrint('[AuthController] Stored session invalid on server, logging out');
+            logout();
+            return;
+          }
+
           _refreshDeviceInBackground();
 
-          fetchProfileAsync();
-        }
+          _currentUser = userProfile;
+          await AccountController.instance.init();
+          if (email != null && email.isNotEmpty) {
+            AccountController.instance.updateEmail(email);
+          }
+          if (phone != null && phone.isNotEmpty) {
+            AccountController.instance.updatePhoneNumber(phone);
+          }
 
-        _currentUser = AuthUser(
-          id: userId,
-          username: username,
-          email: email,
-          phoneNumber: phone,
-          twoFactorEnabled: twoFactor,
-        );
-
-        await AccountController.instance.init();
-        if (email != null && email.isNotEmpty) {
-          AccountController.instance.updateEmail(email);
+          _isAuthenticated = true;
+          PushNotificationService.instance.syncPushTokenToBackend();
+          notifyListeners();
+        } else {
+          logout();
         }
-        if (phone != null && phone.isNotEmpty) {
-          AccountController.instance.updatePhoneNumber(phone);
-        }
-
-        _isAuthenticated = true;
-        PushNotificationService.instance.syncPushTokenToBackend();
-        notifyListeners();
       } else {
         _isAuthenticated = false;
         _currentUser = null;
       }
     } catch (_) {
-      _isAuthenticated = false;
-      _currentUser = null;
+      logout();
     }
   }
 
@@ -1201,6 +1205,9 @@ class AuthController extends ChangeNotifier {
 
           debugPrint('[AuthController] Device refreshed successfully, new token issued');
         }
+      } else if (response.statusCode == 401 || response.statusCode == 404) {
+        debugPrint('[AuthController] _refreshDeviceInBackground: rejected by server (${response.statusCode}), logging out');
+        logout();
       }
     } catch (e) {
       // Silent fail — app continues with existing token

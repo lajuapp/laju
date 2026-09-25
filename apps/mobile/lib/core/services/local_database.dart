@@ -582,6 +582,29 @@ class LocalDatabase {
     } catch (_) {}
   }
 
+  Future<void> deleteCallLog(String id) async {
+    try {
+      await _database.delete(
+        'call_logs',
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+    } catch (_) {}
+  }
+
+  Future<void> syncCallLogsWithServerIds(Set<String> validServerIds) async {
+    try {
+      final localRows = await _database.query('call_logs');
+      for (final row in localRows) {
+        final id = row['id'] as String? ?? '';
+        // If it was downloaded from server (not a temporary local id) and no longer exists on server, remove it
+        if (!id.startsWith('call-log-') && !validServerIds.contains(id)) {
+          await _database.delete('call_logs', where: 'id = ?', whereArgs: [id]);
+        }
+      }
+    } catch (_) {}
+  }
+
   // ── Storage & Network Stats Helpers ────────────────────────────────────────
 
   /// Returns total SQLite database file size on disk (main db + WAL + SHM)

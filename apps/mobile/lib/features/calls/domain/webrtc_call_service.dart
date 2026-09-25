@@ -62,11 +62,13 @@ class WebRTCCallService {
 
   static const Map<String, dynamic> _offerConstraints = {
     'mandatory': {
-      'OfferToReceiveAudio': true,
-      'OfferToReceiveVideo': true,
+      'OfferToReceiveAudio': 'true',
+      'OfferToReceiveVideo': 'true',
     },
     'optional': [],
   };
+
+  bool _offerSent = false;
 
   // ── WebSocket Connection ──────────────────────────────────────────────────
 
@@ -79,6 +81,9 @@ class WebRTCCallService {
     _isInitiator = isInitiator;
     _remoteUserId = remoteUserId;
     await _connectWebSocket();
+    if (_isInitiator && _peerConnection != null) {
+      ensureOfferCreatedAndSent();
+    }
   }
 
   Future<void> _connectWebSocket() async {
@@ -119,21 +124,25 @@ class WebRTCCallService {
   void _onSignalingMessage(dynamic raw) {
     try {
       final data = json.decode(raw as String) as Map<String, dynamic>;
-      final type = data['type'] as String? ?? data['event'] as String? ?? '';
+      var type = (data['type'] as String? ?? data['event'] as String? ?? '').toUpperCase();
+      var signalPayload = data;
+
+      // Unpack nested signal envelope if present
+      if (type == 'CALL_SIGNAL' && data['signal'] is Map) {
+        signalPayload = Map<String, dynamic>.from(data['signal'] as Map);
+        type = ((signalPayload['type'] as String?) ?? (signalPayload['event'] as String?) ?? '').toUpperCase();
+      }
+
       debugPrint('[WebRTC] Signaling received via WS: $type');
 
       onSignalingEvent?.call(data);
 
       switch (type) {
         case 'CONNECTED':
-          if (_isInitiator && _peerConnection != null) {
-            _createAndSendOffer();
-          }
-          break;
-
         case 'PEER_JOINED':
-          if (_isInitiator && _peerConnection != null) {
-            _createAndSendOffer();
+        case 'CALL_ACCEPTED':
+          if (_isInitiator) {
+            ensureOfferCreatedAndSent();
           }
           break;
 
@@ -142,14 +151,8 @@ class WebRTCCallService {
           onCallEnded?.call();
           break;
 
-        case 'CALL_ACCEPTED':
-          if (_isInitiator && _peerConnection != null) {
-            _createAndSendOffer();
-          }
-          break;
-
         default:
-          handleRemoteSignal(data);
+          handleRemoteSignal(signalPayload);
           break;
       }
     } catch (e) {
@@ -224,11 +227,16 @@ class WebRTCCallService {
 
   /// Process incoming signal from either WebSocket or REST polling
   void handleRemoteSignal(Map<String, dynamic> data) {
-    final type = ((data['type'] as String?) ?? (data['event'] as String?) ?? '').toUpperCase();
+    var payload = data;
+    var type = ((data['type'] as String?) ?? (data['event'] as String?) ?? '').toUpperCase();
+    if (type == 'CALL_SIGNAL' && data['signal'] is Map) {
+      payload = Map<String, dynamic>.from(data['signal'] as Map);
+      type = ((payload['type'] as String?) ?? (payload['event'] as String?) ?? '').toUpperCase();
+    }
     if (type.isEmpty) return;
 
     // Deduplicate identical signals
-    final sigKey = '$type-${json.encode(data['sdp'] ?? data['candidate'] ?? '')}';
+    final sigKey = '$type-${json.encode(payload['sdp'] ?? payload['candidate'] ?? '')}';
     if (_processedSignalKeys.contains(sigKey)) return;
     _processedSignalKeys.add(sigKey);
 
@@ -236,7 +244,7 @@ class WebRTCCallService {
 
     switch (type) {
       case 'WEBRTC_OFFER':
-        final sdp = data['sdp'];
+        final sdp = payload['sdp'];
         if (sdp != null && !_isInitiator) {
           final sdpMap = sdp is Map ? sdp : json.decode(sdp.toString());
           _handleRemoteOffer(RTCSessionDescription(sdpMap['sdp'], sdpMap['type']));
@@ -244,7 +252,7 @@ class WebRTCCallService {
         break;
 
       case 'WEBRTC_ANSWER':
-        final sdp = data['sdp'];
+        final sdp = payload['sdp'];
         if (sdp != null && _isInitiator) {
           final sdpMap = sdp is Map ? sdp : json.decode(sdp.toString());
           _handleRemoteAnswer(RTCSessionDescription(sdpMap['sdp'], sdpMap['type']));
@@ -252,7 +260,7 @@ class WebRTCCallService {
         break;
 
       case 'ICE_CANDIDATE':
-        final candidate = data['candidate'];
+        final candidate = payload['candidate'];
         if (candidate != null) {
           final cMap = candidate is Map ? candidate : json.decode(candidate.toString());
           _handleRemoteIceCandidate(RTCIceCandidate(
@@ -274,6 +282,7 @@ class WebRTCCallService {
     _hasRemoteDescription = false;
     _pendingIceCandidates.clear();
     _processedSignalKeys.clear();
+    _offerSent = false;
 
     // Initialize renderers
     _localRenderer = RTCVideoRenderer();
@@ -295,7 +304,7 @@ class WebRTCCallService {
             'mandatory': {
               'minWidth': '640',
               'minHeight': '480',
-              'minFrameRate': '24',
+              'minFrameRate': '30',
             },
             'optional': [],
           } : false,
@@ -318,6 +327,7 @@ class WebRTCCallService {
       if (_localStream != null) {
         _localRenderer!.srcObject = _localStream;
         debugPrint('[WebRTC] Local stream acquired: ${_localStream!.id}');
+        onRendererReady?.call(_localRenderer!, _remoteRenderer!);
       }
     }
 
@@ -332,12 +342,15 @@ class WebRTCCallService {
     }
 
     // Handle remote track (supports both stream-based and track-based modes)
-    _peerConnection!.onTrack = (RTCTrackEvent event) {
+    _peerConnection!.onTrack = (RTCTrackEvent event) async {
       debugPrint('[WebRTC] Remote track received: ${event.track.kind}');
       if (event.streams.isNotEmpty) {
         _remoteStream = event.streams.first;
-        _remoteRenderer!.srcObject = _remoteStream;
+      } else {
+        _remoteStream ??= await createLocalMediaStream('remote_stream');
+        _remoteStream!.addTrack(event.track);
       }
+      _remoteRenderer!.srcObject = _remoteStream;
       onCallConnected?.call();
       onRendererReady?.call(_localRenderer!, _remoteRenderer!);
     };
@@ -384,14 +397,27 @@ class WebRTCCallService {
     // Notify initial renderer readiness
     onRendererReady?.call(_localRenderer!, _remoteRenderer!);
 
-    // If initiator, send offer immediately
+    // If initiator and peerConnection is ready, trigger offer
     if (_isInitiator) {
       Future.delayed(const Duration(milliseconds: 300), () {
-        _createAndSendOffer();
+        ensureOfferCreatedAndSent();
       });
     }
 
     debugPrint('[WebRTC] PeerConnection initialized');
+  }
+
+  Future<void> ensureOfferCreatedAndSent() async {
+    if (_peerConnection == null) {
+      debugPrint('[WebRTC] ensureOffer: peerConnection is null, delaying...');
+      return;
+    }
+    if (_offerSent) {
+      debugPrint('[WebRTC] ensureOffer: Offer already sent, skipping duplicate');
+      return;
+    }
+    _offerSent = true;
+    await _createAndSendOffer();
   }
 
   Future<void> _createAndSendOffer() async {
@@ -399,7 +425,7 @@ class WebRTCCallService {
     try {
       final offer = await _peerConnection!.createOffer(_offerConstraints);
       await _peerConnection!.setLocalDescription(offer);
-      debugPrint('[WebRTC] Sending SDP offer');
+      debugPrint('[WebRTC] Sending SDP offer for call $_currentCallId');
       _sendSignal('webrtc_offer', {
         'callId': _currentCallId,
         'targetUserId': _remoteUserId,
@@ -407,6 +433,7 @@ class WebRTCCallService {
       });
     } catch (e) {
       debugPrint('[WebRTC] createOffer error: $e');
+      _offerSent = false;
     }
   }
 
@@ -526,6 +553,7 @@ class WebRTCCallService {
     _hasRemoteDescription = false;
     _pendingIceCandidates.clear();
     _processedSignalKeys.clear();
+    _offerSent = false;
 
     try {
       await _ws?.close();

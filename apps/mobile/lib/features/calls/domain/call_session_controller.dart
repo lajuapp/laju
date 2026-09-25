@@ -153,17 +153,35 @@ class CallSessionController extends ChangeNotifier {
     return null;
   }
 
-  void start1on1Call({
+  Future<void> start1on1Call({
     required String contactName,
     required bool isVideo,
     String? calleeUserId,
     String? contactPhone,
     String? avatarUrl,
-  }) {
+  }) async {
     _stopCallAudio();
     _playCallTone('stop');
     _timer?.cancel();
     _statusPoller?.cancel();
+
+    // Check & request permissions before proceeding
+    var effectiveIsVideo = isVideo;
+    final permResult = await CallPermissionService.instance.checkAndRequestPermissions(
+      isVideo: isVideo,
+      context: AppNavigation.navigatorKey.currentContext,
+    );
+
+    if (permResult == CallPermissionResult.denied) {
+      _isActive = false;
+      _status = CallStatus.idle;
+      notifyListeners();
+      return;
+    }
+
+    if (isVideo && permResult == CallPermissionResult.audioOnlyGranted) {
+      effectiveIsVideo = false;
+    }
 
     final resolvedTitle = contactName.trim().isNotEmpty
         ? contactName.trim()
@@ -178,19 +196,27 @@ class CallSessionController extends ChangeNotifier {
     _avatarUrl = avatarUrl ?? _resolveAvatar(calleeUserId, contactPhone, resolvedTitle);
     _groupName = null;
     _isGroup = false;
-    _isVideo = isVideo;
+    _isVideo = effectiveIsVideo;
     _isOutgoing = true;
     _participants = [resolvedTitle];
     _durationSeconds = 0;
     _hasLoggedCurrentCall = false;
     _isMuted = false;
-    _isVideoOn = isVideo;
-    _isSpeaker = isVideo;
+    _isVideoOn = effectiveIsVideo;
+    _isSpeaker = effectiveIsVideo;
     _isMinimized = false;
     _isActive = true;
     _status = CallStatus.connecting;
 
-    _dispatchCallToBackend(calleeUserId ?? contactPhone ?? contactName, isVideo: isVideo);
+    // Immediately initialize WebRTC local preview for caller so they see themselves while ringing
+    WebRTCCallService.instance.initializePeerConnection(
+      isVideo: effectiveIsVideo,
+      isAudio: true,
+    ).catchError((e) {
+      debugPrint('[CallSessionController] Local preview init error: $e');
+    });
+
+    _dispatchCallToBackend(calleeUserId ?? contactPhone ?? contactName, isVideo: effectiveIsVideo);
     notifyListeners();
   }
 
@@ -271,6 +297,10 @@ class CallSessionController extends ChangeNotifier {
               _startTimer();
               _initCallAudio();
               notifyListeners();
+
+              if (_isOutgoing) {
+                WebRTCCallService.instance.ensureOfferCreatedAndSent();
+              }
             }
 
             // Fetch signals to discover remote peer's direct IP & WebRTC signals
@@ -314,12 +344,17 @@ class CallSessionController extends ChangeNotifier {
             }
           } else if (callState == 'ENDED') {
             if (_status != CallStatus.ended) {
-              _status = CallStatus.ended;
-              _playCallTone('stop');
-              notifyListeners();
+              final finalDur = _durationSeconds;
+              final isOut = _isOutgoing;
+              final logStatus = finalDur > 0 ? 'completed' : (isOut ? 'cancelled' : 'missed');
 
-              // Insert to local database
-              _saveCallLog(status: _durationSeconds > 0 ? 'completed' : 'cancelled');
+              _playCallTone('stop');
+              _status = CallStatus.ended;
+
+              // Insert to local database first so UI gets updated immediately
+              await _saveCallLog(status: logStatus, duration: finalDur);
+
+              notifyListeners();
 
               Future.delayed(const Duration(milliseconds: 1000), () {
                 endCall();
@@ -442,6 +477,11 @@ class CallSessionController extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> switchCamera() async {
+    await WebRTCCallService.instance.switchCamera();
+    notifyListeners();
+  }
+
   void toggleSpeaker() {
     _isSpeaker = !_isSpeaker;
     _audioChannel.invokeMethod('setSpeaker', {'speaker': _isSpeaker}).catchError((_) {});
@@ -496,10 +536,14 @@ class CallSessionController extends ChangeNotifier {
         ? _title.trim()
         : (_contactPhone?.trim().isNotEmpty == true
             ? _contactPhone!.trim()
-            : (_contactUserId?.trim().isNotEmpty == true ? _contactUserId!.trim() : 'Panggilan Keluar'));
+            : (_contactUserId?.trim().isNotEmpty == true
+                ? _contactUserId!.trim()
+                : (_isOutgoing ? 'Panggilan Keluar' : 'Panggilan Masuk')));
 
     final resolvedAvatar = _avatarUrl ?? _resolveAvatar(_contactUserId, _contactPhone, resolvedTitle);
-    final logId = 'call-log-${DateTime.now().millisecondsSinceEpoch}';
+    final logId = (_callId != null && !_callId!.startsWith('call-') && !_callId!.startsWith('group-'))
+        ? _callId!
+        : 'call-log-${DateTime.now().millisecondsSinceEpoch}';
 
     try {
       await LocalDatabase.instance.insertCallLog(
@@ -543,10 +587,12 @@ class CallSessionController extends ChangeNotifier {
             isInitiator: true,
             remoteUserId: callee,
           ).catchError((_) {});
-          WebRTCCallService.instance.initializePeerConnection(
-            isVideo: isVideo,
-            isAudio: true,
-          ).catchError((_) {});
+          if (!WebRTCCallService.instance.hasPeerConnection) {
+            WebRTCCallService.instance.initializePeerConnection(
+              isVideo: isVideo,
+              isAudio: true,
+            ).catchError((_) {});
+          }
         }
       }
     } catch (_) {}
@@ -705,6 +751,28 @@ class CallSessionController extends ChangeNotifier {
     _systemNotifChannel.invokeMethod('cancelNotification', {'id': 9999}).catchError((_) {});
     AppNotificationService.instance.dismiss();
 
+    var effectiveIsVideo = isVideo;
+    final permResult = await CallPermissionService.instance.checkAndRequestPermissions(
+      isVideo: isVideo,
+      context: AppNavigation.navigatorKey.currentContext,
+    );
+
+    if (permResult == CallPermissionResult.denied) {
+      await declineIncomingCall(
+        incomingCallId,
+        callerName: callerName,
+        isVideo: isVideo,
+        callerId: callerId,
+        callerPhone: callerPhone,
+        avatarUrl: avatarUrl,
+      );
+      return;
+    }
+
+    if (isVideo && permResult == CallPermissionResult.audioOnlyGranted) {
+      effectiveIsVideo = false;
+    }
+
     _stopCallAudio();
     _callId = incomingCallId;
     _title = callerName;
@@ -713,9 +781,9 @@ class CallSessionController extends ChangeNotifier {
     _avatarUrl = avatarUrl ?? _resolveAvatar(callerId, callerPhone, callerName);
     _isActive = true;
     _isOutgoing = false;
-    _isVideo = isVideo;
-    _isVideoOn = isVideo;
-    _isSpeaker = isVideo;
+    _isVideo = effectiveIsVideo;
+    _isVideoOn = effectiveIsVideo;
+    _isSpeaker = effectiveIsVideo;
     _durationSeconds = 0;
     _hasLoggedCurrentCall = false;
     _lastRingingCallId = null;
@@ -733,7 +801,7 @@ class CallSessionController extends ChangeNotifier {
       remoteUserId: callerId,
     ).catchError((_) {});
     WebRTCCallService.instance.initializePeerConnection(
-      isVideo: isVideo,
+      isVideo: effectiveIsVideo,
       isAudio: true,
     ).catchError((_) {});
     notifyListeners();
@@ -746,7 +814,7 @@ class CallSessionController extends ChangeNotifier {
       MaterialPageRoute(
         builder: (_) => ActiveCallScreen(
           contactName: callerName,
-          isVideo: isVideo,
+          isVideo: effectiveIsVideo,
           calleeUserId: callerId,
           contactPhone: callerPhone,
           avatarUrl: _avatarUrl,

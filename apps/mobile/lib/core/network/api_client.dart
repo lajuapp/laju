@@ -77,6 +77,7 @@ class ApiClient {
   String? get userId => _userId;
 
   void Function(String reason)? onAccountSuspended;
+  void Function()? onUnauthorized;
 
   void setAuth({
     required String token,
@@ -230,6 +231,9 @@ class ApiClient {
         }
         return ApiResponse.success(statusCode, parsedData, parsedJson);
       } else {
+        if (statusCode == 401) {
+          onUnauthorized?.call();
+        }
         String errorMsg = 'HTTP error $statusCode';
         if (parsedJson is Map<String, dynamic>) {
           if (statusCode == 403 && parsedJson['error'] == 'ACCOUNT_SUSPENDED') {
