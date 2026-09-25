@@ -164,10 +164,11 @@ export class CallSignalingGateway implements OnGatewayConnection, OnGatewayDisco
       fromDeviceId: client.deviceId
     });
 
+    // Always broadcast to the call room so any peer in the call gets the signal reliably
+    this._broadcastToCallRoom(data.callId, payload, socketId);
+
     if (data.targetUserId) {
       this._sendToUser(data.targetUserId, payload);
-    } else {
-      this._broadcastToCallRoom(data.callId, payload, socketId);
     }
   }
 
@@ -187,10 +188,11 @@ export class CallSignalingGateway implements OnGatewayConnection, OnGatewayDisco
       fromDeviceId: client.deviceId
     });
 
+    // Always broadcast to the call room so any peer in the call gets the signal reliably
+    this._broadcastToCallRoom(data.callId, payload, socketId);
+
     if (data.targetUserId) {
       this._sendToUser(data.targetUserId, payload);
-    } else {
-      this._broadcastToCallRoom(data.callId, payload, socketId);
     }
   }
 
@@ -208,10 +210,11 @@ export class CallSignalingGateway implements OnGatewayConnection, OnGatewayDisco
       fromDeviceId: client.deviceId
     });
 
+    // Always broadcast to the call room so any peer in the call gets the signal reliably
+    this._broadcastToCallRoom(data.callId, payload, socketId);
+
     if (data.targetUserId) {
       this._sendToUser(data.targetUserId, payload);
-    } else {
-      this._broadcastToCallRoom(data.callId, payload, socketId);
     }
   }
 
