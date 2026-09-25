@@ -28,15 +28,35 @@ export function AppLayout() {
     }
   }, [navigate, isLoading]);
 
-  const navItems = [
-    { label: 'Dashboard', to: '/', icon: LayoutDashboard },
-    { label: 'Admin Team', to: '/admins', icon: ShieldCheck },
-    { label: 'User Directory', to: '/users', icon: Users },
-    { label: 'Device Fleet', to: '/devices', icon: Smartphone },
-    { label: 'Chat Wallpapers', to: '/wallpapers', icon: ImageIcon },
-    { label: 'Stickers & Packs', to: '/stickers', icon: Smile },
-    { label: 'Conversations Audit', to: '/conversations', icon: MessageSquare },
-    { label: 'Security & Logs', to: '/security', icon: ShieldAlert },
+  const navGroups = [
+    {
+      group: 'Utama',
+      items: [
+        { label: 'Dashboard', to: '/', icon: LayoutDashboard },
+      ],
+    },
+    {
+      group: 'Akses & Pengguna',
+      items: [
+        { label: 'Tim Admin', to: '/admins', icon: ShieldCheck },
+        { label: 'Direktori Pengguna', to: '/users', icon: Users },
+        { label: 'Armada Perangkat', to: '/devices', icon: Smartphone },
+      ],
+    },
+    {
+      group: 'Aset & Media',
+      items: [
+        { label: 'Wallpaper Obrolan', to: '/wallpapers', icon: ImageIcon },
+        { label: 'Stiker & Packs', to: '/stickers', icon: Smile },
+      ],
+    },
+    {
+      group: 'Kepatuhan & Keamanan',
+      items: [
+        { label: 'Audit Obrolan', to: '/conversations', icon: MessageSquare },
+        { label: 'Log & Keamanan', to: '/security', icon: ShieldAlert },
+      ],
+    },
   ];
 
   return (
@@ -61,41 +81,45 @@ export function AppLayout() {
           </div>
         </div>
 
-        {/* Navigation Items */}
-        <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-          <div className="px-3 pb-2 text-[10px] font-bold uppercase tracking-wider text-neutral-400">
-            Control Center
-          </div>
-          {navItems.map((item) => {
-            const Icon = item.icon;
-            return (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                end={item.to === '/'}
-                className={({ isActive }) =>
-                  clsx(
-                    'flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-semibold transition-all group',
-                    isActive
-                      ? 'bg-neutral-900 text-white shadow-sm'
-                      : 'text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100/80'
-                  )
-                }
-              >
-                {({ isActive }) => (
-                  <>
-                    <Icon
-                      className={clsx(
-                        'w-4 h-4 transition-colors',
-                        isActive ? 'text-white' : 'text-neutral-400 group-hover:text-neutral-700'
-                      )}
-                    />
-                    <span>{item.label}</span>
-                  </>
-                )}
-              </NavLink>
-            );
-          })}
+        {/* Navigation Items Grouped */}
+        <nav className="flex-1 px-3 py-3 space-y-4 overflow-y-auto">
+          {navGroups.map((group, gIdx) => (
+            <div key={gIdx} className="space-y-1">
+              <div className="px-3 pb-1 text-[10px] font-bold uppercase tracking-wider text-neutral-400">
+                {group.group}
+              </div>
+              {group.items.map((item) => {
+                const Icon = item.icon;
+                return (
+                  <NavLink
+                    key={item.to}
+                    to={item.to}
+                    end={item.to === '/'}
+                    className={({ isActive }) =>
+                      clsx(
+                        'flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all group',
+                        isActive
+                          ? 'bg-neutral-900 text-white shadow-sm'
+                          : 'text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100/80'
+                      )
+                    }
+                  >
+                    {({ isActive }) => (
+                      <>
+                        <Icon
+                          className={clsx(
+                            'w-4 h-4 transition-colors',
+                            isActive ? 'text-white' : 'text-neutral-400 group-hover:text-neutral-700'
+                          )}
+                        />
+                        <span>{item.label}</span>
+                      </>
+                    )}
+                  </NavLink>
+                );
+              })}
+            </div>
+          ))}
         </nav>
 
         {/* User Profile & Logout */}
