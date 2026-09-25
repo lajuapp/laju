@@ -24,6 +24,14 @@ class CallSessionController extends ChangeNotifier {
     _initChannelHandler();
     _startIncomingCallPoller();
     checkLaunchPayload();
+    WebRTCCallService.instance.onRendererReady = (local, remote) {
+      notifyListeners();
+    };
+    WebRTCCallService.instance.onCallEnded = () {
+      if (_isActive) {
+        endCall();
+      }
+    };
   }
   static final CallSessionController instance = CallSessionController._();
 
@@ -60,6 +68,8 @@ class CallSessionController extends ChangeNotifier {
   bool _isActive = false;
   RTCVideoRenderer? get webRtcLocalRenderer => WebRTCCallService.instance.localRenderer;
   RTCVideoRenderer? get webRtcRemoteRenderer => WebRTCCallService.instance.remoteRenderer;
+  bool get isWebRtcRemoteVideoReady => WebRTCCallService.instance.isRemoteVideoReady;
+  bool get isWebRtcLocalVideoReady => WebRTCCallService.instance.isLocalVideoReady;
   CallStatus _status = CallStatus.idle;
 
   Timer? _timer;
@@ -526,6 +536,15 @@ class CallSessionController extends ChangeNotifier {
         if (resp.isSuccess && resp.rawJson is Map && resp.rawJson['id'] != null) {
           _callId = resp.rawJson['id'];
           _startCallStatusPoller();
+          WebRTCCallService.instance.connectSignaling(
+            callId: _callId!,
+            isInitiator: true,
+            remoteUserId: callee,
+          ).catchError((_) {});
+          WebRTCCallService.instance.initializePeerConnection(
+            isVideo: isVideo,
+            isAudio: true,
+          ).catchError((_) {});
         }
       }
     } catch (_) {}
@@ -662,6 +681,13 @@ class CallSessionController extends ChangeNotifier {
             );
           }
         }
+      } else if (call.method == 'onNewMessage') {
+        final args = call.arguments as Map?;
+        final convId = args?['conversationId'] as String?;
+        ConversationService.instance.fetchConversations().catchError((_) => <ConversationModel>[]);
+        if (convId != null && convId.isNotEmpty) {
+          ConversationService.instance.fetchMessages(convId).catchError((_) => <MessageModel>[]);
+        }
       }
     });
   }
@@ -699,6 +725,15 @@ class CallSessionController extends ChangeNotifier {
     _startTimer();
     _initCallAudio();
     _startCallStatusPoller();
+    WebRTCCallService.instance.connectSignaling(
+      callId: incomingCallId,
+      isInitiator: false,
+      remoteUserId: callerId,
+    ).catchError((_) {});
+    WebRTCCallService.instance.initializePeerConnection(
+      isVideo: isVideo,
+      isAudio: true,
+    ).catchError((_) {});
     notifyListeners();
 
     try {

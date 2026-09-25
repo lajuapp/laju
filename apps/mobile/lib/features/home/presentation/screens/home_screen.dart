@@ -39,6 +39,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final List<String> _filters = ['All', 'Unread', 'Groups', 'Favorites'];
 
   List<Map<String, dynamic>> _callLogs = [];
+  Timer? _conversationsSyncTimer;
 
   @override
   void initState() {
@@ -49,6 +50,16 @@ class _HomeScreenState extends State<HomeScreen> {
     CallSessionController.instance.addListener(_onCallSessionChanged);
     _loadConversations();
     _loadCallLogs();
+    _startConversationsSyncTimer();
+  }
+
+  void _startConversationsSyncTimer() {
+    _conversationsSyncTimer?.cancel();
+    _conversationsSyncTimer = Timer.periodic(const Duration(seconds: 4), (_) {
+      if (mounted && _currentBottomNavIndex == 0 && !_isSearchExpanded) {
+        ConversationService.instance.fetchConversations().catchError((_) => <ConversationModel>[]);
+      }
+    });
   }
 
   void _onConversationsSync() {
@@ -215,6 +226,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
+    _conversationsSyncTimer?.cancel();
     ConversationService.instance.conversationsNotifier.removeListener(_onConversationsSync);
     CallSessionController.instance.removeListener(_onCallSessionChanged);
     HomeScreen.activeTabNotifier.removeListener(_onTabChanged);

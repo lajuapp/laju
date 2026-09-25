@@ -172,6 +172,18 @@ class MainActivity : FlutterFragmentActivity() {
         }
     }
 
+    fun dispatchPushMessage(conversationId: String, senderName: String, preview: String) {
+        if (notificationMethodChannel != null) {
+            runOnUiThread {
+                notificationMethodChannel?.invokeMethod("onNewMessage", mapOf(
+                    "conversationId" to conversationId,
+                    "senderName" to senderName,
+                    "preview" to preview
+                ))
+            }
+        }
+    }
+
     private fun handleIntent(intent: Intent?) {
         if (intent == null) return
         val type = intent.getStringExtra("laju_type")

@@ -280,6 +280,7 @@ class LajuPushService : Service() {
                     val senderName = obj.optString("senderName", "Pesan Baru")
                     val preview = obj.optString("preview", "Pesan baru terenkripsi")
                     showMessageNotification(convId, senderName, preview)
+                    MainActivity.instance?.dispatchPushMessage(convId, senderName, preview)
                 }
                 "CALL_ENDED", "CALL_REJECTED" -> {
                     val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager

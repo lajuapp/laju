@@ -59,7 +59,11 @@ services:
     build:
       context: .
       dockerfile: apps/backoffice/Dockerfile
+      args:
+        VITE_API_URL: ${VITE_API_URL:-https://api.laju.chat}
     restart: unless-stopped
+    env_file:
+      - .env
     expose:
       - "3000"
     ports:

@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import '../../../../core/core.dart';
 import '../../../home/presentation/screens/home_screen.dart';
 import '../../domain/call_session_controller.dart';
+import 'package:flutter_webrtc/flutter_webrtc.dart';
 
 class ActiveCallScreen extends StatefulWidget {
   final String contactName;
@@ -869,6 +870,17 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
   }
 
   Widget _buildLocalCameraPreview({required bool isPip}) {
+    final session = CallSessionController.instance;
+    if (session.webRtcLocalRenderer != null && session.isWebRtcLocalVideoReady) {
+      return SizedBox.expand(
+        child: RTCVideoView(
+          session.webRtcLocalRenderer!,
+          mirror: _isFrontCamera,
+          objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
+        ),
+      );
+    }
+
     if (_cameraController != null && _cameraController!.value.isInitialized) {
       Widget preview = SizedBox.expand(
         child: FittedBox(
@@ -900,7 +912,15 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
   }
 
   Widget _buildRemoteVideoView({required bool isPip, required Color textPrimary, required Color textSecondary}) {
-
+    final session = CallSessionController.instance;
+    if (session.webRtcRemoteRenderer != null && session.isWebRtcRemoteVideoReady) {
+      return SizedBox.expand(
+        child: RTCVideoView(
+          session.webRtcRemoteRenderer!,
+          objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
+        ),
+      );
+    }
 
     final now = DateTime.now().millisecondsSinceEpoch;
     final hasLiveFrame = _remoteVideoBytes != null && (now - _lastRemoteFrameTime < 6000);

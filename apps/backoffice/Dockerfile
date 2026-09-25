@@ -5,6 +5,8 @@ WORKDIR /app
 RUN corepack enable && corepack prepare pnpm@8.15.3 --activate
 
 ENV NODE_ENV=development
+ARG VITE_API_URL=https://api.laju.chat
+ENV VITE_API_URL=${VITE_API_URL}
 
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml* ./
 COPY packages/shared-types ./packages/shared-types
