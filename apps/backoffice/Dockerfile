@@ -1,3 +1,31 @@
-FROM node:20-alpine
+FROM node:20-alpine AS builder
+
 WORKDIR /app
-CMD ["tail", "-f", "/dev/null"]
+
+RUN corepack enable && corepack prepare pnpm@8.15.3 --activate
+
+ENV NODE_ENV=development
+
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml* ./
+COPY packages/shared-types ./packages/shared-types
+COPY apps/backoffice ./apps/backoffice
+
+RUN pnpm install --frozen-lockfile=false --prod=false
+
+WORKDIR /app/packages/shared-types
+RUN pnpm build
+
+WORKDIR /app/apps/backoffice
+RUN pnpm build
+
+FROM node:20-alpine AS runner
+
+WORKDIR /app
+
+RUN npm install -g serve
+
+COPY --from=builder /app/apps/backoffice/dist ./dist
+
+EXPOSE 3000
+
+CMD ["serve", "-s", "dist", "-l", "3000"]

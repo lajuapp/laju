@@ -178,16 +178,38 @@ class _BackupIdentityScreenState extends State<BackupIdentityScreen> {
                       // Warning Alert Banner Glass Card
                       LajuGlassCard(
                         borderRadius: 18,
-                        padding: const EdgeInsets.all(14),
-                        tintColor: const Color(0xFFF59E0B),
-                        borderColor: const Color(0xFFF59E0B).withValues(alpha: 0.35),
+                        padding: const EdgeInsets.all(16),
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: isDark
+                              ? [
+                                  const Color(0xFFF59E0B).withValues(alpha: 0.16),
+                                  const Color(0xFFB45309).withValues(alpha: 0.08),
+                                ]
+                              : [
+                                  const Color(0xFFFFFBEB),
+                                  const Color(0xFFFEF3C7),
+                                ],
+                        ),
+                        borderColor: isDark
+                            ? const Color(0xFFF59E0B).withValues(alpha: 0.35)
+                            : const Color(0xFFF59E0B).withValues(alpha: 0.45),
+                        borderWidth: 1.2,
                         child: Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Icon(
-                              Icons.warning_amber_rounded,
-                              color: Color(0xFFF59E0B),
-                              size: 22,
+                            Container(
+                              padding: const EdgeInsets.all(6),
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: const Color(0xFFF59E0B).withValues(alpha: isDark ? 0.20 : 0.15),
+                              ),
+                              child: Icon(
+                                Icons.warning_amber_rounded,
+                                color: isDark ? const Color(0xFFFBBF24) : const Color(0xFFD97706),
+                                size: 20,
+                              ),
                             ),
                             const SizedBox(width: 12),
                             Expanded(
@@ -196,19 +218,20 @@ class _BackupIdentityScreenState extends State<BackupIdentityScreen> {
                                 children: [
                                   Text(
                                     context.tr('secretKeyWarning'),
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.w700,
-                                      fontSize: 13,
-                                      color: Color(0xFFF59E0B),
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w800,
+                                      fontSize: 13.5,
+                                      color: isDark ? const Color(0xFFFDE68A) : const Color(0xFF92400E),
+                                      letterSpacing: 0.1,
                                     ),
                                   ),
-                                  const SizedBox(height: 4),
+                                  const SizedBox(height: 6),
                                   Text(
                                     context.tr('revealSecretNotice'),
                                     style: TextStyle(
-                                      fontSize: 12,
-                                      color: isDark ? Colors.white70 : const Color(0xFF78350F),
-                                      height: 1.4,
+                                      fontSize: 12.5,
+                                      color: isDark ? const Color(0xFFE2E8F0) : const Color(0xFF78350F),
+                                      height: 1.45,
                                     ),
                                   ),
                                 ],

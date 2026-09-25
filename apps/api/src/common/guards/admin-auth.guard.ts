@@ -18,7 +18,11 @@ export class AdminAuthGuard implements CanActivate {
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest();
-    const adminToken = request.headers['x-admin-token'] || (request.cookies && request.cookies['admin_session']);
+    const authHeader = request.headers['authorization'];
+    const bearerToken = typeof authHeader === 'string' && authHeader.startsWith('Bearer ')
+      ? authHeader.substring(7)
+      : null;
+    const adminToken = bearerToken || request.headers['x-admin-token'] || (request.cookies && request.cookies['admin_session']);
 
     if (!adminToken) {
       throw new UnauthorizedException('Missing admin session token');
@@ -30,6 +34,7 @@ export class AdminAuthGuard implements CanActivate {
         expiresAt: { gt: new Date() }
       },
       include: {
+        admin: true,
         role: {
           include: {
             permissions: {
@@ -46,10 +51,17 @@ export class AdminAuthGuard implements CanActivate {
       throw new UnauthorizedException('Invalid or expired admin session');
     }
 
+    if (session.admin && !session.admin.isActive) {
+      throw new UnauthorizedException('Admin account is suspended or deactivated');
+    }
+
     const permissions = session.role.permissions.map((rp) => rp.permission.slug);
 
     request.admin = {
       adminId: session.adminId,
+      username: session.admin?.username || 'admin',
+      name: session.admin?.name || 'Administrator',
+      email: session.admin?.email || '',
       roleId: session.roleId,
       roleName: session.role.name,
       permissions

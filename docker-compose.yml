@@ -53,10 +53,14 @@ services:
 
   backoffice:
     container_name: laju-backoffice
-    build: ./apps/backoffice
+    build:
+      context: .
+      dockerfile: apps/backoffice/Dockerfile
     restart: unless-stopped
     expose:
       - "3000"
+    ports:
+      - "3001:3000"
     depends_on:
       api:
         condition: service_healthy

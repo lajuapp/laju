@@ -2,30 +2,119 @@ import {
   Controller,
   Get,
   Post,
+  Patch,
+  Delete,
   Body,
   Param,
   UseGuards,
   UseInterceptors,
-  Req
+  Req,
+  Res,
+  HttpStatus,
+  Optional
 } from '@nestjs/common';
+import { Response } from 'express';
 import { AdminService } from './admin.service';
-import { AdminLoginDto, RequestConversationAccessDto, ApproveConversationAccessDto } from './dto/admin.dto';
+import { SeaweedFsService } from '../../infrastructure/seaweedfs/seaweedfs.service';
+import {
+  AdminLoginDto,
+  AdminPasswordLoginDto,
+  CreateAdminDto,
+  UpdateAdminDto,
+  CreateWallpaperDto,
+  UpdateWallpaperDto,
+  CreateStickerPackDto,
+  UpdateStickerPackDto,
+  CreateStickerItemDto,
+  RequestConversationAccessDto,
+  ApproveConversationAccessDto
+} from './dto/admin.dto';
 import { AdminAuthGuard } from '../../common/guards/admin-auth.guard';
 import { RequirePermissions } from '../../common/decorators/permissions.decorator';
 import { AdminAuditInterceptor } from '../../common/interceptors/admin-audit.interceptor';
 import { AdminPermission } from '@secure-messenger/shared-types';
+import * as crypto from 'crypto';
 
 @Controller('admin')
 @UseInterceptors(AdminAuditInterceptor)
 export class AdminController {
-  constructor(private readonly adminService: AdminService) {}
+  constructor(
+    private readonly adminService: AdminService,
+    @Optional() private readonly seaweedFs?: SeaweedFsService
+  ) {}
 
-  // Session bootstrap / auth
+  // ─── AUTHENTICATION ──────────────────────────────────────────────
+  @Post('auth/login')
+  loginWithPassword(@Body() dto: AdminPasswordLoginDto) {
+    return this.adminService.loginWithPassword(dto);
+  }
+
+  @Get('auth/me')
+  @UseGuards(AdminAuthGuard)
+  getMe(@Req() req: any) {
+    return this.adminService.getMe(req.admin.adminId);
+  }
+
+  @Post('auth/logout')
+  @UseGuards(AdminAuthGuard)
+  logout(@Req() req: any) {
+    const authHeader = req.headers['authorization'];
+    const bearer = typeof authHeader === 'string' && authHeader.startsWith('Bearer ')
+      ? authHeader.substring(7)
+      : null;
+    const token = bearer || req.headers['x-admin-token'];
+    return this.adminService.logout(token);
+  }
+
+  // Legacy Session bootstrap
   @Post('session')
   createSession(@Body() dto: AdminLoginDto) {
     return this.adminService.createAdminSession(dto.roleName, dto.adminIdentifier);
   }
 
+  // ─── DASHBOARD STATS ────────────────────────────────────────────
+  @Get('stats')
+  @UseGuards(AdminAuthGuard)
+  getDashboardStats() {
+    return this.adminService.getDashboardStats();
+  }
+
+  // ─── ADMIN TEAM MANAGEMENT ──────────────────────────────────────
+  @Get('admins')
+  @UseGuards(AdminAuthGuard)
+  @RequirePermissions(AdminPermission.ADMIN_ROLE_MANAGE)
+  listAdmins() {
+    return this.adminService.listAdmins();
+  }
+
+  @Get('roles')
+  @UseGuards(AdminAuthGuard)
+  listRoles() {
+    return this.adminService.listRoles();
+  }
+
+  @Post('admins')
+  @UseGuards(AdminAuthGuard)
+  @RequirePermissions(AdminPermission.ADMIN_ROLE_MANAGE)
+  createAdmin(@Body() dto: CreateAdminDto) {
+    return this.adminService.createAdmin(dto);
+  }
+
+  @Patch('admins/:id')
+  @UseGuards(AdminAuthGuard)
+  @RequirePermissions(AdminPermission.ADMIN_ROLE_MANAGE)
+  updateAdmin(@Param('id') id: string, @Body() dto: UpdateAdminDto) {
+    return this.adminService.updateAdmin(id, dto);
+  }
+
+  @Delete('admins/:id')
+  @UseGuards(AdminAuthGuard)
+  @RequirePermissions(AdminPermission.ADMIN_ROLE_MANAGE)
+  deleteAdmin(@Param('id') id: string) {
+    return this.adminService.deleteAdmin(id);
+  }
+
+  // ─── USERS MANAGEMENT ───────────────────────────────────────────
   @Get('users')
   @UseGuards(AdminAuthGuard)
   @RequirePermissions(AdminPermission.USER_SUSPEND)
@@ -47,6 +136,7 @@ export class AdminController {
     return this.adminService.restoreUser(userId);
   }
 
+  // ─── DEVICES MANAGEMENT ─────────────────────────────────────────
   @Get('devices')
   @UseGuards(AdminAuthGuard)
   @RequirePermissions(AdminPermission.DEVICE_REVOKE)
@@ -61,6 +151,131 @@ export class AdminController {
     return this.adminService.revokeDevice(deviceId);
   }
 
+  // ─── WALLPAPERS MANAGEMENT ──────────────────────────────────────
+  @Get('wallpapers')
+  @UseGuards(AdminAuthGuard)
+  listWallpapers() {
+    return this.adminService.listWallpapers();
+  }
+
+  @Get('wallpapers/public')
+  getActiveWallpapers() {
+    return this.adminService.getActiveWallpapers();
+  }
+
+  @Post('wallpapers')
+  @UseGuards(AdminAuthGuard)
+  createWallpaper(@Body() dto: CreateWallpaperDto) {
+    return this.adminService.createWallpaper(dto);
+  }
+
+  @Patch('wallpapers/:id')
+  @UseGuards(AdminAuthGuard)
+  updateWallpaper(@Param('id') id: string, @Body() dto: UpdateWallpaperDto) {
+    return this.adminService.updateWallpaper(id, dto);
+  }
+
+  @Delete('wallpapers/:id')
+  @UseGuards(AdminAuthGuard)
+  deleteWallpaper(@Param('id') id: string) {
+    return this.adminService.deleteWallpaper(id);
+  }
+
+  // ─── STICKERS MANAGEMENT ────────────────────────────────────────
+  @Get('stickers/packs')
+  @UseGuards(AdminAuthGuard)
+  listStickerPacks() {
+    return this.adminService.listStickerPacks();
+  }
+
+  @Get('stickers/public')
+  getActiveStickerPacks() {
+    return this.adminService.getActiveStickerPacks();
+  }
+
+  @Post('stickers/packs')
+  @UseGuards(AdminAuthGuard)
+  createStickerPack(@Body() dto: CreateStickerPackDto) {
+    return this.adminService.createStickerPack(dto);
+  }
+
+  @Patch('stickers/packs/:id')
+  @UseGuards(AdminAuthGuard)
+  updateStickerPack(@Param('id') id: string, @Body() dto: UpdateStickerPackDto) {
+    return this.adminService.updateStickerPack(id, dto);
+  }
+
+  @Delete('stickers/packs/:id')
+  @UseGuards(AdminAuthGuard)
+  deleteStickerPack(@Param('id') id: string) {
+    return this.adminService.deleteStickerPack(id);
+  }
+
+  @Post('stickers/packs/:packId/stickers')
+  @UseGuards(AdminAuthGuard)
+  addStickerItem(
+    @Param('packId') packId: string,
+    @Body() dto: CreateStickerItemDto
+  ) {
+    return this.adminService.addStickerItem(packId, dto);
+  }
+
+  @Delete('stickers/:id')
+  @UseGuards(AdminAuthGuard)
+  deleteStickerItem(@Param('id') id: string) {
+    return this.adminService.deleteStickerItem(id);
+  }
+
+  // ─── MEDIA UPLOAD & SERVING ─────────────────────────────────────
+  @Post('upload')
+  @UseGuards(AdminAuthGuard)
+  async uploadMedia(
+    @Body() body: { filename: string; mimeType: string; base64Data: string }
+  ) {
+    const rawData = body.base64Data.includes(',')
+      ? body.base64Data.split(',')[1]
+      : body.base64Data;
+    const buffer = Buffer.from(rawData, 'base64');
+    const ext = body.filename?.split('.').pop() || 'png';
+    const blobId = `asset-${crypto.randomBytes(12).toString('hex')}.${ext}`;
+    const contentType = body.mimeType || 'image/png';
+
+    if (this.seaweedFs) {
+      try {
+        await this.seaweedFs.uploadBlob(blobId, buffer, contentType);
+      } catch (_) {}
+    }
+
+    // Return URL accessible via GET /admin/media/:blobId
+    return {
+      url: `/admin/media/${blobId}`,
+      blobId,
+      filename: body.filename,
+      size: buffer.length
+    };
+  }
+
+  @Get('media/:blobId')
+  async getMedia(@Param('blobId') blobId: string, @Res() res: Response) {
+    if (this.seaweedFs) {
+      const data = await this.seaweedFs.getBlob(blobId);
+      if (data) {
+        const ext = blobId.split('.').pop()?.toLowerCase();
+        let mime = 'image/png';
+        if (ext === 'jpg' || ext === 'jpeg') mime = 'image/jpeg';
+        else if (ext === 'webp') mime = 'image/webp';
+        else if (ext === 'gif') mime = 'image/gif';
+        else if (ext === 'svg') mime = 'image/svg+xml';
+
+        res.setHeader('Content-Type', mime);
+        res.setHeader('Cache-Control', 'public, max-age=86400');
+        return res.status(HttpStatus.OK).send(Buffer.from(data));
+      }
+    }
+    return res.status(HttpStatus.NOT_FOUND).json({ error: 'Media not found' });
+  }
+
+  // ─── CONVERSATIONS AUDIT & CONTROLLED ACCESS ────────────────────
   @Get('conversations')
   @UseGuards(AdminAuthGuard)
   @RequirePermissions(AdminPermission.CONVERSATION_METADATA_READ)
@@ -124,3 +339,4 @@ export class AdminController {
     return this.adminService.getAuditLogs();
   }
 }
+

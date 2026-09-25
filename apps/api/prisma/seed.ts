@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client';
+import * as bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
 
@@ -65,12 +66,17 @@ async function main() {
   }
 
   console.log('Seeding roles...');
+  let superAdminRoleId = '';
   for (const role of roles) {
     const createdRole = await prisma.adminRole.upsert({
       where: { name: role.name },
       update: { description: role.description },
       create: { name: role.name, description: role.description }
     });
+
+    if (role.name === 'Super Admin') {
+      superAdminRoleId = createdRole.id;
+    }
 
     for (const permSlug of role.permissions) {
       const perm = await prisma.adminPermission.findUnique({ where: { slug: permSlug } });
@@ -91,6 +97,61 @@ async function main() {
       }
     }
   }
+
+  console.log('Seeding initial Super Admin user...');
+  if (superAdminRoleId) {
+    const salt = await bcrypt.genSalt(10);
+    const passwordHash = await bcrypt.hash('admin12345', salt);
+
+    await prisma.adminUser.upsert({
+      where: { username: 'admin' },
+      update: { roleId: superAdminRoleId, isActive: true },
+      create: {
+        username: 'admin',
+        email: 'admin@laju.chat',
+        name: 'System Administrator',
+        passwordHash,
+        roleId: superAdminRoleId,
+        isActive: true
+      }
+    });
+  }
+
+  console.log('Seeding default wallpapers...');
+  const defaultWallpapers = [
+    { name: 'Default Minimalist', category: 'SOLID', colorHex: '#0F172A', isDefault: true, sortOrder: 1 },
+    { name: 'Warm Amber Sand', category: 'SOLID', colorHex: '#78350F', isDefault: false, sortOrder: 2 },
+    { name: 'Emerald Forest', category: 'SOLID', colorHex: '#064E3B', isDefault: false, sortOrder: 3 },
+    { name: 'Deep Midnight Slate', category: 'GRADIENT', colorHex: '#1E1B4B', isDefault: false, sortOrder: 4 }
+  ];
+  for (const wp of defaultWallpapers) {
+    const existing = await prisma.chatWallpaper.findFirst({ where: { name: wp.name } });
+    if (!existing) {
+      await prisma.chatWallpaper.create({ data: wp });
+    }
+  }
+
+  console.log('Seeding default sticker pack...');
+  const catPack = await prisma.stickerPack.upsert({
+    where: { id: 'pack-cat-vibes' },
+    update: {},
+    create: {
+      id: 'pack-cat-vibes',
+      name: 'Cat Vibes Official',
+      description: 'Stiker kucing ekspresif dan lucu untuk obrolan harian',
+      publisher: 'LAJU Creative Team',
+      coverUrl: '/assets/stickers/cat_cheer.png',
+      sortOrder: 1,
+      isActive: true,
+      stickers: {
+        create: [
+          { name: 'Cat Thumbs Up', imageUrl: '/assets/stickers/cat_thumbs_up.png', emoji: '👍' },
+          { name: 'Cat Cool', imageUrl: '/assets/stickers/cat_cool.png', emoji: '😎' },
+          { name: 'Cat Cheer', imageUrl: '/assets/stickers/cat_cheer.png', emoji: '🎉' }
+        ]
+      }
+    }
+  });
 
   console.log('Database seeded successfully.');
 }
