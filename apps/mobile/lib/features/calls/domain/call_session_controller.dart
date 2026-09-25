@@ -587,12 +587,6 @@ class CallSessionController extends ChangeNotifier {
             isInitiator: true,
             remoteUserId: callee,
           ).catchError((_) {});
-          if (!WebRTCCallService.instance.hasPeerConnection) {
-            WebRTCCallService.instance.initializePeerConnection(
-              isVideo: isVideo,
-              isAudio: true,
-            ).catchError((_) {});
-          }
         }
       }
     } catch (_) {}

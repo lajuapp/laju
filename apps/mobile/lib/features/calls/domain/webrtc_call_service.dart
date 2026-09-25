@@ -26,6 +26,9 @@ class WebRTCCallService {
   MediaStream? _remoteStream;
   RTCVideoRenderer? _localRenderer;
   RTCVideoRenderer? _remoteRenderer;
+  bool _isInitializing = false;
+  String? _lastProcessedOfferSdp;
+  String? _lastProcessedAnswerSdp;
 
   // ICE Candidate Queue (avoids dropping candidates arriving before remote description)
   final List<RTCIceCandidate> _pendingIceCandidates = [];
@@ -45,10 +48,16 @@ class WebRTCCallService {
   MediaStream? get remoteStream => _remoteStream;
 
   bool get isLocalVideoReady =>
-      _localRenderer != null && _localRenderer!.srcObject != null;
+      _localRenderer != null &&
+      _localRenderer!.srcObject != null &&
+      _localStream != null &&
+      _localStream!.getVideoTracks().isNotEmpty;
 
   bool get isRemoteVideoReady =>
-      _remoteRenderer != null && _remoteRenderer!.srcObject != null;
+      _remoteRenderer != null &&
+      _remoteRenderer!.srcObject != null &&
+      _remoteStream != null &&
+      _remoteStream!.getVideoTracks().isNotEmpty;
 
   static const Map<String, dynamic> _iceServers = {
     'iceServers': [
@@ -142,7 +151,7 @@ class WebRTCCallService {
         case 'PEER_JOINED':
         case 'CALL_ACCEPTED':
           if (_isInitiator) {
-            ensureOfferCreatedAndSent();
+            ensureOfferCreatedAndSent(forceResend: true);
           }
           break;
 
@@ -279,140 +288,166 @@ class WebRTCCallService {
     required bool isVideo,
     required bool isAudio,
   }) async {
-    _hasRemoteDescription = false;
-    _pendingIceCandidates.clear();
-    _processedSignalKeys.clear();
-    _offerSent = false;
+    if (_isInitializing) {
+      debugPrint('[WebRTC] PeerConnection is already initializing, skipping duplicate call');
+      return;
+    }
+    if (_peerConnection != null) {
+      debugPrint('[WebRTC] PeerConnection already exists, skipping re-initialization');
+      return;
+    }
+    _isInitializing = true;
 
-    // Initialize renderers
-    _localRenderer = RTCVideoRenderer();
-    _remoteRenderer = RTCVideoRenderer();
-    await _localRenderer!.initialize();
-    await _remoteRenderer!.initialize();
+    try {
+      _hasRemoteDescription = false;
+      _pendingIceCandidates.clear();
+      _processedSignalKeys.clear();
+      _offerSent = false;
+      _lastProcessedOfferSdp = null;
+      _lastProcessedAnswerSdp = null;
 
-    // Get local media stream with flexible constraints & automatic fallback
-    if (isVideo || isAudio) {
-      try {
-        final Map<String, dynamic> mediaConstraints = {
-          'audio': isAudio ? {
-            'echoCancellation': true,
-            'noiseSuppression': true,
-            'autoGainControl': true,
-          } : false,
-          'video': isVideo ? {
-            'facingMode': 'user',
-            'mandatory': {
-              'minWidth': '640',
-              'minHeight': '480',
-              'minFrameRate': '30',
-            },
-            'optional': [],
-          } : false,
-        };
+      // Initialize renderers
+      _localRenderer = RTCVideoRenderer();
+      _remoteRenderer = RTCVideoRenderer();
+      await _localRenderer!.initialize();
+      await _remoteRenderer!.initialize();
 
-        _localStream = await navigator.mediaDevices.getUserMedia(mediaConstraints);
-      } catch (e) {
-        debugPrint('[WebRTC] High-res getUserMedia failed: $e, trying simple constraints...');
+      // Get local media stream with flexible constraints & automatic fallback
+      if (isVideo || isAudio) {
         try {
-          _localStream = await navigator.mediaDevices.getUserMedia({
-            'audio': isAudio,
-            'video': isVideo ? {'facingMode': 'user'} : false,
-          });
-        } catch (e2) {
-          debugPrint('[WebRTC] Basic getUserMedia also failed: $e2');
-          _localStream = null;
+          final Map<String, dynamic> mediaConstraints = {
+            'audio': isAudio ? {
+              'echoCancellation': true,
+              'noiseSuppression': true,
+              'autoGainControl': true,
+            } : false,
+            'video': isVideo ? {
+              'facingMode': 'user',
+              'mandatory': {
+                'minWidth': '640',
+                'minHeight': '480',
+                'minFrameRate': '30',
+              },
+              'optional': [],
+            } : false,
+          };
+
+          _localStream = await navigator.mediaDevices.getUserMedia(mediaConstraints);
+        } catch (e) {
+          debugPrint('[WebRTC] High-res getUserMedia failed: $e, trying simple constraints...');
+          try {
+            _localStream = await navigator.mediaDevices.getUserMedia({
+              'audio': isAudio,
+              'video': isVideo ? {'facingMode': 'user'} : false,
+            });
+          } catch (e2) {
+            debugPrint('[WebRTC] Basic getUserMedia also failed: $e2');
+            _localStream = null;
+          }
+        }
+
+        if (_localStream != null) {
+          _localRenderer!.srcObject = _localStream;
+          debugPrint('[WebRTC] Local stream acquired: ${_localStream!.id}');
+          onRendererReady?.call(_localRenderer!, _remoteRenderer!);
         }
       }
 
+      // Create RTCPeerConnection
+      _peerConnection = await createPeerConnection(_iceServers);
+
+      // Add local stream tracks to peer connection
       if (_localStream != null) {
-        _localRenderer!.srcObject = _localStream;
-        debugPrint('[WebRTC] Local stream acquired: ${_localStream!.id}');
+        for (final track in _localStream!.getTracks()) {
+          await _peerConnection!.addTrack(track, _localStream!);
+        }
+      }
+
+      // Handle remote track (supports both stream-based and track-based modes)
+      _peerConnection!.onTrack = (RTCTrackEvent event) async {
+        debugPrint('[WebRTC] Remote track received: ${event.track.kind}, id: ${event.track.id}');
+        if (event.streams.isNotEmpty) {
+          _remoteStream = event.streams.first;
+          if (!_remoteStream!.getTracks().any((t) => t.id == event.track.id)) {
+            _remoteStream!.addTrack(event.track);
+          }
+        } else {
+          _remoteStream ??= await createLocalMediaStream('remote_stream');
+          _remoteStream!.addTrack(event.track);
+        }
+        if (_remoteRenderer!.srcObject != _remoteStream) {
+          _remoteRenderer!.srcObject = _remoteStream;
+        }
+        onCallConnected?.call();
         onRendererReady?.call(_localRenderer!, _remoteRenderer!);
-      }
-    }
+      };
 
-    // Create RTCPeerConnection
-    _peerConnection = await createPeerConnection(_iceServers);
+      _peerConnection!.onAddStream = (MediaStream stream) {
+        debugPrint('[WebRTC] Remote stream added: ${stream.id}');
+        _remoteStream = stream;
+        _remoteRenderer!.srcObject = _remoteStream;
+        onCallConnected?.call();
+        onRendererReady?.call(_localRenderer!, _remoteRenderer!);
+      };
 
-    // Add local stream tracks to peer connection
-    if (_localStream != null) {
-      for (final track in _localStream!.getTracks()) {
-        await _peerConnection!.addTrack(track, _localStream!);
-      }
-    }
+      // ICE candidate handling
+      _peerConnection!.onIceCandidate = (RTCIceCandidate candidate) {
+        if (candidate.candidate != null) {
+          debugPrint('[WebRTC] Local ICE candidate generated');
+          _sendSignal('ice_candidate', {
+            'callId': _currentCallId,
+            'targetUserId': _remoteUserId,
+            'candidate': {
+              'candidate': candidate.candidate,
+              'sdpMid': candidate.sdpMid,
+              'sdpMLineIndex': candidate.sdpMLineIndex,
+            },
+          });
+        }
+      };
 
-    // Handle remote track (supports both stream-based and track-based modes)
-    _peerConnection!.onTrack = (RTCTrackEvent event) async {
-      debugPrint('[WebRTC] Remote track received: ${event.track.kind}');
-      if (event.streams.isNotEmpty) {
-        _remoteStream = event.streams.first;
-      } else {
-        _remoteStream ??= await createLocalMediaStream('remote_stream');
-        _remoteStream!.addTrack(event.track);
-      }
-      _remoteRenderer!.srcObject = _remoteStream;
-      onCallConnected?.call();
+      // Connection state changes
+      _peerConnection!.onConnectionState = (RTCPeerConnectionState state) {
+        debugPrint('[WebRTC] Connection state: $state');
+        if (state == RTCPeerConnectionState.RTCPeerConnectionStateConnected) {
+          onCallConnected?.call();
+          onRendererReady?.call(_localRenderer!, _remoteRenderer!);
+        } else if (state == RTCPeerConnectionState.RTCPeerConnectionStateFailed ||
+            state == RTCPeerConnectionState.RTCPeerConnectionStateDisconnected) {
+          _restartIce();
+        }
+      };
+
+      _peerConnection!.onIceConnectionState = (RTCIceConnectionState state) {
+        debugPrint('[WebRTC] ICE connection state: $state');
+      };
+
+      // Notify initial renderer readiness
       onRendererReady?.call(_localRenderer!, _remoteRenderer!);
-    };
 
-    _peerConnection!.onAddStream = (MediaStream stream) {
-      debugPrint('[WebRTC] Remote stream added: ${stream.id}');
-      _remoteStream = stream;
-      _remoteRenderer!.srcObject = _remoteStream;
-      onCallConnected?.call();
-      onRendererReady?.call(_localRenderer!, _remoteRenderer!);
-    };
-
-    // ICE candidate handling
-    _peerConnection!.onIceCandidate = (RTCIceCandidate candidate) {
-      if (candidate.candidate != null) {
-        debugPrint('[WebRTC] Local ICE candidate generated');
-        _sendSignal('ice_candidate', {
-          'callId': _currentCallId,
-          'targetUserId': _remoteUserId,
-          'candidate': {
-            'candidate': candidate.candidate,
-            'sdpMid': candidate.sdpMid,
-            'sdpMLineIndex': candidate.sdpMLineIndex,
-          },
+      // If initiator and peerConnection is ready, trigger offer
+      if (_isInitiator) {
+        Future.delayed(const Duration(milliseconds: 300), () {
+          ensureOfferCreatedAndSent();
         });
       }
-    };
 
-    // Connection state changes
-    _peerConnection!.onConnectionState = (RTCPeerConnectionState state) {
-      debugPrint('[WebRTC] Connection state: $state');
-      if (state == RTCPeerConnectionState.RTCPeerConnectionStateConnected) {
-        onCallConnected?.call();
-      } else if (state == RTCPeerConnectionState.RTCPeerConnectionStateFailed ||
-          state == RTCPeerConnectionState.RTCPeerConnectionStateDisconnected) {
-        _restartIce();
-      }
-    };
-
-    _peerConnection!.onIceConnectionState = (RTCIceConnectionState state) {
-      debugPrint('[WebRTC] ICE connection state: $state');
-    };
-
-    // Notify initial renderer readiness
-    onRendererReady?.call(_localRenderer!, _remoteRenderer!);
-
-    // If initiator and peerConnection is ready, trigger offer
-    if (_isInitiator) {
-      Future.delayed(const Duration(milliseconds: 300), () {
-        ensureOfferCreatedAndSent();
-      });
+      debugPrint('[WebRTC] PeerConnection initialized');
+    } finally {
+      _isInitializing = false;
     }
-
-    debugPrint('[WebRTC] PeerConnection initialized');
   }
 
-  Future<void> ensureOfferCreatedAndSent() async {
+  Future<void> ensureOfferCreatedAndSent({bool forceResend = false}) async {
     if (_peerConnection == null) {
       debugPrint('[WebRTC] ensureOffer: peerConnection is null, delaying...');
       return;
     }
-    if (_offerSent) {
+    if (_hasRemoteDescription && _peerConnection?.remoteDescription != null) {
+      debugPrint('[WebRTC] ensureOffer: already connected with remote description, skipping');
+      return;
+    }
+    if (_offerSent && !forceResend) {
       debugPrint('[WebRTC] ensureOffer: Offer already sent, skipping duplicate');
       return;
     }
@@ -423,8 +458,14 @@ class WebRTCCallService {
   Future<void> _createAndSendOffer() async {
     if (_peerConnection == null) return;
     try {
-      final offer = await _peerConnection!.createOffer(_offerConstraints);
-      await _peerConnection!.setLocalDescription(offer);
+      RTCSessionDescription offer;
+      if (_peerConnection!.localDescription != null &&
+          _peerConnection!.signalingState == RTCSignalingState.RTCSignalingStateHaveLocalOffer) {
+        offer = _peerConnection!.localDescription!;
+      } else {
+        offer = await _peerConnection!.createOffer(_offerConstraints);
+        await _peerConnection!.setLocalDescription(offer);
+      }
       debugPrint('[WebRTC] Sending SDP offer for call $_currentCallId');
       _sendSignal('webrtc_offer', {
         'callId': _currentCallId,
@@ -439,6 +480,17 @@ class WebRTCCallService {
 
   Future<void> _handleRemoteOffer(RTCSessionDescription offer) async {
     if (_peerConnection == null) return;
+    if (_lastProcessedOfferSdp == offer.sdp) {
+      debugPrint('[WebRTC] Offer SDP already processed, skipping duplicate');
+      return;
+    }
+    final state = _peerConnection!.signalingState;
+    if (state != RTCSignalingState.RTCSignalingStateStable &&
+        state != RTCSignalingState.RTCSignalingStateHaveLocalOffer) {
+      debugPrint('[WebRTC] Ignoring remote offer in signaling state: $state');
+      return;
+    }
+    _lastProcessedOfferSdp = offer.sdp;
     try {
       await _peerConnection!.setRemoteDescription(offer);
       _hasRemoteDescription = true;
@@ -459,6 +511,16 @@ class WebRTCCallService {
 
   Future<void> _handleRemoteAnswer(RTCSessionDescription answer) async {
     if (_peerConnection == null) return;
+    if (_lastProcessedAnswerSdp == answer.sdp) {
+      debugPrint('[WebRTC] Answer SDP already processed, skipping duplicate');
+      return;
+    }
+    final state = _peerConnection!.signalingState;
+    if (state != RTCSignalingState.RTCSignalingStateHaveLocalOffer) {
+      debugPrint('[WebRTC] Ignoring remote answer in signaling state: $state');
+      return;
+    }
+    _lastProcessedAnswerSdp = answer.sdp;
     try {
       await _peerConnection!.setRemoteDescription(answer);
       _hasRemoteDescription = true;
@@ -554,6 +616,9 @@ class WebRTCCallService {
     _pendingIceCandidates.clear();
     _processedSignalKeys.clear();
     _offerSent = false;
+    _isInitializing = false;
+    _lastProcessedOfferSdp = null;
+    _lastProcessedAnswerSdp = null;
 
     try {
       await _ws?.close();

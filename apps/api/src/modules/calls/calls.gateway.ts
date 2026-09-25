@@ -164,12 +164,7 @@ export class CallSignalingGateway implements OnGatewayConnection, OnGatewayDisco
       fromDeviceId: client.deviceId
     });
 
-    // Always broadcast to the call room so any peer in the call gets the signal reliably
-    this._broadcastToCallRoom(data.callId, payload, socketId);
-
-    if (data.targetUserId) {
-      this._sendToUser(data.targetUserId, payload);
-    }
+    this._dispatchSignal(data.callId, payload, socketId, data.targetUserId);
   }
 
   @SubscribeMessage('webrtc_answer')
@@ -188,12 +183,7 @@ export class CallSignalingGateway implements OnGatewayConnection, OnGatewayDisco
       fromDeviceId: client.deviceId
     });
 
-    // Always broadcast to the call room so any peer in the call gets the signal reliably
-    this._broadcastToCallRoom(data.callId, payload, socketId);
-
-    if (data.targetUserId) {
-      this._sendToUser(data.targetUserId, payload);
-    }
+    this._dispatchSignal(data.callId, payload, socketId, data.targetUserId);
   }
 
   @SubscribeMessage('ice_candidate')
@@ -210,12 +200,7 @@ export class CallSignalingGateway implements OnGatewayConnection, OnGatewayDisco
       fromDeviceId: client.deviceId
     });
 
-    // Always broadcast to the call room so any peer in the call gets the signal reliably
-    this._broadcastToCallRoom(data.callId, payload, socketId);
-
-    if (data.targetUserId) {
-      this._sendToUser(data.targetUserId, payload);
-    }
+    this._dispatchSignal(data.callId, payload, socketId, data.targetUserId);
   }
 
   @SubscribeMessage('call_event')
@@ -257,6 +242,37 @@ export class CallSignalingGateway implements OnGatewayConnection, OnGatewayDisco
     if (!room) return;
     for (const sid of room) {
       if (sid === excludeSocketId) continue;
+      const c = this.clients.get(sid);
+      if (c && c.ws.readyState === WebSocket.OPEN) {
+        try { c.ws.send(message); } catch (_) {}
+      }
+    }
+  }
+
+  private _dispatchSignal(callId: string, message: string, excludeSocketId?: string, targetUserId?: string) {
+    const targetSocketIds = new Set<string>();
+
+    const room = this.callRooms.get(callId);
+    if (room) {
+      for (const sid of room) {
+        if (sid !== excludeSocketId) {
+          targetSocketIds.add(sid);
+        }
+      }
+    }
+
+    if (targetUserId) {
+      const userSids = this.userSockets.get(targetUserId);
+      if (userSids) {
+        for (const sid of userSids) {
+          if (sid !== excludeSocketId) {
+            targetSocketIds.add(sid);
+          }
+        }
+      }
+    }
+
+    for (const sid of targetSocketIds) {
       const c = this.clients.get(sid);
       if (c && c.ws.readyState === WebSocket.OPEN) {
         try { c.ws.send(message); } catch (_) {}
