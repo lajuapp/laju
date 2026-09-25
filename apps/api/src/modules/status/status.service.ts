@@ -36,7 +36,7 @@ export class StatusService {
 
   async getMyStatuses(userId: string) {
     const now = new Date();
-    return this.prisma.userStatusStory.findMany({
+    const stories = await this.prisma.userStatusStory.findMany({
       where: {
         userId,
         expiresAt: { gt: now }
@@ -44,17 +44,41 @@ export class StatusService {
       orderBy: { createdAt: 'asc' },
       include: {
         views: {
+          orderBy: { viewedAt: 'desc' },
           include: {
             viewer: {
               select: {
                 id: true,
-                username: true
+                username: true,
+                phoneNumber: true
               }
             }
           }
         }
       }
     });
+
+    // Enrich views with avatars
+    return Promise.all(
+      stories.map(async (story) => {
+        const enrichedViews = await Promise.all(
+          story.views.map(async (v) => {
+            const avatarUrl = await this.redis.get(`user:${v.viewerId}:avatar`);
+            return {
+              ...v,
+              viewer: {
+                ...v.viewer,
+                avatarUrl
+              }
+            };
+          })
+        );
+        return {
+          ...story,
+          views: enrichedViews
+        };
+      })
+    );
   }
 
   async getContactsStatuses(userId: string) {
@@ -158,6 +182,76 @@ export class StatusService {
     });
   }
 
+  async getStatusViewers(userId: string, storyId: string) {
+    const story = await this.prisma.userStatusStory.findUnique({
+      where: { id: storyId }
+    });
+    if (!story) {
+      throw new NotFoundException('Story not found');
+    }
+    if (story.userId !== userId) {
+      throw new ForbiddenException('Cannot view viewers of another user story');
+    }
+
+    const views = await this.prisma.statusStoryView.findMany({
+      where: { storyId },
+      orderBy: { viewedAt: 'desc' },
+      include: {
+        viewer: {
+          select: {
+            id: true,
+            username: true,
+            phoneNumber: true
+          }
+        }
+      }
+    });
+
+    return Promise.all(
+      views.map(async (v) => {
+        const avatarUrl = await this.redis.get(`user:${v.viewerId}:avatar`);
+        return {
+          id: v.id,
+          storyId: v.storyId,
+          viewerId: v.viewerId,
+          reaction: v.reaction,
+          viewedAt: v.viewedAt,
+          viewer: {
+            ...v.viewer,
+            avatarUrl
+          }
+        };
+      })
+    );
+  }
+
+  async reactToStatus(userId: string, storyId: string, emoji: string) {
+    const story = await this.prisma.userStatusStory.findUnique({
+      where: { id: storyId }
+    });
+    if (!story) {
+      throw new NotFoundException('Story not found');
+    }
+
+    return this.prisma.statusStoryView.upsert({
+      where: {
+        storyId_viewerId: {
+          storyId,
+          viewerId: userId
+        }
+      },
+      update: {
+        reaction: emoji,
+        viewedAt: new Date()
+      },
+      create: {
+        storyId,
+        viewerId: userId,
+        reaction: emoji
+      }
+    });
+  }
+
   async deleteStatus(userId: string, storyId: string) {
     const story = await this.prisma.userStatusStory.findUnique({
       where: { id: storyId }
@@ -176,3 +270,4 @@ export class StatusService {
     return { success: true };
   }
 }
+

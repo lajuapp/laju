@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
@@ -579,5 +580,253 @@ class LocalDatabase {
     try {
       await _database.delete('call_logs');
     } catch (_) {}
+  }
+
+  // ── Storage & Network Stats Helpers ────────────────────────────────────────
+
+  /// Returns total SQLite database file size on disk (main db + WAL + SHM)
+  Future<int> getDatabaseSizeBytes() async {
+    try {
+      final dbPath = await getDatabasesPath();
+      final path = p.join(dbPath, _dbName);
+      int total = 0;
+      final mainDb = File(path);
+      if (await mainDb.exists()) {
+        total += await mainDb.length();
+      }
+      final walDb = File('$path-wal');
+      if (await walDb.exists()) {
+        total += await walDb.length();
+      }
+      final shmDb = File('$path-shm');
+      if (await shmDb.exists()) {
+        total += await shmDb.length();
+      }
+      return total;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  /// Calculates actual photos, videos, audio, and documents bytes for a conversation
+  Future<Map<String, int>> getChatMediaStats(String conversationId) async {
+    int photos = 0;
+    int videos = 0;
+    int audio = 0;
+    int docs = 0;
+
+    try {
+      final rows = await _database.query(
+        'messages',
+        columns: ['content', 'content_type', 'attachment_path', 'attachment_name', 'attachment_size'],
+        where: 'conversation_id = ?',
+        whereArgs: [conversationId],
+      );
+
+      for (final row in rows) {
+        final cType = (row['content_type'] as String? ?? 'text').toLowerCase();
+        final attPath = row['attachment_path'] as String?;
+        final content = row['content'] as String? ?? '';
+        final attName = (row['attachment_name'] as String? ?? '').toLowerCase();
+
+        int itemSize = 0;
+        if (attPath != null && attPath.isNotEmpty) {
+          if (attPath.startsWith('data:')) {
+            itemSize = (attPath.length * 3) ~/ 4;
+          } else {
+            final f = File(attPath);
+            if (f.existsSync()) {
+              itemSize = f.lengthSync();
+            } else {
+              itemSize = _parseSizeString(row['attachment_size'] as String?);
+            }
+          }
+        } else if (content.startsWith('{') && content.contains('"media"')) {
+          itemSize = content.length;
+        }
+
+        if (itemSize <= 0) {
+          itemSize = content.length;
+        }
+
+        if (cType == 'voicenote' ||
+            attName.endsWith('.m4a') ||
+            attName.endsWith('.mp3') ||
+            attName.endsWith('.wav') ||
+            attName.endsWith('.ogg') ||
+            (attPath != null && attPath.startsWith('data:audio'))) {
+          audio += itemSize;
+        } else if (attName.endsWith('.mp4') ||
+            attName.endsWith('.mov') ||
+            attName.endsWith('.mkv') ||
+            attName.endsWith('.avi') ||
+            (attPath != null && attPath.startsWith('data:video'))) {
+          videos += itemSize;
+        } else if (attName.endsWith('.jpg') ||
+            attName.endsWith('.jpeg') ||
+            attName.endsWith('.png') ||
+            attName.endsWith('.webp') ||
+            attName.endsWith('.gif') ||
+            (attPath != null && attPath.startsWith('data:image'))) {
+          photos += itemSize;
+        } else if (cType == 'attachment' || cType == 'document' || attName.isNotEmpty) {
+          docs += itemSize;
+        }
+      }
+    } catch (e) {
+      debugPrint('[LocalDatabase] getChatMediaStats error: $e');
+    }
+
+    return {
+      'photos': photos,
+      'videos': videos,
+      'audio': audio,
+      'docs': docs,
+    };
+  }
+
+  /// Clears specified media types for a conversation from disk & database
+  Future<void> clearChatMediaFromDb(
+    String conversationId, {
+    bool photos = false,
+    bool videos = false,
+    bool audio = false,
+    bool docs = false,
+  }) async {
+    try {
+      final rows = await _database.query(
+        'messages',
+        where: 'conversation_id = ?',
+        whereArgs: [conversationId],
+      );
+
+      for (final row in rows) {
+        final id = row['id'] as String;
+        final cType = (row['content_type'] as String? ?? 'text').toLowerCase();
+        final attPath = row['attachment_path'] as String?;
+        final attName = (row['attachment_name'] as String? ?? '').toLowerCase();
+
+        bool match = false;
+        if (audio &&
+            (cType == 'voicenote' ||
+                attName.endsWith('.m4a') ||
+                attName.endsWith('.mp3') ||
+                attName.endsWith('.wav') ||
+                attName.endsWith('.ogg') ||
+                (attPath != null && attPath.startsWith('data:audio')))) {
+          match = true;
+        } else if (videos &&
+            (attName.endsWith('.mp4') ||
+                attName.endsWith('.mov') ||
+                attName.endsWith('.mkv') ||
+                attName.endsWith('.avi') ||
+                (attPath != null && attPath.startsWith('data:video')))) {
+          match = true;
+        } else if (photos &&
+            (attName.endsWith('.jpg') ||
+                attName.endsWith('.jpeg') ||
+                attName.endsWith('.png') ||
+                attName.endsWith('.webp') ||
+                attName.endsWith('.gif') ||
+                (attPath != null && attPath.startsWith('data:image')))) {
+          match = true;
+        } else if (docs && (cType == 'attachment' || cType == 'document' || attName.isNotEmpty)) {
+          match = true;
+        }
+
+        if (match) {
+          // Delete physical file if present on disk
+          if (attPath != null && attPath.isNotEmpty && !attPath.startsWith('data:')) {
+            try {
+              final f = File(attPath);
+              if (await f.exists()) {
+                await f.delete();
+              }
+            } catch (_) {}
+          }
+
+          // Strip media data from SQLite message record
+          await _database.update(
+            'messages',
+            {
+              'attachment_path': null,
+              'attachment_name': null,
+              'attachment_size': null,
+              'content': '',
+            },
+            where: 'id = ?',
+            whereArgs: [id],
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('[LocalDatabase] clearChatMediaFromDb error: $e');
+    }
+  }
+
+  /// Calculates initial network usage seed from existing local database records
+  Future<Map<String, int>> getInitialNetworkStatsSeed() async {
+    int msgSent = 0;
+    int msgRecv = 0;
+    int msgBytesSent = 0;
+    int msgBytesRecv = 0;
+    int callsCount = 0;
+    int callDurationSec = 0;
+
+    try {
+      final sentRow = await _database.rawQuery(
+        'SELECT COUNT(*) as cnt, SUM(LENGTH(content) + COALESCE(LENGTH(attachment_path), 0)) as totalBytes FROM messages WHERE is_outgoing = 1',
+      );
+      if (sentRow.isNotEmpty) {
+        msgSent = (sentRow.first['cnt'] as int?) ?? 0;
+        msgBytesSent = (sentRow.first['totalBytes'] as int?) ?? 0;
+      }
+
+      final recvRow = await _database.rawQuery(
+        'SELECT COUNT(*) as cnt, SUM(LENGTH(content) + COALESCE(LENGTH(attachment_path), 0)) as totalBytes FROM messages WHERE is_outgoing = 0',
+      );
+      if (recvRow.isNotEmpty) {
+        msgRecv = (recvRow.first['cnt'] as int?) ?? 0;
+        msgBytesRecv = (recvRow.first['totalBytes'] as int?) ?? 0;
+      }
+
+      final callRow = await _database.rawQuery(
+        'SELECT COUNT(*) as cnt, SUM(duration_seconds) as totalDur FROM call_logs',
+      );
+      if (callRow.isNotEmpty) {
+        callsCount = (callRow.first['cnt'] as int?) ?? 0;
+        callDurationSec = (callRow.first['totalDur'] as int?) ?? 0;
+      }
+    } catch (_) {}
+
+    return {
+      'msgSent': msgSent,
+      'msgRecv': msgRecv,
+      'msgBytesSent': msgBytesSent,
+      'msgBytesRecv': msgBytesRecv,
+      'callsCount': callsCount,
+      'callDurationSec': callDurationSec,
+    };
+  }
+
+  static int _parseSizeString(String? sizeStr) {
+    if (sizeStr == null || sizeStr.trim().isEmpty) return 0;
+    final clean = sizeStr.trim().toUpperCase();
+    try {
+      if (clean.endsWith('MB')) {
+        final val = double.tryParse(clean.replaceAll('MB', '').trim()) ?? 0;
+        return (val * 1024 * 1024).round();
+      } else if (clean.endsWith('KB')) {
+        final val = double.tryParse(clean.replaceAll('KB', '').trim()) ?? 0;
+        return (val * 1024).round();
+      } else if (clean.endsWith('B')) {
+        final val = double.tryParse(clean.replaceAll('B', '').trim()) ?? 0;
+        return val.round();
+      } else {
+        return int.tryParse(clean) ?? 0;
+      }
+    } catch (_) {
+      return 0;
+    }
   }
 }

@@ -5,8 +5,21 @@ import 'manage_storage_screen.dart';
 import 'network_usage_screen.dart';
 import 'proxy_settings_screen.dart';
 
-class DataStorageScreen extends StatelessWidget {
+class DataStorageScreen extends StatefulWidget {
   const DataStorageScreen({super.key});
+
+  @override
+  State<DataStorageScreen> createState() => _DataStorageScreenState();
+}
+
+class _DataStorageScreenState extends State<DataStorageScreen> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      DataStorageController.instance.calculateActualStorage();
+    });
+  }
 
   String _formatAutoDownloadSummary(BuildContext context, Set<String> types) {
     if (types.isEmpty) {
@@ -227,9 +240,13 @@ class DataStorageScreen extends StatelessWidget {
           ),
           body: LajuGlassBackground(
             showOrbs: true,
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(14, 12, 14, 40),
-              children: [
+            child: RefreshIndicator(
+              onRefresh: () => controller.calculateActualStorage(),
+              color: AppColors.primary,
+              child: ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.fromLTRB(14, 12, 14, 40),
+                children: [
                 // Storage & Network section
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
@@ -577,6 +594,7 @@ class DataStorageScreen extends StatelessWidget {
               ],
             ),
           ),
+        ),
         );
       },
     );

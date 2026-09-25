@@ -382,7 +382,7 @@ class _ChatInputBarState extends State<ChatInputBar> with SingleTickerProviderSt
                               Row(
                                 children: [
                                   if (widget.replyingTo!.contentType == MessageContentType.sticker) ...[
-                                    Icon(Icons.sticky_note_2_rounded, size: 13, color: hintCol),
+                                    Icon(Icons.emoji_emotions_rounded, size: 13, color: hintCol),
                                     const SizedBox(width: 3),
                                   ] else if (widget.replyingTo!.contentType == MessageContentType.voiceNote) ...[
                                     Icon(Icons.mic_rounded, size: 13, color: hintCol),
@@ -555,7 +555,7 @@ class _ChatInputBarState extends State<ChatInputBar> with SingleTickerProviderSt
                         ),
                         if (widget.onStickerTap != null) ...[
                           IconButton(
-                            icon: const Icon(Icons.sticky_note_2_rounded, color: AppColors.primary, size: 24),
+                            icon: const Icon(Icons.emoji_emotions_outlined, color: AppColors.primary, size: 26),
                             splashRadius: 22,
                             onPressed: () {
                               _focusNode.unfocus();

@@ -84,9 +84,9 @@ class _LajuImageViewerState extends State<LajuImageViewer> with SingleTickerProv
 
   Widget _buildImage() {
     final path = widget.imagePath;
-    if (path.startsWith('data:image')) {
+    if (path.startsWith('data:')) {
       try {
-        final b64 = path.split(',').last;
+        final b64 = path.contains(',') ? path.split(',').last : path;
         final bytes = base64Decode(b64);
         return Image.memory(
           bytes,

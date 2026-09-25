@@ -14,6 +14,14 @@ class _ManageStorageScreenState extends State<ManageStorageScreen> {
   String _searchQuery = '';
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      DataStorageController.instance.calculateActualStorage();
+    });
+  }
+
+  @override
   void dispose() {
     _searchController.dispose();
     super.dispose();
@@ -60,10 +68,12 @@ class _ManageStorageScreenState extends State<ManageStorageScreen> {
               foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
             ),
-            onPressed: () {
+            onPressed: () async {
               Navigator.pop(ctx);
-              controller.clearCache();
-              LajuToast.success(context, context.tr('cacheCleared'));
+              await controller.clearCache();
+              if (mounted) {
+                LajuToast.success(context, context.tr('cacheCleared'));
+              }
             },
             child: Text(context.tr('clear')),
           ),
@@ -90,7 +100,7 @@ class _ManageStorageScreenState extends State<ManageStorageScreen> {
       ),
       builder: (bContext) {
         return StatefulBuilder(
-          builder: (context, setModalState) {
+          builder: (mCtx, setModalState) {
             final totalSelected = (deletePhotos ? item.photosBytes : 0) +
                 (deleteVideos ? item.videosBytes : 0) +
                 (deleteAudio ? item.audioBytes : 0) +
@@ -207,19 +217,19 @@ class _ManageStorageScreenState extends State<ManageStorageScreen> {
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                         ),
                         onPressed: totalSelected > 0
-                            ? () {
+                            ? () async {
+                                final msg = '${context.tr('mediaDeleted')} (${DataStorageController.formatBytes(totalSelected)})';
                                 Navigator.pop(bContext);
-                                controller.clearChatMedia(
+                                await controller.clearChatMedia(
                                   item.id,
                                   photos: deletePhotos,
                                   videos: deleteVideos,
                                   audio: deleteAudio,
                                   docs: deleteDocs,
                                 );
-                                LajuToast.success(
-                                  context,
-                                  '${context.tr('mediaDeleted')} (${DataStorageController.formatBytes(totalSelected)})',
-                                );
+                                if (mounted) {
+                                  LajuToast.success(context, msg);
+                                }
                               }
                             : null,
                         child: Text(
@@ -324,9 +334,13 @@ class _ManageStorageScreenState extends State<ManageStorageScreen> {
           body: LajuGlassBackground(
             showOrbs: true,
             child: SafeArea(
-              child: ListView(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                children: [
+              child: RefreshIndicator(
+                onRefresh: () => controller.calculateActualStorage(),
+                color: AppColors.primary,
+                child: ListView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                  children: [
                   // Top Bar Card
                   LajuGlassCard(
                     padding: const EdgeInsets.all(16),
@@ -648,6 +662,7 @@ class _ManageStorageScreenState extends State<ManageStorageScreen> {
                 ],
               ),
             ),
+          ),
           ),
         );
       },

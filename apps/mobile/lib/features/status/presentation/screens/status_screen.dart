@@ -10,6 +10,7 @@ import 'status_view_screen.dart';
 import 'status_privacy_contact_picker_screen.dart';
 import 'text_status_composer_screen.dart';
 import 'camera_status_screen.dart';
+import '../../../conversations/domain/conversation_service.dart';
 
 
 class StatusContactGroup {
@@ -184,6 +185,7 @@ class StatusScreenState extends State<StatusScreen> with AutomaticKeepAliveClien
           caption: result.text,
           backgroundColor: result.backgroundColor,
         );
+        if (!mounted) return;
         setState(() {
           _myStories.insert(0, posted ?? result);
         });
@@ -209,6 +211,7 @@ class StatusScreenState extends State<StatusScreen> with AutomaticKeepAliveClien
           caption: result.text,
           backgroundColor: result.backgroundColor,
         );
+        if (!mounted) return;
         setState(() {
           _myStories.insert(0, posted ?? result);
         });
@@ -219,12 +222,6 @@ class StatusScreenState extends State<StatusScreen> with AutomaticKeepAliveClien
   }
 
   Future<void> _openStorageStatus() async {
-    final granted = await AppPermissionService.requestPermission(
-      context,
-      type: AppPermissionType.storage,
-    );
-    if (!granted || !mounted) return;
-
     final path = await DeviceMediaService.openGallery();
     if (path != null && mounted && File(path).existsSync()) {
       final result = await Navigator.push<StatusStoryItem>(
@@ -240,6 +237,7 @@ class StatusScreenState extends State<StatusScreen> with AutomaticKeepAliveClien
           caption: result.text,
           backgroundColor: result.backgroundColor,
         );
+        if (!mounted) return;
         setState(() {
           _myStories.insert(0, posted ?? result);
         });
@@ -457,6 +455,28 @@ class StatusScreenState extends State<StatusScreen> with AutomaticKeepAliveClien
               },
             ),
             ListTile(
+              leading: const Icon(Icons.people_alt_outlined, color: Color(0xFF00A884)),
+              title: Text('Siapa yang Melihat Status', style: TextStyle(color: isDark ? Colors.white : const Color(0xFF111827))),
+              subtitle: Text(
+                '${_myStories.fold<int>(0, (sum, s) => sum + s.viewers.length)} total pemirsa',
+                style: TextStyle(color: isDark ? Colors.white54 : Colors.black54, fontSize: 12),
+              ),
+              onTap: () {
+                Navigator.pop(ctx);
+                _showAllMyStatusViewersSheet();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.forward_rounded, color: Colors.blueAccent),
+              title: Text('Teruskan Status ke Obrolan', style: TextStyle(color: isDark ? Colors.white : const Color(0xFF111827))),
+              onTap: () {
+                Navigator.pop(ctx);
+                if (_myStories.isNotEmpty) {
+                  _forwardMyStatusPicker(_myStories.first);
+                }
+              },
+            ),
+            ListTile(
               leading: const Icon(Icons.photo_library_outlined, color: Color(0xFFEC4899)),
               title: Text('Buka Galeri Foto HP', style: TextStyle(color: isDark ? Colors.white : const Color(0xFF111827))),
               onTap: () async {
@@ -521,6 +541,373 @@ class StatusScreenState extends State<StatusScreen> with AutomaticKeepAliveClien
           ],
         ),
       ),
+    );
+  }
+
+  String _formatViewerTime(DateTime dt) {
+    final diff = DateTime.now().difference(dt);
+    if (diff.inMinutes < 1) return 'Baru saja';
+    if (diff.inHours < 1) return '${diff.inMinutes} menit yang lalu';
+    if (diff.inHours < 24) {
+      final hour = dt.hour.toString().padLeft(2, '0');
+      final minute = dt.minute.toString().padLeft(2, '0');
+      return 'Hari ini $hour:$minute';
+    }
+    return 'Kemarin';
+  }
+
+  void _showAllMyStatusViewersSheet() {
+    final isDark = ThemeModeController.instance.isDarkMode(context);
+
+    // Collect all unique viewers across active my stories
+    final Map<String, StatusViewerItem> viewersMap = {};
+    for (final s in _myStories) {
+      for (final v in s.viewers) {
+        viewersMap[v.userId] = v;
+      }
+    }
+    final allViewers = viewersMap.values.toList();
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (sheetCtx) {
+        return Container(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(context).size.height * 0.7,
+          ),
+          child: SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const SizedBox(height: 10),
+                Center(
+                  child: Container(
+                    width: 38,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: isDark ? Colors.white24 : Colors.black12,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 18),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.people_alt_rounded, color: Color(0xFF00A884), size: 22),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          allViewers.isEmpty
+                              ? 'Belum ada yang melihat'
+                              : 'Dilihat oleh ${allViewers.length} kontak',
+                          style: TextStyle(
+                            color: isDark ? Colors.white : const Color(0xFF111827),
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        icon: Icon(Icons.close_rounded, color: isDark ? Colors.white70 : Colors.black54, size: 20),
+                        onPressed: () => Navigator.pop(sheetCtx),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Divider(color: isDark ? Colors.white12 : Colors.black12, height: 1),
+                Expanded(
+                  child: allViewers.isEmpty
+                      ? Center(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(18),
+                                decoration: BoxDecoration(
+                                  color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.04),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Icon(
+                                  Icons.visibility_off_outlined,
+                                  size: 42,
+                                  color: isDark ? Colors.white38 : Colors.black38,
+                                ),
+                              ),
+                              const SizedBox(height: 14),
+                              Text(
+                                'Belum ada yang melihat status Anda',
+                                style: TextStyle(
+                                  color: isDark ? Colors.white : const Color(0xFF111827),
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 36),
+                                child: Text(
+                                  'Pembaruan status aktif Anda akan kadaluarsa setelah 24 jam. Siapa pun kontak yang membuka status akan muncul di sini.',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    color: isDark ? Colors.white54 : Colors.black54,
+                                    fontSize: 12.5,
+                                    height: 1.4,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        )
+                      : ListView.separated(
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          itemCount: allViewers.length,
+                          separatorBuilder: (_, __) => Divider(
+                            color: isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05),
+                            height: 1,
+                            indent: 70,
+                          ),
+                          itemBuilder: (context, idx) {
+                            final v = allViewers[idx];
+                            return ListTile(
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 4),
+                              leading: ModernAvatar(
+                                name: v.username,
+                                imagePath: v.avatarUrl,
+                                radius: 22,
+                              ),
+                              title: Text(
+                                v.username,
+                                style: TextStyle(
+                                  color: isDark ? Colors.white : const Color(0xFF111827),
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              subtitle: Text(
+                                _formatViewerTime(v.viewedAt),
+                                style: TextStyle(
+                                  color: isDark ? Colors.white60 : Colors.black54,
+                                  fontSize: 12.5,
+                                ),
+                              ),
+                              trailing: v.reaction != null && v.reaction!.isNotEmpty
+                                  ? Container(
+                                      padding: const EdgeInsets.all(6),
+                                      decoration: BoxDecoration(
+                                        color: isDark ? Colors.white.withValues(alpha: 0.12) : Colors.black.withValues(alpha: 0.06),
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: Text(
+                                        v.reaction!,
+                                        style: const TextStyle(fontSize: 18),
+                                      ),
+                                    )
+                                  : null,
+                            );
+                          },
+                        ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _forwardMyStatusPicker(StatusStoryItem story) {
+    final isDark = ThemeModeController.instance.isDarkMode(context);
+    final allConversations = ConversationService.instance.conversations;
+    final searchCtrl = TextEditingController();
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (sheetCtx) {
+        return StatefulBuilder(
+          builder: (ctx, setForwardState) {
+            final query = searchCtrl.text.trim().toLowerCase();
+            final filtered = query.isEmpty
+                ? allConversations
+                : allConversations
+                    .where((c) => c.title.toLowerCase().contains(query))
+                    .toList();
+
+            return Container(
+              constraints: BoxConstraints(
+                maxHeight: MediaQuery.of(context).size.height * 0.75,
+              ),
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(sheetCtx).viewInsets.bottom,
+              ),
+              child: SafeArea(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const SizedBox(height: 10),
+                    Center(
+                      child: Container(
+                        width: 38,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: isDark ? Colors.white24 : Colors.black12,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 18),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.forward_rounded, color: Color(0xFF00A884), size: 22),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Teruskan Status ke Obrolan',
+                              style: TextStyle(
+                                color: isDark ? Colors.white : const Color(0xFF111827),
+                                fontSize: 16,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                          IconButton(
+                            icon: Icon(Icons.close_rounded, color: isDark ? Colors.white70 : Colors.black54, size: 20),
+                            onPressed: () => Navigator.pop(sheetCtx),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        decoration: BoxDecoration(
+                          color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF1F5F9),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: isDark ? Colors.white12 : Colors.black12),
+                        ),
+                        child: TextField(
+                          controller: searchCtrl,
+                          style: TextStyle(color: isDark ? Colors.white : const Color(0xFF111827), fontSize: 14),
+                          decoration: InputDecoration(
+                            icon: Icon(Icons.search_rounded, color: isDark ? Colors.white38 : Colors.black38, size: 20),
+                            hintText: 'Cari obrolan atau kontak...',
+                            hintStyle: TextStyle(color: isDark ? Colors.white38 : Colors.black38, fontSize: 13.5),
+                            border: InputBorder.none,
+                            isDense: true,
+                            contentPadding: const EdgeInsets.symmetric(vertical: 11),
+                          ),
+                          onChanged: (_) => setForwardState(() {}),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Divider(color: isDark ? Colors.white12 : Colors.black12, height: 1),
+                    Expanded(
+                      child: filtered.isEmpty
+                          ? Center(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.chat_bubble_outline_rounded, color: isDark ? Colors.white38 : Colors.black38, size: 36),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    query.isEmpty
+                                        ? 'Belum ada obrolan aktif'
+                                        : 'Obrolan tidak ditemukan',
+                                    style: TextStyle(color: isDark ? Colors.white60 : Colors.black54, fontSize: 14),
+                                  ),
+                                ],
+                              ),
+                            )
+                          : ListView.separated(
+                              itemCount: filtered.length,
+                              separatorBuilder: (_, __) => Divider(
+                                color: isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05),
+                                height: 1,
+                                indent: 70,
+                              ),
+                              itemBuilder: (context, idx) {
+                                final conv = filtered[idx];
+                                return ListTile(
+                                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                                  leading: ModernAvatar(
+                                    name: conv.title,
+                                    imagePath: conv.avatarUrl,
+                                    radius: 22,
+                                  ),
+                                  title: Text(
+                                    conv.title,
+                                    style: TextStyle(
+                                      color: isDark ? Colors.white : const Color(0xFF111827),
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 15,
+                                    ),
+                                  ),
+                                  subtitle: Text(
+                                    conv.isGroup ? 'Grup' : (conv.lastMessage.isNotEmpty ? conv.lastMessage : 'Ketuk untuk mengirim'),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(color: isDark ? Colors.white54 : Colors.black54, fontSize: 12.5),
+                                  ),
+                                  trailing: Container(
+                                    padding: const EdgeInsets.all(8),
+                                    decoration: const BoxDecoration(
+                                      color: Color(0xFF00A884),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: const Icon(
+                                      Icons.send_rounded,
+                                      color: Colors.white,
+                                      size: 16,
+                                    ),
+                                  ),
+                                  onTap: () async {
+                                    Navigator.pop(sheetCtx);
+                                    if (story.isPhoto && story.imageAsset != null) {
+                                      await ConversationService.instance.sendMessage(
+                                        conversationId: conv.id,
+                                        messageType: 'IMAGE',
+                                        attachmentPath: story.imageAsset,
+                                        text: story.text.isNotEmpty ? story.text : 'Diteruskan dari status',
+                                      );
+                                    } else {
+                                      await ConversationService.instance.sendMessage(
+                                        conversationId: conv.id,
+                                        messageType: 'TEXT',
+                                        text: '📝 *Status:*\n${story.text}',
+                                      );
+                                    }
+                                    if (mounted) {
+                                      LajuToast.success(context, 'Status diteruskan ke ${conv.title}');
+                                    }
+                                  },
+                                );
+                              },
+                            ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
     );
   }
 
@@ -986,8 +1373,8 @@ class StatusScreenState extends State<StatusScreen> with AutomaticKeepAliveClien
                                 const SizedBox(height: 2),
                                 Text(
                                   _myStories.isEmpty
-                                      ? 'Tap to add status update'
-                                      : '${_myStories.first.time} • ${_myStories.length} ${_myStories.length > 1 ? 'updates' : 'update'}',
+                                      ? 'Ketuk untuk menambahkan pembaruan status'
+                                      : '${_myStories.first.time} • ${_myStories.fold<int>(0, (sum, s) => sum + s.viewers.length)} pemirsa',
                                   style: TextStyle(
                                     fontSize: 12.5,
                                     color: _myStories.isEmpty

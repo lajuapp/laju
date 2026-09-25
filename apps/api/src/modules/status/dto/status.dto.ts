@@ -27,3 +27,10 @@ export class CreateStatusDto {
   @IsOptional()
   fontStyle?: string;
 }
+
+export class ReactStatusDto {
+  @IsString()
+  @IsNotEmpty()
+  emoji: string;
+}
+

@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import '../../../../core/core.dart';
+import '../../settings/domain/data_storage_controller.dart';
 import '../presentation/screens/status_view_screen.dart';
 import '../presentation/screens/status_screen.dart';
 
@@ -54,6 +55,7 @@ class StatusService {
         final data = response.rawJson as Map<String, dynamic>;
         final story = _mapStoryItem(data);
         cachedMyStatuses.insert(0, story);
+        DataStorageController.instance.recordStatusSent(bytes: processedContent.length);
         return story;
       }
     } catch (e) {
@@ -68,14 +70,17 @@ class StatusService {
       final response = await ApiClient.instance.get(ApiEndpoints.statusMe);
       if (response.isSuccess && response.rawJson is List) {
         final list = response.rawJson as List;
-        final items = list.map((item) => _mapStoryItem(item as Map<String, dynamic>)).toList();
+        final items = list
+            .map((item) => _mapStoryItem(item as Map<String, dynamic>))
+            .where((s) => !s.isExpired)
+            .toList();
         cachedMyStatuses = items;
         return items;
       }
     } catch (e) {
       debugPrint('[StatusService] getMyStatuses error: $e');
     }
-    return cachedMyStatuses;
+    return cachedMyStatuses.where((s) => !s.isExpired).toList();
   }
 
   /// Get active statuses from contacts (shared conversation members / contacts)
@@ -94,6 +99,7 @@ class StatusService {
           final storiesRaw = item['stories'] as List? ?? [];
           final stories = storiesRaw
               .map((s) => _mapStoryItem(s as Map<String, dynamic>))
+              .where((s) => !s.isExpired)
               .toList();
 
           if (stories.isEmpty) continue;
@@ -132,10 +138,40 @@ class StatusService {
     return cachedContactGroups;
   }
 
+  /// Get detailed viewers list for a specific story
+  Future<List<StatusViewerItem>> getStatusViewers(String storyId) async {
+    try {
+      final response = await ApiClient.instance.get(ApiEndpoints.statusViews(storyId));
+      if (response.isSuccess && response.rawJson is List) {
+        return (response.rawJson as List)
+            .map((v) => StatusViewerItem.fromJson(v as Map<String, dynamic>))
+            .toList();
+      }
+    } catch (e) {
+      debugPrint('[StatusService] getStatusViewers error: $e');
+    }
+    return [];
+  }
+
+  /// React to a status story with an emoji
+  Future<bool> reactToStatus(String storyId, String emoji) async {
+    try {
+      final response = await ApiClient.instance.post(
+        ApiEndpoints.statusReact(storyId),
+        body: {'emoji': emoji},
+      );
+      return response.isSuccess;
+    } catch (e) {
+      debugPrint('[StatusService] reactToStatus error: $e');
+      return false;
+    }
+  }
+
   /// Mark status as viewed
   Future<void> markStatusViewed(String storyId) async {
     try {
       await ApiClient.instance.post(ApiEndpoints.statusView(storyId));
+      DataStorageController.instance.recordStatusReceived(bytes: 1024);
     } catch (e) {
       debugPrint('[StatusService] markStatusViewed error: $e');
     }
@@ -159,6 +195,7 @@ class StatusService {
     final caption = json['caption'] as String?;
     final bgHex = json['backgroundColor'] as String?;
     final createdAtStr = json['createdAt'] as String?;
+    final expiresAtStr = json['expiresAt'] as String?;
 
     Color bgColor = const Color(0xFF0F3E37);
     if (bgHex != null && bgHex.isNotEmpty) {
@@ -172,11 +209,14 @@ class StatusService {
       } catch (_) {}
     }
 
+    DateTime? createdAtDt;
+    DateTime? expiresAtDt;
     String timeStr = 'Baru saja';
+
     if (createdAtStr != null) {
       try {
-        final dt = DateHelper.parseUtc(createdAtStr);
-        final diff = DateTime.now().difference(dt);
+        createdAtDt = DateHelper.parseUtc(createdAtStr);
+        final diff = DateTime.now().difference(createdAtDt);
         if (diff.inMinutes < 1) {
           timeStr = 'Baru saja';
         } else if (diff.inHours < 1) {
@@ -189,6 +229,18 @@ class StatusService {
       } catch (_) {}
     }
 
+    if (expiresAtStr != null) {
+      try {
+        expiresAtDt = DateHelper.parseUtc(expiresAtStr);
+      } catch (_) {}
+    }
+
+    // Map viewers
+    final viewsRaw = json['views'] as List? ?? [];
+    final viewers = viewsRaw
+        .map((v) => StatusViewerItem.fromJson(v as Map<String, dynamic>))
+        .toList();
+
     final isPhoto = type == 'IMAGE' || type == 'VIDEO';
 
     return StatusStoryItem(
@@ -198,6 +250,9 @@ class StatusService {
       backgroundColor: bgColor,
       imageAsset: isPhoto ? content : null,
       isPhoto: isPhoto,
+      viewers: viewers,
+      createdAt: createdAtDt,
+      expiresAt: expiresAtDt,
     );
   }
 }

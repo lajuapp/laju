@@ -456,7 +456,8 @@ class _ChatScreenState extends State<ChatScreen> {
         if (previewResult == null || !mounted) return; // User cancelled
 
         final caption = previewResult.caption;
-        final docId = 'doc-${DateTime.now().millisecondsSinceEpoch}';
+        final isImg = ConversationService.isImageFile(previewResult.fileName) || ConversationService.isImageFile(filePath);
+        final docId = '${isImg ? 'img' : 'doc'}-${DateTime.now().millisecondsSinceEpoch}';
         final docMsg = MessageModel(
           id: docId,
           clientMessageId: docId,
@@ -481,7 +482,7 @@ class _ChatScreenState extends State<ChatScreen> {
           conversationId: widget.conversationId,
           text: caption,
           clientMessageId: docId,
-          messageType: 'DOCUMENT',
+          messageType: isImg ? 'IMAGE' : 'DOCUMENT',
           attachmentPath: filePath,
           attachmentName: previewResult.fileName,
           attachmentSize: previewResult.fileSize,

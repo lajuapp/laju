@@ -662,7 +662,7 @@ class ChatBubble extends StatelessWidget {
         borderRadius: BorderRadius.circular(20),
       ),
       child: const Center(
-        child: Icon(Icons.sticky_note_2_rounded, size: 48, color: AppColors.primary),
+        child: Icon(Icons.emoji_emotions_rounded, size: 48, color: AppColors.primary),
       ),
     );
   }
@@ -671,16 +671,30 @@ class ChatBubble extends StatelessWidget {
     if (message.contentType != MessageContentType.attachment) return false;
     final path = message.attachmentPath ?? '';
     final name = (message.attachmentName ?? '').toUpperCase();
-    return path.startsWith('data:image') ||
-        name.endsWith('.JPG') ||
-        name.endsWith('.JPEG') ||
-        name.endsWith('.PNG') ||
-        name.endsWith('.WEBP') ||
-        name.endsWith('.GIF') ||
-        path.endsWith('.jpg') ||
+    final ext = name.contains('.') ? name.split('.').last : '';
+    final isImgExt = ext == 'JPG' ||
+        ext == 'JPEG' ||
+        ext == 'PNG' ||
+        ext == 'WEBP' ||
+        ext == 'GIF' ||
+        ext == 'HEIC' ||
+        ext == 'BMP';
+    if (isImgExt) return true;
+    if (path.startsWith('data:image')) return true;
+    if (path.endsWith('.jpg') ||
         path.endsWith('.jpeg') ||
         path.endsWith('.png') ||
-        path.endsWith('.webp');
+        path.endsWith('.webp')) return true;
+    if (path.startsWith('data:')) {
+      final b64 = path.contains(',') ? path.split(',').last : path;
+      if (b64.startsWith('/9j/') ||
+          b64.startsWith('iVBORw0KGgo') ||
+          b64.startsWith('R0lGOD') ||
+          b64.startsWith('UklGR')) {
+        return true;
+      }
+    }
+    return false;
   }
 
   bool _hasImageCaption() {
@@ -702,9 +716,9 @@ class ChatBubble extends StatelessWidget {
     Widget imageWidget;
     final path = message.attachmentPath ?? '';
 
-    if (path.startsWith('data:image')) {
+    if (path.startsWith('data:')) {
       try {
-        final b64 = path.split(',').last;
+        final b64 = path.contains(',') ? path.split(',').last : path;
         final bytes = base64Decode(b64);
         imageWidget = Image.memory(
           bytes,
@@ -917,7 +931,7 @@ class ChatBubble extends StatelessWidget {
 
     IconData? snippetIcon;
     if (reply.contentType == MessageContentType.sticker) {
-      snippetIcon = Icons.sticky_note_2_rounded;
+      snippetIcon = Icons.emoji_emotions_rounded;
     } else if (reply.contentType == MessageContentType.voiceNote) {
       snippetIcon = Icons.mic_rounded;
     } else if (reply.contentType == MessageContentType.location) {
@@ -1392,13 +1406,24 @@ class ChatBubble extends StatelessWidget {
         ? (isOut ? AppColors.primary.withValues(alpha: 0.3) : Colors.white.withValues(alpha: 0.1))
         : (isOut ? AppColors.primary.withValues(alpha: 0.35) : const Color(0xFFE2E8F0));
 
-    final isImage = ext == 'JPG' || ext == 'JPEG' || ext == 'PNG' || ext == 'WEBP' || ext == 'GIF' || (message.attachmentPath != null && message.attachmentPath!.startsWith('data:image'));
+    final isImage = ext == 'JPG' ||
+        ext == 'JPEG' ||
+        ext == 'PNG' ||
+        ext == 'WEBP' ||
+        ext == 'GIF' ||
+        ext == 'HEIC' ||
+        ext == 'BMP' ||
+        (message.attachmentPath != null &&
+            (message.attachmentPath!.startsWith('data:image') ||
+             message.attachmentPath!.startsWith('data:')));
 
     if (isImage && message.attachmentPath != null) {
       Widget? imageWidget;
-      if (message.attachmentPath!.startsWith('data:image')) {
+      if (message.attachmentPath!.startsWith('data:')) {
         try {
-          final b64 = message.attachmentPath!.split(',').last;
+          final b64 = message.attachmentPath!.contains(',')
+              ? message.attachmentPath!.split(',').last
+              : message.attachmentPath!;
           final bytes = base64Decode(b64);
           imageWidget = Image.memory(
             bytes,
@@ -1483,9 +1508,11 @@ class ChatBubble extends StatelessWidget {
                 border: Border.all(color: iconColor.withValues(alpha: 0.25), width: 1),
               ),
               clipBehavior: Clip.antiAlias,
-              child: isImage && message.attachmentPath != null && message.attachmentPath!.startsWith('data:image')
+              child: isImage && message.attachmentPath != null && message.attachmentPath!.startsWith('data:')
                   ? Image.memory(
-                      base64Decode(message.attachmentPath!.split(',').last),
+                      base64Decode(message.attachmentPath!.contains(',')
+                          ? message.attachmentPath!.split(',').last
+                          : message.attachmentPath!),
                       fit: BoxFit.cover,
                       errorBuilder: (context, error, stackTrace) => Center(
                         child: Icon(fileIcon, color: iconColor, size: 24),

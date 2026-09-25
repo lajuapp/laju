@@ -4,6 +4,7 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import '../../../core/core.dart';
 import '../../conversations/domain/conversation_service.dart';
+import '../../settings/domain/data_storage_controller.dart';
 import '../presentation/screens/active_call_screen.dart';
 import 'webrtc_call_service.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
@@ -500,6 +501,11 @@ class CallSessionController extends ChangeNotifier {
         status: status,
         durationSeconds: duration ?? _durationSeconds,
         timestamp: DateTime.now().millisecondsSinceEpoch,
+      );
+
+      DataStorageController.instance.recordCallStats(
+        durationSeconds: duration ?? _durationSeconds,
+        isVideo: _isVideo,
       );
     } catch (e) {
       debugPrint('[CallSessionController] insertCallLog error: $e');

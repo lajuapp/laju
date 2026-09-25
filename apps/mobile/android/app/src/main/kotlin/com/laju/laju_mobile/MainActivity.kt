@@ -22,6 +22,8 @@ import android.media.MediaPlayer
 import android.media.MediaRecorder
 import android.net.Uri
 import android.os.Build
+import android.os.Environment
+import android.os.StatFs
 import android.os.Handler
 import android.os.Looper
 import android.provider.ContactsContract
@@ -1127,6 +1129,27 @@ class MainActivity : FlutterFragmentActivity() {
                         result.success("$manufacturer $model".trim())
                     } catch (e: Exception) {
                         result.success("Android Device")
+                    }
+                }
+                "getStorageStats" -> {
+                    try {
+                        val path = Environment.getDataDirectory()
+                        val stat = StatFs(path.path)
+                        val blockSize = stat.blockSizeLong
+                        val totalBlocks = stat.blockCountLong
+                        val availableBlocks = stat.availableBlocksLong
+
+                        val totalBytes = totalBlocks * blockSize
+                        val freeBytes = availableBlocks * blockSize
+                        val usedBytes = totalBytes - freeBytes
+
+                        result.success(mapOf(
+                            "totalBytes" to totalBytes,
+                            "freeBytes" to freeBytes,
+                            "usedBytes" to usedBytes
+                        ))
+                    } catch (e: Exception) {
+                        result.error("STORAGE_ERROR", e.message, null)
                     }
                 }
                 else -> result.notImplemented()

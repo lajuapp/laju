@@ -80,6 +80,8 @@ class ApiEndpoints {
   static const String statusMe = '/status/me';
   static const String statusContacts = '/status/contacts';
   static String statusView(String id) => '/status/$id/view';
+  static String statusViews(String id) => '/status/$id/views';
+  static String statusReact(String id) => '/status/$id/react';
   static String statusById(String id) => '/status/$id';
 
   // Message Reactions

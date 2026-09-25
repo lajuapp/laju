@@ -217,7 +217,7 @@ class _StickerPickerSheetState extends State<StickerPickerSheet> {
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: const Icon(
-                          Icons.sticky_note_2_rounded,
+                          Icons.emoji_emotions_rounded,
                           color: AppColors.primary,
                           size: 20,
                         ),

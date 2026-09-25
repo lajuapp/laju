@@ -162,7 +162,7 @@ class AttachmentBottomSheet extends StatelessWidget {
                 children: [
                   _buildAttachmentOption(
                     context: context,
-                    icon: Icons.sticky_note_2_rounded,
+                    icon: Icons.emoji_emotions_rounded,
                     label: 'Sticker',
                     bgColor: const Color(0xFF10B981),
                     labelColor: labelColor,
@@ -248,12 +248,6 @@ class AttachmentBottomSheet extends StatelessWidget {
   }
 
   Future<void> _handleDocumentPick(BuildContext context) async {
-    final granted = await AppPermissionService.requestPermission(
-      context,
-      type: AppPermissionType.storage,
-    );
-    if (!granted || !context.mounted) return;
-
     final doc = await DeviceMediaService.openDocument();
     if (doc != null && context.mounted) {
       Navigator.pop(
@@ -318,12 +312,6 @@ class AttachmentBottomSheet extends StatelessWidget {
   }
 
   Future<void> _handleAudioPick(BuildContext context) async {
-    final granted = await AppPermissionService.requestPermission(
-      context,
-      type: AppPermissionType.storage,
-    );
-    if (!granted || !context.mounted) return;
-
     final aud = await DeviceMediaService.openAudio();
     if (aud != null && context.mounted) {
       Navigator.pop(
@@ -364,12 +352,6 @@ class AttachmentBottomSheet extends StatelessWidget {
   }
 
   Future<void> _handleContactPick(BuildContext context) async {
-    final granted = await AppPermissionService.requestPermission(
-      context,
-      type: AppPermissionType.contacts,
-    );
-    if (!granted || !context.mounted) return;
-
     final contact = await DeviceMediaService.openContact();
     if (contact != null && context.mounted) {
       final phone = contact.phoneNumber.isNotEmpty ? ' (${contact.phoneNumber})' : '';

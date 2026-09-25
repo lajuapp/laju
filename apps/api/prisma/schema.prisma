@@ -621,6 +621,7 @@ model StatusStoryView {
   id        String          @id @default(uuid())
   storyId   String          @map("story_id")
   viewerId  String          @map("viewer_id")
+  reaction  String?
   viewedAt  DateTime        @default(now()) @map("viewed_at")
 
   story     UserStatusStory @relation(fields: [storyId], references: [id], onDelete: Cascade)

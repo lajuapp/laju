@@ -8,6 +8,7 @@ import '../domain/models/conversation_model.dart';
 import '../../messaging/domain/models/message_model.dart';
 import '../../messaging/presentation/screens/chat_screen.dart';
 import '../../settings/domain/privacy_controller.dart';
+import '../../settings/domain/data_storage_controller.dart';
 
 class UserDirectoryItem {
   final String id;
@@ -48,9 +49,64 @@ class ConversationService {
   bool _isInitialSyncComplete = false;
   final Set<String> _seenMessageIds = {};
 
+  /// Detects MIME type from file extension
+  static String detectMimeType(String path, {String? fileName}) {
+    final target = (fileName != null && fileName.isNotEmpty) ? fileName : path;
+    final ext = target.contains('.') ? target.split('.').last.toLowerCase() : '';
+    switch (ext) {
+      case 'jpg':
+      case 'jpeg':
+        return 'image/jpeg';
+      case 'png':
+        return 'image/png';
+      case 'webp':
+        return 'image/webp';
+      case 'gif':
+        return 'image/gif';
+      case 'heic':
+      case 'heif':
+        return 'image/heic';
+      case 'bmp':
+        return 'image/bmp';
+      case 'svg':
+        return 'image/svg+xml';
+      case 'mp3':
+        return 'audio/mpeg';
+      case 'm4a':
+        return 'audio/m4a';
+      case 'wav':
+        return 'audio/wav';
+      case 'ogg':
+        return 'audio/ogg';
+      case 'mp4':
+        return 'video/mp4';
+      case 'pdf':
+        return 'application/pdf';
+      default:
+        return 'application/octet-stream';
+    }
+  }
+
+  /// Checks whether a filename or path represents an image
+  static bool isImageFile(String pathOrName) {
+    if (pathOrName.isEmpty) return false;
+    final clean = pathOrName.split('?').first.split('#').first;
+    final ext = clean.contains('.') ? clean.split('.').last.toLowerCase() : '';
+    return ext == 'jpg' ||
+        ext == 'jpeg' ||
+        ext == 'png' ||
+        ext == 'webp' ||
+        ext == 'gif' ||
+        ext == 'heic' ||
+        ext == 'heif' ||
+        ext == 'bmp';
+  }
+
   /// In-memory cache for TanStack Query-style instantaneous hydration
   List<ConversationModel>? inMemoryConversations;
   final ValueNotifier<List<ConversationModel>> conversationsNotifier = ValueNotifier<List<ConversationModel>>([]);
+  List<ConversationModel> get conversations =>
+      conversationsNotifier.value.isNotEmpty ? conversationsNotifier.value : (inMemoryConversations ?? []);
   final Map<String, List<MessageModel>> _inMemoryMessages = {};
 
   List<MessageModel>? getMemoryMessages(String conversationId) {
@@ -228,6 +284,15 @@ class ConversationService {
             if (latestMsgId != null && senderId != null && senderId != currentUserId) {
               if (!_seenMessageIds.contains(latestMsgId)) {
                 _seenMessageIds.add(latestMsgId);
+
+                if (_isInitialSyncComplete) {
+                  final rawMsg = (latest['ciphertext'] ?? '') as String;
+                  final msgType = latest['messageType'] as String?;
+                  DataStorageController.instance.recordMessageReceived(
+                    bytes: rawMsg.isNotEmpty ? rawMsg.length : 64,
+                    isMedia: msgType == 'ATTACHMENT' || rawMsg.contains('"media"'),
+                  );
+                }
 
                 // If initial sync is complete and user is not currently in this chat, trigger notification!
                 final isConvMuted = cachedMap[convId]?.isMuted ?? false;
@@ -678,7 +743,7 @@ class ConversationService {
                   if (parsed['type'] == 'image') {
                     contentType = MessageContentType.attachment;
                     mediaData = parsed['media'] as String?;
-                    attName = 'Foto.jpg';
+                    attName = (parsed['fileName'] ?? 'Foto.jpg') as String;
                     contentText = (parsed['caption'] ?? '') as String;
                   } else if (parsed['type'] == 'audio') {
                     final fn = (parsed['fileName'] ?? 'Voice Note') as String;
@@ -711,6 +776,13 @@ class ConversationService {
                             ? '${(approxBytes / 1024).toStringAsFixed(1)} KB'
                             : '${(approxBytes / (1024 * 1024)).toStringAsFixed(1)} MB';
                       }
+                    }
+
+                    // If document is an image, ensure mediaData has valid data:image URI for flawless rendering
+                    if (isImageFile(attName) && mediaData != null && mediaData.startsWith('data:') && !mediaData.startsWith('data:image')) {
+                      final b64 = mediaData.split(',').last;
+                      final imgMime = detectMimeType(attName);
+                      mediaData = 'data:${imgMime.startsWith('image/') ? imgMime : 'image/jpeg'};base64,$b64';
                     }
                   } else if (parsed['type'] == 'location') {
                     contentType = MessageContentType.location;
@@ -845,6 +917,9 @@ class ConversationService {
     } else if (attachmentPath != null && (type == 'IMAGE' || type == 'AUDIO' || type == 'DOCUMENT')) {
       try {
         String effectivePath = attachmentPath;
+        final detectedMime = detectMimeType(effectivePath, fileName: attachmentName);
+        final isImg = type == 'IMAGE' || isImageFile(attachmentName ?? '') || isImageFile(effectivePath) || detectedMime.startsWith('image/');
+
         if (type == 'IMAGE') {
           effectivePath = await DeviceMediaService.compressImage(attachmentPath);
         }
@@ -852,13 +927,18 @@ class ConversationService {
         if (await file.exists()) {
           final bytes = await file.readAsBytes();
           final b64 = base64Encode(bytes);
-          final mime = type == 'IMAGE'
-              ? 'image/jpeg'
-              : (type == 'AUDIO' ? 'audio/m4a' : 'application/octet-stream');
-          if (type == 'IMAGE') {
+          final mime = isImg
+              ? (detectedMime.startsWith('image/') ? detectedMime : 'image/jpeg')
+              : (type == 'AUDIO'
+                  ? (detectedMime.startsWith('audio/') ? detectedMime : 'audio/m4a')
+                  : (detectedMime.isNotEmpty ? detectedMime : 'application/octet-stream'));
+
+          if (isImg) {
             payloadCiphertext = jsonEncode({
               'type': 'image',
               'media': 'data:$mime;base64,$b64',
+              'fileName': attachmentName ?? 'Foto.jpg',
+              'fileSize': attachmentSize ?? '',
               'caption': text.trim(),
               if (replyToMap != null) 'replyTo': replyToMap,
             });
@@ -972,6 +1052,13 @@ class ConversationService {
           }
           _inMemoryMessages[conversationId] = MessageModel.deduplicate(updatedMemory);
         }
+
+        // Record network usage
+        final isMedia = type == 'IMAGE' || type == 'AUDIO' || type == 'DOCUMENT' || type == 'ATTACHMENT' || type == 'STICKER';
+        DataStorageController.instance.recordMessageSent(
+          bytes: payloadCiphertext.length,
+          isMedia: isMedia,
+        );
 
         return confirmedMsg;
       }

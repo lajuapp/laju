@@ -8,7 +8,7 @@ import {
   UseGuards
 } from '@nestjs/common';
 import { StatusService } from './status.service';
-import { CreateStatusDto } from './dto/status.dto';
+import { CreateStatusDto, ReactStatusDto } from './dto/status.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 
@@ -35,12 +35,29 @@ export class StatusController {
     return this.statusService.getContactsStatuses(userId);
   }
 
+  @Get(':id/views')
+  getStatusViewers(
+    @CurrentUser('userId') userId: string,
+    @Param('id') storyId: string
+  ) {
+    return this.statusService.getStatusViewers(userId, storyId);
+  }
+
   @Post(':id/view')
   markStatusViewed(
     @CurrentUser('userId') userId: string,
     @Param('id') storyId: string
   ) {
     return this.statusService.markStatusViewed(userId, storyId);
+  }
+
+  @Post(':id/react')
+  reactToStatus(
+    @CurrentUser('userId') userId: string,
+    @Param('id') storyId: string,
+    @Body() dto: ReactStatusDto
+  ) {
+    return this.statusService.reactToStatus(userId, storyId, dto.emoji);
   }
 
   @Delete(':id')
