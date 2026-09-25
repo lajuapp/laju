@@ -1,7 +1,14 @@
 import axios from 'axios';
 
+const defaultApiUrl =
+  import.meta.env.VITE_API_URL ||
+  (typeof window !== 'undefined' &&
+  (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+    ? ''
+    : 'https://api-laju.rogatekno.my.id');
+
 export const apiClient = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || '',
+  baseURL: defaultApiUrl,
   headers: {
     'Content-Type': 'application/json',
   },
