@@ -1,4 +1,4 @@
-import { Controller, Post, Body, UseGuards } from '@nestjs/common';
+import { Controller, Post, Body, UseGuards, Get } from '@nestjs/common';
 import { AuthenticationService } from './authentication.service';
 import {
   RegisterDto,
@@ -46,5 +46,18 @@ export class AuthenticationController {
     @CurrentUser('deviceId') deviceId: string
   ) {
     return this.authService.logout(userId, deviceId);
+  }
+
+  /**
+   * Called on every app startup: ensures device record is current and
+   * re-issues a fresh JWT token so the app always has a valid session.
+   */
+  @Post('refresh-device')
+  @UseGuards(JwtAuthGuard)
+  refreshDevice(
+    @CurrentUser('userId') userId: string,
+    @Body() body: { deviceUuid: string; deviceName?: string }
+  ) {
+    return this.authService.refreshDevice(userId, body.deviceUuid, body.deviceName);
   }
 }

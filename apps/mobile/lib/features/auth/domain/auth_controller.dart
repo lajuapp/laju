@@ -464,26 +464,31 @@ class AuthController extends ChangeNotifier {
   Future<String> getOrCreateLocalDeviceUuid() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      var uuid = prefs.getString('laju_local_device_uuid');
-      if (uuid != null && uuid.isNotEmpty && !uuid.startsWith('laju-hw-17')) {
-        return uuid;
+      final stored = prefs.getString('laju_local_device_uuid');
+
+      // If we already have a stable stored UUID, always return it.
+      // Never regenerate once set — consistency is the top priority.
+      if (stored != null && stored.isNotEmpty) {
+        return stored;
       }
 
-      String hwId = '';
+      // First time: try to derive UUID from hardware device ID (Android)
+      String uuid = '';
       if (Platform.isAndroid) {
         try {
           final res = await _deviceChannel.invokeMethod<String>('getHardwareDeviceId');
           if (res != null && res.trim().isNotEmpty) {
-            hwId = res.trim();
+            final hash = sha256.convert(utf8.encode(res.trim())).toString();
+            uuid = 'laju-hw-${hash.substring(0, 16)}';
           }
         } catch (_) {}
       }
 
-      if (hwId.isNotEmpty) {
-        final hash = sha256.convert(utf8.encode(hwId)).toString();
-        uuid = 'laju-hw-${hash.substring(0, 16)}';
-      } else if (uuid == null || uuid.isEmpty) {
-        uuid = 'laju-hw-${DateTime.now().millisecondsSinceEpoch}';
+      // Fallback to a random stable UUID if hardware ID is unavailable
+      if (uuid.isEmpty) {
+        final rand = List.generate(16, (_) => Random().nextInt(256));
+        final hex = rand.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+        uuid = 'laju-${hex.substring(0, 8)}-${hex.substring(8, 12)}-${hex.substring(12, 16)}';
       }
 
       await prefs.setString('laju_local_device_uuid', uuid);
@@ -1120,6 +1125,11 @@ class AuthController extends ChangeNotifier {
             deviceId: deviceId,
             userId: userId,
           );
+
+          // Re-register device in background to ensure session stays valid.
+          // This fixes stale deviceId issues after UUID was inconsistent.
+          _refreshDeviceInBackground();
+
           fetchProfileAsync();
         }
 
@@ -1149,6 +1159,52 @@ class AuthController extends ChangeNotifier {
     } catch (_) {
       _isAuthenticated = false;
       _currentUser = null;
+    }
+  }
+
+  /// Silently refreshes device registration on app startup.
+  /// If successful, updates the stored token and deviceId so future requests
+  /// use a fresh JWT bound to the correct device.
+  Future<void> _refreshDeviceInBackground() async {
+    try {
+      final deviceUuid = await getOrCreateLocalDeviceUuid();
+      final response = await ApiClient.instance.post(
+        ApiEndpoints.refreshDevice,
+        body: {
+          'deviceUuid': deviceUuid,
+          'deviceName': 'Mobile Device',
+        },
+      );
+
+      if (response.isSuccess && response.rawJson is Map) {
+        final data = response.rawJson;
+        final newToken = data['accessToken'] ?? data['token'];
+        final deviceId = data['device']?['id'];
+        final userId = data['user']?['id'];
+
+        if (newToken != null && newToken.toString().isNotEmpty) {
+          ApiClient.instance.setAuth(
+            token: newToken.toString(),
+            deviceId: deviceId?.toString(),
+            userId: userId?.toString(),
+          );
+
+          // Persist the fresh token
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString('laju_auth_token', newToken.toString());
+          if (deviceId != null) {
+            await prefs.setString('laju_device_id', deviceId.toString());
+          }
+          if (userId != null) {
+            await prefs.setString('laju_user_id', userId.toString());
+          }
+
+          debugPrint('[AuthController] Device refreshed successfully, new token issued');
+        }
+      }
+    } catch (e) {
+      // Silent fail — app continues with existing token
+      debugPrint('[AuthController] _refreshDeviceInBackground error (non-fatal): $e');
     }
   }
 

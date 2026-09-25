@@ -736,5 +736,58 @@ export class AuthenticationService {
       expiresIn
     };
   }
+
+  /**
+   * Called by the mobile app on every startup to ensure the device record
+   * is up-to-date and a fresh JWT is issued. Accepts the current valid JWT
+   * (already verified by JwtAuthGuard) and a deviceUuid to upsert.
+   */
+  async refreshDevice(userId: string, deviceUuid: string, deviceName?: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user || user.status !== 'ACTIVE') {
+      throw new UnauthorizedException('User not found or not active');
+    }
+
+    // Upsert device by deviceUuid
+    let device = await this.prisma.device.findUnique({ where: { deviceUuid } });
+    if (!device) {
+      device = await this.prisma.device.create({
+        data: {
+          userId,
+          deviceUuid,
+          name: deviceName || 'Mobile Device',
+          status: 'ACTIVE',
+          lastSeenAt: new Date()
+        }
+      });
+    } else {
+      // Re-activate device if it was in a non-destructive state
+      const canReactivate = device.status === 'ACTIVE' || device.status === 'PENDING' || device.status === 'MIGRATING';
+      await this.prisma.device.update({
+        where: { id: device.id },
+        data: {
+          lastSeenAt: new Date(),
+          ...(canReactivate ? { status: 'ACTIVE' } : {})
+        }
+      });
+    }
+
+    if (device.status === 'REVOKED' || device.status === 'CONTAINED' || device.status === 'DECOMMISSIONED') {
+      throw new UnauthorizedException('Device has been permanently revoked');
+    }
+
+    const tokens = await this.generateTokens(userId, device.id);
+    return {
+      device: { id: device.id, deviceUuid: device.deviceUuid },
+      user: {
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        phoneNumber: user.phoneNumber,
+        twoFactorEnabled: user.twoFactorEnabled
+      },
+      ...tokens
+    };
+  }
 }
 

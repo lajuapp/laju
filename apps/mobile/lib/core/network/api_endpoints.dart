@@ -11,6 +11,7 @@ class ApiEndpoints {
   static const String login = '/auth/login';
   static const String verify2Fa = '/auth/verify-2fa';
   static const String logout = '/auth/logout';
+  static const String refreshDevice = '/auth/refresh-device';
 
   // Users
   static const String currentUser = '/users/me';
