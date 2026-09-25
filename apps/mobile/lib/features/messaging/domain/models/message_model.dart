@@ -102,7 +102,7 @@ class MessageModel {
     if (contentType == MessageContentType.sticker ||
         content.startsWith('sticker:') ||
         (attachmentName != null && (attachmentName!.startsWith('cat_') || attachmentName!.contains('sticker')))) {
-      return '💟 Stiker';
+      return 'Stiker';
     }
     if (contentType == MessageContentType.voiceNote) {
       return attachmentSize != null && attachmentSize!.isNotEmpty

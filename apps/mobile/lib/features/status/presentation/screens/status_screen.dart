@@ -890,7 +890,7 @@ class StatusScreenState extends State<StatusScreen> with AutomaticKeepAliveClien
                                       await ConversationService.instance.sendMessage(
                                         conversationId: conv.id,
                                         messageType: 'TEXT',
-                                        text: '📝 *Status:*\n${story.text}',
+                                        text: '*Status:*\n${story.text}',
                                       );
                                     }
                                     if (mounted) {

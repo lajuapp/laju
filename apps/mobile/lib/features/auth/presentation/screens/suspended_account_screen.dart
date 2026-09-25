@@ -25,7 +25,7 @@ class SuspendedAccountScreen extends StatelessWidget {
         backgroundColor: isDark ? AppColors.darkBackground : AppColors.background,
         body: SafeArea(
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: AppDimensions.paddingL),
+            padding: const EdgeInsets.symmetric(horizontal: AppDimensions.lg),
             child: Column(
               children: [
                 const Spacer(flex: 2),
@@ -50,18 +50,18 @@ class SuspendedAccountScreen extends StatelessWidget {
                     ),
                   ),
                 ),
-                const SizedBox(height: AppDimensions.paddingL),
+                const SizedBox(height: AppDimensions.lg),
 
                 // Title
                 Text(
                   'Akun Ditangguhkan',
-                  style: AppTypography.heading1.copyWith(
+                  style: AppTypography.headingLarge.copyWith(
                     color: isDark ? AppColors.darkTextPrimary : AppColors.textPrimary,
                     fontWeight: FontWeight.w800,
                   ),
                   textAlign: TextAlign.center,
                 ),
-                const SizedBox(height: AppDimensions.paddingS),
+                const SizedBox(height: AppDimensions.sm),
 
                 // Subtitle
                 Text(
@@ -72,15 +72,15 @@ class SuspendedAccountScreen extends StatelessWidget {
                   ),
                   textAlign: TextAlign.center,
                 ),
-                const SizedBox(height: AppDimensions.paddingXL),
+                const SizedBox(height: AppDimensions.xl),
 
                 // Reason Card
                 Container(
                   width: double.infinity,
-                  padding: const EdgeInsets.all(AppDimensions.paddingM),
+                  padding: const EdgeInsets.all(AppDimensions.md),
                   decoration: BoxDecoration(
                     color: isDark ? AppColors.darkSurface : AppColors.surface,
-                    borderRadius: BorderRadius.circular(AppDimensions.radiusL),
+                    borderRadius: BorderRadius.circular(AppDimensions.radiusLarge),
                     border: Border.all(
                       color: isDark ? AppColors.darkSurfaceBorder : AppColors.surfaceBorder,
                     ),
@@ -95,7 +95,7 @@ class SuspendedAccountScreen extends StatelessWidget {
                             size: 16,
                             color: isDark ? AppColors.danger : Colors.red.shade700,
                           ),
-                          const SizedBox(width: AppDimensions.paddingXS),
+                          const SizedBox(width: AppDimensions.xs),
                           Text(
                             'Alasan Penangguhan',
                             style: AppTypography.caption.copyWith(
@@ -106,7 +106,7 @@ class SuspendedAccountScreen extends StatelessWidget {
                           ),
                         ],
                       ),
-                      const SizedBox(height: AppDimensions.paddingS),
+                      const SizedBox(height: AppDimensions.sm),
                       Text(
                         displayReason,
                         style: AppTypography.bodyMedium.copyWith(
@@ -118,15 +118,15 @@ class SuspendedAccountScreen extends StatelessWidget {
                     ],
                   ),
                 ),
-                const SizedBox(height: AppDimensions.paddingM),
+                const SizedBox(height: AppDimensions.md),
 
                 // Help Notice
                 Container(
                   width: double.infinity,
-                  padding: const EdgeInsets.all(AppDimensions.paddingM),
+                  padding: const EdgeInsets.all(AppDimensions.md),
                   decoration: BoxDecoration(
                     color: (isDark ? Colors.blueGrey : Colors.grey).withOpacity(0.08),
-                    borderRadius: BorderRadius.circular(AppDimensions.radiusL),
+                    borderRadius: BorderRadius.circular(AppDimensions.radiusLarge),
                   ),
                   child: Text(
                     'Apabila Anda merasa penangguhan ini adalah sebuah kekeliruan atau ingin mengajukan banding, silakan hubungi tim dukungan resmi di support@laju.chat.',
@@ -154,7 +154,7 @@ class SuspendedAccountScreen extends StatelessWidget {
                     );
                   },
                 ),
-                const SizedBox(height: AppDimensions.paddingS),
+                const SizedBox(height: AppDimensions.sm),
 
                 LajuButton(
                   label: 'Keluar & Ganti Akun',
@@ -168,7 +168,7 @@ class SuspendedAccountScreen extends StatelessWidget {
                     );
                   },
                 ),
-                const SizedBox(height: AppDimensions.paddingL),
+                const SizedBox(height: AppDimensions.lg),
               ],
             ),
           ),

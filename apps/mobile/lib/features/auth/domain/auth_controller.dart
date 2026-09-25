@@ -220,6 +220,7 @@ class AuthController extends ChangeNotifier {
       final ident = _pendingIdentifier!;
       final isEmail = ident.contains('@');
       final username = _pendingUsername ?? ident.replaceAll(RegExp(r'[^a-zA-Z0-9_]'), '');
+      final deviceUuid = await getOrCreateLocalDeviceUuid();
 
       final response = await ApiClient.instance.post(
         ApiEndpoints.register,
@@ -228,7 +229,7 @@ class AuthController extends ChangeNotifier {
           if (isEmail) 'email': ident else 'phoneNumber': ident,
           'password': _pendingPassword ?? 'SecurePass123!',
           'deviceName': 'Mobile App',
-          'deviceUuid': 'dev-${DateTime.now().millisecondsSinceEpoch}',
+          'deviceUuid': deviceUuid,
         },
       );
 
@@ -271,12 +272,13 @@ class AuthController extends ChangeNotifier {
     if (_pendingIdentifier == null) return false;
 
     try {
+      final deviceUuid = await getOrCreateLocalDeviceUuid();
       final response = await ApiClient.instance.post(
         ApiEndpoints.login,
         body: {
           'identifier': _pendingIdentifier,
           'otpCode': otpCode.trim(),
-          'deviceUuid': 'dev-${DateTime.now().millisecondsSinceEpoch}',
+          'deviceUuid': deviceUuid,
         },
       );
 
@@ -348,12 +350,13 @@ class AuthController extends ChangeNotifier {
     notifyListeners();
 
     try {
+      final deviceUuid = await getOrCreateLocalDeviceUuid();
       final response = await ApiClient.instance.post(
         ApiEndpoints.login,
         body: {
           'identifier': identifier.trim(),
           'password': password,
-          'deviceUuid': 'dev-${DateTime.now().millisecondsSinceEpoch}',
+          'deviceUuid': deviceUuid,
         },
       );
 

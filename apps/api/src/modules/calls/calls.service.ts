@@ -34,10 +34,11 @@ export class CallsService {
       const cleanUsername = calleeUserId.startsWith('@') ? calleeUserId.substring(1) : calleeUserId;
       const digitsOnly = calleeUserId.replace(/\D/g, '');
 
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(calleeUserId);
       const targetUser = await tx.user.findFirst({
         where: {
           OR: [
-            { id: calleeUserId },
+            ...(isUuid ? [{ id: calleeUserId }] : []),
             { username: { equals: calleeUserId, mode: 'insensitive' } },
             { username: { equals: cleanUsername, mode: 'insensitive' } },
             { email: { equals: calleeUserId, mode: 'insensitive' } },

@@ -398,7 +398,7 @@ class _StatusViewScreenState extends State<StatusViewScreen>
       conversationId: 'status',
       senderName: 'Status • ${widget.contactName}',
       content: story.isPhoto
-          ? (story.text.isNotEmpty ? story.text : '📷 Foto')
+          ? (story.text.isNotEmpty ? story.text : 'Foto')
           : story.text,
       contentType: story.isPhoto ? MessageContentType.attachment : MessageContentType.text,
       attachmentPath: story.isPhoto ? story.imageAsset : null,
@@ -881,7 +881,7 @@ class _StatusViewScreenState extends State<StatusViewScreen>
                                       await ConversationService.instance.sendMessage(
                                         conversationId: conv.id,
                                         messageType: 'TEXT',
-                                        text: '📝 *Status:*\n${story.text}',
+                                        text: '*Status:*\n${story.text}',
                                       );
                                     }
                                     if (mounted) {
@@ -988,7 +988,7 @@ class _StatusViewScreenState extends State<StatusViewScreen>
                               const SizedBox(height: 3),
                               Text(
                                 currentStory.isPhoto
-                                    ? (currentStory.text.isNotEmpty ? currentStory.text : '📷 Foto')
+                                    ? (currentStory.text.isNotEmpty ? currentStory.text : 'Foto')
                                     : currentStory.text,
                                 maxLines: 2,
                                 overflow: TextOverflow.ellipsis,

@@ -112,7 +112,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
           m.content.startsWith('data:audio');
       final isDoc = (m.contentType == MessageContentType.attachment && !isPhoto) ||
           m.attachmentName != null ||
-          m.content.startsWith('📄') ||
+          m.content.startsWith('Dokumen') ||
           (m.content.startsWith('data:') && !isPhoto && !isAudio);
       final isLink = m.content.contains('http://') || m.content.contains('https://');
 

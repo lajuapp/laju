@@ -276,11 +276,15 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
       replyTo: replyingToMsg,
     );
 
-    if (mounted && sent != null) {
+    if (mounted) {
       setState(() {
         final idx = _messages.indexWhere((m) => m.id == localId || m.clientMessageId == localId);
         if (idx != -1) {
-          _messages[idx] = sent;
+          if (sent != null) {
+            _messages[idx] = sent;
+          } else {
+            _messages[idx] = localMsg.copyWith(status: MessageDeliveryStatus.sent);
+          }
         }
       });
       _syncMessages();

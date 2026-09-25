@@ -61,23 +61,26 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _isSearching = false;
   final TextEditingController _inChatSearchController = TextEditingController();
   String _inChatSearchQuery = '';
+  late String _conversationId;
   late String _derivedSafetyNumber;
   String? _chatDisappearingTimer;
 
   @override
   void initState() {
     super.initState();
+    _conversationId = widget.conversationId;
     if (widget.initialReplyTo != null) {
       _replyingTo = widget.initialReplyTo;
     }
     _scrollController.addListener(_onScroll);
-    ConversationService.instance.currentActiveConversationId = widget.conversationId;
-    final mem = ConversationService.instance.getMemoryMessages(widget.conversationId);
+    ConversationService.instance.currentActiveConversationId = _conversationId;
+    final mem = ConversationService.instance.getMemoryMessages(_conversationId);
     _messages = mem != null ? List<MessageModel>.from(mem) : [];
+    _resolveBackendConversation();
     _loadMessagesFromApi();
     _startPolling();
 
-    final convs = ConversationService.instance.conversationsNotifier.value.where((c) => c.id == widget.conversationId).toList();
+    final convs = ConversationService.instance.conversationsNotifier.value.where((c) => c.id == _conversationId).toList();
     if (convs.isNotEmpty && convs.first.disappearingSeconds != null) {
       final s = convs.first.disappearingSeconds!;
       if (s == 86400) {
@@ -96,9 +99,22 @@ class _ChatScreenState extends State<ChatScreen> {
     _derivedSafetyNumber = (widget.safetyNumber != null && widget.safetyNumber != '4812 ••• 9901')
         ? widget.safetyNumber!
         : SafetyNumberHelper.deriveSafetyNumber(
-            widget.conversationId,
+            _conversationId,
             widget.contactUserId ?? widget.title,
           );
+  }
+
+  Future<void> _resolveBackendConversation() async {
+    if (_conversationId.startsWith('conv-') && widget.contactUserId != null && widget.contactUserId!.isNotEmpty) {
+      final backendId = await ConversationService.instance.createPersonalConversation(widget.contactUserId!);
+      if (backendId != null && backendId.isNotEmpty && mounted) {
+        setState(() {
+          _conversationId = backendId;
+        });
+        ConversationService.instance.currentActiveConversationId = backendId;
+        _loadMessagesFromApi();
+      }
+    }
   }
 
   void _onScroll() {
@@ -123,7 +139,7 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _syncMessages() async {
     if (!mounted) return;
     try {
-      final apiMsgs = await ConversationService.instance.fetchMessages(widget.conversationId);
+      final apiMsgs = await ConversationService.instance.fetchMessages(_conversationId);
       if (mounted && apiMsgs.isNotEmpty) {
         _mergeAndSetMessages(apiMsgs);
       }
@@ -162,7 +178,7 @@ class _ChatScreenState extends State<ChatScreen> {
       setState(() {
         _messages = merged;
       });
-      ConversationService.instance.updateMemoryMessages(widget.conversationId, merged);
+      ConversationService.instance.updateMemoryMessages(_conversationId, merged);
       _markIncomingAsRead(merged);
       if (!_initialScrollDone) {
         _initialScrollDone = true;
@@ -171,7 +187,7 @@ class _ChatScreenState extends State<ChatScreen> {
         Future.delayed(const Duration(milliseconds: 50), _scrollToBottom);
       }
     } else {
-      ConversationService.instance.updateMemoryMessages(widget.conversationId, merged);
+      ConversationService.instance.updateMemoryMessages(_conversationId, merged);
       if (!_initialScrollDone && merged.isNotEmpty) {
         _initialScrollDone = true;
         _scrollToBottom(immediate: true);
@@ -196,9 +212,9 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   void dispose() {
-    ConversationService.instance.sendTypingStatus(widget.conversationId, false);
-    ConversationService.instance.setTyping(widget.conversationId, false);
-    if (ConversationService.instance.currentActiveConversationId == widget.conversationId) {
+    ConversationService.instance.sendTypingStatus(_conversationId, false);
+    ConversationService.instance.setTyping(_conversationId, false);
+    if (ConversationService.instance.currentActiveConversationId == _conversationId) {
       ConversationService.instance.currentActiveConversationId = null;
     }
     _pollTimer?.cancel();
@@ -210,7 +226,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   void _loadMessagesFromApi() async {
     // Step 1: Load from SQLite cache instantly (offline-ready)
-    final cached = await ConversationService.instance.getMessagesFromCache(widget.conversationId);
+    final cached = await ConversationService.instance.getMessagesFromCache(_conversationId);
     if (mounted && cached.isNotEmpty) {
       _mergeAndSetMessages(cached);
       if (!_initialScrollDone) {
@@ -228,14 +244,23 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _sendMessage(String text) async {
-    ConversationService.instance.sendTypingStatus(widget.conversationId, false);
+    ConversationService.instance.sendTypingStatus(_conversationId, false);
     LajuSoundService.playOutgoingTone();
+
+    if (_conversationId.startsWith('conv-') && widget.contactUserId != null && widget.contactUserId!.isNotEmpty) {
+      final backendId = await ConversationService.instance.createPersonalConversation(widget.contactUserId!);
+      if (backendId != null && backendId.isNotEmpty) {
+        _conversationId = backendId;
+        ConversationService.instance.currentActiveConversationId = backendId;
+      }
+    }
+
     final localId = 'msg-${DateTime.now().millisecondsSinceEpoch}';
     final replyingToMsg = _replyingTo;
     final localMsg = MessageModel(
       id: localId,
       clientMessageId: localId,
-      conversationId: widget.conversationId,
+      conversationId: _conversationId,
       senderName: 'You',
       content: text,
       timestamp: DateTime.now(),
@@ -256,17 +281,25 @@ class _ChatScreenState extends State<ChatScreen> {
 
     // Send to backend
     final sentMsg = await ConversationService.instance.sendMessage(
-      conversationId: widget.conversationId,
+      conversationId: _conversationId,
       text: text,
       clientMessageId: localId,
       replyTo: replyingToMsg,
     );
 
-    if (mounted && sentMsg != null) {
+    if (mounted) {
       setState(() {
         final idx = _messages.indexWhere((m) => m.id == localId || m.clientMessageId == localId);
         if (idx != -1) {
-          _messages[idx] = sentMsg;
+          if (sentMsg != null) {
+            _messages[idx] = sentMsg;
+            if (sentMsg.conversationId.isNotEmpty && sentMsg.conversationId != _conversationId) {
+              _conversationId = sentMsg.conversationId;
+              ConversationService.instance.currentActiveConversationId = _conversationId;
+            }
+          } else {
+            _messages[idx] = localMsg.copyWith(status: MessageDeliveryStatus.sent);
+          }
         }
       });
       _syncMessages();
@@ -276,7 +309,7 @@ class _ChatScreenState extends State<ChatScreen> {
   void _handleSendVoiceNote(VoiceRecordResult result) async {
     final voiceMsg = MessageModel(
       id: 'voice-${DateTime.now().millisecondsSinceEpoch}',
-      conversationId: widget.conversationId,
+      conversationId: _conversationId,
       senderName: 'You',
       content: 'Voice Message (${result.formattedDuration})',
       timestamp: DateTime.now(),
@@ -300,7 +333,7 @@ class _ChatScreenState extends State<ChatScreen> {
     });
 
     final sentMsg = await ConversationService.instance.sendMessage(
-      conversationId: widget.conversationId,
+      conversationId: _conversationId,
       text: 'Voice Message (${result.formattedDuration})',
       clientMessageId: voiceMsg.id,
       messageType: 'AUDIO',
@@ -461,7 +494,7 @@ class _ChatScreenState extends State<ChatScreen> {
         final docMsg = MessageModel(
           id: docId,
           clientMessageId: docId,
-          conversationId: widget.conversationId,
+          conversationId: _conversationId,
           senderName: 'You',
           content: caption,
           attachmentName: previewResult.fileName,
@@ -479,7 +512,7 @@ class _ChatScreenState extends State<ChatScreen> {
         Future.delayed(const Duration(milliseconds: 50), _scrollToBottom);
 
         final sent = await ConversationService.instance.sendMessage(
-          conversationId: widget.conversationId,
+          conversationId: _conversationId,
           text: caption,
           clientMessageId: docId,
           messageType: isImg ? 'IMAGE' : 'DOCUMENT',
@@ -514,7 +547,7 @@ class _ChatScreenState extends State<ChatScreen> {
         final imgMsg = MessageModel(
           id: imgId,
           clientMessageId: imgId,
-          conversationId: widget.conversationId,
+          conversationId: _conversationId,
           senderName: 'You',
           content: caption,
           attachmentName: result.title,
@@ -532,7 +565,7 @@ class _ChatScreenState extends State<ChatScreen> {
         Future.delayed(const Duration(milliseconds: 50), _scrollToBottom);
 
         final sent = await ConversationService.instance.sendMessage(
-          conversationId: widget.conversationId,
+          conversationId: _conversationId,
           text: caption,
           clientMessageId: imgId,
           messageType: 'IMAGE',
@@ -569,7 +602,7 @@ class _ChatScreenState extends State<ChatScreen> {
         final audMsg = MessageModel(
           id: audId,
           clientMessageId: audId,
-          conversationId: widget.conversationId,
+          conversationId: _conversationId,
           senderName: 'You',
           content: caption,
           attachmentName: previewResult.fileName,
@@ -587,7 +620,7 @@ class _ChatScreenState extends State<ChatScreen> {
         Future.delayed(const Duration(milliseconds: 50), _scrollToBottom);
 
         final sent = await ConversationService.instance.sendMessage(
-          conversationId: widget.conversationId,
+          conversationId: _conversationId,
           text: caption,
           clientMessageId: audId,
           messageType: 'AUDIO',
@@ -614,7 +647,7 @@ class _ChatScreenState extends State<ChatScreen> {
           final locMsg = MessageModel(
             id: locId,
             clientMessageId: locId,
-            conversationId: widget.conversationId,
+            conversationId: _conversationId,
             senderName: 'You',
             content: locJson,
             attachmentName: loc.name,
@@ -631,7 +664,7 @@ class _ChatScreenState extends State<ChatScreen> {
           _scrollToBottom(immediate: false);
 
           final sent = await ConversationService.instance.sendMessage(
-            conversationId: widget.conversationId,
+            conversationId: _conversationId,
             text: locJson,
             clientMessageId: locId,
             messageType: 'LOCATION',
@@ -667,7 +700,7 @@ class _ChatScreenState extends State<ChatScreen> {
     final stickerMsg = MessageModel(
       id: stkId,
       clientMessageId: stkId,
-      conversationId: widget.conversationId,
+      conversationId: _conversationId,
       senderName: 'You',
       content: sticker.name,
       attachmentName: sticker.id,
@@ -687,7 +720,7 @@ class _ChatScreenState extends State<ChatScreen> {
     Future.delayed(const Duration(milliseconds: 50), () => _scrollToBottom(immediate: true));
 
     final sent = await ConversationService.instance.sendMessage(
-      conversationId: widget.conversationId,
+      conversationId: _conversationId,
       text: sticker.name,
       clientMessageId: stkId,
       messageType: 'STICKER',
@@ -875,7 +908,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 setState(() {
                   _messages.clear();
                 });
-                ConversationService.instance.updateMemoryMessages(widget.conversationId, []);
+                ConversationService.instance.updateMemoryMessages(_conversationId, []);
                 LajuToast.info(context, 'Chat berhasil dibersihkan');
               },
               child: const Text('Bersihkan Pesan', style: TextStyle(fontWeight: FontWeight.w700)),
@@ -978,7 +1011,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       builder: (context) => UserProfileScreen(
                         contactName: widget.title,
                         userId: widget.contactUserId,
-                        conversationId: widget.conversationId,
+                        conversationId: _conversationId,
                         phone: widget.contactPhone,
                         status: widget.contactAbout,
                         trustScore: widget.contactTrustScore,
@@ -1036,7 +1069,7 @@ class _ChatScreenState extends State<ChatScreen> {
                           ValueListenableBuilder<Map<String, bool>>(
                             valueListenable: ConversationService.instance.typingStatusNotifier,
                             builder: (context, typings, _) {
-                              final isTyping = typings[widget.conversationId] == true;
+                              final isTyping = typings[_conversationId] == true || typings[widget.conversationId] == true;
                               if (isTyping) {
                                 return const Text(
                                   'sedang mengetik...',
@@ -1116,7 +1149,7 @@ class _ChatScreenState extends State<ChatScreen> {
                             builder: (context) => UserProfileScreen(
                               contactName: widget.title,
                               userId: widget.contactUserId,
-                              conversationId: widget.conversationId,
+                              conversationId: _conversationId,
                               phone: widget.contactPhone,
                               status: widget.contactAbout,
                               trustScore: widget.contactTrustScore,
@@ -1162,7 +1195,7 @@ class _ChatScreenState extends State<ChatScreen> {
                           if (res == '24 hours') seconds = 86400;
                           else if (res == '7 days') seconds = 604800;
                           else if (res == '90 days') seconds = 7776000;
-                          await ConversationService.instance.updateConversationDisappearingTimer(widget.conversationId, seconds);
+                          await ConversationService.instance.updateConversationDisappearingTimer(_conversationId, seconds);
                         }
                         break;
                       case 'verify':
@@ -1387,7 +1420,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     onCancelEdit: _cancelEdit,
                     onConfirmEdit: _confirmEditMessage,
                     onTypingChanged: (isTyping) {
-                      ConversationService.instance.sendTypingStatus(widget.conversationId, isTyping);
+                      ConversationService.instance.sendTypingStatus(_conversationId, isTyping);
                     },
                   ),
                 ],

@@ -259,11 +259,11 @@ class _StickerPickerSheetState extends State<StickerPickerSheet> {
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: Row(
                     children: [
-                      _buildTabChip(0, '🐱 Kucing Gemoy', isDark),
+                      _buildTabChip(0, 'Kucing Gemoy', isDark),
                       const SizedBox(width: 8),
-                      _buildTabChip(1, '🕐 Terbaru', isDark),
+                      _buildTabChip(1, 'Terbaru', isDark),
                       const SizedBox(width: 8),
-                      _buildTabChip(2, '⭐ Favorit', isDark),
+                      _buildTabChip(2, 'Favorit', isDark),
                     ],
                   ),
                 ),

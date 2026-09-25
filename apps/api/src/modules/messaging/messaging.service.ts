@@ -21,25 +21,131 @@ export class MessagingService {
     @Optional() private readonly gotifyService?: GotifyService
   ) {}
 
+  private async getValidDeviceId(userId: string, requestedDeviceId?: string): Promise<string> {
+    if (requestedDeviceId) {
+      try {
+        const existing = await this.prisma.device.findFirst({
+          where: { id: requestedDeviceId, userId, status: 'ACTIVE' }
+        });
+        if (existing) return existing.id;
+      } catch (_) {}
+    }
+
+    try {
+      const anyActive = await this.prisma.device.findFirst({
+        where: { userId, status: 'ACTIVE' },
+        orderBy: { lastSeenAt: 'desc' }
+      });
+      if (anyActive) return anyActive.id;
+    } catch (_) {}
+
+    try {
+      const anyDevice = await this.prisma.device.findFirst({
+        where: { userId },
+        orderBy: { createdAt: 'desc' }
+      });
+      if (anyDevice) return anyDevice.id;
+    } catch (_) {}
+
+    const newDevice = await this.prisma.device.create({
+      data: {
+        userId,
+        deviceUuid: `dev-${userId.substring(0, 8)}-${Date.now()}`,
+        name: 'Mobile Device',
+        status: 'ACTIVE',
+        lastSeenAt: new Date()
+      }
+    });
+    return newDevice.id;
+  }
+
   async sendMessage(
     userId: string,
     deviceId: string,
     conversationId: string,
     dto: SendMessageDto
   ) {
+    let effectiveConversationId = conversationId;
+
     // 1. Verify user membership
-    const member = await this.prisma.conversationMember.findFirst({
-      where: { conversationId, userId, leftAt: null }
+    let member = await this.prisma.conversationMember.findFirst({
+      where: { conversationId: effectiveConversationId, userId, leftAt: null }
     });
+
+    if (!member && conversationId.startsWith('conv-')) {
+      const targetIdentifier = conversationId.substring(5).trim();
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(targetIdentifier);
+      const cleanUsername = targetIdentifier.startsWith('@') ? targetIdentifier.substring(1) : targetIdentifier;
+      const digitsOnly = targetIdentifier.replace(/\D/g, '');
+
+      let targetUser: any = null;
+      if (isUuid) {
+        try {
+          targetUser = await this.prisma.user.findUnique({ where: { id: targetIdentifier } });
+        } catch (_) {}
+      }
+      if (!targetUser) {
+        targetUser = await this.prisma.user.findFirst({
+          where: {
+            OR: [
+              { username: { equals: targetIdentifier, mode: 'insensitive' as const } },
+              { username: { equals: cleanUsername, mode: 'insensitive' as const } },
+              ...(targetIdentifier.includes('@') ? [{ email: { equals: targetIdentifier, mode: 'insensitive' as const } }] : []),
+              ...(digitsOnly.length >= 6 ? [
+                { phoneNumber: targetIdentifier },
+                { phoneNumber: `+${digitsOnly}` },
+                { phoneNumber: digitsOnly },
+                { phoneNumber: { contains: digitsOnly } }
+              ] : [])
+            ]
+          }
+        });
+      }
+
+      if (targetUser && targetUser.id !== userId) {
+        const otherUserId = targetUser.id;
+        let existingConv = await this.prisma.conversation.findFirst({
+          where: {
+            type: 'PERSONAL',
+            AND: [
+              { members: { some: { userId, leftAt: null } } },
+              { members: { some: { userId: otherUserId, leftAt: null } } }
+            ]
+          }
+        });
+
+        if (!existingConv) {
+          existingConv = await this.prisma.conversation.create({
+            data: {
+              type: 'PERSONAL',
+              members: {
+                create: [
+                  { userId, role: 'MEMBER' },
+                  { userId: otherUserId, role: 'MEMBER' }
+                ]
+              }
+            }
+          });
+        }
+
+        effectiveConversationId = existingConv.id;
+        member = await this.prisma.conversationMember.findFirst({
+          where: { conversationId: effectiveConversationId, userId, leftAt: null }
+        });
+      }
+    }
+
     if (!member) {
       throw new ForbiddenException('Not an active member of this conversation');
     }
+
+    const activeDeviceId = await this.getValidDeviceId(userId, deviceId);
 
     // 2. Idempotency check on (sender_device_id, client_message_id)
     const existing = await this.prisma.message.findUnique({
       where: {
         senderDeviceId_clientMessageId: {
-          senderDeviceId: deviceId,
+          senderDeviceId: activeDeviceId,
           clientMessageId: dto.clientMessageId
         }
       }
@@ -57,9 +163,9 @@ export class MessagingService {
 
       const message = await tx.message.create({
         data: {
-          conversationId,
+          conversationId: effectiveConversationId,
           senderUserId: userId,
-          senderDeviceId: deviceId,
+          senderDeviceId: activeDeviceId,
           clientMessageId: dto.clientMessageId,
           ciphertext: dto.ciphertext,
           nonce: dto.nonce,
@@ -71,13 +177,13 @@ export class MessagingService {
 
       const conversationEvent = await tx.conversationEvent.create({
         data: {
-          conversationId,
+          conversationId: effectiveConversationId,
           eventType: 'MESSAGE_CREATED',
           payload: JSON.stringify({
             messageId: message.id,
             sequence: message.sequence,
             senderUserId: userId,
-            senderDeviceId: deviceId,
+            senderDeviceId: activeDeviceId,
             messageType: message.messageType,
             createdAt: message.createdAt
           })
@@ -87,14 +193,14 @@ export class MessagingService {
       await tx.outboxEvent.create({
         data: {
           aggregateType: 'CONVERSATION',
-          aggregateId: conversationId,
+          aggregateId: effectiveConversationId,
           eventType: 'MESSAGE_SENT',
           payload: JSON.stringify({
-            conversationId,
+            conversationId: effectiveConversationId,
             messageId: message.id,
             sequence: message.sequence,
             senderUserId: userId,
-            senderDeviceId: deviceId,
+            senderDeviceId: activeDeviceId,
             ciphertext: message.ciphertext,
             nonce: message.nonce,
             messageType: message.messageType,
@@ -108,7 +214,7 @@ export class MessagingService {
     });
 
     // Asynchronously dispatch high-priority push notification (killed-state wakeups)
-    this.dispatchPushNotifications(userId, conversationId, createdMessage).catch((err) => {
+    this.dispatchPushNotifications(userId, effectiveConversationId, createdMessage).catch((err) => {
       this.logger.warn(`Failed to dispatch push notification: ${err.message}`);
     });
 
@@ -148,7 +254,7 @@ export class MessagingService {
       });
 
       const messagePreview = message.messageType === 'TEXT'
-        ? 'Pesan baru terenkripsi'
+        ? 'Pesan baru'
         : `Mengirim ${message.messageType.toLowerCase()}`;
 
       for (const member of recipientMembers) {

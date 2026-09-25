@@ -30,11 +30,16 @@ export class ConversationsService {
     const cleanUsername = cleanId.startsWith('@') ? cleanId.substring(1) : cleanId;
     const digitsOnly = cleanId.replace(/\D/g, '');
 
-    // 1. Direct match by ID (UUID)
-    const byId = await prismaClient.user.findUnique({
-      where: { id: cleanId }
-    });
-    if (byId) return byId;
+    // 1. Direct match by ID (UUID only)
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(cleanId);
+    if (isUuid) {
+      try {
+        const byId = await prismaClient.user.findUnique({
+          where: { id: cleanId }
+        });
+        if (byId) return byId;
+      } catch (_) {}
+    }
 
     // 2. Match by username (case-insensitive)
     const byUsername = await prismaClient.user.findFirst({
@@ -532,10 +537,44 @@ export class ConversationsService {
   }
 
   async listMessages(userId: string, conversationId: string, limitStr?: string, cursorStr?: string) {
-    const member = await this.prisma.conversationMember.findFirst({
-      where: { conversationId, userId, leftAt: null }
+    let effectiveConversationId = conversationId;
+    let member = await this.prisma.conversationMember.findFirst({
+      where: { conversationId: effectiveConversationId, userId, leftAt: null }
     });
+
+    if (!member && conversationId.startsWith('conv-')) {
+      const targetIdentifier = conversationId.substring(5).trim();
+      const targetUser = await this.resolveUser(targetIdentifier);
+      if (targetUser && targetUser.id !== userId) {
+        const otherUserId = targetUser.id;
+        const existingConv = await this.prisma.conversation.findFirst({
+          where: {
+            type: 'PERSONAL',
+            AND: [
+              { members: { some: { userId, leftAt: null } } },
+              { members: { some: { userId: otherUserId, leftAt: null } } }
+            ]
+          }
+        });
+        if (existingConv) {
+          effectiveConversationId = existingConv.id;
+          member = await this.prisma.conversationMember.findFirst({
+            where: { conversationId: effectiveConversationId, userId, leftAt: null }
+          });
+        }
+      }
+    }
+
     if (!member) {
+      if (conversationId.startsWith('conv-')) {
+        return {
+          conversationId,
+          messages: [],
+          count: 0,
+          isTyping: false,
+          typingUsers: []
+        };
+      }
       throw new ForbiddenException('Not a member of this conversation');
     }
 
@@ -543,7 +582,7 @@ export class ConversationsService {
     const cursor = cursorStr ? parseInt(cursorStr, 10) : undefined;
 
     const whereClause: any = {
-      conversationId,
+      conversationId: effectiveConversationId,
       deletedAt: null
     };
     if (cursor !== undefined) {
@@ -572,7 +611,7 @@ export class ConversationsService {
     // Check if other members are currently typing in this conversation
     let isTyping = false;
     const typingUsers: string[] = [];
-    const convTyping = this.typingMap.get(conversationId);
+    const convTyping = this.typingMap.get(effectiveConversationId);
     if (convTyping) {
       const now = Date.now();
       for (const [tUserId, tInfo] of Array.from(convTyping.entries())) {

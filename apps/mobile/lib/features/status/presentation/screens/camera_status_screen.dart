@@ -688,7 +688,7 @@ class _CameraStatusScreenState extends State<CameraStatusScreen>
     final story = StatusStoryItem(
       text: caption.isNotEmpty
           ? caption
-          : (_photoText?.isNotEmpty == true ? _photoText! : '📷 Foto Kamera'),
+          : (_photoText?.isNotEmpty == true ? _photoText! : 'Foto Kamera'),
       time: 'Baru saja',
       backgroundColor: Colors.black,
       isPhoto: true,

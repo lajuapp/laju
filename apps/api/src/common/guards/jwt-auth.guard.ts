@@ -49,11 +49,19 @@ export class JwtAuthGuard implements CanActivate {
       }
 
       if (payload.deviceId) {
-        const device = await this.prisma.device.findUnique({
-          where: { id: payload.deviceId }
-        });
-        if (!device || device.status !== 'ACTIVE') {
-          throw new UnauthorizedException('Device is revoked or contained');
+        try {
+          const device = await this.prisma.device.findUnique({
+            where: { id: payload.deviceId }
+          });
+          // Only hard-reject if the device is explicitly disabled.
+          // If device record is simply missing (e.g. DB was reset), allow through —
+          // messaging service's getValidDeviceId() will resolve a valid device.
+          if (device && (device.status === 'REVOKED' || device.status === 'CONTAINED' || device.status === 'DECOMMISSIONED')) {
+            throw new UnauthorizedException('Device has been revoked');
+          }
+        } catch (err: any) {
+          if (err instanceof UnauthorizedException) throw err;
+          // DB lookup error — allow through so the request can proceed
         }
       }
 

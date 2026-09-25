@@ -701,12 +701,9 @@ class ChatBubble extends StatelessWidget {
     if (!_isImageMessage()) return false;
     final clean = message.content.trim();
     if (clean.isEmpty ||
-        clean == '📷 Foto' ||
         clean == 'Foto' ||
         clean == 'Foto.jpg' ||
-        clean == (message.attachmentName ?? '').trim() ||
-        clean.startsWith('📷 Foto') ||
-        clean.startsWith('📷 ${(message.attachmentName ?? '').trim()}')) {
+        clean == (message.attachmentName ?? '').trim()) {
       return false;
     }
     return true;
@@ -1331,11 +1328,9 @@ class ChatBubble extends StatelessWidget {
 
     if (cleanContent.isEmpty ||
         cleanContent == attName ||
-        cleanContent == 'Client-Side Encrypted Document' ||
-        cleanContent == '$attName\nClient-Side Encrypted Document' ||
-        cleanContent == '📷 $attName (${message.attachmentSize})' ||
-        cleanContent == '🎤 Voice Message' ||
-        cleanContent.startsWith('📷 $attName') ||
+        cleanContent == 'Dokumen' ||
+        cleanContent == '$attName\nDokumen' ||
+        cleanContent == 'Voice Message' ||
         cleanContent.startsWith('Berkas Dokumen Asli') ||
         cleanContent == 'Berkas Dokumen' ||
         cleanContent.startsWith('data:') ||

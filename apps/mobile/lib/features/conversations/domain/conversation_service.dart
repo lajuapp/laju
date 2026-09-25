@@ -48,6 +48,7 @@ class ConversationService {
 
   bool _isInitialSyncComplete = false;
   final Set<String> _seenMessageIds = {};
+  final Map<String, String> _tempToRealConvMap = {};
 
   /// Detects MIME type from file extension
   static String detectMimeType(String path, {String? fileName}) {
@@ -338,7 +339,7 @@ class ConversationService {
                     preview = 'Foto';
                   } else if (preview.startsWith('data:audio')) {
                     preview = 'Pesan Suara';
-                  } else if (preview.startsWith('data:') || preview.startsWith('📄')) {
+                  } else if (preview.startsWith('data:') || preview.startsWith('Berkas Dokumen')) {
                     preview = 'Berkas Dokumen';
                   }
 
@@ -425,7 +426,7 @@ class ConversationService {
               if (msgType == 'audio') {
                 lastMsg = 'Pesan Suara';
               } else if (msgType == 'sticker') {
-                lastMsg = '💟 Stiker';
+                lastMsg = 'Stiker';
               } else if (msgType == 'document') {
                 final fn = (parsed['fileName'] as String?) ?? 'Dokumen';
                 lastMsg = cap.isNotEmpty ? cap : fn;
@@ -526,10 +527,17 @@ class ConversationService {
 
   /// Create a 1-on-1 personal conversation
   Future<String?> createPersonalConversation(String otherUserId) async {
-    final cleanId = otherUserId.trim();
-    if (cleanId.isEmpty || cleanId.startsWith('conv-') || cleanId.startsWith('grp-') || cleanId == 'm-you') {
+    var cleanId = otherUserId.trim();
+    if (cleanId.startsWith('conv-')) {
+      cleanId = cleanId.substring(5).trim();
+    }
+    if (cleanId.isEmpty || cleanId.startsWith('grp-') || cleanId == 'm-you') {
       debugPrint('[ConversationService] createPersonalConversation diabaikan, format identifier tidak valid: $cleanId');
       return null;
+    }
+
+    if (_tempToRealConvMap.containsKey('conv-$cleanId')) {
+      return _tempToRealConvMap['conv-$cleanId'];
     }
 
     try {
@@ -542,7 +550,12 @@ class ConversationService {
       );
 
       if (response.isSuccess && response.rawJson is Map) {
-        return response.rawJson['id'];
+        final convId = response.rawJson['id'] as String?;
+        if (convId != null && convId.isNotEmpty) {
+          _tempToRealConvMap['conv-$cleanId'] = convId;
+          _tempToRealConvMap[cleanId] = convId;
+          return convId;
+        }
       }
     } catch (e) {
       debugPrint('[ConversationService] createPersonalConversation error: $e');
@@ -697,6 +710,15 @@ class ConversationService {
 
   /// Fetch message history for a conversation
   Future<List<MessageModel>> fetchMessages(String conversationId, {int limit = 50, int? cursor}) async {
+    String effectiveConvId = _tempToRealConvMap[conversationId] ?? conversationId;
+    if (effectiveConvId.startsWith('conv-')) {
+      final targetUserId = effectiveConvId.substring(5).trim();
+      final resolvedId = await createPersonalConversation(targetUserId);
+      if (resolvedId != null && resolvedId.isNotEmpty) {
+        effectiveConvId = resolvedId;
+      }
+    }
+
     try {
       final queryParams = <String, String>{
         'limit': limit.toString(),
@@ -704,7 +726,7 @@ class ConversationService {
       };
 
       final response = await ApiClient.instance.get(
-        ApiEndpoints.conversationMessages(conversationId),
+        ApiEndpoints.conversationMessages(effectiveConvId),
         queryParams: queryParams,
       );
 
@@ -831,7 +853,7 @@ class ConversationService {
                 attName = 'Voice Note';
                 contentText = 'Pesan Suara';
                 attSize = '0:00';
-              } else if (msgType == 'DOCUMENT' || rawCiphertext.startsWith('data:') || rawCiphertext.startsWith('📄')) {
+              } else if (msgType == 'DOCUMENT' || rawCiphertext.startsWith('data:') || rawCiphertext.startsWith('Dokumen')) {
                 contentType = MessageContentType.attachment;
                 mediaData = rawCiphertext.startsWith('data:') ? rawCiphertext : null;
                 attName = 'Dokumen';
@@ -1008,14 +1030,23 @@ class ConversationService {
           ? 'ATTACHMENT'
           : (type == 'LOCATION' ? 'LOCATION' : 'TEXT');
 
+      String effectiveConvId = _tempToRealConvMap[conversationId] ?? conversationId;
+      if (effectiveConvId.startsWith('conv-')) {
+        final targetUserId = effectiveConvId.substring(5).trim();
+        final resolvedId = await createPersonalConversation(targetUserId);
+        if (resolvedId != null && resolvedId.isNotEmpty) {
+          effectiveConvId = resolvedId;
+        }
+      }
+
       final convList = inMemoryConversations ?? conversationsNotifier.value;
-      final convMatch = convList.where((c) => c.id == conversationId).toList();
+      final convMatch = convList.where((c) => c.id == effectiveConvId || c.id == conversationId).toList();
       final effectiveDisappearingSeconds = (convMatch.isNotEmpty && convMatch.first.disappearingSeconds != null)
           ? convMatch.first.disappearingSeconds
           : PrivacyController.instance.disappearingSeconds;
 
       final response = await ApiClient.instance.post(
-        ApiEndpoints.conversationMessages(conversationId),
+        ApiEndpoints.conversationMessages(effectiveConvId),
         body: {
           'clientMessageId': id,
           'ciphertext': payloadCiphertext,
@@ -1029,10 +1060,14 @@ class ConversationService {
       if (response.isSuccess && response.rawJson is Map) {
         final m = response.rawJson;
         final confirmedId = m['id'] ?? id;
+        final realConvId = (m['conversationId'] as String?) ?? effectiveConvId;
+        _tempToRealConvMap[conversationId] = realConvId;
+        _tempToRealConvMap[effectiveConvId] = realConvId;
+
         final confirmedMsg = MessageModel(
           id: confirmedId,
           clientMessageId: id,
-          conversationId: conversationId,
+          conversationId: realConvId,
           senderName: 'You',
           content: text.trim(),
           attachmentPath: attachmentPath,
@@ -1057,16 +1092,18 @@ class ConversationService {
         await LocalDatabase.instance.replaceOptimisticMessage(id, confirmedMsg);
 
         // Update in-memory messages if present
-        final currentMemory = _inMemoryMessages[conversationId];
-        if (currentMemory != null) {
-          final updatedMemory = List<MessageModel>.from(currentMemory);
-          final idx = updatedMemory.indexWhere((msg) => msg.id == id || msg.clientMessageId == id);
-          if (idx != -1) {
-            updatedMemory[idx] = confirmedMsg;
-          } else {
-            updatedMemory.add(confirmedMsg);
+        for (final cid in [conversationId, effectiveConvId, realConvId]) {
+          final currentMemory = _inMemoryMessages[cid];
+          if (currentMemory != null) {
+            final updatedMemory = List<MessageModel>.from(currentMemory);
+            final idx = updatedMemory.indexWhere((msg) => msg.id == id || msg.clientMessageId == id);
+            if (idx != -1) {
+              updatedMemory[idx] = confirmedMsg;
+            } else {
+              updatedMemory.add(confirmedMsg);
+            }
+            _inMemoryMessages[cid] = MessageModel.deduplicate(updatedMemory);
           }
-          _inMemoryMessages[conversationId] = MessageModel.deduplicate(updatedMemory);
         }
 
         // Record network usage
