@@ -3,7 +3,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useNavigate } from 'react-router-dom';
-import { ShieldCheck, Lock, User, AlertCircle, Sparkles } from 'lucide-react';
+import { ShieldCheck, AlertCircle } from 'lucide-react';
 import { useLogin } from '../hooks/useAdminAuth';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
@@ -23,12 +23,11 @@ export function LoginPage() {
   const {
     register,
     handleSubmit,
-    setValue,
     formState: { errors },
   } = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
     defaultValues: {
-      identifier: 'admin',
+      identifier: '',
       password: '',
     },
   });
@@ -45,12 +44,6 @@ export function LoginPage() {
         );
       },
     });
-  };
-
-  const handleUseDemo = () => {
-    setValue('identifier', 'admin');
-    setValue('password', 'admin12345');
-    setErrorMessage(null);
   };
 
   return (
@@ -79,10 +72,11 @@ export function LoginPage() {
             </div>
           )}
 
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+          <form onSubmit={handleSubmit(onSubmit)} autoComplete="off" className="space-y-4">
             <Input
               label="Username atau Email Admin"
-              placeholder="admin atau email@laju.chat"
+              placeholder="Masukkan username atau email"
+              autoComplete="username"
               error={errors.identifier?.message}
               {...register('identifier')}
             />
@@ -91,6 +85,7 @@ export function LoginPage() {
               label="Kata Sandi (Password)"
               type="password"
               placeholder="••••••••"
+              autoComplete="current-password"
               error={errors.password?.message}
               {...register('password')}
             />
@@ -105,23 +100,6 @@ export function LoginPage() {
               Masuk ke Backoffice
             </Button>
           </form>
-
-          {/* Quick Demo Credentials Box */}
-          <div className="mt-6 pt-5 border-t border-neutral-100">
-            <div className="p-3 rounded-xl bg-neutral-50 border border-neutral-200/70 text-neutral-600 flex items-center justify-between">
-              <div className="text-[11px]">
-                <span className="font-bold text-neutral-900">Akun Awal:</span> admin / admin12345
-              </div>
-              <button
-                type="button"
-                onClick={handleUseDemo}
-                className="text-[11px] font-bold text-emerald-600 hover:text-emerald-700 hover:underline flex items-center gap-1"
-              >
-                <Sparkles className="w-3 h-3" />
-                Isi Otomatis
-              </button>
-            </div>
-          </div>
         </div>
 
         {/* Security Note */}

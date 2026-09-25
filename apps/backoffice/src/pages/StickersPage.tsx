@@ -26,6 +26,8 @@ import { Button } from '../components/ui/Button';
 import { Modal } from '../components/ui/Modal';
 import { Input } from '../components/ui/Input';
 import { Badge } from '../components/ui/Badge';
+import { Pagination } from '../components/ui/Pagination';
+import { usePagination } from '../hooks/usePagination';
 import { StickerPackItem } from '../api/types';
 import { ApngFrameStudioModal } from '../components/stickers/ApngFrameStudioModal';
 import { resolveMediaUrl } from '../api/client';
@@ -166,6 +168,9 @@ export function StickersPage() {
   // Sync selectedPack with fresh query data
   const currentActivePack = packs?.find((p) => p.id === selectedPack?.id) || selectedPack;
 
+  const packsPagination = usePagination(packs || [], { initialPageSize: 6 });
+  const stickersPagination = usePagination(currentActivePack?.stickers || [], { initialPageSize: 18 });
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -206,8 +211,8 @@ export function StickersPage() {
           <div className="space-y-2">
             {isLoading ? (
               <p className="text-xs text-neutral-400 py-6 text-center">Memuat daftar paket...</p>
-            ) : packs && packs.length > 0 ? (
-              packs.map((pack) => {
+            ) : packsPagination.paginatedItems && packsPagination.paginatedItems.length > 0 ? (
+              packsPagination.paginatedItems.map((pack) => {
                 const isSelected = currentActivePack?.id === pack.id;
                 return (
                   <div
@@ -254,6 +259,20 @@ export function StickersPage() {
               </p>
             )}
           </div>
+
+          {/* Packs Pagination */}
+          {packsPagination.totalItems > packsPagination.pageSize && (
+            <div className="pt-2 border-t border-neutral-100">
+              <Pagination
+                currentPage={packsPagination.currentPage}
+                totalPages={packsPagination.totalPages}
+                totalItems={packsPagination.totalItems}
+                pageSize={packsPagination.pageSize}
+                onPageChange={packsPagination.goToPage}
+                className="flex-col !items-start"
+              />
+            </div>
+          )}
         </div>
 
         {/* Selected Pack Stickers Detail (2 cols) */}
@@ -327,43 +346,57 @@ export function StickersPage() {
               </div>
 
               {/* Stickers Grid */}
-              <div className="mt-5">
-                {currentActivePack.stickers && currentActivePack.stickers.length > 0 ? (
-                  <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3">
-                    {currentActivePack.stickers.map((stk) => (
-                      <div
-                        key={stk.id}
-                        className="p-3 rounded-xl border border-neutral-100 bg-neutral-50/50 hover:bg-neutral-100/80 transition-all flex flex-col items-center justify-between group relative"
-                      >
-                        <button
-                          onClick={() => handleDeleteStickerItem(stk.id)}
-                          className="absolute top-1.5 right-1.5 p-1 rounded-md bg-white border border-neutral-200 text-neutral-400 hover:text-rose-600 opacity-0 group-hover:opacity-100 transition-opacity shadow-xs"
+              <div className="mt-5 space-y-4">
+                {stickersPagination.paginatedItems && stickersPagination.paginatedItems.length > 0 ? (
+                  <>
+                    <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3">
+                      {stickersPagination.paginatedItems.map((stk) => (
+                        <div
+                          key={stk.id}
+                          className="p-3 rounded-xl border border-neutral-100 bg-neutral-50/50 hover:bg-neutral-100/80 transition-all flex flex-col items-center justify-between group relative"
                         >
-                          <X className="w-3 h-3" />
-                        </button>
+                          <button
+                            onClick={() => handleDeleteStickerItem(stk.id)}
+                            className="absolute top-1.5 right-1.5 p-1 rounded-md bg-white border border-neutral-200 text-neutral-400 hover:text-rose-600 opacity-0 group-hover:opacity-100 transition-opacity shadow-xs"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
 
-                        <div className="w-16 h-16 flex items-center justify-center p-1">
-                          <img
-                            src={resolveMediaUrl(stk.imageUrl)}
-                            alt={stk.name}
-                            className="max-w-full max-h-full object-contain"
-                            onError={(e) => {
-                              (e.target as HTMLElement).style.opacity = '0.3';
-                            }}
-                          />
-                        </div>
+                          <div className="w-16 h-16 flex items-center justify-center p-1">
+                            <img
+                              src={resolveMediaUrl(stk.imageUrl)}
+                              alt={stk.name}
+                              className="max-w-full max-h-full object-contain"
+                              onError={(e) => {
+                                (e.target as HTMLElement).style.opacity = '0.3';
+                              }}
+                            />
+                          </div>
 
-                        <div className="mt-2 text-center w-full">
-                          <p className="text-[11px] font-bold text-neutral-800 truncate">{stk.name}</p>
-                          {stk.emoji && (
-                            <span className="text-[10px] font-mono text-neutral-400 bg-neutral-100 px-1.5 py-0.5 rounded inline-block mt-0.5">
-                              {stk.emoji}
-                            </span>
-                          )}
+                          <div className="mt-2 text-center w-full">
+                            <p className="text-[11px] font-bold text-neutral-800 truncate">{stk.name}</p>
+                            {stk.emoji && (
+                              <span className="text-[10px] font-mono text-neutral-400 bg-neutral-100 px-1.5 py-0.5 rounded inline-block mt-0.5">
+                                {stk.emoji}
+                              </span>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    ))}
-                  </div>
+                      ))}
+                    </div>
+
+                    {stickersPagination.totalItems > stickersPagination.pageSize && (
+                      <Pagination
+                        currentPage={stickersPagination.currentPage}
+                        totalPages={stickersPagination.totalPages}
+                        totalItems={stickersPagination.totalItems}
+                        pageSize={stickersPagination.pageSize}
+                        pageSizeOptions={[12, 18, 36, 60]}
+                        onPageChange={stickersPagination.goToPage}
+                        onPageSizeChange={stickersPagination.setPageSize}
+                      />
+                    )}
+                  </>
                 ) : (
                   <div className="py-16 text-center text-xs text-neutral-400">
                     Paket ini belum memiliki item stiker. Klik "Tambah Stiker" untuk mengunggah.

@@ -1,11 +1,15 @@
 import React from 'react';
 import { ShieldAlert, Activity, Clock, Terminal } from 'lucide-react';
 import { useAuditLogs, useSecurityEvents } from '../hooks/useSecurity';
+import { usePagination } from '../hooks/usePagination';
 import { Badge } from '../components/ui/Badge';
+import { Pagination } from '../components/ui/Pagination';
 
 export function SecurityPage() {
   const { data: auditLogs, isLoading: loadingAudit } = useAuditLogs();
   const { data: securityEvents, isLoading: loadingEvents } = useSecurityEvents();
+
+  const pagination = usePagination(auditLogs || [], { initialPageSize: 15 });
 
   return (
     <div className="space-y-6">
@@ -49,8 +53,8 @@ export function SecurityPage() {
                     Memuat log audit...
                   </td>
                 </tr>
-              ) : auditLogs && auditLogs.length > 0 ? (
-                auditLogs.map((log) => (
+              ) : pagination.paginatedItems && pagination.paginatedItems.length > 0 ? (
+                pagination.paginatedItems.map((log) => (
                   <tr key={log.id} className="hover:bg-neutral-50/50 transition-colors">
                     <td className="px-5 py-3 font-mono text-[11px] text-neutral-500 whitespace-nowrap">
                       {new Date(log.createdAt).toLocaleString('id-ID', {
@@ -86,6 +90,19 @@ export function SecurityPage() {
               )}
             </tbody>
           </table>
+        </div>
+
+        {/* Pagination Footer */}
+        <div className="px-5 pb-4">
+          <Pagination
+            currentPage={pagination.currentPage}
+            totalPages={pagination.totalPages}
+            totalItems={pagination.totalItems}
+            pageSize={pagination.pageSize}
+            pageSizeOptions={[15, 30, 50, 100]}
+            onPageChange={pagination.goToPage}
+            onPageSizeChange={pagination.setPageSize}
+          />
         </div>
       </div>
     </div>

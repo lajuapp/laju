@@ -1,12 +1,16 @@
 import React from 'react';
 import { Smartphone, ShieldCheck, ShieldAlert, Trash2 } from 'lucide-react';
 import { useDevicesList, useRevokeDevice } from '../hooks/useDevices';
+import { usePagination } from '../hooks/usePagination';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
+import { Pagination } from '../components/ui/Pagination';
 
 export function DevicesPage() {
   const { data: devices, isLoading } = useDevicesList();
   const revokeDevice = useRevokeDevice();
+
+  const pagination = usePagination(devices || [], { initialPageSize: 10 });
 
   const handleRevoke = (id: string) => {
     if (confirm(`PENCABUTAN AKSES: Putus sesi perangkat ID ${id}? Perangkat ini tidak akan bisa mendekripsi pesan selanjutnya.`)) {
@@ -47,8 +51,8 @@ export function DevicesPage() {
                     Memuat data armada perangkat...
                   </td>
                 </tr>
-              ) : devices && devices.length > 0 ? (
-                devices.map((device) => (
+              ) : pagination.paginatedItems && pagination.paginatedItems.length > 0 ? (
+                pagination.paginatedItems.map((device) => (
                   <tr key={device.id} className="hover:bg-neutral-50/50 transition-colors">
                     <td className="px-5 py-3.5 font-mono text-[11px] font-bold text-neutral-900">
                       <div className="flex items-center gap-2">
@@ -108,6 +112,18 @@ export function DevicesPage() {
               )}
             </tbody>
           </table>
+        </div>
+
+        {/* Pagination Footer */}
+        <div className="px-5 pb-4">
+          <Pagination
+            currentPage={pagination.currentPage}
+            totalPages={pagination.totalPages}
+            totalItems={pagination.totalItems}
+            pageSize={pagination.pageSize}
+            onPageChange={pagination.goToPage}
+            onPageSizeChange={pagination.setPageSize}
+          />
         </div>
       </div>
     </div>

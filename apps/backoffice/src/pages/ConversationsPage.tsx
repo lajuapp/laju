@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import { MessageSquare, Users, Lock, ShieldCheck, Clock } from 'lucide-react';
 import { useConversationsList, useGroupsList } from '../hooks/useConversations';
+import { usePagination } from '../hooks/usePagination';
 import { Badge } from '../components/ui/Badge';
+import { Pagination } from '../components/ui/Pagination';
 
 export function ConversationsPage() {
   const [activeTab, setActiveTab] = useState<'ALL' | 'GROUPS'>('ALL');
@@ -10,6 +12,8 @@ export function ConversationsPage() {
 
   const convs = activeTab === 'ALL' ? allConvs : groupConvs;
   const isLoading = activeTab === 'ALL' ? loadingAll : loadingGroups;
+
+  const pagination = usePagination(convs || [], { initialPageSize: 10 });
 
   return (
     <div className="space-y-6">
@@ -80,8 +84,8 @@ export function ConversationsPage() {
                     Memuat metadata percakapan...
                   </td>
                 </tr>
-              ) : convs && convs.length > 0 ? (
-                convs.map((c) => (
+              ) : pagination.paginatedItems && pagination.paginatedItems.length > 0 ? (
+                pagination.paginatedItems.map((c) => (
                   <tr key={c.id} className="hover:bg-neutral-50/50 transition-colors">
                     <td className="px-5 py-3.5 font-mono text-[11px] font-bold text-neutral-900">
                       <div className="flex items-center gap-2">
@@ -129,6 +133,18 @@ export function ConversationsPage() {
               )}
             </tbody>
           </table>
+        </div>
+
+        {/* Pagination Footer */}
+        <div className="px-5 pb-4">
+          <Pagination
+            currentPage={pagination.currentPage}
+            totalPages={pagination.totalPages}
+            totalItems={pagination.totalItems}
+            pageSize={pagination.pageSize}
+            onPageChange={pagination.goToPage}
+            onPageSizeChange={pagination.setPageSize}
+          />
         </div>
       </div>
     </div>

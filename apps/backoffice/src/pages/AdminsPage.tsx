@@ -22,6 +22,8 @@ import { Button } from '../components/ui/Button';
 import { Modal } from '../components/ui/Modal';
 import { Input } from '../components/ui/Input';
 import { Badge } from '../components/ui/Badge';
+import { Pagination } from '../components/ui/Pagination';
+import { usePagination } from '../hooks/usePagination';
 
 const createAdminSchema = z.object({
   name: z.string().min(2, 'Nama minimal 2 karakter'),
@@ -42,6 +44,8 @@ export function AdminsPage() {
   const createAdmin = useCreateAdmin();
   const updateAdmin = useUpdateAdmin();
   const deleteAdmin = useDeleteAdmin();
+
+  const pagination = usePagination(admins || [], { initialPageSize: 10 });
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -126,8 +130,8 @@ export function AdminsPage() {
                     Memuat data tim admin...
                   </td>
                 </tr>
-              ) : admins && admins.length > 0 ? (
-                admins.map((adm) => (
+              ) : pagination.paginatedItems && pagination.paginatedItems.length > 0 ? (
+                pagination.paginatedItems.map((adm) => (
                   <tr key={adm.id} className="hover:bg-neutral-50/50 transition-colors">
                     <td className="px-5 py-3.5">
                       <div className="flex items-center gap-2.5">
@@ -198,6 +202,18 @@ export function AdminsPage() {
               )}
             </tbody>
           </table>
+        </div>
+
+        {/* Pagination Footer */}
+        <div className="px-5 pb-4">
+          <Pagination
+            currentPage={pagination.currentPage}
+            totalPages={pagination.totalPages}
+            totalItems={pagination.totalItems}
+            pageSize={pagination.pageSize}
+            onPageChange={pagination.goToPage}
+            onPageSizeChange={pagination.setPageSize}
+          />
         </div>
       </div>
 

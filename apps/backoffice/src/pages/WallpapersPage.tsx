@@ -22,6 +22,8 @@ import { Button } from '../components/ui/Button';
 import { Modal } from '../components/ui/Modal';
 import { Input } from '../components/ui/Input';
 import { Badge } from '../components/ui/Badge';
+import { Pagination } from '../components/ui/Pagination';
+import { usePagination } from '../hooks/usePagination';
 import { resolveMediaUrl } from '../api/client';
 
 const wallpaperSchema = z.object({
@@ -40,6 +42,8 @@ export function WallpapersPage() {
   const updateWallpaper = useUpdateWallpaper();
   const deleteWallpaper = useDeleteWallpaper();
   const mediaUpload = useMediaUpload();
+
+  const pagination = usePagination(wallpapers || [], { initialPageSize: 8 });
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -138,67 +142,82 @@ export function WallpapersPage() {
         <div className="bg-white rounded-2xl border border-neutral-200/80 p-12 text-center text-xs text-neutral-400">
           Memuat daftar wallpaper...
         </div>
-      ) : wallpapers && wallpapers.length > 0 ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {wallpapers.map((wp) => (
-            <div
-              key={wp.id}
-              className="bg-white rounded-2xl border border-neutral-200/80 p-4 shadow-xs flex flex-col justify-between group hover:border-neutral-300 transition-all hover:shadow-sm"
-            >
-              {/* Preview Window Frame */}
+      ) : pagination.paginatedItems && pagination.paginatedItems.length > 0 ? (
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {pagination.paginatedItems.map((wp) => (
               <div
-                className="h-36 rounded-xl border border-neutral-200/70 overflow-hidden relative flex items-center justify-center shadow-inner"
-                style={{
-                  backgroundColor: wp.colorHex || '#1E293B',
-                  backgroundImage: wp.imageUrl ? `url(${resolveMediaUrl(wp.imageUrl)})` : undefined,
-                  backgroundSize: 'cover',
-                  backgroundPosition: 'center',
-                }}
+                key={wp.id}
+                className="bg-white rounded-2xl border border-neutral-200/80 p-4 shadow-xs flex flex-col justify-between group hover:border-neutral-300 transition-all hover:shadow-sm"
               >
-                {wp.isDefault && (
-                  <span className="absolute top-2 left-2 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500 text-white shadow-sm flex items-center gap-1">
-                    <CheckCircle className="w-3 h-3" />
-                    Default
-                  </span>
-                )}
-                <span className="absolute bottom-2 right-2 text-[10px] font-mono px-2 py-0.5 rounded bg-black/50 text-white backdrop-blur-xs">
-                  {wp.category}
-                </span>
-              </div>
-
-              {/* Meta Info */}
-              <div className="mt-3">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-xs font-bold text-neutral-900 truncate">{wp.name}</h3>
-                  {wp.colorHex && (
-                    <span className="text-[10px] font-mono text-neutral-400">
-                      {wp.colorHex}
+                {/* Preview Window Frame */}
+                <div
+                  className="h-36 rounded-xl border border-neutral-200/70 overflow-hidden relative flex items-center justify-center shadow-inner"
+                  style={{
+                    backgroundColor: wp.colorHex || '#1E293B',
+                    backgroundImage: wp.imageUrl ? `url(${resolveMediaUrl(wp.imageUrl)})` : undefined,
+                    backgroundSize: 'cover',
+                    backgroundPosition: 'center',
+                  }}
+                >
+                  {wp.isDefault && (
+                    <span className="absolute top-2 left-2 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500 text-white shadow-sm flex items-center gap-1">
+                      <CheckCircle className="w-3 h-3" />
+                      Default
                     </span>
                   )}
+                  <span className="absolute bottom-2 right-2 text-[10px] font-mono px-2 py-0.5 rounded bg-black/50 text-white backdrop-blur-xs">
+                    {wp.category}
+                  </span>
                 </div>
 
-                <div className="flex items-center justify-between mt-3 pt-3 border-t border-neutral-100">
-                  {!wp.isDefault ? (
-                    <button
-                      onClick={() => handleSetDefault(wp.id)}
-                      className="text-[11px] font-semibold text-neutral-500 hover:text-neutral-900"
-                    >
-                      Jadikan Default
-                    </button>
-                  ) : (
-                    <span className="text-[11px] text-emerald-600 font-semibold">Aktif Standar</span>
-                  )}
+                {/* Meta Info */}
+                <div className="mt-3">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-xs font-bold text-neutral-900 truncate">{wp.name}</h3>
+                    {wp.colorHex && (
+                      <span className="text-[10px] font-mono text-neutral-400">
+                        {wp.colorHex}
+                      </span>
+                    )}
+                  </div>
 
-                  <button
-                    onClick={() => handleDelete(wp.id, wp.name)}
-                    className="p-1 rounded text-neutral-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
+                  <div className="flex items-center justify-between mt-3 pt-3 border-t border-neutral-100">
+                    {!wp.isDefault ? (
+                      <button
+                        onClick={() => handleSetDefault(wp.id)}
+                        className="text-[11px] font-semibold text-neutral-500 hover:text-neutral-900"
+                      >
+                        Jadikan Default
+                      </button>
+                    ) : (
+                      <span className="text-[11px] text-emerald-600 font-semibold">Aktif Standar</span>
+                    )}
+
+                    <button
+                      onClick={() => handleDelete(wp.id, wp.name)}
+                      className="p-1 rounded text-neutral-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
+
+          {/* Pagination Footer */}
+          <div className="bg-white rounded-2xl border border-neutral-200/80 p-4 shadow-xs">
+            <Pagination
+              currentPage={pagination.currentPage}
+              totalPages={pagination.totalPages}
+              totalItems={pagination.totalItems}
+              pageSize={pagination.pageSize}
+              pageSizeOptions={[8, 16, 32, 64]}
+              onPageChange={pagination.goToPage}
+              onPageSizeChange={pagination.setPageSize}
+            />
+          </div>
         </div>
       ) : (
         <div className="bg-white rounded-2xl border border-neutral-200/80 p-12 text-center text-xs text-neutral-400">

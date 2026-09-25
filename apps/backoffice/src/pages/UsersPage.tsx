@@ -11,8 +11,10 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 import { useUsersList, useSuspendUser, useRestoreUser } from '../hooks/useUsers';
+import { usePagination } from '../hooks/usePagination';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
+import { Pagination } from '../components/ui/Pagination';
 
 export function UsersPage() {
   const { data: users, isLoading } = useUsersList();
@@ -22,7 +24,7 @@ export function UsersPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'ACTIVE' | 'SUSPENDED'>('ALL');
 
-  const filteredUsers = users?.filter((u) => {
+  const filteredUsers = (users || []).filter((u) => {
     const matchesSearch =
       u.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
       u.id.toLowerCase().includes(searchQuery.toLowerCase());
@@ -30,6 +32,8 @@ export function UsersPage() {
       statusFilter === 'ALL' ? true : u.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
+
+  const pagination = usePagination(filteredUsers, { initialPageSize: 10 });
 
   const handleSuspend = (id: string, username: string) => {
     if (
@@ -115,8 +119,8 @@ export function UsersPage() {
                     Memuat daftar pengguna...
                   </td>
                 </tr>
-              ) : filteredUsers && filteredUsers.length > 0 ? (
-                filteredUsers.map((user) => (
+              ) : pagination.paginatedItems && pagination.paginatedItems.length > 0 ? (
+                pagination.paginatedItems.map((user) => (
                   <tr key={user.id} className="hover:bg-neutral-50/50 transition-colors">
                     <td className="px-5 py-3.5">
                       <div className="flex items-center gap-2.5">
@@ -191,6 +195,18 @@ export function UsersPage() {
               )}
             </tbody>
           </table>
+        </div>
+
+        {/* Pagination Footer */}
+        <div className="px-5 pb-4">
+          <Pagination
+            currentPage={pagination.currentPage}
+            totalPages={pagination.totalPages}
+            totalItems={pagination.totalItems}
+            pageSize={pagination.pageSize}
+            onPageChange={pagination.goToPage}
+            onPageSizeChange={pagination.setPageSize}
+          />
         </div>
       </div>
     </div>
