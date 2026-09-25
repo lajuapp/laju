@@ -106,7 +106,7 @@ export function LoginPage() {
         <div className="mt-6 text-center">
           <p className="text-[11px] text-neutral-400 flex items-center justify-center gap-1.5 font-medium">
             <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-            Zero-Knowledge Cryptographic Access Protocol
+            Portal Administrasi Aman & Terproteksi
           </p>
         </div>
       </div>

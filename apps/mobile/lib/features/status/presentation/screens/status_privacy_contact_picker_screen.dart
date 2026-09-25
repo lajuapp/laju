@@ -57,7 +57,7 @@ class _StatusPrivacyContactPickerScreenState
         _allContacts = results.map((u) => PrivacyContact(
           id: u.id,
           name: u.username,
-          status: u.status ?? 'LAJU Verified User 🔒',
+          status: u.status ?? 'Pengguna Terverifikasi LAJU',
           phone: '@${u.username}',
         )).toList();
       });
@@ -71,7 +71,7 @@ class _StatusPrivacyContactPickerScreenState
         _allContacts = results.map((u) => PrivacyContact(
           id: u.id,
           name: u.username,
-          status: u.status ?? 'LAJU Verified User 🔒',
+          status: u.status ?? 'Pengguna Terverifikasi LAJU',
           phone: '@${u.username}',
         )).toList();
       });

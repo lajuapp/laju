@@ -735,7 +735,7 @@ class _ScannedResultBottomSheetState extends State<_ScannedResultBottomSheet> {
           username: uname,
           displayName: dname,
           avatarUrl: _resolvedAvatarUrl,
-          about: _resolvedStatus ?? 'LAJU Verified User 🔒',
+          about: _resolvedStatus ?? 'Pengguna Terverifikasi LAJU',
           phoneNumber: _resolvedPhone ?? widget.targetPhone,
           trustScore: 100,
           isVerified: true,

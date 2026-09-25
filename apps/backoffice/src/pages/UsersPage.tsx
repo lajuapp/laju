@@ -15,6 +15,7 @@ import { usePagination } from '../hooks/usePagination';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { Pagination } from '../components/ui/Pagination';
+import { ConfirmModal } from '../components/ui/ConfirmModal';
 
 export function UsersPage() {
   const { data: users, isLoading } = useUsersList();
@@ -23,6 +24,18 @@ export function UsersPage() {
 
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'ACTIVE' | 'SUSPENDED'>('ALL');
+
+  const [suspendModal, setSuspendModal] = useState<{
+    isOpen: boolean;
+    userId: string;
+    username: string;
+  }>({ isOpen: false, userId: '', username: '' });
+
+  const [restoreModal, setRestoreModal] = useState<{
+    isOpen: boolean;
+    userId: string;
+    username: string;
+  }>({ isOpen: false, userId: '', username: '' });
 
   const filteredUsers = (users || []).filter((u) => {
     const matchesSearch =
@@ -35,20 +48,31 @@ export function UsersPage() {
 
   const pagination = usePagination(filteredUsers, { initialPageSize: 10 });
 
-  const handleSuspend = (id: string, username: string) => {
-    if (
-      confirm(
-        `KUNCI AKUN: Yakin ingin menangguhkan pengguna @${username}? Seluruh sesi perangkat aktif akan diputus secara instan.`
-      )
-    ) {
-      suspendUser.mutate(id);
-    }
+  const handleOpenSuspend = (id: string, username: string) => {
+    setSuspendModal({ isOpen: true, userId: id, username });
   };
 
-  const handleRestore = (id: string, username: string) => {
-    if (confirm(`PULIHKAN AKUN: Aktifkan kembali pengguna @${username}?`)) {
-      restoreUser.mutate(id);
-    }
+  const handleConfirmSuspend = (reason?: string) => {
+    suspendUser.mutate(
+      { userId: suspendModal.userId, reason },
+      {
+        onSuccess: () => {
+          setSuspendModal({ isOpen: false, userId: '', username: '' });
+        },
+      }
+    );
+  };
+
+  const handleOpenRestore = (id: string, username: string) => {
+    setRestoreModal({ isOpen: true, userId: id, username });
+  };
+
+  const handleConfirmRestore = () => {
+    restoreUser.mutate(restoreModal.userId, {
+      onSuccess: () => {
+        setRestoreModal({ isOpen: false, userId: '', username: '' });
+      },
+    });
   };
 
   return (
@@ -60,7 +84,7 @@ export function UsersPage() {
             Direktori Pengguna (User Directory)
           </h1>
           <p className="text-xs text-neutral-500 mt-1">
-            Daftar seluruh akun pengguna terdaftar, status kriptografis, dan kendali penangguhan sesi
+            Daftar seluruh akun pengguna terdaftar, status akun, dan pengaturan akses
           </p>
         </div>
       </div>
@@ -106,7 +130,7 @@ export function UsersPage() {
                 <th className="px-5 py-3.5">Pengguna</th>
                 <th className="px-5 py-3.5">User ID</th>
                 <th className="px-5 py-3.5">Status</th>
-                <th className="px-5 py-3.5">Armada Device</th>
+                <th className="px-5 py-3.5">Perangkat</th>
                 <th className="px-5 py-3.5">Total Pesan</th>
                 <th className="px-5 py-3.5">Terdaftar</th>
                 <th className="px-5 py-3.5 text-right">Tindakan</th>
@@ -137,7 +161,14 @@ export function UsersPage() {
                       {user.status === 'ACTIVE' ? (
                         <Badge variant="success">Aktif</Badge>
                       ) : user.status === 'SUSPENDED' ? (
-                        <Badge variant="error">Terkunci</Badge>
+                        <div className="flex flex-col items-start gap-1">
+                          <Badge variant="error">Terkunci</Badge>
+                          {user.suspendedReason && (
+                            <span className="text-[10px] text-neutral-400 max-w-[130px] truncate" title={user.suspendedReason}>
+                              {user.suspendedReason}
+                            </span>
+                          )}
+                        </div>
                       ) : (
                         <Badge variant="neutral">Deaktif</Badge>
                       )}
@@ -168,7 +199,7 @@ export function UsersPage() {
                           variant="outline"
                           className="text-rose-600 hover:text-rose-700 hover:bg-rose-50"
                           icon={<Lock className="w-3 h-3" />}
-                          onClick={() => handleSuspend(user.id, user.username)}
+                          onClick={() => handleOpenSuspend(user.id, user.username)}
                         >
                           Suspend
                         </Button>
@@ -178,7 +209,7 @@ export function UsersPage() {
                           variant="outline"
                           className="text-emerald-700 hover:bg-emerald-50"
                           icon={<Unlock className="w-3 h-3" />}
-                          onClick={() => handleRestore(user.id, user.username)}
+                          onClick={() => handleOpenRestore(user.id, user.username)}
                         >
                           Pulihkan
                         </Button>
@@ -209,6 +240,36 @@ export function UsersPage() {
           />
         </div>
       </div>
+
+      {/* Modal Suspend Akun */}
+      <ConfirmModal
+        isOpen={suspendModal.isOpen}
+        onClose={() => setSuspendModal({ isOpen: false, userId: '', username: '' })}
+        onConfirm={handleConfirmSuspend}
+        title="Kunci / Tangguhkan Akun"
+        description={`Yakin ingin menangguhkan pengguna @${suspendModal.username}? Seluruh sesi perangkat aktif akan diputus secara instan dan pengguna akan melihat alasan penangguhan ini di perangkatnya.`}
+        confirmText="Tangguhkan Akun"
+        cancelText="Batal"
+        variant="danger"
+        requiresInput={true}
+        inputLabel="Alasan Penangguhan (Akan dilihat pengguna)"
+        inputPlaceholder="Contoh: Aktivitas mencurigakan, pelanggaran ketentuan layanan, dll."
+        initialInputValue="Pelanggaran ketentuan layanan"
+        isLoading={suspendUser.isPending}
+      />
+
+      {/* Modal Pulihkan Akun */}
+      <ConfirmModal
+        isOpen={restoreModal.isOpen}
+        onClose={() => setRestoreModal({ isOpen: false, userId: '', username: '' })}
+        onConfirm={handleConfirmRestore}
+        title="Pulihkan Akun Pengguna"
+        description={`Aktifkan kembali akun pengguna @${restoreModal.username}? Pengguna akan diizinkan masuk kembali ke dalam aplikasi.`}
+        confirmText="Pulihkan Akun"
+        cancelText="Batal"
+        variant="primary"
+        isLoading={restoreUser.isPending}
+      />
     </div>
   );
 }

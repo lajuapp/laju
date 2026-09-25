@@ -10,6 +10,8 @@ import {
   Activity,
   CheckCircle2,
   Clock,
+  Radio,
+  PhoneCall,
 } from 'lucide-react';
 import { useDashboardStats } from '../hooks/useDashboardStats';
 import { Badge } from '../components/ui/Badge';
@@ -28,9 +30,9 @@ export function DashboardPage() {
       link: '/users',
     },
     {
-      title: 'Armada Perangkat',
+      title: 'Perangkat',
       value: stats?.overview.totalDevices ?? 0,
-      subValue: 'Perangkat terhubung aman',
+      subValue: 'Perangkat terhubung aktif',
       icon: Smartphone,
       color: 'text-emerald-600 bg-emerald-50',
       link: '/devices',
@@ -44,7 +46,7 @@ export function DashboardPage() {
       link: '/conversations',
     },
     {
-      title: 'Aset Wallpaper & Stiker',
+      title: 'Konten Wallpaper & Stiker',
       value: (stats?.overview.totalWallpapers ?? 0) + (stats?.overview.totalStickerPacks ?? 0),
       subValue: `${stats?.overview.totalWallpapers ?? 0} wallpaper • ${stats?.overview.totalStickerPacks ?? 0} pack stiker`,
       icon: Smile,
@@ -71,6 +73,68 @@ export function DashboardPage() {
             <CheckCircle2 className="w-3.5 h-3.5 mr-1" />
             Semua Layanan Berjalan Normal
           </Badge>
+        </div>
+      </div>
+
+      {/* Realtime Statistics: Online & Communicating Users */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="bg-gradient-to-r from-emerald-500/10 via-emerald-500/5 to-transparent bg-white rounded-2xl border border-emerald-200/80 p-5 shadow-xs flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 border border-emerald-200/80 flex items-center justify-center flex-shrink-0">
+              <Radio className="w-6 h-6 animate-pulse" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-neutral-500 uppercase tracking-wider">
+                  Pengguna Online Saat Ini
+                </span>
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+              </div>
+              <div className="text-3xl font-black text-neutral-900 mt-0.5 tracking-tight">
+                {isLoading ? '...' : (stats?.overview.onlineUsers ?? 0)}
+              </div>
+              <p className="text-[11px] text-neutral-500 mt-0.5">
+                Perangkat aktif terhubung dalam 5 menit terakhir
+              </p>
+            </div>
+          </div>
+          <NavLink
+            to="/devices"
+            className="text-xs font-bold text-emerald-700 hover:text-emerald-800 bg-emerald-50 px-3 py-1.5 rounded-xl border border-emerald-200/70 hover:bg-emerald-100/60 transition-all flex items-center gap-1"
+          >
+            Lihat Perangkat
+            <ArrowUpRight className="w-3.5 h-3.5" />
+          </NavLink>
+        </div>
+
+        <div className="bg-gradient-to-r from-indigo-500/10 via-indigo-500/5 to-transparent bg-white rounded-2xl border border-indigo-200/80 p-5 shadow-xs flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 border border-indigo-200/80 flex items-center justify-center flex-shrink-0">
+              <PhoneCall className="w-6 h-6" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-neutral-500 uppercase tracking-wider">
+                  Sedang Berkomunikasi
+                </span>
+                <span className="w-2 h-2 rounded-full bg-indigo-500" />
+              </div>
+              <div className="text-3xl font-black text-neutral-900 mt-0.5 tracking-tight">
+                {isLoading ? '...' : (stats?.overview.communicatingUsers ?? 0)}
+              </div>
+              <p className="text-[11px] text-neutral-500 mt-0.5">
+                {stats?.overview.activeCalls ? `${stats.overview.activeCalls} panggilan aktif • ` : ''}
+                Sesi panggilan & interaksi pesan 15 menit terakhir
+              </p>
+            </div>
+          </div>
+          <NavLink
+            to="/conversations"
+            className="text-xs font-bold text-indigo-700 hover:text-indigo-800 bg-indigo-50 px-3 py-1.5 rounded-xl border border-indigo-200/70 hover:bg-indigo-100/60 transition-all flex items-center gap-1"
+          >
+            Audit Obrolan
+            <ArrowUpRight className="w-3.5 h-3.5" />
+          </NavLink>
         </div>
       </div>
 

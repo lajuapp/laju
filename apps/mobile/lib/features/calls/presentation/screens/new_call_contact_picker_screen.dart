@@ -50,7 +50,7 @@ class _NewCallContactPickerScreenState extends State<NewCallContactPickerScreen>
         _contacts = results.map((u) => CallContactItem(
           id: u.id,
           name: u.username,
-          status: u.status ?? 'LAJU Verified User 🔒',
+          status: u.status ?? 'Pengguna Terverifikasi LAJU',
           phone: '@${u.username}',
           avatarUrl: u.avatarUrl,
           isOnline: true,
@@ -68,7 +68,7 @@ class _NewCallContactPickerScreenState extends State<NewCallContactPickerScreen>
         _contacts = results.map((u) => CallContactItem(
           id: u.id,
           name: u.username,
-          status: u.status ?? 'LAJU Verified User 🔒',
+          status: u.status ?? 'Pengguna Terverifikasi LAJU',
           phone: '@${u.username}',
           avatarUrl: u.avatarUrl,
           isOnline: true,

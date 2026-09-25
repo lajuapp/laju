@@ -11,6 +11,8 @@ import {
   ShieldCheck,
   LogOut,
   Sparkles,
+  Megaphone,
+  Settings2,
 } from 'lucide-react';
 import { useAdminMe, useLogout } from '../../hooks/useAdminAuth';
 import { Badge } from '../ui/Badge';
@@ -36,25 +38,32 @@ export function AppLayout() {
       ],
     },
     {
-      group: 'Akses & Pengguna',
-      items: [
-        { label: 'Tim Admin', to: '/admins', icon: ShieldCheck },
-        { label: 'Direktori Pengguna', to: '/users', icon: Users },
-        { label: 'Armada Perangkat', to: '/devices', icon: Smartphone },
-      ],
-    },
-    {
-      group: 'Aset & Media',
+      group: 'Konten',
       items: [
         { label: 'Wallpaper Obrolan', to: '/wallpapers', icon: ImageIcon },
         { label: 'Stiker & Packs', to: '/stickers', icon: Smile },
+        { label: 'Pengumuman', to: '/announcements', icon: Megaphone },
+      ],
+    },
+    {
+      group: 'Pengaturan Sistem',
+      items: [
+        { label: 'Versi Aplikasi', to: '/app-version', icon: Settings2 },
       ],
     },
     {
       group: 'Kepatuhan & Keamanan',
       items: [
         { label: 'Audit Obrolan', to: '/conversations', icon: MessageSquare },
-        { label: 'Log & Keamanan', to: '/security', icon: ShieldAlert },
+        { label: 'Log Aktivitas', to: '/security', icon: ShieldAlert },
+      ],
+    },
+    {
+      group: 'Akses & Pengguna',
+      items: [
+        { label: 'Tim Admin', to: '/admins', icon: ShieldCheck },
+        { label: 'Direktori Pengguna', to: '/users', icon: Users },
+        { label: 'Perangkat', to: '/devices', icon: Smartphone },
       ],
     },
   ];
@@ -155,16 +164,15 @@ export function AppLayout() {
       <div className="flex-1 pl-64 flex flex-col min-h-screen">
         {/* Top Header */}
         <header className="h-16 bg-white/80 backdrop-blur-md border-b border-neutral-200/80 sticky top-0 z-20 flex items-center justify-between px-8">
-          <div className="flex items-center gap-3">
-            <span className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200/60">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              API Server Online
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold text-neutral-600">
+              Sistem Backoffice
             </span>
           </div>
 
           <div className="flex items-center gap-4">
             <span className="text-xs text-neutral-400 font-mono">
-              E2EE v2.0 • Zero-Knowledge Architecture
+              LAJU Enterprise Console v1.0
             </span>
           </div>
         </header>

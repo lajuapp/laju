@@ -526,12 +526,18 @@ class ConversationService {
 
   /// Create a 1-on-1 personal conversation
   Future<String?> createPersonalConversation(String otherUserId) async {
+    final cleanId = otherUserId.trim();
+    if (cleanId.isEmpty || cleanId.startsWith('conv-') || cleanId.startsWith('grp-') || cleanId == 'm-you') {
+      debugPrint('[ConversationService] createPersonalConversation diabaikan, format identifier tidak valid: $cleanId');
+      return null;
+    }
+
     try {
       final response = await ApiClient.instance.post(
         ApiEndpoints.conversations,
         body: {
           'type': 'PERSONAL',
-          'participantUserIds': [otherUserId],
+          'participantUserIds': [cleanId],
         },
       );
 
@@ -550,13 +556,23 @@ class ConversationService {
     required List<String> participantUserIds,
     String? description,
   }) async {
+    final validParticipants = participantUserIds
+        .map((id) => id.trim())
+        .where((id) => id.isNotEmpty && !id.startsWith('conv-') && !id.startsWith('grp-') && !id.startsWith('m-'))
+        .toList();
+
+    if (validParticipants.isEmpty) {
+      debugPrint('[ConversationService] createGroupConversation diabaikan, tidak ada anggota valid');
+      return null;
+    }
+
     try {
       final response = await ApiClient.instance.post(
         ApiEndpoints.conversations,
         body: {
           'type': 'GROUP',
           'title': title,
-          'participantUserIds': participantUserIds,
+          'participantUserIds': validParticipants,
         },
       );
 

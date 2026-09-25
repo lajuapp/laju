@@ -51,7 +51,7 @@ class _NewChatScreenState extends State<NewChatScreen> {
         _contacts = results.map((u) => ContactItem(
           id: u.id,
           name: u.username,
-          status: u.status ?? 'LAJU Verified User 🔒',
+          status: u.status ?? 'Pengguna Terverifikasi LAJU',
           phone: '@${u.username}',
           isVerified: true,
           isOnline: true,
@@ -80,7 +80,7 @@ class _NewChatScreenState extends State<NewChatScreen> {
         _contacts = results.map((u) => ContactItem(
           id: u.id,
           name: u.username,
-          status: u.status ?? 'LAJU Verified User 🔒',
+          status: u.status ?? 'Pengguna Terverifikasi LAJU',
           phone: '@${u.username}',
           isVerified: true,
           isOnline: true,

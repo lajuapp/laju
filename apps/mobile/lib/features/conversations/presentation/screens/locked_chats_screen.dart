@@ -134,7 +134,7 @@ class _LockedChatsScreenState extends State<LockedChatsScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Locked Chats 🔒',
+              'Pesan Terkunci',
               style: TextStyle(
                 color: textPrimary,
                 fontSize: 18,

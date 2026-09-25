@@ -16,8 +16,10 @@ export function useSuspendUser() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (userId: string) => {
-      const res = await apiClient.post(`/admin/users/${userId}/suspend`);
+    mutationFn: async (args: string | { userId: string; reason?: string }) => {
+      const userId = typeof args === 'string' ? args : args.userId;
+      const reason = typeof args === 'string' ? undefined : args.reason;
+      const res = await apiClient.post(`/admin/users/${userId}/suspend`, { reason });
       return res.data;
     },
     onSuccess: () => {

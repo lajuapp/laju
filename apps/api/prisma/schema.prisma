@@ -112,6 +112,8 @@ model User {
   twoFactorPin        String?     @map("two_factor_pin")
   trustScore          Int         @default(100) @map("trust_score")
   status              UserStatus  @default(ACTIVE)
+  suspendedReason     String?     @map("suspended_reason")
+  suspendedAt         DateTime?   @map("suspended_at")
   createdAt           DateTime    @default(now()) @map("created_at")
   updatedAt           DateTime    @updatedAt @map("updated_at")
 
@@ -708,5 +710,29 @@ model StickerItem {
   pack      StickerPack @relation(fields: [packId], references: [id], onDelete: Cascade)
 
   @@map("sticker_items")
+}
+
+model SystemAnnouncement {
+  id        String   @id @default(uuid())
+  title     String
+  content   String
+  type      String   @default("INFO") // INFO, WARNING, MAINTENANCE
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("system_announcements")
+}
+
+model AppSystemConfig {
+  id                   String   @id @default("global")
+  minAndroidVersion    String   @default("1.0.0") @map("min_android_version")
+  latestAndroidVersion String   @default("1.0.0") @map("latest_android_version")
+  forceUpdate          Boolean  @default(false) @map("force_update")
+  maintenanceMode      Boolean  @default(false) @map("maintenance_mode")
+  maintenanceMessage   String?  @map("maintenance_message")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  @@map("app_system_configs")
 }
 

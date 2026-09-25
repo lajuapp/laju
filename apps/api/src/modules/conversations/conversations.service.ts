@@ -16,74 +16,234 @@ export class ConversationsService {
     private readonly redis: RedisService
   ) {}
 
+  /**
+   * Resolve identifier (UUID, username with/without @, email, or phone number) to a User record
+   */
+  private async resolveUser(identifier: string, tx?: any): Promise<any> {
+    if (!identifier || typeof identifier !== 'string') return null;
+    const cleanId = identifier.trim();
+    if (!cleanId || cleanId.startsWith('conv-') || cleanId.startsWith('grp-') || cleanId === 'm-you') {
+      return null;
+    }
+
+    const prismaClient = tx || this.prisma;
+    const cleanUsername = cleanId.startsWith('@') ? cleanId.substring(1) : cleanId;
+    const digitsOnly = cleanId.replace(/\D/g, '');
+
+    // 1. Direct match by ID (UUID)
+    const byId = await prismaClient.user.findUnique({
+      where: { id: cleanId }
+    });
+    if (byId) return byId;
+
+    // 2. Match by username (case-insensitive)
+    const byUsername = await prismaClient.user.findFirst({
+      where: {
+        OR: [
+          { username: { equals: cleanId, mode: 'insensitive' } },
+          { username: { equals: cleanUsername, mode: 'insensitive' } }
+        ]
+      }
+    });
+    if (byUsername) return byUsername;
+
+    // 3. Match by email (case-insensitive)
+    if (cleanId.includes('@')) {
+      const byEmail = await prismaClient.user.findFirst({
+        where: { email: { equals: cleanId, mode: 'insensitive' } }
+      });
+      if (byEmail) return byEmail;
+    }
+
+    // 4. Match by phoneNumber
+    if (digitsOnly.length >= 6) {
+      const byPhone = await prismaClient.user.findFirst({
+        where: {
+          OR: [
+            { phoneNumber: cleanId },
+            { phoneNumber: `+${digitsOnly}` },
+            { phoneNumber: digitsOnly },
+            { phoneNumber: { contains: digitsOnly } }
+          ]
+        }
+      });
+      if (byPhone) return byPhone;
+    }
+
+    return null;
+  }
+
   async createConversation(currentUserId: string, dto: CreateConversationDto) {
-    const allUserIds = Array.from(new Set([currentUserId, ...dto.participantUserIds]));
+    if (!dto.participantUserIds || !Array.isArray(dto.participantUserIds) || dto.participantUserIds.length === 0) {
+      throw new BadRequestException('Daftar peserta tidak boleh kosong');
+    }
+
+    // Ensure current authenticated user exists
+    const currentUser = await this.prisma.user.findUnique({
+      where: { id: currentUserId }
+    });
+    if (!currentUser) {
+      throw new NotFoundException('Pengguna saat ini tidak ditemukan');
+    }
+
+    // Resolve all participant identifiers
+    const resolvedParticipants: { raw: string; user: any }[] = [];
+    for (const rawId of dto.participantUserIds) {
+      const u = await this.resolveUser(rawId);
+      resolvedParticipants.push({ raw: rawId, user: u });
+    }
 
     if (dto.type === ConversationType.PERSONAL) {
-      if (allUserIds.length !== 2) {
-        throw new BadRequestException('Personal conversation requires exactly two participants');
+      const target = resolvedParticipants[0];
+      if (!target || !target.user) {
+        throw new NotFoundException(
+          `Kontak tujuan "${target?.raw || 'tidak diketahui'}" tidak ditemukan di sistem LAJU`
+        );
       }
+
+      if (target.user.id === currentUserId) {
+        throw new BadRequestException('Tidak dapat membuat percakapan dengan akun sendiri');
+      }
+
+      const otherUserId = target.user.id;
 
       // Check if conversation already exists between these 2 users
       const existing = await this.prisma.conversation.findFirst({
         where: {
           type: 'PERSONAL',
           AND: [
-            { members: { some: { userId: allUserIds[0] } } },
-            { members: { some: { userId: allUserIds[1] } } }
+            { members: { some: { userId: currentUserId, leftAt: null } } },
+            { members: { some: { userId: otherUserId, leftAt: null } } }
           ]
         },
-        include: { members: true }
+        include: {
+          members: {
+            include: {
+              user: {
+                select: { id: true, username: true, phoneNumber: true, status: true, trustScore: true }
+              }
+            }
+          }
+        }
       });
 
       if (existing) {
         return existing;
       }
-    }
 
-    return this.prisma.$transaction(async (tx) => {
-      const conv = await tx.conversation.create({
-        data: {
-          type: dto.type,
-          title: dto.title || null
+      const allUserIds = [currentUserId, otherUserId];
+
+      return this.prisma.$transaction(async (tx) => {
+        const conv = await tx.conversation.create({
+          data: {
+            type: dto.type,
+            title: dto.title || null
+          }
+        });
+
+        // Add members with valid resolved user IDs
+        for (const userId of allUserIds) {
+          await tx.conversationMember.create({
+            data: {
+              conversationId: conv.id,
+              userId,
+              role: ConversationRole.MEMBER
+            }
+          });
         }
+
+        // Create conversation event
+        await tx.conversationEvent.create({
+          data: {
+            conversationId: conv.id,
+            eventType: 'CONVERSATION_CREATED',
+            payload: JSON.stringify({
+              type: dto.type,
+              creatorId: currentUserId,
+              participants: allUserIds
+            })
+          }
+        });
+
+        return tx.conversation.findUnique({
+          where: { id: conv.id },
+          include: {
+            members: {
+              include: {
+                user: {
+                  select: { id: true, username: true, phoneNumber: true, status: true, trustScore: true }
+                }
+              }
+            }
+          }
+        });
       });
+    } else {
+      // GROUP conversation
+      const validMemberIds = resolvedParticipants
+        .filter((p) => p.user && p.user.id !== currentUserId)
+        .map((p) => p.user.id);
 
-      // Add members
-      for (const userId of allUserIds) {
-        const isCreator = userId === currentUserId;
-        const role =
-          dto.type === ConversationType.GROUP && isCreator
-            ? ConversationRole.OWNER
-            : ConversationRole.MEMBER;
+      const uniqueMemberIds = Array.from(new Set(validMemberIds));
+      if (uniqueMemberIds.length === 0) {
+        throw new BadRequestException('Minimal harus memilih 1 anggota kontak yang valid di sistem LAJU');
+      }
 
+      return this.prisma.$transaction(async (tx) => {
+        const conv = await tx.conversation.create({
+          data: {
+            type: dto.type,
+            title: dto.title || 'Grup Baru'
+          }
+        });
+
+        // Add creator as OWNER
         await tx.conversationMember.create({
           data: {
             conversationId: conv.id,
-            userId,
-            role
+            userId: currentUserId,
+            role: ConversationRole.OWNER
           }
         });
-      }
 
-      // Create conversation event
-      await tx.conversationEvent.create({
-        data: {
-          conversationId: conv.id,
-          eventType: 'CONVERSATION_CREATED',
-          payload: JSON.stringify({
-            type: dto.type,
-            creatorId: currentUserId,
-            participants: allUserIds
-          })
+        // Add other valid members
+        for (const memberId of uniqueMemberIds) {
+          await tx.conversationMember.create({
+            data: {
+              conversationId: conv.id,
+              userId: memberId,
+              role: ConversationRole.MEMBER
+            }
+          });
         }
-      });
 
-      return tx.conversation.findUnique({
-        where: { id: conv.id },
-        include: { members: true }
+        // Create conversation event
+        await tx.conversationEvent.create({
+          data: {
+            conversationId: conv.id,
+            eventType: 'CONVERSATION_CREATED',
+            payload: JSON.stringify({
+              type: dto.type,
+              creatorId: currentUserId,
+              participants: [currentUserId, ...uniqueMemberIds]
+            })
+          }
+        });
+
+        return tx.conversation.findUnique({
+          where: { id: conv.id },
+          include: {
+            members: {
+              include: {
+                user: {
+                  select: { id: true, username: true, phoneNumber: true, status: true, trustScore: true }
+                }
+              }
+            }
+          }
+        });
       });
-    });
+    }
   }
 
   async listUserConversations(userId: string) {
@@ -186,10 +346,16 @@ export class ConversationsService {
       throw new ForbiddenException('Only owner or admin can add members');
     }
 
+    const targetUser = await this.resolveUser(dto.userId);
+    if (!targetUser) {
+      throw new NotFoundException(`Pengguna "${dto.userId}" tidak ditemukan di sistem LAJU`);
+    }
+    const resolvedUserId = targetUser.id;
+
     return this.prisma.$transaction(async (tx) => {
       const existing = await tx.conversationMember.findUnique({
         where: {
-          conversationId_userId: { conversationId, userId: dto.userId }
+          conversationId_userId: { conversationId, userId: resolvedUserId }
         }
       });
 
@@ -206,7 +372,7 @@ export class ConversationsService {
         await tx.conversationMember.create({
           data: {
             conversationId,
-            userId: dto.userId,
+            userId: resolvedUserId,
             role: dto.role || 'MEMBER'
           }
         });
@@ -216,7 +382,7 @@ export class ConversationsService {
         data: {
           conversationId,
           eventType: 'MEMBER_ADDED',
-          payload: JSON.stringify({ userId: dto.userId, addedBy: userId })
+          payload: JSON.stringify({ userId: resolvedUserId, addedBy: userId })
         }
       });
 

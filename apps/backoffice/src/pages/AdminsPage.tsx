@@ -20,6 +20,7 @@ import {
 } from '../hooks/useAdmins';
 import { Button } from '../components/ui/Button';
 import { Modal } from '../components/ui/Modal';
+import { ConfirmModal } from '../components/ui/ConfirmModal';
 import { Input } from '../components/ui/Input';
 import { Badge } from '../components/ui/Badge';
 import { Pagination } from '../components/ui/Pagination';
@@ -78,10 +79,22 @@ export function AdminsPage() {
     updateAdmin.mutate({ id, isActive: !currentStatus });
   };
 
-  const handleDelete = (id: string, username: string) => {
-    if (confirm(`Yakin ingin menghapus admin "${username}"?`)) {
-      deleteAdmin.mutate(id);
-    }
+  const [deleteModal, setDeleteModal] = useState<{
+    isOpen: boolean;
+    adminId: string;
+    username: string;
+  }>({ isOpen: false, adminId: '', username: '' });
+
+  const handleOpenDelete = (id: string, username: string) => {
+    setDeleteModal({ isOpen: true, adminId: id, username });
+  };
+
+  const handleConfirmDelete = () => {
+    deleteAdmin.mutate(deleteModal.adminId, {
+      onSuccess: () => {
+        setDeleteModal({ isOpen: false, adminId: '', username: '' });
+      },
+    });
   };
 
   return (
@@ -185,7 +198,7 @@ export function AdminsPage() {
                           size="sm"
                           variant="ghost"
                           className="text-rose-600 hover:text-rose-700 hover:bg-rose-50"
-                          onClick={() => handleDelete(adm.id, adm.username)}
+                          onClick={() => handleOpenDelete(adm.id, adm.username)}
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </Button>
@@ -302,6 +315,19 @@ export function AdminsPage() {
           </div>
         </form>
       </Modal>
+
+      {/* Modal Hapus Admin */}
+      <ConfirmModal
+        isOpen={deleteModal.isOpen}
+        onClose={() => setDeleteModal({ isOpen: false, adminId: '', username: '' })}
+        onConfirm={handleConfirmDelete}
+        title="Hapus Akun Admin"
+        description={`Yakin ingin menghapus admin "${deleteModal.username}"? Akses administrator akun ini ke backoffice akan dicabut secara permanen.`}
+        confirmText="Hapus Admin"
+        cancelText="Batal"
+        variant="danger"
+        isLoading={deleteAdmin.isPending}
+      />
     </div>
   );
 }

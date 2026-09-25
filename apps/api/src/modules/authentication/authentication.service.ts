@@ -3,7 +3,8 @@ import {
   ConflictException,
   UnauthorizedException,
   BadRequestException,
-  NotFoundException
+  NotFoundException,
+  ForbiddenException
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
@@ -196,8 +197,21 @@ export class AuthenticationService {
       }
     });
 
-    if (!user || user.status !== 'ACTIVE') {
-      throw new UnauthorizedException('Invalid credentials or account inactive');
+    if (!user) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
+    if (user.status === 'SUSPENDED') {
+      throw new ForbiddenException({
+        statusCode: 403,
+        error: 'ACCOUNT_SUSPENDED',
+        message: 'Akun Anda telah ditangguhkan.',
+        reason: user.suspendedReason || 'Pelanggaran ketentuan layanan'
+      });
+    }
+
+    if (user.status !== 'ACTIVE') {
+      throw new UnauthorizedException('Akun tidak aktif');
     }
 
     // Verify OTP or password
@@ -290,8 +304,21 @@ export class AuthenticationService {
       where: { id: payload.sub }
     });
 
-    if (!user || user.status !== 'ACTIVE') {
-      throw new UnauthorizedException('User not found or suspended');
+    if (!user) {
+      throw new UnauthorizedException('User not found');
+    }
+
+    if (user.status === 'SUSPENDED') {
+      throw new ForbiddenException({
+        statusCode: 403,
+        error: 'ACCOUNT_SUSPENDED',
+        message: 'Akun Anda telah ditangguhkan.',
+        reason: user.suspendedReason || 'Pelanggaran ketentuan layanan'
+      });
+    }
+
+    if (user.status !== 'ACTIVE') {
+      throw new UnauthorizedException('Akun tidak aktif');
     }
 
     // Check PIN: compare with user's stored PIN or default 123456
@@ -560,6 +587,15 @@ export class AuthenticationService {
 
     if (!user) {
       throw new NotFoundException('Kunci rahasia atau akun tidak ditemukan. Pastikan kunci pemulihan atau username sesuai.');
+    }
+
+    if (user.status === 'SUSPENDED') {
+      throw new ForbiddenException({
+        statusCode: 403,
+        error: 'ACCOUNT_SUSPENDED',
+        message: 'Akun Anda telah ditangguhkan.',
+        reason: user.suspendedReason || 'Pelanggaran ketentuan layanan'
+      });
     }
 
     if (user.status !== 'ACTIVE') {

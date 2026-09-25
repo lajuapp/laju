@@ -59,11 +59,15 @@ class AuthController extends ChangeNotifier {
   String? _lastAuthError;
   bool _needsPinReattest = false;
   String? _reattestUsername;
+  bool _isSuspended = false;
+  String? _suspendedReason;
 
   static const MethodChannel _deviceChannel = MethodChannel('com.laju/device');
 
   // Getters
   bool get isAuthenticated => _isAuthenticated;
+  bool get isSuspended => _isSuspended;
+  String? get suspendedReason => _suspendedReason;
   AuthUser? get currentUser => _currentUser;
   String? get pendingIdentifier => _pendingIdentifier;
   String? get pendingUsername => _pendingUsername;
@@ -76,6 +80,13 @@ class AuthController extends ChangeNotifier {
   String? get lastAuthError => _lastAuthError;
   bool get needsPinReattest => _needsPinReattest;
   String? get reattestUsername => _reattestUsername;
+
+  void markSuspended(String reason) {
+    _isSuspended = true;
+    _suspendedReason = reason;
+    _isAuthenticated = false;
+    notifyListeners();
+  }
 
   bool get isIdentifierEmail {
     if (_pendingIdentifier == null) return false;
@@ -92,6 +103,8 @@ class AuthController extends ChangeNotifier {
     _otpExpiresAt = null;
     _temp2FaToken = null;
     _isLoading = false;
+    _isSuspended = false;
+    _suspendedReason = null;
     notifyListeners();
   }
 
@@ -1082,6 +1095,10 @@ class AuthController extends ChangeNotifier {
 
   /// Initializes persistent authentication session on app launch
   Future<void> initSession() async {
+    ApiClient.instance.onAccountSuspended = (reason) {
+      markSuspended(reason);
+    };
+
     try {
       final prefs = await SharedPreferences.getInstance();
       final hasSession = prefs.getBool('laju_is_authenticated') ?? false;
@@ -1100,6 +1117,7 @@ class AuthController extends ChangeNotifier {
             deviceId: deviceId,
             userId: userId,
           );
+          fetchProfileAsync();
         }
 
         _currentUser = AuthUser(
@@ -1204,6 +1222,8 @@ class AuthController extends ChangeNotifier {
     ForegroundSyncService.instance.stop();
     ApiClient.instance.clearAuth();
     _isAuthenticated = false;
+    _isSuspended = false;
+    _suspendedReason = null;
     _currentUser = null;
     resetState();
     _clearSessionFromPrefs();

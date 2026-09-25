@@ -24,6 +24,7 @@ import {
 import { useMediaUpload } from '../hooks/useMediaUpload';
 import { Button } from '../components/ui/Button';
 import { Modal } from '../components/ui/Modal';
+import { ConfirmModal } from '../components/ui/ConfirmModal';
 import { Input } from '../components/ui/Input';
 import { Badge } from '../components/ui/Badge';
 import { Pagination } from '../components/ui/Pagination';
@@ -152,17 +153,40 @@ export function StickersPage() {
     }
   };
 
-  const handleDeletePack = (id: string, name: string) => {
-    if (confirm(`Hapus paket stiker "${name}" beserta seluruh isinya?`)) {
-      deletePack.mutate(id);
-      if (selectedPack?.id === id) setSelectedPack(null);
-    }
+  const [deletePackModal, setDeletePackModal] = useState<{
+    isOpen: boolean;
+    packId: string;
+    name: string;
+  }>({ isOpen: false, packId: '', name: '' });
+
+  const [deleteStickerModal, setDeleteStickerModal] = useState<{
+    isOpen: boolean;
+    stickerId: string;
+  }>({ isOpen: false, stickerId: '' });
+
+  const handleOpenDeletePack = (id: string, name: string) => {
+    setDeletePackModal({ isOpen: true, packId: id, name });
   };
 
-  const handleDeleteStickerItem = (id: string) => {
-    if (confirm('Hapus stiker ini?')) {
-      deleteSticker.mutate(id);
-    }
+  const handleConfirmDeletePack = () => {
+    deletePack.mutate(deletePackModal.packId, {
+      onSuccess: () => {
+        if (selectedPack?.id === deletePackModal.packId) setSelectedPack(null);
+        setDeletePackModal({ isOpen: false, packId: '', name: '' });
+      },
+    });
+  };
+
+  const handleOpenDeleteSticker = (id: string) => {
+    setDeleteStickerModal({ isOpen: true, stickerId: id });
+  };
+
+  const handleConfirmDeleteSticker = () => {
+    deleteSticker.mutate(deleteStickerModal.stickerId, {
+      onSuccess: () => {
+        setDeleteStickerModal({ isOpen: false, stickerId: '' });
+      },
+    });
   };
 
   // Sync selectedPack with fresh query data
@@ -338,7 +362,7 @@ export function StickersPage() {
                     size="sm"
                     variant="ghost"
                     className="text-rose-600 hover:text-rose-700 hover:bg-rose-50"
-                    onClick={() => handleDeletePack(currentActivePack.id, currentActivePack.name)}
+                    onClick={() => handleOpenDeletePack(currentActivePack.id, currentActivePack.name)}
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                   </Button>
@@ -356,7 +380,7 @@ export function StickersPage() {
                           className="p-3 rounded-xl border border-neutral-100 bg-neutral-50/50 hover:bg-neutral-100/80 transition-all flex flex-col items-center justify-between group relative"
                         >
                           <button
-                            onClick={() => handleDeleteStickerItem(stk.id)}
+                            onClick={() => handleOpenDeleteSticker(stk.id)}
                             className="absolute top-1.5 right-1.5 p-1 rounded-md bg-white border border-neutral-200 text-neutral-400 hover:text-rose-600 opacity-0 group-hover:opacity-100 transition-opacity shadow-xs"
                           >
                             <X className="w-3 h-3" />
@@ -589,6 +613,32 @@ export function StickersPage() {
           packName={currentActivePack.name}
         />
       )}
+
+      {/* Modal Hapus Paket Stiker */}
+      <ConfirmModal
+        isOpen={deletePackModal.isOpen}
+        onClose={() => setDeletePackModal({ isOpen: false, packId: '', name: '' })}
+        onConfirm={handleConfirmDeletePack}
+        title="Hapus Paket Stiker"
+        description={`Yakin ingin menghapus paket stiker "${deletePackModal.name}" beserta seluruh stiker di dalamnya? Tindakan ini bersifat permanen.`}
+        confirmText="Hapus Paket"
+        cancelText="Batal"
+        variant="danger"
+        isLoading={deletePack.isPending}
+      />
+
+      {/* Modal Hapus Stiker Satuan */}
+      <ConfirmModal
+        isOpen={deleteStickerModal.isOpen}
+        onClose={() => setDeleteStickerModal({ isOpen: false, stickerId: '' })}
+        onConfirm={handleConfirmDeleteSticker}
+        title="Hapus Item Stiker"
+        description="Yakin ingin menghapus stiker ini dari paket?"
+        confirmText="Hapus Stiker"
+        cancelText="Batal"
+        variant="danger"
+        isLoading={deleteSticker.isPending}
+      />
     </div>
   );
 }

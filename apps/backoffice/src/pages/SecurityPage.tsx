@@ -16,10 +16,10 @@ export function SecurityPage() {
       {/* Header */}
       <div>
         <h1 className="text-xl font-extrabold tracking-tight text-neutral-900">
-          Keamanan & Log Audit Admin (Security & Audit Trail)
+          Log Aktivitas Admin (Activity Logs)
         </h1>
         <p className="text-xs text-neutral-500 mt-1">
-          Rekaman tidak dapat diubah (immutable logs) seluruh operasi sensitif admin untuk kebutuhan kepatuhan
+          Catatan riwayat seluruh aktivitas dan tindakan operasional tim admin
         </p>
       </div>
 
@@ -29,10 +29,10 @@ export function SecurityPage() {
           <div className="flex items-center gap-2">
             <Terminal className="w-4 h-4 text-neutral-600" />
             <h2 className="text-xs font-bold text-neutral-900 uppercase tracking-wider">
-              Jejak Audit Aktivitas Admin ({auditLogs?.length ?? 0})
+              Riwayat Aktivitas Admin ({auditLogs?.length ?? 0})
             </h2>
           </div>
-          <Badge variant="brand">Strict Auditing</Badge>
+          <Badge variant="brand">Log Aktivitas</Badge>
         </div>
 
         <div className="overflow-x-auto">

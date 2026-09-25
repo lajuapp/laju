@@ -1,21 +1,33 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Smartphone, ShieldCheck, ShieldAlert, Trash2 } from 'lucide-react';
 import { useDevicesList, useRevokeDevice } from '../hooks/useDevices';
 import { usePagination } from '../hooks/usePagination';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { Pagination } from '../components/ui/Pagination';
+import { ConfirmModal } from '../components/ui/ConfirmModal';
 
 export function DevicesPage() {
   const { data: devices, isLoading } = useDevicesList();
   const revokeDevice = useRevokeDevice();
 
+  const [revokeModal, setRevokeModal] = useState<{
+    isOpen: boolean;
+    deviceId: string;
+  }>({ isOpen: false, deviceId: '' });
+
   const pagination = usePagination(devices || [], { initialPageSize: 10 });
 
-  const handleRevoke = (id: string) => {
-    if (confirm(`PENCABUTAN AKSES: Putus sesi perangkat ID ${id}? Perangkat ini tidak akan bisa mendekripsi pesan selanjutnya.`)) {
-      revokeDevice.mutate(id);
-    }
+  const handleOpenRevoke = (id: string) => {
+    setRevokeModal({ isOpen: true, deviceId: id });
+  };
+
+  const handleConfirmRevoke = () => {
+    revokeDevice.mutate(revokeModal.deviceId, {
+      onSuccess: () => {
+        setRevokeModal({ isOpen: false, deviceId: '' });
+      },
+    });
   };
 
   return (
@@ -23,10 +35,10 @@ export function DevicesPage() {
       {/* Header */}
       <div>
         <h1 className="text-xl font-extrabold tracking-tight text-neutral-900">
-          Armada Perangkat Klien (Device Fleet)
+          Daftar Perangkat (Devices)
         </h1>
         <p className="text-xs text-neutral-500 mt-1">
-          Inventaris perangkat terdaftar yang memegang kunci privat identitas kriptografis end-to-end
+          Daftar perangkat pengguna yang terdaftar dan aktif terhubung ke aplikasi LAJU
         </p>
       </div>
 
@@ -38,7 +50,7 @@ export function DevicesPage() {
               <tr>
                 <th className="px-5 py-3.5">Device ID</th>
                 <th className="px-5 py-3.5">Pemilik Akun</th>
-                <th className="px-5 py-3.5">Status Akses</th>
+                <th className="px-5 py-3.5">Status Sesi</th>
                 <th className="px-5 py-3.5">Terakhir Aktif</th>
                 <th className="px-5 py-3.5">Didaftarkan</th>
                 <th className="px-5 py-3.5 text-right">Tindakan</th>
@@ -48,7 +60,7 @@ export function DevicesPage() {
               {isLoading ? (
                 <tr>
                   <td colSpan={6} className="px-5 py-8 text-center text-neutral-400">
-                    Memuat data armada perangkat...
+                    Memuat data perangkat...
                   </td>
                 </tr>
               ) : pagination.paginatedItems && pagination.paginatedItems.length > 0 ? (
@@ -67,9 +79,9 @@ export function DevicesPage() {
                     </td>
                     <td className="px-5 py-3.5">
                       {device.status === 'ACTIVE' ? (
-                        <Badge variant="success">Aktif Terverifikasi</Badge>
+                        <Badge variant="success">Aktif</Badge>
                       ) : device.status === 'REVOKED' ? (
-                        <Badge variant="error">Dicabut (Revoked)</Badge>
+                        <Badge variant="error">Nonaktif</Badge>
                       ) : (
                         <Badge variant="warning">{device.status}</Badge>
                       )}
@@ -95,9 +107,9 @@ export function DevicesPage() {
                           size="sm"
                           variant="outline"
                           className="text-rose-600 hover:text-rose-700 hover:bg-rose-50"
-                          onClick={() => handleRevoke(device.id)}
+                          onClick={() => handleOpenRevoke(device.id)}
                         >
-                          Cabut Akses
+                          Putus Sesi
                         </Button>
                       )}
                     </td>
@@ -106,7 +118,7 @@ export function DevicesPage() {
               ) : (
                 <tr>
                   <td colSpan={6} className="px-5 py-8 text-center text-neutral-400">
-                    Belum ada armada perangkat tercatat
+                    Belum ada perangkat tercatat
                   </td>
                 </tr>
               )}
@@ -126,6 +138,19 @@ export function DevicesPage() {
           />
         </div>
       </div>
+
+      {/* Modal Putus Sesi */}
+      <ConfirmModal
+        isOpen={revokeModal.isOpen}
+        onClose={() => setRevokeModal({ isOpen: false, deviceId: '' })}
+        onConfirm={handleConfirmRevoke}
+        title="Putus Sesi Perangkat"
+        description={`Yakin ingin memutuskan sesi perangkat ini (ID: ${revokeModal.deviceId})? Akun pada perangkat ini akan langsung dikeluarkan secara aman.`}
+        confirmText="Putus Sesi"
+        cancelText="Batal"
+        variant="danger"
+        isLoading={revokeDevice.isPending}
+      />
     </div>
   );
 }

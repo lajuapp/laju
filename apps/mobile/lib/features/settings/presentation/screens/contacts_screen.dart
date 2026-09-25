@@ -50,7 +50,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
         username: s.username,
         displayName: s.displayName ?? s.username,
         avatarUrl: s.avatarUrl,
-        about: s.about ?? 'LAJU Verified User 🔒',
+        about: s.about ?? 'Pengguna Terverifikasi LAJU',
         phoneNumber: s.phoneNumber,
         trustScore: s.trustScore,
         isVerified: s.isVerified,
@@ -74,12 +74,15 @@ class _ContactsScreenState extends State<ContactsScreen> {
           phoneNumber: c.participantPhone ?? existing.phoneNumber,
         );
       } else {
+        final contactId = (c.participantUserId != null && c.participantUserId!.isNotEmpty && !c.participantUserId!.startsWith('conv-'))
+            ? c.participantUserId!
+            : (c.title.isNotEmpty ? c.title : c.id);
         map[key] = _UnifiedContact(
-          id: c.participantUserId ?? c.id,
+          id: contactId,
           username: c.title,
           displayName: c.title,
           avatarUrl: c.avatarUrl,
-          about: c.participantAbout ?? 'LAJU User',
+          about: c.participantAbout ?? 'Pengguna LAJU',
           phoneNumber: c.participantPhone,
           trustScore: c.participantTrustScore ?? 100,
           isVerified: c.isKeyVerified,
@@ -105,12 +108,16 @@ class _ContactsScreenState extends State<ContactsScreen> {
 
   void _openChatWith(_UnifiedContact contact) async {
     String convId = contact.conversationId ?? 'conv-${contact.id}';
-    try {
-      final backendId = await ConversationService.instance.createPersonalConversation(contact.id);
-      if (backendId != null) {
-        convId = backendId;
-      }
-    } catch (_) {}
+    if (contact.conversationId != null && !contact.conversationId!.startsWith('conv-')) {
+      convId = contact.conversationId!;
+    } else if (!contact.id.startsWith('conv-') && !contact.id.startsWith('grp-')) {
+      try {
+        final backendId = await ConversationService.instance.createPersonalConversation(contact.id);
+        if (backendId != null) {
+          convId = backendId;
+        }
+      } catch (_) {}
+    }
 
     if (!mounted) return;
     Navigator.push(
@@ -121,7 +128,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
           title: contact.displayName,
           isGroup: false,
           avatarUrl: contact.avatarUrl,
-          contactUserId: contact.id,
+          contactUserId: contact.id.startsWith('conv-') ? null : contact.id,
           contactPhone: contact.phoneNumber ?? '@${contact.username}',
           contactAbout: contact.about,
           contactTrustScore: contact.trustScore,
@@ -131,12 +138,16 @@ class _ContactsScreenState extends State<ContactsScreen> {
   }
 
   void _startCall(_UnifiedContact contact, bool isVideo) {
+    final calleeId = (!contact.id.startsWith('conv-') && !contact.id.startsWith('grp-'))
+        ? contact.id
+        : (contact.username.isNotEmpty ? contact.username : null);
+
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => ActiveCallScreen(
           contactName: contact.displayName,
-          calleeUserId: contact.id,
+          calleeUserId: calleeId,
           contactPhone: contact.phoneNumber ?? '@${contact.username}',
           avatarUrl: contact.avatarUrl,
           isVideo: isVideo,

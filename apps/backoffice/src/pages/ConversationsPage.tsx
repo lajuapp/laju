@@ -21,10 +21,10 @@ export function ConversationsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-extrabold tracking-tight text-neutral-900">
-            Audit Metadata Obrolan (Conversations & Groups)
+            Daftar Obrolan (Conversations & Groups)
           </h1>
           <p className="text-xs text-neutral-500 mt-1">
-            Inspeksi metadata percakapan tanpa melanggar privasi enkripsi end-to-end (Zero-Knowledge)
+            Daftar percakapan dan grup pengguna pada aplikasi LAJU
           </p>
         </div>
 
@@ -54,14 +54,14 @@ export function ConversationsPage() {
       </div>
 
       {/* Info Card */}
-      <div className="p-4 rounded-2xl bg-amber-50/60 border border-amber-200/80 text-amber-900 text-xs flex items-center justify-between">
+      <div className="p-4 rounded-2xl bg-neutral-50 border border-neutral-200/80 text-neutral-700 text-xs flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Lock className="w-4 h-4 text-amber-600 flex-shrink-0" />
+          <MessageSquare className="w-4 h-4 text-neutral-500 flex-shrink-0" />
           <span>
-            <strong>Enkripsi End-to-End Aktif:</strong> Konten teks dan media disimpan dalam bentuk ciphertext di database. Hanya anggota sah percakapan yang memegang kunci dekripsi.
+            Pesan dan percakapan pengguna terlindungi secara privat. Halaman ini hanya menampilkan ringkasan data aktivitas obrolan.
           </span>
         </div>
-        <Badge variant="warning">E2EE Protected</Badge>
+        <Badge variant="neutral">Privasi Terjaga</Badge>
       </div>
 
       {/* Table */}
@@ -113,7 +113,7 @@ export function ConversationsPage() {
                       </div>
                     </td>
                     <td className="px-5 py-3.5 font-medium text-neutral-700">
-                      {c._count?.messages ?? 0} pesan terenkripsi
+                      {c._count?.messages ?? 0} pesan
                     </td>
                     <td className="px-5 py-3.5 text-neutral-500 text-[11px]">
                       {new Date(c.createdAt).toLocaleDateString('id-ID', {

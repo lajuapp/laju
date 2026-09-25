@@ -221,3 +221,68 @@ export class ApproveConversationAccessDto {
   grantId: string;
 }
 
+export class SuspendUserDto {
+  @IsString()
+  @IsOptional()
+  reason?: string;
+}
+
+export class CreateAnnouncementDto {
+  @IsString()
+  @IsNotEmpty()
+  title: string;
+
+  @IsString()
+  @IsNotEmpty()
+  content: string;
+
+  @IsString()
+  @IsOptional()
+  type?: string;
+
+  @IsBoolean()
+  @IsOptional()
+  isActive?: boolean;
+}
+
+export class UpdateAnnouncementDto {
+  @IsString()
+  @IsOptional()
+  title?: string;
+
+  @IsString()
+  @IsOptional()
+  content?: string;
+
+  @IsString()
+  @IsOptional()
+  type?: string;
+
+  @IsBoolean()
+  @IsOptional()
+  isActive?: boolean;
+}
+
+export class UpdateAppConfigDto {
+  @IsString()
+  @IsOptional()
+  minAndroidVersion?: string;
+
+  @IsString()
+  @IsOptional()
+  latestAndroidVersion?: string;
+
+  @IsBoolean()
+  @IsOptional()
+  forceUpdate?: boolean;
+
+  @IsBoolean()
+  @IsOptional()
+  maintenanceMode?: boolean;
+
+  @IsString()
+  @IsOptional()
+  maintenanceMessage?: string;
+}
+
+

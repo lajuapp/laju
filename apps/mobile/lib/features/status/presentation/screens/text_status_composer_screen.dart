@@ -126,16 +126,6 @@ class _TextStatusComposerScreenState extends State<TextStatusComposerScreen> {
                   ),
                   const Spacer(),
 
-                  // Quick emoji shortcut
-                  IconButton(
-                    icon: const Icon(Icons.emoji_emotions_outlined, color: Colors.white, size: 26),
-                    onPressed: () {
-                      HapticFeedback.lightImpact();
-                      _textController.text += ' 🔒';
-                    },
-                    tooltip: 'Sisipkan Emoji',
-                  ),
-
                   // Font style switcher
                   IconButton(
                     icon: const Icon(Icons.title_rounded, color: Colors.white, size: 26),
@@ -201,7 +191,7 @@ class _TextStatusComposerScreenState extends State<TextStatusComposerScreen> {
                         Icon(Icons.lock_rounded, size: 13, color: AppColors.primary),
                         SizedBox(width: 6),
                         Text(
-                          'Status (Kontak Saya) 🔒',
+                          'Status (Kontak Saya)',
                           style: TextStyle(
                             color: Colors.white,
                             fontSize: 12,

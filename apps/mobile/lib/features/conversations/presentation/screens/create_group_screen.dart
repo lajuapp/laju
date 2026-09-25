@@ -31,7 +31,7 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
           id: u.id,
           name: u.username,
           phone: '@${u.username}',
-          role: u.status ?? 'LAJU Verified User 🔒',
+          role: u.status ?? 'Pengguna Terverifikasi LAJU',
           isOnline: true,
         )).toList();
       });
@@ -46,7 +46,7 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
           id: u.id,
           name: u.username,
           phone: '@${u.username}',
-          role: u.status ?? 'LAJU Verified User 🔒',
+          role: u.status ?? 'Pengguna Terverifikasi LAJU',
           isOnline: true,
         )).toList();
       });

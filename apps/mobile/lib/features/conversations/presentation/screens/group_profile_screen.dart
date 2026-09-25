@@ -134,7 +134,7 @@ class _GroupProfileScreenState extends State<GroupProfileScreen> {
                           color: isDark ? Colors.white : const Color(0xFF111827),
                         ),
                       ),
-                      subtitle: Text(u.status ?? 'LAJU Verified User 🔒'),
+                      subtitle: Text(u.status ?? 'Pengguna Terverifikasi LAJU'),
                       onTap: () async {
                         Navigator.pop(bCtx);
                         await GroupController.instance.addMembers(widget.groupId, [

@@ -29,7 +29,11 @@ import {
   UpdateStickerPackDto,
   CreateStickerItemDto,
   RequestConversationAccessDto,
-  ApproveConversationAccessDto
+  ApproveConversationAccessDto,
+  SuspendUserDto,
+  CreateAnnouncementDto,
+  UpdateAnnouncementDto,
+  UpdateAppConfigDto
 } from './dto/admin.dto';
 import { AdminAuthGuard } from '../../common/guards/admin-auth.guard';
 import { RequirePermissions } from '../../common/decorators/permissions.decorator';
@@ -139,8 +143,8 @@ export class AdminController {
   @Post('users/:id/suspend')
   @UseGuards(AdminAuthGuard)
   @RequirePermissions(AdminPermission.USER_SUSPEND)
-  suspendUser(@Param('id') userId: string) {
-    return this.adminService.suspendUser(userId);
+  suspendUser(@Param('id') userId: string, @Body() dto?: SuspendUserDto) {
+    return this.adminService.suspendUser(userId, dto?.reason);
   }
 
   @Post('users/:id/restore')
@@ -401,6 +405,54 @@ export class AdminController {
   @RequirePermissions(AdminPermission.AUDIT_READ)
   getAuditLogs() {
     return this.adminService.getAuditLogs();
+  }
+
+  // ─── ANNOUNCEMENTS ───────────────────────────────────────────────
+  @Get('announcements')
+  @UseGuards(AdminAuthGuard)
+  listAnnouncements() {
+    return this.adminService.listAnnouncements();
+  }
+
+  @Get('announcements/public')
+  getActiveAnnouncements() {
+    return this.adminService.getActiveAnnouncements();
+  }
+
+  @Post('announcements')
+  @UseGuards(AdminAuthGuard)
+  createAnnouncement(@Body() dto: CreateAnnouncementDto) {
+    return this.adminService.createAnnouncement(dto);
+  }
+
+  @Patch('announcements/:id')
+  @UseGuards(AdminAuthGuard)
+  updateAnnouncement(@Param('id') id: string, @Body() dto: UpdateAnnouncementDto) {
+    return this.adminService.updateAnnouncement(id, dto);
+  }
+
+  @Delete('announcements/:id')
+  @UseGuards(AdminAuthGuard)
+  deleteAnnouncement(@Param('id') id: string) {
+    return this.adminService.deleteAnnouncement(id);
+  }
+
+  // ─── APP SYSTEM CONFIG ───────────────────────────────────────────
+  @Get('app-config')
+  @UseGuards(AdminAuthGuard)
+  getAppConfig() {
+    return this.adminService.getAppConfig();
+  }
+
+  @Get('app-config/public')
+  getPublicAppConfig() {
+    return this.adminService.getAppConfig();
+  }
+
+  @Patch('app-config')
+  @UseGuards(AdminAuthGuard)
+  updateAppConfig(@Body() dto: UpdateAppConfigDto) {
+    return this.adminService.updateAppConfig(dto);
   }
 }
 

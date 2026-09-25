@@ -10,6 +10,8 @@ import { WallpapersPage } from './pages/WallpapersPage';
 import { StickersPage } from './pages/StickersPage';
 import { ConversationsPage } from './pages/ConversationsPage';
 import { SecurityPage } from './pages/SecurityPage';
+import { AnnouncementsPage } from './pages/AnnouncementsPage';
+import { AppVersionPage } from './pages/AppVersionPage';
 
 export function App() {
   return (
@@ -23,6 +25,8 @@ export function App() {
         <Route path="devices" element={<DevicesPage />} />
         <Route path="wallpapers" element={<WallpapersPage />} />
         <Route path="stickers" element={<StickersPage />} />
+        <Route path="announcements" element={<AnnouncementsPage />} />
+        <Route path="app-version" element={<AppVersionPage />} />
         <Route path="conversations" element={<ConversationsPage />} />
         <Route path="security" element={<SecurityPage />} />
       </Route>

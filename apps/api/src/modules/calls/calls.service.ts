@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   ForbiddenException,
+  BadRequestException,
   Optional
 } from '@nestjs/common';
 import { PrismaService } from '../../infrastructure/prisma/prisma.service';
@@ -24,19 +25,41 @@ export class CallsService {
   ) {}
 
   async createCall(callerUserId: string, callerDeviceId: string, calleeUserId: string, isVideo?: boolean) {
+    if (!calleeUserId || typeof calleeUserId !== 'string' || calleeUserId.startsWith('conv-') || calleeUserId.startsWith('grp-') || calleeUserId === 'm-you') {
+      throw new BadRequestException('ID kontak tujuan panggilan tidak valid');
+    }
+
     return this.prisma.$transaction(async (tx) => {
-      // Find target callee user by ID or username
+      // Find target callee user by ID, username, email, phoneNumber
       const cleanUsername = calleeUserId.startsWith('@') ? calleeUserId.substring(1) : calleeUserId;
+      const digitsOnly = calleeUserId.replace(/\D/g, '');
+
       const targetUser = await tx.user.findFirst({
         where: {
           OR: [
             { id: calleeUserId },
             { username: { equals: calleeUserId, mode: 'insensitive' } },
-            { username: { equals: cleanUsername, mode: 'insensitive' } }
+            { username: { equals: cleanUsername, mode: 'insensitive' } },
+            { email: { equals: calleeUserId, mode: 'insensitive' } },
+            { phoneNumber: calleeUserId },
+            ...(digitsOnly.length >= 6 ? [
+              { phoneNumber: `+${digitsOnly}` },
+              { phoneNumber: digitsOnly },
+              { phoneNumber: { contains: digitsOnly } }
+            ] : [])
           ]
         }
       });
-      const resolvedCalleeUserId = targetUser ? targetUser.id : calleeUserId;
+
+      if (!targetUser) {
+        throw new NotFoundException(`Kontak tujuan panggilan "${calleeUserId}" tidak ditemukan di sistem LAJU`);
+      }
+
+      if (targetUser.id === callerUserId) {
+        throw new BadRequestException('Tidak dapat melakukan panggilan ke akun sendiri');
+      }
+
+      const resolvedCalleeUserId = targetUser.id;
 
       const call = await tx.call.create({
         data: {

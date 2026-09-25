@@ -1050,7 +1050,7 @@ class _ChatScreenState extends State<ChatScreen> {
                               }
                               if (!PrivacyController.instance.isOnlineVisible) {
                                 return Text(
-                                  'Terenkripsi E2EE 🔒',
+                                  'Pesan Terlindungi',
                                   style: TextStyle(
                                     fontSize: 11,
                                     color: isDark ? Colors.white38 : const Color(0xFF94A3B8),

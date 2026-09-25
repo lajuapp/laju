@@ -17,7 +17,11 @@ import {
   UpdateWallpaperDto,
   CreateStickerPackDto,
   UpdateStickerPackDto,
-  CreateStickerItemDto
+  CreateStickerItemDto,
+  SuspendUserDto,
+  CreateAnnouncementDto,
+  UpdateAnnouncementDto,
+  UpdateAppConfigDto
 } from './dto/admin.dto';
 
 @Injectable()
@@ -158,6 +162,9 @@ export class AdminService {
 
   // Dashboard Aggregation Stats
   async getDashboardStats() {
+    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+    const fifteenMinutesAgo = new Date(Date.now() - 15 * 60 * 1000);
+
     const [
       totalUsers,
       activeUsers,
@@ -168,7 +175,10 @@ export class AdminService {
       totalMessages,
       totalWallpapers,
       totalStickerPacks,
-      recentAuditLogs
+      recentAuditLogs,
+      onlineDevicesCount,
+      activeCallsCount,
+      recentMessagesCount
     ] = await Promise.all([
       this.prisma.user.count(),
       this.prisma.user.count({ where: { status: 'ACTIVE' } }),
@@ -182,8 +192,27 @@ export class AdminService {
       this.prisma.adminAuditEvent.findMany({
         orderBy: { createdAt: 'desc' },
         take: 6
+      }),
+      this.prisma.device.count({
+        where: {
+          status: 'ACTIVE',
+          lastSeenAt: { gte: fiveMinutesAgo }
+        }
+      }),
+      this.prisma.call.count({
+        where: {
+          state: { in: ['CONNECTED', 'RINGING', 'INITIATED'] }
+        }
+      }),
+      this.prisma.message.count({
+        where: {
+          createdAt: { gte: fifteenMinutesAgo }
+        }
       })
     ]);
+
+    const onlineUsers = onlineDevicesCount;
+    const communicatingUsers = (activeCallsCount * 2) + Math.min(recentMessagesCount, activeUsers);
 
     return {
       overview: {
@@ -195,7 +224,10 @@ export class AdminService {
         totalGroups,
         totalMessages,
         totalWallpapers,
-        totalStickerPacks
+        totalStickerPacks,
+        onlineUsers,
+        communicatingUsers,
+        activeCalls: activeCallsCount
       },
       recentAuditLogs
     };
@@ -238,6 +270,8 @@ export class AdminService {
         id: true,
         username: true,
         status: true,
+        suspendedReason: true,
+        suspendedAt: true,
         createdAt: true,
         updatedAt: true,
         _count: { select: { devices: true, messages: true } }
@@ -245,11 +279,15 @@ export class AdminService {
     });
   }
 
-  async suspendUser(userId: string) {
+  async suspendUser(userId: string, reason?: string) {
     return this.prisma.$transaction([
       this.prisma.user.update({
         where: { id: userId },
-        data: { status: 'SUSPENDED' }
+        data: {
+          status: 'SUSPENDED',
+          suspendedReason: reason || 'Pelanggaran ketentuan layanan',
+          suspendedAt: new Date()
+        }
       }),
       this.prisma.session.deleteMany({
         where: { userId }
@@ -260,7 +298,11 @@ export class AdminService {
   async restoreUser(userId: string) {
     return this.prisma.user.update({
       where: { id: userId },
-      data: { status: 'ACTIVE' }
+      data: {
+        status: 'ACTIVE',
+        suspendedReason: null,
+        suspendedAt: null
+      }
     });
   }
 
@@ -697,6 +739,74 @@ export class AdminService {
   async deleteStickerItem(id: string) {
     return this.prisma.stickerItem.delete({
       where: { id }
+    });
+  }
+
+  // System Announcements
+  async listAnnouncements() {
+    return this.prisma.systemAnnouncement.findMany({
+      orderBy: { createdAt: 'desc' }
+    });
+  }
+
+  async getActiveAnnouncements() {
+    return this.prisma.systemAnnouncement.findMany({
+      where: { isActive: true },
+      orderBy: { createdAt: 'desc' }
+    });
+  }
+
+  async createAnnouncement(dto: CreateAnnouncementDto) {
+    return this.prisma.systemAnnouncement.create({
+      data: {
+        title: dto.title,
+        content: dto.content,
+        type: dto.type || 'INFO',
+        isActive: dto.isActive !== undefined ? dto.isActive : true
+      }
+    });
+  }
+
+  async updateAnnouncement(id: string, dto: UpdateAnnouncementDto) {
+    const announcement = await this.prisma.systemAnnouncement.findUnique({ where: { id } });
+    if (!announcement) throw new NotFoundException('Pengumuman tidak ditemukan');
+    return this.prisma.systemAnnouncement.update({
+      where: { id },
+      data: dto
+    });
+  }
+
+  async deleteAnnouncement(id: string) {
+    return this.prisma.systemAnnouncement.delete({
+      where: { id }
+    });
+  }
+
+  // App System Config
+  async getAppConfig() {
+    let config = await this.prisma.appSystemConfig.findUnique({
+      where: { id: 'global' }
+    });
+    if (!config) {
+      config = await this.prisma.appSystemConfig.create({
+        data: {
+          id: 'global',
+          minAndroidVersion: '1.0.0',
+          latestAndroidVersion: '1.0.0',
+          forceUpdate: false,
+          maintenanceMode: false,
+          maintenanceMessage: 'Sistem sedang dalam pemeliharaan berkala. Silakan coba kembali beberapa saat lagi.'
+        }
+      });
+    }
+    return config;
+  }
+
+  async updateAppConfig(dto: UpdateAppConfigDto) {
+    await this.getAppConfig(); // ensure exists
+    return this.prisma.appSystemConfig.update({
+      where: { id: 'global' },
+      data: dto
     });
   }
 }

@@ -103,8 +103,8 @@ class WallpaperSettingsScreen extends StatelessWidget {
                                 ),
                                 child: Text(
                                   langCode == 'id'
-                                      ? 'Sistem obrolan aman LAJU siap digunakan 🔒'
-                                      : 'LAJU secure messaging active 🔒',
+                                      ? 'Sistem obrolan aman LAJU siap digunakan'
+                                      : 'LAJU secure messaging active',
                                   style: TextStyle(
                                     fontSize: 13,
                                     fontWeight: FontWeight.w600,

@@ -20,6 +20,7 @@ import {
 import { useMediaUpload } from '../hooks/useMediaUpload';
 import { Button } from '../components/ui/Button';
 import { Modal } from '../components/ui/Modal';
+import { ConfirmModal } from '../components/ui/ConfirmModal';
 import { Input } from '../components/ui/Input';
 import { Badge } from '../components/ui/Badge';
 import { Pagination } from '../components/ui/Pagination';
@@ -104,10 +105,22 @@ export function WallpapersPage() {
     updateWallpaper.mutate({ id, isDefault: true });
   };
 
-  const handleDelete = (id: string, name: string) => {
-    if (confirm(`Hapus wallpaper "${name}"?`)) {
-      deleteWallpaper.mutate(id);
-    }
+  const [deleteModal, setDeleteModal] = useState<{
+    isOpen: boolean;
+    wallpaperId: string;
+    name: string;
+  }>({ isOpen: false, wallpaperId: '', name: '' });
+
+  const handleOpenDelete = (id: string, name: string) => {
+    setDeleteModal({ isOpen: true, wallpaperId: id, name });
+  };
+
+  const handleConfirmDelete = () => {
+    deleteWallpaper.mutate(deleteModal.wallpaperId, {
+      onSuccess: () => {
+        setDeleteModal({ isOpen: false, wallpaperId: '', name: '' });
+      },
+    });
   };
 
   return (
@@ -195,7 +208,7 @@ export function WallpapersPage() {
                     )}
 
                     <button
-                      onClick={() => handleDelete(wp.id, wp.name)}
+                      onClick={() => handleOpenDelete(wp.id, wp.name)}
                       className="p-1 rounded text-neutral-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
@@ -346,6 +359,19 @@ export function WallpapersPage() {
           </div>
         </form>
       </Modal>
+
+      {/* Modal Hapus Wallpaper */}
+      <ConfirmModal
+        isOpen={deleteModal.isOpen}
+        onClose={() => setDeleteModal({ isOpen: false, wallpaperId: '', name: '' })}
+        onConfirm={handleConfirmDelete}
+        title="Hapus Wallpaper Obrolan"
+        description={`Yakin ingin menghapus wallpaper "${deleteModal.name}"? File wallpaper ini tidak akan dapat digunakan lagi oleh pengguna.`}
+        confirmText="Hapus Wallpaper"
+        cancelText="Batal"
+        variant="danger"
+        isLoading={deleteWallpaper.isPending}
+      />
     </div>
   );
 }

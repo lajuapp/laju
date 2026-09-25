@@ -44,6 +44,9 @@ export interface DashboardStats {
     totalMessages: number;
     totalWallpapers: number;
     totalStickerPacks: number;
+    onlineUsers?: number;
+    communicatingUsers?: number;
+    activeCalls?: number;
   };
   recentAuditLogs: AdminAuditEvent[];
 }
@@ -52,6 +55,8 @@ export interface UserItem {
   id: string;
   username: string;
   status: 'ACTIVE' | 'SUSPENDED' | 'DEACTIVATED';
+  suspendedReason?: string | null;
+  suspendedAt?: string | null;
   createdAt: string;
   updatedAt: string;
   _count: {
@@ -142,3 +147,24 @@ export interface SecurityEvent {
   description?: string;
   createdAt: string;
 }
+
+export interface SystemAnnouncement {
+  id: string;
+  title: string;
+  content: string;
+  type: 'INFO' | 'WARNING' | 'MAINTENANCE';
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AppSystemConfig {
+  id: string;
+  minAndroidVersion: string;
+  latestAndroidVersion: string;
+  forceUpdate: boolean;
+  maintenanceMode: boolean;
+  maintenanceMessage?: string | null;
+  updatedAt: string;
+}
+

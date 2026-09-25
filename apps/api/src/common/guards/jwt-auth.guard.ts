@@ -2,7 +2,8 @@ import {
   Injectable,
   CanActivate,
   ExecutionContext,
-  UnauthorizedException
+  UnauthorizedException,
+  ForbiddenException
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
@@ -32,7 +33,18 @@ export class JwtAuthGuard implements CanActivate {
       const user = await this.prisma.user.findUnique({
         where: { id: payload.sub }
       });
-      if (!user || user.status !== 'ACTIVE') {
+      if (!user) {
+        throw new UnauthorizedException('User not found');
+      }
+      if (user.status === 'SUSPENDED') {
+        throw new ForbiddenException({
+          statusCode: 403,
+          error: 'ACCOUNT_SUSPENDED',
+          message: 'Akun Anda telah ditangguhkan.',
+          reason: user.suspendedReason || 'Pelanggaran ketentuan layanan'
+        });
+      }
+      if (user.status !== 'ACTIVE') {
         throw new UnauthorizedException('User is not active');
       }
 
@@ -51,6 +63,9 @@ export class JwtAuthGuard implements CanActivate {
       };
       return true;
     } catch (err: any) {
+      if (err instanceof ForbiddenException) {
+        throw err;
+      }
       throw new UnauthorizedException(err.message || 'Invalid token');
     }
   }

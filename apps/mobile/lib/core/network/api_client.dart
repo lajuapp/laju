@@ -76,6 +76,8 @@ class ApiClient {
   String? get deviceId => _deviceId;
   String? get userId => _userId;
 
+  void Function(String reason)? onAccountSuspended;
+
   void setAuth({
     required String token,
     String? deviceId,
@@ -230,6 +232,10 @@ class ApiClient {
       } else {
         String errorMsg = 'HTTP error $statusCode';
         if (parsedJson is Map<String, dynamic>) {
+          if (statusCode == 403 && parsedJson['error'] == 'ACCOUNT_SUSPENDED') {
+            final reason = parsedJson['reason']?.toString() ?? 'Pelanggaran ketentuan layanan';
+            onAccountSuspended?.call(reason);
+          }
           if (parsedJson['message'] != null) {
             if (parsedJson['message'] is List) {
               errorMsg = (parsedJson['message'] as List).join(', ');
