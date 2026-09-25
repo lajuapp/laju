@@ -1,11 +1,15 @@
 import axios from 'axios';
 
-const defaultApiUrl =
+let defaultApiUrl =
   import.meta.env.VITE_API_URL ||
   (typeof window !== 'undefined' &&
   (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
     ? ''
     : 'https://api.laju.chat');
+
+if (typeof defaultApiUrl === 'string' && defaultApiUrl.includes('rogatekno')) {
+  defaultApiUrl = 'https://api.laju.chat';
+}
 
 export const apiClient = axios.create({
   baseURL: defaultApiUrl,
