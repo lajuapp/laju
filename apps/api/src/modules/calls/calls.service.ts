@@ -538,7 +538,7 @@ export class CallsService {
 
     const initiator = await this.prisma.user.findUnique({
       where: { id: participant.call.initiatorId },
-      select: { id: true, username: true }
+      select: { id: true, username: true, phoneNumber: true }
     });
 
     let isVideo = false;
@@ -554,6 +554,7 @@ export class CallsService {
       callId: participant.callId,
       initiatorId: participant.call.initiatorId,
       initiatorName: initiator?.username || 'Kontak',
+      initiatorPhone: initiator?.phoneNumber || null,
       isVideo,
       createdAt: participant.call.startedAt
     };
@@ -606,9 +607,14 @@ export class CallsService {
   async getCallHistory(userId: string) {
     const calls = await this.prisma.call.findMany({
       where: {
-        participants: {
-          some: { userId }
-        }
+        OR: [
+          { initiatorId: userId },
+          {
+            participants: {
+              some: { userId }
+            }
+          }
+        ]
       },
       include: {
         participants: {
@@ -634,21 +640,54 @@ export class CallsService {
 
         const isInitiator = call.initiatorId === userId;
         const otherParticipant = call.participants.find((p) => p.userId !== userId);
-        const contactUser = isInitiator
-          ? otherParticipant?.user
-          : call.participants.find((p) => p.userId === call.initiatorId)?.user;
+
+        let contactUser: { id: string; username: string; phoneNumber?: string | null } | null = null;
+        if (isInitiator) {
+          contactUser = otherParticipant?.user || null;
+          if (!contactUser && otherParticipant?.userId) {
+            contactUser = await this.prisma.user.findUnique({
+              where: { id: otherParticipant.userId },
+              select: { id: true, username: true, phoneNumber: true }
+            });
+          }
+        } else {
+          contactUser = call.participants.find((p) => p.userId === call.initiatorId)?.user || null;
+          if (!contactUser && call.initiatorId) {
+            contactUser = await this.prisma.user.findUnique({
+              where: { id: call.initiatorId },
+              select: { id: true, username: true, phoneNumber: true }
+            });
+          }
+        }
+
+        const calleePart = call.participants.find((p) => p.userId !== call.initiatorId);
+        const wasConnected = calleePart?.state === 'CONNECTED' || (calleePart?.joinedAt != null && calleePart?.leftAt != null);
+
+        let status = 'completed';
+        if (call.state === 'REJECTED') {
+          status = 'rejected';
+        } else if (call.state === 'INITIATED' || call.state === 'RINGING' || (!wasConnected && call.state === 'ENDED')) {
+          status = isInitiator ? 'cancelled' : 'missed';
+        }
+
+        let durationSeconds = 0;
+        if (wasConnected && call.startedAt && call.endedAt) {
+          durationSeconds = Math.max(0, Math.floor((call.endedAt.getTime() - call.startedAt.getTime()) / 1000));
+        }
 
         return {
           id: call.id,
           initiatorId: call.initiatorId,
           isOutgoing: isInitiator,
           state: call.state,
+          status,
           startedAt: call.startedAt,
           endedAt: call.endedAt,
+          durationSeconds,
           isVideo,
           contactId: contactUser?.id || (isInitiator ? otherParticipant?.userId : call.initiatorId),
           contactName: contactUser?.username || 'Kontak',
-          contactPhone: contactUser?.phoneNumber
+          contactPhone: contactUser?.phoneNumber || null
         };
       })
     );
