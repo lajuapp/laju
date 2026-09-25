@@ -98,8 +98,16 @@ export class DeviceVerifyChallengeDto {
   challenge: string;
 
   @IsString()
-  @IsNotEmpty()
-  signature: string;
+  @IsOptional()
+  signature?: string;
+
+  @IsString()
+  @IsOptional()
+  pin?: string;
+
+  @IsString()
+  @IsOptional()
+  newDevicePublicKey?: string;
 }
 
 export class UpdatePushTokenDto {

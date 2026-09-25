@@ -8,6 +8,7 @@ import {
   Optional
 } from '@nestjs/common';
 import * as crypto from 'crypto';
+import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../../infrastructure/prisma/prisma.service';
 import { RedisService } from '../../infrastructure/redis/redis.service';
 import { AuthenticationService } from '../authentication/authentication.service';
@@ -72,10 +73,28 @@ export class DevicesService {
       }
     }
 
+    // Check if device is registered
+    let isRegistered = false;
+    let username: string | undefined;
+    if (dto?.deviceUuid) {
+      try {
+        const dev = await this.prisma.device.findUnique({
+          where: { deviceUuid: dto.deviceUuid },
+          include: { user: { select: { username: true } } }
+        });
+        if (dev && dev.status === 'ACTIVE') {
+          isRegistered = true;
+          username = dev.user.username;
+        }
+      } catch (_) {}
+    }
+
     return {
       challenge: nonce,
       expiresInSeconds: ttlSeconds,
-      expiresAt
+      expiresAt,
+      isRegistered,
+      username
     };
   }
 
@@ -83,7 +102,7 @@ export class DevicesService {
    * Cryptographically verify signature over challenge and issue session tokens.
    */
   async verifyChallenge(dto: DeviceVerifyChallengeDto) {
-    const { deviceUuid, challenge, signature } = dto;
+    const { deviceUuid, challenge, signature, pin, newDevicePublicKey } = dto;
 
     // 1. Verify challenge validity
     let challengeValid = false;
@@ -131,25 +150,66 @@ export class DevicesService {
       throw new UnauthorizedException(`User account is ${device.user.status}`);
     }
 
-    // 3. Obtain public key for verification
-    const publicKeyStr = device.devicePublicKey || device.deviceKeys[0]?.identityKey;
-    if (!publicKeyStr) {
-      throw new BadRequestException('No registered public key found for this device');
-    }
+    let mechanism = 'CHALLENGE_RESPONSE';
 
-    // 4. Verify cryptographic signature
-    const isValid = this.verifyCryptographicSignature(publicKeyStr, challenge, signature);
-    if (!isValid) {
-      await this.prisma.securityEvent.create({
-        data: {
-          userId: device.userId,
-          deviceId: device.id,
-          eventType: 'CHALLENGE_VERIFY_FAILED',
-          severity: 'HIGH',
-          details: JSON.stringify({ deviceUuid, reason: 'Invalid cryptographic signature' })
+    if (pin) {
+      // Authenticate via PIN verification for re-attestation
+      if (device.user.twoFactorPin) {
+        const isPinMatch = await bcrypt.compare(pin, device.user.twoFactorPin);
+        if (!isPinMatch) {
+          await this.prisma.securityEvent.create({
+            data: {
+              userId: device.userId,
+              deviceId: device.id,
+              eventType: 'DEVICE_PIN_VERIFY_FAILED',
+              severity: 'HIGH',
+              details: JSON.stringify({ deviceUuid, reason: 'Invalid PIN provided for device re-attestation' })
+            }
+          });
+          throw new UnauthorizedException('PIN Keamanan salah');
         }
-      });
-      throw new UnauthorizedException('Cryptographic signature verification failed');
+        mechanism = 'DEVICE_PIN_REATTEST';
+      } else {
+        // Legacy user without PIN set yet: set the PIN for this user
+        const salt = await bcrypt.genSalt(10);
+        const hashedPin = await bcrypt.hash(pin, salt);
+        await this.prisma.user.update({
+          where: { id: device.user.id },
+          data: { twoFactorPin: hashedPin }
+        });
+        mechanism = 'DEVICE_PIN_INIT';
+      }
+
+      // If a new device public key was supplied during re-attestation, update it
+      if (newDevicePublicKey) {
+        await this.prisma.device.update({
+          where: { id: device.id },
+          data: { devicePublicKey: newDevicePublicKey }
+        });
+      }
+    } else {
+      // Cryptographic signature check
+      if (!signature) {
+        throw new BadRequestException('Signature atau PIN diperlukan untuk verifikasi perangkat');
+      }
+      const publicKeyStr = device.devicePublicKey || device.deviceKeys[0]?.identityKey;
+      if (!publicKeyStr) {
+        throw new BadRequestException('No registered public key found for this device');
+      }
+
+      const isValid = this.verifyCryptographicSignature(publicKeyStr, challenge, signature);
+      if (!isValid) {
+        await this.prisma.securityEvent.create({
+          data: {
+            userId: device.userId,
+            deviceId: device.id,
+            eventType: 'CHALLENGE_VERIFY_FAILED',
+            severity: 'HIGH',
+            details: JSON.stringify({ deviceUuid, reason: 'Invalid cryptographic signature' })
+          }
+        });
+        throw new UnauthorizedException('Cryptographic signature verification failed');
+      }
     }
 
     // 5. Update device last seen
@@ -165,7 +225,7 @@ export class DevicesService {
         deviceId: device.id,
         eventType: 'DEVICE_AUTHENTICATED',
         severity: 'LOW',
-        details: JSON.stringify({ deviceUuid, mechanism: 'CHALLENGE_RESPONSE' })
+        details: JSON.stringify({ deviceUuid, mechanism })
       }
     });
 

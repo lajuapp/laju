@@ -27,6 +27,7 @@ import android.os.Looper
 import android.provider.ContactsContract
 import android.provider.MediaStore
 import android.provider.OpenableColumns
+import android.provider.Settings
 import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
 import androidx.core.app.ActivityCompat
@@ -74,6 +75,7 @@ class MainActivity : FlutterFragmentActivity() {
     private val CALL_AUDIO_CHANNEL = "com.laju/call_audio"
     private val NOTIFICATION_CHANNEL = "com.laju/system_notifications"
     private val LOCATION_CHANNEL = "com.laju/location"
+    private val DEVICE_CHANNEL = "com.laju/device"
     private val CHANNEL_ID_CALLS = "laju_calls"
     private val CHANNEL_ID_MESSAGES = "laju_messages"
 
@@ -1093,6 +1095,38 @@ class MainActivity : FlutterFragmentActivity() {
                         } catch (e2: Exception) {
                             result.error("MAP_ERROR", e2.message, null)
                         }
+                    }
+                }
+                else -> result.notImplemented()
+            }
+        }
+
+        // Hardware Device Unique ID MethodChannel
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, DEVICE_CHANNEL).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "getHardwareDeviceId" -> {
+                    try {
+                        val androidId = Settings.Secure.getString(
+                            contentResolver,
+                            Settings.Secure.ANDROID_ID
+                        ) ?: ""
+                        val manufacturer = Build.MANUFACTURER ?: "Android"
+                        val model = Build.MODEL ?: "Device"
+                        val deviceFingerprint = "${manufacturer}_${model}_${androidId}".trim()
+                        result.success(deviceFingerprint)
+                    } catch (e: Exception) {
+                        result.success("android_${Build.MODEL}")
+                    }
+                }
+                "getDeviceModelName" -> {
+                    try {
+                        val manufacturer = Build.MANUFACTURER?.replaceFirstChar {
+                            if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString()
+                        } ?: "Android"
+                        val model = Build.MODEL ?: "Device"
+                        result.success("$manufacturer $model".trim())
+                    } catch (e: Exception) {
+                        result.success("Android Device")
                     }
                 }
                 else -> result.notImplemented()

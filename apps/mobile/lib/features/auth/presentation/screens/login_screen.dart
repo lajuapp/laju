@@ -72,61 +72,48 @@ class _LoginScreenState extends State<LoginScreen>
         _biometricInfo ?? await BiometricService.instance.checkAvailability();
     bool authenticated = false;
 
-    if (availability.isAvailable) {
-      final bioLabel = availability.biometricLabel.isNotEmpty
-          ? availability.biometricLabel
-          : 'Sidik Jari / Wajah';
+    // Only prompt pre-biometric/PIN if device is already configured with local PIN/session
+    if (AppLockController.instance.hasSetPin) {
+      if (availability.isAvailable) {
+        final bioLabel = availability.biometricLabel.isNotEmpty
+            ? availability.biometricLabel
+            : 'Sidik Jari / Wajah';
 
-      authenticated = await BiometricService.instance.authenticate(
-        title: 'Verifikasi Pemilik Perangkat',
-        subtitle: 'Pindai $bioLabel atau kunci layar HP ini',
-        description:
-            'Autentikasi biometrik diperlukan untuk memastikan Anda adalah pemilik sah HP ini sebelum masuk.',
-        allowDeviceCredential: true,
-        negativeButtonText: 'Batal',
-      );
+        authenticated = await BiometricService.instance.authenticate(
+          title: 'Verifikasi Pemilik Perangkat',
+          subtitle: 'Pindai $bioLabel atau kunci layar HP ini',
+          description:
+              'Autentikasi biometrik diperlukan untuk memastikan Anda adalah pemilik sah HP ini sebelum masuk.',
+          allowDeviceCredential: true,
+          negativeButtonText: 'Batal',
+        );
 
-      if (!authenticated) {
-        if (mounted) {
-          LajuToast.error(
-            context,
-            'Autentikasi biometrik tidak berhasil atau dibatalkan. Akses masuk ditolak.',
-          );
-        }
-        return;
-      }
-    } else {
-      if (AppLockController.instance.hasSetPin) {
-        if (mounted) {
-          authenticated = await SecurityAuthHelper.promptVerifyPin(
-            context,
-            title: 'Verifikasi PIN Keamanan',
-            subtitle:
-                'HP tidak mendukung biometrik. Masukkan 6-digit PIN Anda untuk masuk',
-          );
+        if (!authenticated) {
+          if (mounted) {
+            LajuToast.error(
+              context,
+              'Autentikasi biometrik tidak berhasil atau dibatalkan. Akses masuk ditolak.',
+            );
+          }
+          return;
         }
       } else {
-        if (mounted) {
-          final newPin = await SecurityAuthHelper.promptSetupPin(
-            context,
-            title: 'Atur PIN Keamanan (6-Digit)',
-          );
-          if (newPin != null && newPin.length == 6) {
-            await AppLockController.instance.setPinCode(newPin);
-            await AppLockController.instance.setAppLockEnabled(true);
-            authenticated = true;
-          }
-        }
-      }
+        authenticated = await SecurityAuthHelper.promptVerifyPin(
+          context,
+          title: 'Verifikasi PIN Keamanan',
+          subtitle:
+              'HP tidak mendukung biometrik. Masukkan 6-digit PIN Anda untuk masuk',
+        );
 
-      if (!authenticated) {
-        if (mounted) {
-          LajuToast.error(
-            context,
-            'Autentikasi PIN tidak berhasil. Akses login perangkat ditolak.',
-          );
+        if (!authenticated) {
+          if (mounted) {
+            LajuToast.error(
+              context,
+              'Autentikasi PIN tidak berhasil. Akses login perangkat ditolak.',
+            );
+          }
+          return;
         }
-        return;
       }
     }
 
@@ -147,8 +134,48 @@ class _LoginScreenState extends State<LoginScreen>
           MaterialPageRoute(builder: (context) => const HomeScreen()),
           (route) => false,
         );
+      } else if (AuthController.instance.needsPinReattest) {
+        // Hardware Device is registered on server! Prompt user for their 6-digit PIN
+        final username = AuthController.instance.reattestUsername ?? 'Anda';
+        final pin = await SecurityAuthHelper.promptEnterPin(
+          context,
+          title: 'Verifikasi PIN Keamanan',
+          subtitle: 'Perangkat ini terdaftar atas akun "$username". Masukkan 6-digit PIN Anda untuk masuk',
+        );
+
+        if (pin != null && pin.length == 6) {
+          if (!mounted) return;
+          setState(() => _isLoading = true);
+
+          final pinSuccess = await AuthController.instance.authenticateDeviceWithPinAsync(pin: pin);
+
+          if (!mounted) return;
+          setState(() => _isLoading = false);
+
+          if (pinSuccess) {
+            await AppLockController.instance.setPinCode(pin);
+            await AppLockController.instance.setAppLockEnabled(true);
+            if (availability.isAvailable) {
+              await AppLockController.instance.setBiometricEnabled(true);
+            }
+
+            LajuToast.success(context, context.tr('deviceAuthSuccess'));
+            Navigator.pushAndRemoveUntil(
+              context,
+              MaterialPageRoute(builder: (context) => const HomeScreen()),
+              (route) => false,
+            );
+          } else {
+            final errorMsg = AuthController.instance.lastAuthError;
+            LajuToast.error(context, errorMsg ?? 'PIN Keamanan salah');
+          }
+        }
       } else {
-        LajuToast.error(context, context.tr('deviceNotRegistered'));
+        LajuToast.warning(
+          context,
+          'Perangkat ini belum terdaftar di sistem. Silakan masuk menggunakan Kunci Pemulihan pada tab "Kunci Rahasia" atau Daftar baru.',
+        );
+        _tabController.animateTo(2);
       }
     } catch (e) {
       if (mounted) {
@@ -424,26 +451,37 @@ class _LoginScreenState extends State<LoginScreen>
       return;
     }
 
+    // Prompt user to enter their existing 6-digit security PIN
+    final pin = await SecurityAuthHelper.promptEnterPin(
+      context,
+      title: 'Masukkan PIN Keamanan (6-Digit)',
+      subtitle: 'Masukkan 6-digit PIN yang telah Anda buat saat pendaftaran akun',
+    );
+    if (pin == null || pin.length != 6) {
+      if (mounted) {
+        LajuToast.warning(context, 'PIN Keamanan 6-digit wajib dimasukkan untuk verifikasi');
+      }
+      return;
+    }
+
     setState(() => _isLoading = true);
 
     try {
       final success = await AuthController.instance
-          .restoreWithIdentitySecretAsync(secret);
+          .restoreWithIdentitySecretAsync(secret, pin: pin);
 
       if (!mounted) return;
       setState(() => _isLoading = false);
 
       if (success) {
-        if (!AppLockController.instance.hasSetPin) {
-          final newPin = await SecurityAuthHelper.promptSetupPin(
-            context,
-            title: 'Atur PIN Keamanan (6-Digit)',
-          );
-          if (newPin != null && newPin.length == 6) {
-            await AppLockController.instance.setPinCode(newPin);
-            await AppLockController.instance.setAppLockEnabled(true);
-          }
+        await AppLockController.instance.setPinCode(pin);
+        await AppLockController.instance.setAppLockEnabled(true);
+
+        final bioAvailability = await BiometricService.instance.checkAvailability();
+        if (bioAvailability.isAvailable) {
+          await AppLockController.instance.setBiometricEnabled(true);
         }
+
         if (mounted) {
           LajuToast.success(context, context.tr('deviceAuthSuccess'));
           Navigator.pushAndRemoveUntil(

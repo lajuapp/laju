@@ -46,6 +46,7 @@ class SecurityAuthHelper {
   }
 
   /// Prompts the user to enter their current 6-digit PIN.
+  /// Prompts the user to enter their current 6-digit PIN.
   static Future<bool> promptVerifyPin(
     BuildContext context, {
     String title = 'Verifikasi PIN',
@@ -55,7 +56,7 @@ class SecurityAuthHelper {
     final targetPin = expectedPin ?? AppLockController.instance.pinCode;
     final isDark = ThemeModeController.instance.isDarkMode(context);
 
-    final result = await showModalBottomSheet<bool>(
+    final result = await showModalBottomSheet<dynamic>(
       context: context,
       isScrollControlled: true,
       backgroundColor: isDark ? const Color(0xFF0F172A) : Colors.white,
@@ -70,7 +71,36 @@ class SecurityAuthHelper {
       ),
     );
 
-    return result ?? false;
+    return result == true;
+  }
+
+  /// Prompts the user to enter a 6-digit PIN and returns the string directly.
+  static Future<String?> promptEnterPin(
+    BuildContext context, {
+    String title = 'Masukkan PIN Keamanan',
+    String subtitle = 'Masukkan 6-digit PIN Anda',
+  }) async {
+    final isDark = ThemeModeController.instance.isDarkMode(context);
+
+    final result = await showModalBottomSheet<dynamic>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: isDark ? const Color(0xFF0F172A) : Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (sheetCtx) => _VerifyPinSheet(
+        title: title,
+        subtitle: subtitle,
+        expectedPin: null,
+        isDark: isDark,
+      ),
+    );
+
+    if (result is String && result.length == 6) {
+      return result;
+    }
+    return null;
   }
 
   /// Prompts the user to setup a new 6-digit PIN with a confirmation step.
@@ -101,13 +131,13 @@ class SecurityAuthHelper {
 class _VerifyPinSheet extends StatefulWidget {
   final String title;
   final String subtitle;
-  final String expectedPin;
+  final String? expectedPin;
   final bool isDark;
 
   const _VerifyPinSheet({
     required this.title,
     required this.subtitle,
-    required this.expectedPin,
+    this.expectedPin,
     required this.isDark,
   });
 
@@ -144,7 +174,10 @@ class _VerifyPinSheetState extends State<_VerifyPinSheet> with SingleTickerProvi
       });
 
       if (_enteredPin.length == 6) {
-        if (_enteredPin == widget.expectedPin) {
+        if (widget.expectedPin == null) {
+          HapticFeedback.mediumImpact();
+          Navigator.pop(context, _enteredPin);
+        } else if (_enteredPin == widget.expectedPin) {
           HapticFeedback.mediumImpact();
           Navigator.pop(context, true);
         } else {

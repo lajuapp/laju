@@ -108,6 +108,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
       final success = await AuthController.instance.registerDeviceIdentityAsync(
         username: username,
         identitySecret: _identitySecret,
+        pin: pin,
         deviceModel: _deviceModel.isNotEmpty ? _deviceModel : null,
         registrationLocation: _registrationLocation.isNotEmpty ? _registrationLocation : null,
         pushToken: _pushToken.isNotEmpty ? _pushToken : null,

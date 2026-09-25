@@ -8,6 +8,7 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcryptjs';
+import * as crypto from 'crypto';
 import { PrismaService } from '../../infrastructure/prisma/prisma.service';
 import {
   RegisterDto,
@@ -360,12 +361,19 @@ export class AuthenticationService {
       throw new ConflictException('Identity public key is already registered');
     }
 
+    let twoFactorPin: string | null = null;
+    if (dto.pin && dto.pin.trim().length > 0) {
+      const salt = await bcrypt.genSalt(10);
+      twoFactorPin = await bcrypt.hash(dto.pin.trim(), salt);
+    }
+
     return this.prisma.$transaction(async (tx) => {
       // 1. Create User Identity
       const user = await tx.user.create({
         data: {
           username,
           identityPublicKey,
+          twoFactorPin,
           status: 'ACTIVE',
           twoFactorEnabled: false
         }
@@ -536,11 +544,13 @@ export class AuthenticationService {
   async restoreIdentity(dto: RestoreIdentityDto) {
     const raw = dto.identitySecret.trim();
     const identityPub = dto.identityPublicKey?.trim();
+    const sha256Secret = crypto.createHash('sha256').update(raw).digest('hex');
 
-    // Look for existing user by identityPublicKey, secret, or username
+    // Look for existing user by deterministic sha256, identityPublicKey, secret, or username
     const user = await this.prisma.user.findFirst({
       where: {
         OR: [
+          { identityPublicKey: sha256Secret },
           ...(identityPub ? [{ identityPublicKey: identityPub }] : []),
           { identityPublicKey: raw },
           { username: raw }
@@ -554,6 +564,25 @@ export class AuthenticationService {
 
     if (user.status !== 'ACTIVE') {
       throw new UnauthorizedException(`Akun tidak aktif (status: ${user.status})`);
+    }
+
+    // Verify security PIN if set on the account
+    if (user.twoFactorPin) {
+      if (!dto.pin || dto.pin.trim().length === 0) {
+        throw new BadRequestException('PIN Keamanan 6-digit diperlukan untuk memulihkan akun');
+      }
+      const isPinMatch = await bcrypt.compare(dto.pin.trim(), user.twoFactorPin);
+      if (!isPinMatch) {
+        throw new UnauthorizedException('PIN Keamanan salah');
+      }
+    } else if (dto.pin && dto.pin.trim().length > 0) {
+      // Legacy user who hadn't set twoFactorPin yet: save this PIN as their account PIN
+      const salt = await bcrypt.genSalt(10);
+      const hashedPin = await bcrypt.hash(dto.pin.trim(), salt);
+      await this.prisma.user.update({
+        where: { id: user.id },
+        data: { twoFactorPin: hashedPin }
+      });
     }
 
     // Upsert or register the device for this user

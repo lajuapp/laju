@@ -3,6 +3,7 @@ import 'dart:io' show Platform;
 import 'dart:math' show Random;
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart' show MethodChannel;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../../../core/core.dart';
 import '../../settings/domain/account_controller.dart';
@@ -56,6 +57,10 @@ class AuthController extends ChangeNotifier {
   String? _temp2FaToken;
   bool _isLoading = false;
   String? _lastAuthError;
+  bool _needsPinReattest = false;
+  String? _reattestUsername;
+
+  static const MethodChannel _deviceChannel = MethodChannel('com.laju/device');
 
   // Getters
   bool get isAuthenticated => _isAuthenticated;
@@ -69,6 +74,8 @@ class AuthController extends ChangeNotifier {
   DateTime? get otpExpiresAt => _otpExpiresAt;
   bool get isLoading => _isLoading;
   String? get lastAuthError => _lastAuthError;
+  bool get needsPinReattest => _needsPinReattest;
+  String? get reattestUsername => _reattestUsername;
 
   bool get isIdentifierEmail {
     if (_pendingIdentifier == null) return false;
@@ -442,10 +449,28 @@ class AuthController extends ChangeNotifier {
     try {
       final prefs = await SharedPreferences.getInstance();
       var uuid = prefs.getString('laju_local_device_uuid');
-      if (uuid == null || uuid.isEmpty) {
-        uuid = 'laju-hw-${DateTime.now().millisecondsSinceEpoch}';
-        await prefs.setString('laju_local_device_uuid', uuid);
+      if (uuid != null && uuid.isNotEmpty && !uuid.startsWith('laju-hw-17')) {
+        return uuid;
       }
+
+      String hwId = '';
+      if (Platform.isAndroid) {
+        try {
+          final res = await _deviceChannel.invokeMethod<String>('getHardwareDeviceId');
+          if (res != null && res.trim().isNotEmpty) {
+            hwId = res.trim();
+          }
+        } catch (_) {}
+      }
+
+      if (hwId.isNotEmpty) {
+        final hash = sha256.convert(utf8.encode(hwId)).toString();
+        uuid = 'laju-hw-${hash.substring(0, 16)}';
+      } else if (uuid == null || uuid.isEmpty) {
+        uuid = 'laju-hw-${DateTime.now().millisecondsSinceEpoch}';
+      }
+
+      await prefs.setString('laju_local_device_uuid', uuid);
       return uuid;
     } catch (_) {
       return 'laju-hw-default-device';
@@ -469,6 +494,8 @@ class AuthController extends ChangeNotifier {
   /// Authenticates using Hardware Keystore cryptographic challenge-response (passwordless & phone-less)
   Future<bool> authenticateDeviceKeystoreAsync({String? customUuid}) async {
     _isLoading = true;
+    _needsPinReattest = false;
+    _reattestUsername = null;
     notifyListeners();
 
     try {
@@ -481,7 +508,11 @@ class AuthController extends ChangeNotifier {
       );
 
       if (challengeRes.isSuccess && challengeRes.rawJson is Map) {
-        final challenge = challengeRes.rawJson['challenge']?.toString() ?? '';
+        final data = challengeRes.rawJson;
+        final challenge = data['challenge']?.toString() ?? '';
+        final isRegistered = data['isRegistered'] == true;
+        _reattestUsername = data['username']?.toString();
+
         if (challenge.isNotEmpty) {
           // 2. Sign challenge using HMAC-SHA256 with actual device key
           final deviceKey = await getOrCreateLocalDeviceKey();
@@ -499,10 +530,10 @@ class AuthController extends ChangeNotifier {
           );
 
           if (verifyRes.isSuccess && verifyRes.rawJson is Map) {
-            final data = verifyRes.rawJson;
-            final token = data['accessToken'] ?? data['token'];
-            final userMap = data['user'];
-            final deviceMap = data['device'];
+            final vData = verifyRes.rawJson;
+            final token = vData['accessToken'] ?? vData['token'];
+            final userMap = vData['user'];
+            final deviceMap = vData['device'];
 
             if (token != null) {
               ApiClient.instance.setAuth(
@@ -529,8 +560,16 @@ class AuthController extends ChangeNotifier {
 
             _isAuthenticated = true;
             _requiresTwoFactor = false;
+            _needsPinReattest = false;
+            _lastAuthError = null;
             await _saveSessionToPrefs();
             return true;
+          } else {
+            if (isRegistered) {
+              _needsPinReattest = true;
+              _lastAuthError = 'PIN_REATTEST_REQUIRED';
+              return false;
+            }
           }
         }
       }
@@ -549,7 +588,82 @@ class AuthController extends ChangeNotifier {
       notifyListeners();
     }
 
-    // Do not fall back to mock user. Return false so UI informs user device is not registered.
+    return false;
+  }
+
+  /// Authenticates / Re-attests a registered device using 6-digit Security PIN
+  Future<bool> authenticateDeviceWithPinAsync({required String pin}) async {
+    _isLoading = true;
+    notifyListeners();
+
+    try {
+      final deviceUuid = await getOrCreateLocalDeviceUuid();
+      final deviceKey = await getOrCreateLocalDeviceKey();
+
+      // 1. Request challenge nonce
+      final challengeRes = await ApiClient.instance.post(
+        ApiEndpoints.deviceChallenge,
+        body: {'deviceUuid': deviceUuid},
+      );
+
+      if (!challengeRes.isSuccess || challengeRes.rawJson is! Map) {
+        _lastAuthError = challengeRes.errorMessage ?? 'Gagal menghubungi server';
+        return false;
+      }
+
+      final challenge = challengeRes.rawJson['challenge']?.toString() ?? '';
+      if (challenge.isEmpty) {
+        _lastAuthError = 'Token otentikasi tidak valid';
+        return false;
+      }
+
+      // 2. Submit PIN and new device public key for re-attestation
+      final verifyRes = await ApiClient.instance.post(
+        ApiEndpoints.deviceVerify,
+        body: {
+          'deviceUuid': deviceUuid,
+          'challenge': challenge,
+          'pin': pin.trim(),
+          'newDevicePublicKey': deviceKey,
+        },
+      );
+
+      if (verifyRes.isSuccess && verifyRes.rawJson is Map) {
+        final data = verifyRes.rawJson;
+        final token = data['accessToken'] ?? data['token'];
+        final userMap = data['user'];
+        final deviceMap = data['device'];
+
+        if (token != null) {
+          ApiClient.instance.setAuth(
+            token: token,
+            deviceId: deviceMap?['id'],
+            userId: userMap?['id'],
+          );
+        }
+
+        if (userMap is Map<String, dynamic>) {
+          _currentUser = AuthUser.fromJson(userMap);
+          if (_currentUser?.username != null) {
+            AccountController.instance.updateProfile(name: _currentUser!.username);
+          }
+        }
+
+        _isAuthenticated = true;
+        _requiresTwoFactor = false;
+        _needsPinReattest = false;
+        _lastAuthError = null;
+        await _saveSessionToPrefs();
+        return true;
+      } else {
+        _lastAuthError = verifyRes.errorMessage ?? 'PIN Keamanan salah';
+      }
+    } catch (e) {
+      _lastAuthError = e.toString();
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
     return false;
   }
 
@@ -641,24 +755,25 @@ class AuthController extends ChangeNotifier {
   }
 
   /// Restore identity using portable 32-byte identity secret or seed
-  Future<bool> restoreWithIdentitySecretAsync(String secretOrSeed, {String? username}) async {
+  Future<bool> restoreWithIdentitySecretAsync(String secretOrSeed, {String? username, String? pin}) async {
     _isLoading = true;
     notifyListeners();
 
     try {
       final deviceUuid = await getOrCreateLocalDeviceUuid();
       final deviceKey = await getOrCreateLocalDeviceKey();
-      final identityPub = 'id_pub_${secretOrSeed.hashCode.abs()}';
+      final identityPub = sha256.convert(utf8.encode(secretOrSeed.trim())).toString();
 
       final response = await ApiClient.instance.post(
         ApiEndpoints.identityRestore,
         body: {
-          'identitySecret': secretOrSeed,
+          'identitySecret': secretOrSeed.trim(),
           'identityPublicKey': identityPub,
           'deviceUuid': deviceUuid,
           'devicePublicKey': deviceKey,
           'deviceName': 'Restored Device',
           'platform': Platform.isIOS ? 'ios' : 'android',
+          if (pin != null && pin.trim().isNotEmpty) 'pin': pin.trim(),
         },
       );
 
@@ -678,6 +793,10 @@ class AuthController extends ChangeNotifier {
             AccountController.instance.updateProfile(name: _currentUser!.username);
           }
         }
+        
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('laju_identity_secret', secretOrSeed.trim());
+
         _lastAuthError = null;
         _isAuthenticated = true;
         _requiresTwoFactor = false;
@@ -807,6 +926,7 @@ class AuthController extends ChangeNotifier {
   Future<bool> registerDeviceIdentityAsync({
     required String username,
     required String identitySecret,
+    String? pin,
     String? deviceName,
     String? deviceModel,
     String? registrationLocation,
@@ -817,7 +937,7 @@ class AuthController extends ChangeNotifier {
 
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('laju_identity_secret', identitySecret);
+      await prefs.setString('laju_identity_secret', identitySecret.trim());
 
       final deviceUuid = await getOrCreateLocalDeviceUuid();
       final deviceKey = await getOrCreateLocalDeviceKey();
@@ -827,6 +947,9 @@ class AuthController extends ChangeNotifier {
       final resolvedPushToken = pushToken ?? await getOrCreatePushToken();
       final resolvedOs = getDetectedOsVersion();
 
+      // Deterministic identity public key using SHA-256
+      final identityPub = sha256.convert(utf8.encode(identitySecret.trim())).toString();
+
       // Compute actual cryptographic PreKey and signature using HMAC-SHA256
       final preKeyPub = sha256.convert(utf8.encode('spk_${deviceKey}_1')).toString();
       final preKeySig = Hmac(sha256, utf8.encode(deviceKey)).convert(utf8.encode(preKeyPub)).toString();
@@ -834,7 +957,7 @@ class AuthController extends ChangeNotifier {
       final response = await ApiClient.instance.post(
         ApiEndpoints.identityRegister,
         body: {
-          'identityPublicKey': 'id_pub_${identitySecret.hashCode.abs()}',
+          'identityPublicKey': identityPub,
           'username': cleanUsername,
           'deviceUuid': deviceUuid,
           'devicePublicKey': deviceKey,
@@ -845,6 +968,7 @@ class AuthController extends ChangeNotifier {
           'appVersion': '1.0.0-tactical',
           'registrationLocation': resolvedLocation,
           'pushToken': resolvedPushToken,
+          if (pin != null && pin.trim().isNotEmpty) 'pin': pin.trim(),
           'signedPreKey': {
             'keyId': 1,
             'publicKey': preKeyPub,

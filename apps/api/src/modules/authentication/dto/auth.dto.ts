@@ -64,6 +64,10 @@ export class RegisterIdentityDto {
   @ValidateNested({ each: true })
   @Type(() => OneTimePreKeyDto)
   oneTimePreKeys?: OneTimePreKeyDto[];
+
+  @IsString()
+  @IsOptional()
+  pin?: string;
 }
 
 export class SendOtpDto {
@@ -191,4 +195,8 @@ export class RestoreIdentityDto {
   @IsString()
   @IsOptional()
   platform?: string;
+
+  @IsString()
+  @IsOptional()
+  pin?: string;
 }
