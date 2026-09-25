@@ -158,16 +158,32 @@ export class AuthenticationService {
       }
     });
 
-    // Create device
-    const device = await this.prisma.device.create({
-      data: {
-        userId: user.id,
-        deviceUuid: dto.deviceUuid,
-        name: dto.deviceName || 'Primary Device',
-        status: 'ACTIVE',
-        lastSeenAt: new Date()
-      }
+    // Upsert device by deviceUuid to support re-registration on same hardware
+    let device = await this.prisma.device.findUnique({
+      where: { deviceUuid: dto.deviceUuid }
     });
+
+    if (!device) {
+      device = await this.prisma.device.create({
+        data: {
+          userId: user.id,
+          deviceUuid: dto.deviceUuid,
+          name: dto.deviceName || 'Primary Device',
+          status: 'ACTIVE',
+          lastSeenAt: new Date()
+        }
+      });
+    } else {
+      device = await this.prisma.device.update({
+        where: { id: device.id },
+        data: {
+          userId: user.id,
+          name: dto.deviceName || device.name,
+          status: 'ACTIVE',
+          lastSeenAt: new Date()
+        }
+      });
+    }
 
     const tokens = await this.generateTokens(user.id, device.id);
     return {
@@ -262,12 +278,16 @@ export class AuthenticationService {
         }
       });
     } else {
-      if (device.status !== 'ACTIVE') {
+      if (device.status === 'REVOKED' || device.status === 'CONTAINED' || device.status === 'DECOMMISSIONED') {
         throw new UnauthorizedException(`Device is ${device.status}`);
       }
-      await this.prisma.device.update({
+      device = await this.prisma.device.update({
         where: { id: device.id },
-        data: { lastSeenAt: new Date() }
+        data: {
+          userId: user.id,
+          status: 'ACTIVE',
+          lastSeenAt: new Date()
+        }
       });
     }
 
@@ -761,11 +781,12 @@ export class AuthenticationService {
         }
       });
     } else {
-      // Re-activate device if it was in a non-destructive state
+      // Re-activate device and bind to the current active user
       const canReactivate = device.status === 'ACTIVE' || device.status === 'PENDING' || device.status === 'MIGRATING';
-      await this.prisma.device.update({
+      device = await this.prisma.device.update({
         where: { id: device.id },
         data: {
+          userId,
           lastSeenAt: new Date(),
           ...(canReactivate ? { status: 'ACTIVE' } : {})
         }

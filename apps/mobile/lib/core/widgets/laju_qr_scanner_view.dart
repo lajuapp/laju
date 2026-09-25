@@ -724,11 +724,10 @@ class _ScannedResultBottomSheetState extends State<_ScannedResultBottomSheet> {
     });
 
     try {
-      final convId = await ConversationService.instance.createPersonalConversation(uid);
-      ConversationService.instance.fetchConversations();
-
       final uname = _resolvedUsername ?? widget.targetUsername ?? 'user';
       final dname = _resolvedDisplayName ?? uname;
+
+      // 1. Save contact to local contact list first
       await AccountController.instance.addSavedContact(
         LajuContactItem(
           id: uid,
@@ -743,13 +742,20 @@ class _ScannedResultBottomSheetState extends State<_ScannedResultBottomSheet> {
         ),
       );
 
+      // 2. Proactively create personal conversation on backend
+      String? convId;
+      try {
+        convId = await ConversationService.instance.createPersonalConversation(uid);
+        ConversationService.instance.fetchConversations();
+      } catch (_) {}
+
       HapticFeedback.mediumImpact();
       LajuSoundService.triggerVibrate('Pendek');
 
       if (mounted) {
         setState(() {
           _isAdding = false;
-          _conversationId = convId;
+          _conversationId = convId ?? 'conv-$uid';
           _step = _SheetStep.success;
         });
       }

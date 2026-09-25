@@ -21,6 +21,11 @@ describe('MessagingService', () => {
       conversationEvent: {
         create: jest.fn()
       },
+      device: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'dev1', userId: 'user1', status: 'ACTIVE' }),
+        create: jest.fn().mockResolvedValue({ id: 'dev1', userId: 'user1', status: 'ACTIVE' }),
+        update: jest.fn().mockResolvedValue({ id: 'dev1', userId: 'user1', status: 'ACTIVE' })
+      },
       outboxEvent: {
         create: jest.fn()
       },

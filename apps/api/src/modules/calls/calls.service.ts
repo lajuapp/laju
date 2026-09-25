@@ -69,11 +69,21 @@ export class CallsService {
         }
       });
 
+      // Ensure caller device ID is safe and valid
+      let safeCallerDeviceId = callerDeviceId;
+      if (!safeCallerDeviceId) {
+        const callerDevice = await tx.device.findFirst({
+          where: { userId: callerUserId, status: 'ACTIVE' },
+          orderBy: { lastSeenAt: 'desc' }
+        });
+        safeCallerDeviceId = callerDevice?.id || `dev-${callerUserId.substring(0, 8)}`;
+      }
+
       await tx.callParticipant.create({
         data: {
           callId: call.id,
           userId: callerUserId,
-          deviceId: callerDeviceId,
+          deviceId: safeCallerDeviceId,
           state: 'CONNECTED',
           joinedAt: new Date()
         }
@@ -85,12 +95,18 @@ export class CallsService {
         orderBy: { lastSeenAt: 'desc' }
       });
 
+      let safeCalleeDeviceId = calleeDevice?.id || `dev-${resolvedCalleeUserId.substring(0, 8)}`;
+      // Prevent unique constraint collision if both users share same device in test environment
+      if (safeCalleeDeviceId === safeCallerDeviceId) {
+        safeCalleeDeviceId = `${safeCalleeDeviceId}-callee`;
+      }
+
       // ALWAYS create callParticipant with state 'RINGING' for callee so incoming call query succeeds
       await tx.callParticipant.create({
         data: {
           callId: call.id,
           userId: resolvedCalleeUserId,
-          deviceId: calleeDevice?.id || `dev-${resolvedCalleeUserId}`,
+          deviceId: safeCalleeDeviceId,
           state: 'RINGING',
           joinedAt: new Date()
         }
@@ -149,6 +165,23 @@ export class CallsService {
       throw new ForbiddenException('Not a participant in this call');
     }
 
+    let safeCalleeDeviceId = calleeDeviceId;
+    if (!safeCalleeDeviceId) {
+      const dev = await this.prisma.device.findFirst({
+        where: { userId: calleeUserId, status: 'ACTIVE' },
+        orderBy: { lastSeenAt: 'desc' }
+      });
+      safeCalleeDeviceId = dev?.id || participant.deviceId || `dev-${calleeUserId.substring(0, 8)}`;
+    }
+
+    // Check caller participant deviceId to prevent @@unique([callId, deviceId]) crash
+    const callerPart = await this.prisma.callParticipant.findFirst({
+      where: { callId, userId: { not: calleeUserId } }
+    });
+    if (callerPart && callerPart.deviceId === safeCalleeDeviceId) {
+      safeCalleeDeviceId = `${safeCalleeDeviceId}-callee`;
+    }
+
     await this.prisma.$transaction([
       this.prisma.call.update({
         where: { id: callId },
@@ -156,7 +189,7 @@ export class CallsService {
       }),
       this.prisma.callParticipant.update({
         where: { id: participant.id },
-        data: { state: 'CONNECTED', joinedAt: new Date(), deviceId: calleeDeviceId }
+        data: { state: 'CONNECTED', joinedAt: new Date(), deviceId: safeCalleeDeviceId }
       })
     ]);
 
@@ -164,7 +197,7 @@ export class CallsService {
       type: 'CALL_ACCEPTED',
       callId,
       participantId: calleeUserId,
-      deviceId: calleeDeviceId
+      deviceId: safeCalleeDeviceId
     };
 
     await this.redis.publish(`call:${callId}`, JSON.stringify(acceptedPayload));

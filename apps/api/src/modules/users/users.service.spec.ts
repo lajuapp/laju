@@ -1,11 +1,13 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { UsersService } from './users.service';
-import { PrismaService } from '../../infrastructure/prisma/prisma.service';
 import { NotFoundException, ConflictException } from '@nestjs/common';
+import { PrismaService } from '../../infrastructure/prisma/prisma.service';
+import { RedisService } from '../../infrastructure/redis/redis.service';
 
 describe('UsersService', () => {
   let service: UsersService;
   let prisma: any;
+  let redis: any;
 
   beforeEach(async () => {
     prisma = {
@@ -17,10 +19,17 @@ describe('UsersService', () => {
       }
     };
 
+    redis = {
+      get: jest.fn().mockResolvedValue(null),
+      set: jest.fn().mockResolvedValue('OK'),
+      del: jest.fn().mockResolvedValue(1)
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         UsersService,
-        { provide: PrismaService, useValue: prisma }
+        { provide: PrismaService, useValue: prisma },
+        { provide: RedisService, useValue: redis }
       ]
     }).compile();
 
