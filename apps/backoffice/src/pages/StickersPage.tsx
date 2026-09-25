@@ -12,6 +12,7 @@ import {
   Layers,
   ChevronRight,
   X,
+  Film,
 } from 'lucide-react';
 import {
   useStickerPacksList,
@@ -26,6 +27,7 @@ import { Modal } from '../components/ui/Modal';
 import { Input } from '../components/ui/Input';
 import { Badge } from '../components/ui/Badge';
 import { StickerPackItem } from '../api/types';
+import { ApngFrameStudioModal } from '../components/stickers/ApngFrameStudioModal';
 
 const packSchema = z.object({
   name: z.string().min(2, 'Nama paket stiker minimal 2 karakter'),
@@ -53,6 +55,7 @@ export function StickersPage() {
   const [isPackModalOpen, setIsPackModalOpen] = useState(false);
   const [selectedPack, setSelectedPack] = useState<StickerPackItem | null>(null);
   const [isAddStickerModalOpen, setIsAddStickerModalOpen] = useState(false);
+  const [isApngStudioOpen, setIsApngStudioOpen] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   // File upload state for Pack Cover
@@ -278,6 +281,18 @@ export function StickersPage() {
                   <Button
                     size="sm"
                     variant="outline"
+                    icon={<Film className="w-3.5 h-3.5 text-neutral-700" />}
+                    onClick={() => {
+                      setErrorMessage(null);
+                      setIsApngStudioOpen(true);
+                    }}
+                  >
+                    Studio Animasi APNG
+                  </Button>
+
+                  <Button
+                    size="sm"
+                    variant="outline"
                     icon={<Plus className="w-3.5 h-3.5" />}
                     onClick={() => {
                       setErrorMessage(null);
@@ -473,7 +488,7 @@ export function StickersPage() {
             <div className="border-2 border-dashed border-neutral-200 rounded-xl p-4 text-center hover:border-neutral-400 transition-colors cursor-pointer relative bg-neutral-50/50">
               <input
                 type="file"
-                accept="image/png,image/webp,image/gif"
+                accept="image/png,image/webp,image/apng,image/gif"
                 onChange={handleStickerFileChange}
                 className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
               />
@@ -492,7 +507,7 @@ export function StickersPage() {
               ) : (
                 <div className="space-y-1 text-neutral-500">
                   <Upload className="w-5 h-5 mx-auto text-neutral-400" />
-                  <p className="text-xs font-medium">Unggah file stiker (PNG transparan disarankan)</p>
+                  <p className="text-xs font-medium">Unggah file stiker (PNG transparan / APNG disarankan)</p>
                   <p className="text-[10px] text-neutral-400">Dimensi 512x512 px optimal</p>
                 </div>
               )}
@@ -517,6 +532,16 @@ export function StickersPage() {
           </div>
         </form>
       </Modal>
+
+      {/* Modal: APNG Frame & Sprite Sheet Studio */}
+      {currentActivePack && (
+        <ApngFrameStudioModal
+          isOpen={isApngStudioOpen}
+          onClose={() => setIsApngStudioOpen(false)}
+          packId={currentActivePack.id}
+          packName={currentActivePack.name}
+        />
+      )}
     </div>
   );
 }
