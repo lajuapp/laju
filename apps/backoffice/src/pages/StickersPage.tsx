@@ -327,7 +327,9 @@ export function StickersPage() {
                         <div className="mt-2 text-center w-full">
                           <p className="text-[11px] font-bold text-neutral-800 truncate">{stk.name}</p>
                           {stk.emoji && (
-                            <span className="text-xs">{stk.emoji}</span>
+                            <span className="text-[10px] font-mono text-neutral-400 bg-neutral-100 px-1.5 py-0.5 rounded inline-block mt-0.5">
+                              {stk.emoji}
+                            </span>
                           )}
                         </div>
                       </div>
@@ -459,8 +461,8 @@ export function StickersPage() {
           />
 
           <Input
-            label="Emoji Terkait (Opsional)"
-            placeholder="Misal: 👍 atau 😂"
+            label="Tag / Kode Reaksi (Opsional)"
+            placeholder="Misal: thumbs_up / smile"
             {...registerSticker('emoji')}
           />
 
