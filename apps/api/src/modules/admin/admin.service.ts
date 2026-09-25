@@ -465,6 +465,8 @@ export class AdminService {
 
     return admins.map((a) => ({
       ...a,
+      role: a.role.name,
+      roleDetails: a.role,
       permissions: a.role.permissions.map((p) => p.permission.slug)
     }));
   }

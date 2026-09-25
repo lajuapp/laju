@@ -111,7 +111,7 @@ export function AppLayout() {
                 </p>
                 <div className="flex items-center gap-1 mt-0.5">
                   <Badge variant="brand" size="sm">
-                    {admin?.role || 'Admin'}
+                    {typeof admin?.role === 'string' ? admin.role : (admin?.role as any)?.name || 'Admin'}
                   </Badge>
                 </div>
               </div>

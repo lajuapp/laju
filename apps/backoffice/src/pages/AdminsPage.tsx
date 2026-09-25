@@ -144,7 +144,9 @@ export function AdminsPage() {
                       {adm.email}
                     </td>
                     <td className="px-5 py-3.5">
-                      <Badge variant="brand">{adm.role}</Badge>
+                      <Badge variant="brand">
+                        {typeof adm.role === 'string' ? adm.role : (adm.role as any)?.name || 'Admin'}
+                      </Badge>
                     </td>
                     <td className="px-5 py-3.5">
                       {adm.isActive ? (
