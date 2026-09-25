@@ -692,4 +692,44 @@ export class CallsService {
       })
     );
   }
+
+  async clearCallHistory(userId: string) {
+    // Delete all call participant records for this user
+    await this.prisma.callParticipant.deleteMany({
+      where: { userId }
+    });
+
+    // Delete any orphaned calls that have no participants left
+    await this.prisma.call.deleteMany({
+      where: {
+        participants: {
+          none: {}
+        }
+      }
+    });
+
+    return { success: true, message: 'Riwayat panggilan berhasil dibersihkan' };
+  }
+
+  async deleteCallFromHistory(userId: string, callId: string) {
+    // Delete this user's participation in this call
+    await this.prisma.callParticipant.deleteMany({
+      where: {
+        callId,
+        userId
+      }
+    });
+
+    // Delete the call if no participants remain
+    await this.prisma.call.deleteMany({
+      where: {
+        id: callId,
+        participants: {
+          none: {}
+        }
+      }
+    });
+
+    return { success: true, message: 'Log panggilan berhasil dihapus' };
+  }
 }

@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Delete,
   Body,
   Param,
   UseGuards,
@@ -25,6 +26,19 @@ export class CallsController {
   @Get('history')
   getCallHistory(@CurrentUser('userId') userId: string) {
     return this.callsService.getCallHistory(userId);
+  }
+
+  @Delete('history')
+  clearCallHistory(@CurrentUser('userId') userId: string) {
+    return this.callsService.clearCallHistory(userId);
+  }
+
+  @Delete(':id')
+  deleteCallFromHistory(
+    @CurrentUser('userId') userId: string,
+    @Param('id') callId: string
+  ) {
+    return this.callsService.deleteCallFromHistory(userId, callId);
   }
 
   @Get(':id')
