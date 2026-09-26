@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { Download, ShieldCheck } from 'lucide-react';
+import { Download, Sparkles } from 'lucide-react';
 
 export function Navbar() {
   return (
@@ -13,24 +13,21 @@ export function Navbar() {
           <div className="flex flex-col">
             <span className="text-lg font-black tracking-tight text-slate-900">LAJU</span>
             <span className="text-[10px] font-bold text-emerald-600 tracking-widest uppercase -mt-1">
-              Secure Messenger
+              Messenger
             </span>
           </div>
         </Link>
 
         {/* Navigation Links */}
         <nav className="hidden md:flex items-center gap-8 text-sm font-semibold text-slate-600">
-          <Link href="/#features" className="hover:text-slate-900 transition-colors">
-            Fitur
+          <Link href="/#features" className="hover:text-emerald-600 transition-colors">
+            Keunggulan
           </Link>
-          <Link href="/#security" className="hover:text-slate-900 transition-colors">
-            Keamanan
+          <Link href="/#why-laju" className="hover:text-emerald-600 transition-colors">
+            Kenapa LAJU?
           </Link>
-          <Link href="/download" className="hover:text-slate-900 transition-colors">
-            Download
-          </Link>
-          <Link href="/privacy" className="hover:text-slate-900 transition-colors">
-            Privasi
+          <Link href="/download" className="hover:text-emerald-600 transition-colors">
+            Download APK
           </Link>
         </nav>
 
@@ -41,7 +38,7 @@ export function Navbar() {
             className="flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-emerald-700 transition-all active:scale-95"
           >
             <Download className="h-4 w-4" />
-            <span>Unduh APK</span>
+            <span>Download Gratis</span>
           </Link>
         </div>
       </div>

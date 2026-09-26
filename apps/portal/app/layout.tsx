@@ -17,24 +17,24 @@ function getSafeAppUrl(): URL {
 const safeAppUrl = getSafeAppUrl();
 
 export const metadata: Metadata = {
-  title: 'LAJU | Secure Messenger & Encrypted Calling',
+  title: 'LAJU Messenger | Chat Cepat, Ringan & Bebas Iklan',
   description:
-    'Aplikasi pesan instan dan panggilan suara/video peer-to-peer dengan enkripsi end-to-end berstandar militer. Cepat, aman, dan tanpa kompromi privasi.',
+    'Aplikasi pesan instan dan panggilan suara/video jernih. Super ringan di HP, hemat kuota, bebas iklan mengganggu, dan privasi kamu terjaga penuh.',
   metadataBase: safeAppUrl,
   openGraph: {
-    title: 'LAJU | Secure Messenger & Encrypted Calling',
+    title: 'LAJU Messenger | Chat Cepat, Ringan & Bebas Iklan',
     description:
-      'Aplikasi pesan instan dan panggilan suara/video peer-to-peer dengan enkripsi end-to-end berstandar militer.',
+      'Aplikasi pesan instan dan panggilan suara/video jernih. Super ringan di HP, hemat kuota, dan bebas iklan mengganggu.',
     url: safeAppUrl.toString(),
-    siteName: 'LAJU Secure Messenger',
+    siteName: 'LAJU Messenger',
     locale: 'id_ID',
     type: 'website',
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'LAJU | Secure Messenger & Encrypted Calling',
+    title: 'LAJU Messenger | Chat Cepat, Ringan & Bebas Iklan',
     description:
-      'Aplikasi pesan instan dan panggilan suara/video peer-to-peer dengan enkripsi end-to-end berstandar militer.',
+      'Aplikasi pesan instan dan panggilan suara/video jernih. Super ringan di HP, hemat kuota, dan bebas iklan mengganggu.',
   },
   icons: {
     icon: '/favicon.ico',
