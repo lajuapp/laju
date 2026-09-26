@@ -45,6 +45,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 const MEDIA_DIR = process.env.ADMIN_MEDIA_DIR || path.join(process.cwd(), 'uploads', 'admin-media');
+const RELEASES_DIR = process.env.APP_RELEASES_DIR || path.join(process.cwd(), 'uploads', 'releases');
 
 @Controller('admin')
 @UseInterceptors(AdminAuditInterceptor)
@@ -454,6 +455,125 @@ export class AdminController {
   @UseGuards(AdminAuthGuard)
   updateAppConfig(@Body() dto: UpdateAppConfigDto) {
     return this.adminService.updateAppConfig(dto);
+  }
+
+  @Post('app-config/upload-apk')
+  @UseGuards(AdminAuthGuard)
+  async uploadApk(
+    @Body()
+    body: {
+      filename: string;
+      base64Data: string;
+      version?: string;
+      minVersion?: string;
+      forceUpdate?: boolean;
+      releaseNotes?: string;
+    }
+  ) {
+    if (!body?.base64Data) {
+      throw new BadRequestException('base64Data berkas APK wajib disertakan');
+    }
+
+    const rawFilename = body.filename || 'laju-latest.apk';
+    if (!rawFilename.toLowerCase().endsWith('.apk')) {
+      throw new BadRequestException('Berkas yang diunggah harus memiliki ekstensi .apk');
+    }
+
+    const rawData = body.base64Data.includes(',')
+      ? body.base64Data.split(',')[1]
+      : body.base64Data;
+    const buffer = Buffer.from(rawData, 'base64');
+
+    if (buffer.length < 1000) {
+      throw new BadRequestException('Ukuran berkas APK tidak valid (terlalu kecil)');
+    }
+
+    const sha256 = crypto.createHash('sha256').update(buffer).digest('hex');
+    const version = body.version?.trim() || '1.0.0';
+    const cleanVersion = version.replace(/[^a-zA-Z0-9.-]/g, '') || '1.0.0';
+    const versionedFilename = `laju-v${cleanVersion}.apk`;
+
+    // 1. Simpan ke disk lokal releases
+    try {
+      if (!fs.existsSync(RELEASES_DIR)) {
+        fs.mkdirSync(RELEASES_DIR, { recursive: true });
+      }
+      const versionedPath = path.join(RELEASES_DIR, versionedFilename);
+      const latestPath = path.join(RELEASES_DIR, 'laju-latest.apk');
+      await fs.promises.writeFile(versionedPath, buffer);
+      await fs.promises.writeFile(latestPath, buffer);
+    } catch (fsErr: any) {
+      this.logger.error(`Error saving APK to releases disk: ${fsErr.message}`);
+    }
+
+    // 2. Simpan ke SeaweedFS jika aktif
+    if (this.seaweedFs) {
+      try {
+        await this.seaweedFs.uploadBlob(versionedFilename, buffer, 'application/vnd.android.package-archive');
+        await this.seaweedFs.uploadBlob('laju-latest.apk', buffer, 'application/vnd.android.package-archive');
+      } catch (swErr: any) {
+        this.logger.warn(`SeaweedFS upload APK skipped: ${swErr.message}`);
+      }
+    }
+
+    // 3. Update database AppSystemConfig
+    const updatedConfig = await this.adminService.updateAppConfig({
+      latestAndroidVersion: version,
+      minAndroidVersion: body.minVersion || undefined,
+      forceUpdate: body.forceUpdate !== undefined ? body.forceUpdate : undefined,
+      apkUrl: '/admin/app-config/download-apk',
+      apkFilename: versionedFilename,
+      apkSize: buffer.length,
+      apkSha256: sha256,
+      releaseNotes: body.releaseNotes || undefined,
+    });
+
+    return {
+      success: true,
+      message: `Berkas APK ${versionedFilename} (${(buffer.length / (1024 * 1024)).toFixed(1)} MB) berhasil diunggah dan dirilis.`,
+      config: updatedConfig,
+      sha256,
+      size: buffer.length,
+      filename: versionedFilename,
+    };
+  }
+
+  @Get('app-config/download-apk')
+  async downloadApk(@Res() res: Response) {
+    const config = await this.adminService.getAppConfig();
+    const filename = config.apkFilename || 'laju-latest.apk';
+    const latestPath = path.join(RELEASES_DIR, 'laju-latest.apk');
+    const versionedPath = path.join(RELEASES_DIR, filename);
+
+    const targetPath = fs.existsSync(latestPath)
+      ? latestPath
+      : fs.existsSync(versionedPath)
+      ? versionedPath
+      : null;
+
+    if (targetPath) {
+      res.setHeader('Content-Type', 'application/vnd.android.package-archive');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.setHeader('Cache-Control', 'no-cache');
+      const stream = fs.createReadStream(targetPath);
+      return stream.pipe(res);
+    }
+
+    // Fallback to SeaweedFS if exists
+    if (this.seaweedFs) {
+      try {
+        const data = (await this.seaweedFs.getBlob(filename)) || (await this.seaweedFs.getBlob('laju-latest.apk'));
+        if (data) {
+          res.setHeader('Content-Type', 'application/vnd.android.package-archive');
+          res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+          return res.send(data);
+        }
+      } catch (_) {}
+    }
+
+    return res.status(HttpStatus.NOT_FOUND).json({
+      error: 'Berkas APK belum diunggah dari Backoffice',
+    });
   }
 }
 

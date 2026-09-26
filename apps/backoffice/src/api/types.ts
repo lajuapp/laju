@@ -168,6 +168,11 @@ export interface AppSystemConfig {
   forceUpdate: boolean;
   maintenanceMode: boolean;
   maintenanceMessage?: string | null;
+  apkUrl?: string | null;
+  apkFilename?: string | null;
+  apkSize?: number | null;
+  apkSha256?: string | null;
+  releaseNotes?: string | null;
   updatedAt: string;
 }
 

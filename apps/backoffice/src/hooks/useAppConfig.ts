@@ -25,3 +25,24 @@ export function useUpdateAppConfig() {
     },
   });
 }
+
+export function useUploadApk() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (payload: {
+      filename: string;
+      base64Data: string;
+      version?: string;
+      minVersion?: string;
+      forceUpdate?: boolean;
+      releaseNotes?: string;
+    }) => {
+      const res = await apiClient.post('/admin/app-config/upload-apk', payload);
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'app-config'] });
+    },
+  });
+}

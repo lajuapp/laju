@@ -731,6 +731,11 @@ model AppSystemConfig {
   forceUpdate          Boolean  @default(false) @map("force_update")
   maintenanceMode      Boolean  @default(false) @map("maintenance_mode")
   maintenanceMessage   String?  @map("maintenance_message")
+  apkUrl               String?  @map("apk_url")
+  apkFilename          String?  @map("apk_filename")
+  apkSize              Int?     @map("apk_size")
+  apkSha256            String?  @map("apk_sha256")
+  releaseNotes         String?  @map("release_notes")
   updatedAt            DateTime @updatedAt @map("updated_at")
 
   @@map("app_system_configs")

@@ -301,6 +301,26 @@ export class UpdateAppConfigDto {
   @IsString()
   @IsOptional()
   maintenanceMessage?: string;
+
+  @IsString()
+  @IsOptional()
+  apkUrl?: string;
+
+  @IsString()
+  @IsOptional()
+  apkFilename?: string;
+
+  @IsInt()
+  @IsOptional()
+  apkSize?: number;
+
+  @IsString()
+  @IsOptional()
+  apkSha256?: string;
+
+  @IsString()
+  @IsOptional()
+  releaseNotes?: string;
 }
 
 
