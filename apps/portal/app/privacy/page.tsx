@@ -9,7 +9,7 @@ export const metadata: Metadata = {
 
 export default function PrivacyPage() {
   return (
-    <div className="py-16 sm:py-24 bg-white">
+    <div className="py-16 sm:py-24 bg-[#F5F4EF]">
       <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8">
         <Link
           href="/"
@@ -20,8 +20,8 @@ export default function PrivacyPage() {
         </Link>
 
         <div className="mb-12">
-          <div className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3.5 py-1 text-xs font-bold text-emerald-800 mb-4">
-            <ShieldCheck className="h-4 w-4 text-emerald-600" />
+          <div className="inline-flex items-center gap-2 rounded-full border border-stone-200 bg-white px-3.5 py-1 text-xs font-bold text-stone-700 mb-4 shadow-sm">
+            <ShieldCheck className="h-4 w-4 text-[#0D382C]" />
             <span>Kedaulatan Privasi Pengguna</span>
           </div>
           <h1 className="text-3xl sm:text-4xl font-extrabold text-slate-900 tracking-tight">Kebijakan Privasi LAJU</h1>
@@ -29,9 +29,9 @@ export default function PrivacyPage() {
         </div>
 
         <div className="space-y-8 text-sm text-slate-600 leading-relaxed">
-          <section className="p-6 sm:p-8 rounded-3xl bg-slate-50/70 border border-slate-200/80">
+          <section className="p-6 sm:p-8 rounded-3xl bg-white border border-stone-200/80 shadow-sm">
             <h2 className="text-lg font-bold text-slate-900 mb-3 flex items-center gap-2">
-              <Lock className="h-5 w-5 text-emerald-600" />
+              <Lock className="h-5 w-5 text-[#0D382C]" />
               1. Prinsip Zero-Knowledge & Enkripsi End-to-End
             </h2>
             <p>
@@ -39,9 +39,9 @@ export default function PrivacyPage() {
             </p>
           </section>
 
-          <section className="p-6 sm:p-8 rounded-3xl bg-slate-50/70 border border-slate-200/80">
+          <section className="p-6 sm:p-8 rounded-3xl bg-white border border-stone-200/80 shadow-sm">
             <h2 className="text-lg font-bold text-slate-900 mb-3 flex items-center gap-2">
-              <EyeOff className="h-5 w-5 text-emerald-600" />
+              <EyeOff className="h-5 w-5 text-[#0D382C]" />
               2. Data yang Kami Simpan dan Tidak Kami Simpan
             </h2>
             <ul className="list-disc list-inside space-y-2 mt-2">
@@ -57,9 +57,9 @@ export default function PrivacyPage() {
             </ul>
           </section>
 
-          <section className="p-6 sm:p-8 rounded-3xl bg-slate-50/70 border border-slate-200/80">
+          <section className="p-6 sm:p-8 rounded-3xl bg-white border border-stone-200/80 shadow-sm">
             <h2 className="text-lg font-bold text-slate-900 mb-3 flex items-center gap-2">
-              <Server className="h-5 w-5 text-emerald-600" />
+              <Server className="h-5 w-5 text-[#0D382C]" />
               3. Hak Pengguna
             </h2>
             <p>

@@ -1,44 +1,65 @@
 import Link from 'next/link';
-import { Download, Sparkles } from 'lucide-react';
+import { Moon, ChevronDown } from 'lucide-react';
 
 export function Navbar() {
   return (
-    <header className="sticky top-0 z-50 w-full border-b border-slate-100 bg-white/85 backdrop-blur-md transition-all">
-      <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
+    <header className="sticky top-0 z-50 w-full bg-[#F5F4EF]/90 backdrop-blur-md transition-all">
+      <div className="mx-auto flex h-20 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
         {/* Brand Logo */}
-        <Link href="/" className="flex items-center gap-2.5 group">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-600 text-white font-black shadow-md shadow-emerald-600/20 transition-transform group-hover:scale-105">
-            L
-          </div>
-          <div className="flex flex-col">
-            <span className="text-lg font-black tracking-tight text-slate-900">LAJU</span>
-            <span className="text-[10px] font-bold text-emerald-600 tracking-widest uppercase -mt-1">
-              Messenger
-            </span>
-          </div>
+        <Link href="/" className="flex items-center">
+          <span className="text-2xl font-black tracking-tight text-slate-900 font-sans">
+            LAJU
+          </span>
         </Link>
 
-        {/* Navigation Links */}
-        <nav className="hidden md:flex items-center gap-8 text-sm font-semibold text-slate-600">
-          <Link href="/#features" className="hover:text-emerald-600 transition-colors">
-            Keunggulan
+        {/* Center Nav Links */}
+        <nav className="hidden md:flex items-center gap-1 sm:gap-2 text-sm">
+          <Link
+            href="/"
+            className="px-4 py-1.5 rounded-full bg-slate-200/70 font-semibold text-slate-900 text-xs sm:text-sm"
+          >
+            Beranda
           </Link>
-          <Link href="/#why-laju" className="hover:text-emerald-600 transition-colors">
-            Kenapa LAJU?
+          <Link
+            href="/#fitur"
+            className="px-4 py-1.5 rounded-full text-slate-600 hover:text-slate-900 font-medium text-xs sm:text-sm transition-colors"
+          >
+            Fitur
           </Link>
-          <Link href="/download" className="hover:text-emerald-600 transition-colors">
-            Download APK
+          <Link
+            href="/privacy"
+            className="px-4 py-1.5 rounded-full text-slate-600 hover:text-slate-900 font-medium text-xs sm:text-sm transition-colors"
+          >
+            Privasi
+          </Link>
+          <Link
+            href="/terms"
+            className="px-4 py-1.5 rounded-full text-slate-600 hover:text-slate-900 font-medium text-xs sm:text-sm transition-colors"
+          >
+            Bantuan
           </Link>
         </nav>
 
-        {/* CTA Buttons */}
-        <div className="flex items-center gap-3">
+        {/* Right Actions: Moon, Language, Unduh button */}
+        <div className="flex items-center gap-4">
+          <button
+            type="button"
+            className="text-slate-600 hover:text-slate-900 p-1.5 rounded-full transition-colors"
+            aria-label="Toggle theme"
+          >
+            <Moon className="h-4 w-4" />
+          </button>
+
+          <div className="flex items-center gap-1 text-xs font-semibold text-slate-700 cursor-pointer">
+            <span>ID</span>
+            <ChevronDown className="h-3 w-3 text-slate-500" />
+          </div>
+
           <Link
             href="/download"
-            className="flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-emerald-700 transition-all active:scale-95"
+            className="flex items-center justify-center rounded-xl bg-[#0D382C] px-5 py-2.5 text-xs sm:text-sm font-semibold text-white shadow-sm hover:bg-[#134E3E] transition-all active:scale-95"
           >
-            <Download className="h-4 w-4" />
-            <span>Download Gratis</span>
+            Unduh
           </Link>
         </div>
       </div>

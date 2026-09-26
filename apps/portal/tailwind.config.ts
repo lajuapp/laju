@@ -21,6 +21,27 @@ const config: Config = {
           900: '#14532D',
           950: '#052E16',
         },
+        pine: {
+          50: '#F4F8F6',
+          100: '#E5EFEA',
+          200: '#C7DED5',
+          300: '#9DBEB3',
+          400: '#5C9683',
+          500: '#2D6B58',
+          600: '#1A5343',
+          700: '#134638',
+          800: '#0D382C', // Primary button color from screenshot
+          900: '#08281F',
+          950: '#041812',
+        },
+        warm: {
+          50: '#FAF9F6',
+          100: '#F5F4EF', // Page background from screenshot
+          200: '#EAE8DE',
+          300: '#DBD8CA',
+          400: '#BFBBA9',
+          500: '#9C9885',
+        },
       },
       fontFamily: {
         sans: ['Inter', 'system-ui', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
