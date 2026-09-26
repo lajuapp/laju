@@ -3,16 +3,29 @@ import './globals.css';
 import { Navbar } from '@/components/landing/Navbar';
 import { Footer } from '@/components/landing/Footer';
 
+function getSafeAppUrl(): URL {
+  const raw = (process.env.NEXT_PUBLIC_APP_URL || '').trim();
+  if (raw) {
+    const formatted = raw.startsWith('http://') || raw.startsWith('https://') ? raw : `https://${raw}`;
+    try {
+      return new URL(formatted);
+    } catch (_) {}
+  }
+  return new URL('https://laju.chat');
+}
+
+const safeAppUrl = getSafeAppUrl();
+
 export const metadata: Metadata = {
   title: 'LAJU | Secure Messenger & Encrypted Calling',
   description:
     'Aplikasi pesan instan dan panggilan suara/video peer-to-peer dengan enkripsi end-to-end berstandar militer. Cepat, aman, dan tanpa kompromi privasi.',
-  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || 'https://laju.chat'),
+  metadataBase: safeAppUrl,
   openGraph: {
     title: 'LAJU | Secure Messenger & Encrypted Calling',
     description:
       'Aplikasi pesan instan dan panggilan suara/video peer-to-peer dengan enkripsi end-to-end berstandar militer.',
-    url: 'https://laju.chat',
+    url: safeAppUrl.toString(),
     siteName: 'LAJU Secure Messenger',
     locale: 'id_ID',
     type: 'website',
