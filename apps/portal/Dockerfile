@@ -32,6 +32,7 @@ WORKDIR /app
 RUN corepack enable && corepack prepare pnpm@8.15.3 --activate
 
 ENV NODE_ENV=production
+ENV HOSTNAME="0.0.0.0"
 ENV PORT=3002
 ENV NEXT_TELEMETRY_DISABLED=1
 
@@ -44,4 +45,4 @@ WORKDIR /app/apps/portal
 
 EXPOSE 3002
 
-CMD ["node_modules/.bin/next", "start", "-p", "3002"]
+CMD ["node_modules/.bin/next", "start", "-H", "0.0.0.0", "-p", "3002"]
