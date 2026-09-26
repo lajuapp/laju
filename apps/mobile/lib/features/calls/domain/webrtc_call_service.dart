@@ -461,9 +461,9 @@ class WebRTCCallService {
     if (_peerConnection == null) return;
     try {
       RTCSessionDescription offer;
-      if (_localDescription != null &&
-          _peerConnection!.signalingState == RTCSignalingState.RTCSignalingStateHaveLocalOffer) {
+      if (_localDescription != null && _localDescription!.type == 'offer') {
         offer = _localDescription!;
+        debugPrint('[WebRTC] Reusing existing local SDP offer for resend');
       } else {
         offer = await _peerConnection!.createOffer(_offerConstraints);
         await _peerConnection!.setLocalDescription(offer);
@@ -485,12 +485,6 @@ class WebRTCCallService {
     if (_peerConnection == null) return;
     if (_lastProcessedOfferSdp == offer.sdp) {
       debugPrint('[WebRTC] Offer SDP already processed, skipping duplicate');
-      return;
-    }
-    final state = _peerConnection!.signalingState;
-    if (state != RTCSignalingState.RTCSignalingStateStable &&
-        state != RTCSignalingState.RTCSignalingStateHaveLocalOffer) {
-      debugPrint('[WebRTC] Ignoring remote offer in signaling state: $state');
       return;
     }
     _lastProcessedOfferSdp = offer.sdp;
@@ -517,11 +511,6 @@ class WebRTCCallService {
     if (_peerConnection == null) return;
     if (_lastProcessedAnswerSdp == answer.sdp) {
       debugPrint('[WebRTC] Answer SDP already processed, skipping duplicate');
-      return;
-    }
-    final state = _peerConnection!.signalingState;
-    if (state != RTCSignalingState.RTCSignalingStateHaveLocalOffer) {
-      debugPrint('[WebRTC] Ignoring remote answer in signaling state: $state');
       return;
     }
     _lastProcessedAnswerSdp = answer.sdp;
