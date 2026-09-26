@@ -1,98 +1,104 @@
-import { Lock, Key, Server, Cpu, CheckCircle } from 'lucide-react';
+import { Lock, Key, CheckCircle, Terminal, ShieldCheck } from 'lucide-react';
 
 export function SecuritySection() {
   return (
-    <section id="security" className="py-24 relative overflow-hidden border-t border-white/5">
+    <section id="security" className="py-24 bg-white border-t border-slate-100 relative">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
-          <div>
-            <div className="inline-flex items-center gap-2 rounded-full border border-teal-500/30 bg-teal-500/10 px-3.5 py-1 text-xs font-semibold text-teal-400 mb-6">
-              <Lock className="h-3.5 w-3.5" />
-              <span>Arsitektur Kriptografi Mandiri</span>
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
+          {/* Left Narrative */}
+          <div className="lg:col-span-6 space-y-6 text-left">
+            <div className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3.5 py-1 text-xs font-bold text-emerald-800">
+              <Lock className="h-3.5 w-3.5 text-emerald-600" />
+              <span>Transparansi Kriptografi Terverifikasi</span>
             </div>
-            <h2 className="text-3xl sm:text-4xl font-black text-white tracking-tight">
-              Kunci Privat Anda Tidak Pernah Keluar dari Ponsel Anda
+
+            <h2 className="text-3xl sm:text-5xl font-extrabold text-slate-900 tracking-tight leading-tight">
+              Kriptografi Berstandar Terbuka. Tanpa Pintu Belakang.
             </h2>
-            <p className="mt-4 text-slate-300 text-sm sm:text-base leading-relaxed">
-              Di LAJU, prinsip utama kami adalah <strong>Zero-Knowledge</strong>. Server perantara hanya bertindak sebagai pemancar paket terenkripsi biner tanpa kemampuan membaca teks, foto, ataupun rekaman suara obrolan Anda.
+
+            <p className="text-slate-600 text-sm sm:text-base leading-relaxed">
+              Kami tidak menciptakan algoritma baru yang belum teruji. LAJU mengimplementasikan standar kriptografi paling dihormati di industri keamanan siber dunia:
             </p>
 
-            <div className="mt-8 space-y-4">
-              <div className="flex items-start gap-3.5">
-                <div className="p-1 rounded-full bg-brand-500/10 text-brand-400 mt-1">
+            <div className="space-y-4 pt-2">
+              <div className="flex items-start gap-3">
+                <div className="p-1 rounded-full bg-emerald-100 text-emerald-700 mt-0.5">
                   <CheckCircle className="h-4 w-4" />
                 </div>
                 <div>
-                  <h4 className="text-sm font-bold text-white">Signal Protocol Double Ratchet</h4>
-                  <p className="text-xs text-slate-400 mt-0.5">
-                    Kunci enkripsi berganti secara matematis di setiap pesan, sehingga pesan masa lalu dan masa depan tetap aman meski satu kunci terkompromi (Forward Secrecy).
+                  <h4 className="text-sm font-bold text-slate-900">Signal Double Ratchet Algorithm</h4>
+                  <p className="text-xs text-slate-600 mt-0.5">
+                    Protokol pertukaran kunci ephemeral berbasis KDF ratchet yang memperbarui kunci enkripsi di setiap gelembung percakapan.
                   </p>
                 </div>
               </div>
 
-              <div className="flex items-start gap-3.5">
-                <div className="p-1 rounded-full bg-brand-500/10 text-brand-400 mt-1">
+              <div className="flex items-start gap-3">
+                <div className="p-1 rounded-full bg-emerald-100 text-emerald-700 mt-0.5">
                   <CheckCircle className="h-4 w-4" />
                 </div>
                 <div>
-                  <h4 className="text-sm font-bold text-white">Keamanan Database Lokal Terenkripsi</h4>
-                  <p className="text-xs text-slate-400 mt-0.5">
-                    Penyimpanan pesan di ponsel diamankan dengan enkripsi SQLCipher berbasis kunci biometrik dan sandi perangkat Anda.
+                  <h4 className="text-sm font-bold text-slate-900">Enkripsi Simetris AES-256-GCM</h4>
+                  <p className="text-xs text-slate-600 mt-0.5">
+                    Menjamin kerahasiaan sekaligus integritas pesan (Authenticated Encryption), mencegah pesan dimanipulasi di tengah jalan.
                   </p>
                 </div>
               </div>
 
-              <div className="flex items-start gap-3.5">
-                <div className="p-1 rounded-full bg-brand-500/10 text-brand-400 mt-1">
+              <div className="flex items-start gap-3">
+                <div className="p-1 rounded-full bg-emerald-100 text-emerald-700 mt-0.5">
                   <CheckCircle className="h-4 w-4" />
                 </div>
                 <div>
-                  <h4 className="text-sm font-bold text-white">Bebas dari Big Tech Monopoli</h4>
-                  <p className="text-xs text-slate-400 mt-0.5">
-                    Infrastruktur independen berdaulat yang dirancang untuk menjaga kedaulatan data pengguna tanpa ketergantungan sepihak.
+                  <h4 className="text-sm font-bold text-slate-900">Kurva Eliptik X25519 / Ed25519</h4>
+                  <p className="text-xs text-slate-600 mt-0.5">
+                    Pertukaran kunci publik dan tanda tangan digital dengan performa tinggi dan resistensi terhadap serangan kanal samping (side-channel).
                   </p>
                 </div>
               </div>
             </div>
           </div>
 
-          <div className="relative">
-            <div className="rounded-3xl border border-white/10 bg-slate-900/80 p-6 sm:p-8 backdrop-blur-xl shadow-2xl relative">
-              <div className="flex items-center justify-between border-b border-white/10 pb-4 mb-6">
-                <div className="flex items-center gap-2.5">
-                  <div className="p-2 rounded-xl bg-brand-500/20 text-brand-400">
-                    <Key className="h-5 w-5" />
-                  </div>
-                  <div>
-                    <div className="text-sm font-bold text-white">Protokol Keamanan Multi-Lapis</div>
-                    <div className="text-xs text-slate-400">Verifikasi Enkripsi E2EE Aktif</div>
-                  </div>
+          {/* Right: Clean White Protocol Inspector */}
+          <div className="lg:col-span-6">
+            <div className="rounded-3xl border border-slate-200/90 bg-slate-900 text-slate-100 p-6 sm:p-8 shadow-2xl relative text-left">
+              {/* Terminal Window Header */}
+              <div className="flex items-center justify-between border-b border-slate-800 pb-4 mb-5">
+                <div className="flex items-center gap-2">
+                  <div className="h-3 w-3 rounded-full bg-rose-500/80" />
+                  <div className="h-3 w-3 rounded-full bg-amber-500/80" />
+                  <div className="h-3 w-3 rounded-full bg-emerald-500/80" />
                 </div>
-                <span className="text-[11px] font-mono font-bold bg-brand-500/20 text-brand-300 px-2.5 py-1 rounded-full">
-                  AES-256-GCM
+                <div className="flex items-center gap-1.5 text-xs font-mono text-slate-400">
+                  <Terminal className="h-3.5 w-3.5" />
+                  <span>handshake_verifier.ts</span>
+                </div>
+                <span className="text-[10px] font-mono font-bold bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full">
+                  VERIFIED
                 </span>
               </div>
 
-              <div className="space-y-4 font-mono text-xs">
-                <div className="p-3.5 rounded-xl bg-black/40 border border-white/5 text-slate-300">
-                  <span className="text-brand-400 font-bold">CLIENT_A &rarr; INITIATE_SESSION:</span>
-                  <div className="text-slate-400 mt-1 truncate">
-                    Pubkey: 04a89fb31c7e9014b2d398ef91823...
-                  </div>
-                </div>
+              {/* Code / Protocol Output */}
+              <div className="space-y-3 font-mono text-xs leading-relaxed overflow-x-auto">
+                <p className="text-slate-500">// Langkah 1: Pembangkitan Kunci Sesi di Ponsel Klien</p>
+                <p className="text-emerald-400">
+                  const session = await DoubleRatchet.initiate({'{'}
+                </p>
+                <p className="pl-4 text-slate-300">
+                  peerIdentityKey: <span className="text-amber-300">"04a89fb31c7e9014b2..."</span>,
+                </p>
+                <p className="pl-4 text-slate-300">
+                  ephemeralKey: <span className="text-amber-300">Curve25519.generateKeyPair()</span>
+                </p>
+                <p className="text-emerald-400">{'}'});</p>
 
-                <div className="p-3.5 rounded-xl bg-black/40 border border-white/5 text-slate-300">
-                  <span className="text-teal-400 font-bold">DOUBLE_RATCHET_STEP:</span>
-                  <div className="text-slate-400 mt-1 truncate">
-                    HMAC-SHA256 Derivation: Ephemeral ratchet updated.
-                  </div>
-                </div>
-
-                <div className="p-3.5 rounded-xl bg-brand-950/40 border border-brand-500/20 text-brand-300">
-                  <span className="font-bold">STATUS_DECRYPTION:</span>
-                  <div className="mt-1">
-                    Hanya penerima sah yang dapat mendengarkan audio atau membaca isi payload.
-                  </div>
+                <p className="text-slate-500 pt-2">// Langkah 2: Enkripsi Payload Tanpa Sentuhan Server</p>
+                <p className="text-teal-300">
+                  const ciphertext = await session.encrypt(rawMessage);
+                </p>
+                <div className="p-3 rounded-xl bg-slate-950/80 border border-slate-800 text-[11px] text-slate-400">
+                  <div className="text-emerald-400 font-semibold mb-1">✓ Status Transmisi:</div>
+                  Server hanya melihat hash acak terenkripsi: <span className="text-slate-300">d7a1f5...9b82e4</span>
                 </div>
               </div>
             </div>

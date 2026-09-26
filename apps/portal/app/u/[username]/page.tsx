@@ -26,7 +26,7 @@ export default function UserPage({ params }: UserPageProps) {
   const username = params.username.startsWith('@') ? params.username : `@${params.username}`;
 
   return (
-    <div className="min-h-[80vh] flex items-center justify-center radial-gradient-bg">
+    <div className="min-h-[80vh] flex items-center justify-center bg-white gradient-glow-emerald">
       <SmartRedirector
         type="user"
         code={params.username}

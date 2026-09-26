@@ -61,7 +61,7 @@ export default async function JoinPage({ params }: JoinPageProps) {
   const info = await getGroupInviteInfo(params.code);
 
   return (
-    <div className="min-h-[80vh] flex items-center justify-center radial-gradient-bg">
+    <div className="min-h-[80vh] flex items-center justify-center bg-white gradient-glow-emerald">
       <SmartRedirector
         type="group"
         code={params.code}

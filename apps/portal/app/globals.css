@@ -3,8 +3,8 @@
 @tailwind utilities;
 
 :root {
-  --background: #090d16;
-  --foreground: #f8fafc;
+  --background: #ffffff;
+  --foreground: #0f172a;
 }
 
 body {
@@ -14,27 +14,20 @@ body {
   overflow-x: hidden;
 }
 
-/* Custom glow and glassmorphism helpers */
-.glass-panel {
-  background: rgba(15, 23, 42, 0.65);
-  backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+/* Subtle dot background for clean tech feel */
+.clean-grid-bg {
+  background-image: radial-gradient(#e2e8f0 1px, transparent 1px);
+  background-size: 24px 24px;
 }
 
-.glass-panel-hover {
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+.gradient-glow-emerald {
+  background: radial-gradient(circle at 50% -10%, rgba(34, 197, 94, 0.08) 0%, rgba(255, 255, 255, 0) 70%);
 }
 
-.glass-panel-hover:hover {
-  background: rgba(15, 23, 42, 0.85);
-  border-color: rgba(34, 197, 94, 0.3);
-  transform: translateY(-2px);
+.soft-shadow {
+  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.05), 0 2px 6px -1px rgba(0, 0, 0, 0.02);
 }
 
-.glow-brand {
-  box-shadow: 0 0 50px -10px rgba(34, 197, 94, 0.3);
-}
-
-.radial-gradient-bg {
-  background: radial-gradient(circle at 50% -20%, rgba(34, 197, 94, 0.15), transparent 70%);
+.soft-shadow-lg {
+  box-shadow: 0 20px 40px -15px rgba(16, 185, 129, 0.12), 0 10px 20px -5px rgba(0, 0, 0, 0.04);
 }

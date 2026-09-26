@@ -1,28 +1,32 @@
 import Link from 'next/link';
-import { Download, Smartphone, ArrowRight, ShieldCheck } from 'lucide-react';
+import { Download, Smartphone, ShieldCheck, ArrowRight } from 'lucide-react';
 
 export function DownloadCTA() {
   return (
-    <section className="py-20 relative overflow-hidden border-t border-white/5 bg-gradient-to-b from-transparent to-brand-950/20">
+    <section className="py-20 bg-slate-50/50 border-t border-slate-100 relative overflow-hidden">
       <div className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 text-center">
-        <div className="rounded-3xl border border-brand-500/20 bg-slate-900/80 p-8 sm:p-14 backdrop-blur-xl relative overflow-hidden shadow-2xl">
-          <div className="inline-flex items-center gap-2 rounded-full border border-brand-500/30 bg-brand-500/10 px-4 py-1.5 text-xs font-semibold text-brand-400 mb-6">
-            <Smartphone className="h-4 w-4" />
+        {/* Clean White Card */}
+        <div className="rounded-[2.5rem] border border-emerald-100 bg-white p-8 sm:p-14 shadow-xl soft-shadow relative overflow-hidden">
+          {/* Subtle background glow */}
+          <div className="absolute top-0 right-0 -mt-12 -mr-12 w-96 h-96 bg-emerald-50 rounded-full blur-3xl -z-10" />
+
+          <div className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-4 py-1.5 text-xs font-bold text-emerald-800 mb-6 shadow-sm">
+            <Smartphone className="h-4 w-4 text-emerald-600" />
             <span>Mulai Dalam Hitungan Detik</span>
           </div>
 
-          <h2 className="text-3xl sm:text-5xl font-black text-white tracking-tight max-w-2xl mx-auto">
+          <h2 className="text-3xl sm:text-5xl font-extrabold text-slate-900 tracking-tight max-w-2xl mx-auto leading-tight">
             Ambil Kembali Kendali Penuh Atas Privasi Obrolan Anda
           </h2>
 
-          <p className="mt-4 text-slate-300 text-sm sm:text-base max-w-xl mx-auto leading-relaxed">
+          <p className="mt-4 text-slate-600 text-sm sm:text-base max-w-xl mx-auto leading-relaxed">
             Unduh aplikasi LAJU sekarang juga di perangkat Android Anda. Bebas biaya pendaftaran dan langsung terhubung dengan aman.
           </p>
 
           <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4">
             <Link
               href="/download"
-              className="w-full sm:w-auto flex items-center justify-center gap-3 rounded-2xl bg-brand-500 px-8 py-4 text-sm font-extrabold text-slate-950 shadow-xl shadow-brand-500/20 hover:bg-brand-400 hover:scale-[1.02] transition-all active:scale-95"
+              className="w-full sm:w-auto flex items-center justify-center gap-3 rounded-2xl bg-emerald-600 px-8 py-4 text-sm font-bold text-white shadow-lg shadow-emerald-600/25 hover:bg-emerald-700 hover:shadow-emerald-600/35 hover:-translate-y-0.5 transition-all active:translate-y-0"
             >
               <Download className="h-5 w-5" />
               Unduh APK Android Langsung
@@ -30,15 +34,15 @@ export function DownloadCTA() {
 
             <Link
               href="/privacy"
-              className="w-full sm:w-auto flex items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-6 py-4 text-sm font-semibold text-slate-300 hover:bg-white/10 transition-all"
+              className="w-full sm:w-auto flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-6 py-4 text-sm font-semibold text-slate-700 hover:bg-slate-50 hover:text-slate-900 transition-all shadow-sm"
             >
-              <ShieldCheck className="h-4 w-4 text-brand-400" />
+              <ShieldCheck className="h-4 w-4 text-emerald-600" />
               Kebijakan Privasi
             </Link>
           </div>
 
-          <p className="mt-6 text-xs text-slate-400">
-            Kompatibel dengan Android 8.0 ke atas. Dukungan iOS dan Desktop segera hadir.
+          <p className="mt-6 text-xs text-slate-400 font-medium">
+            Kompatibel dengan Android 8.0 ke atas • Bebas Malware & Telah Diverifikasi Resmi
           </p>
         </div>
       </div>
