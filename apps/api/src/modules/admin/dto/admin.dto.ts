@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsString, IsOptional, IsInt, IsEmail, IsBoolean, MinLength } from 'class-validator';
+import { IsNotEmpty, IsString, IsOptional, IsInt, IsEmail, IsBoolean, MinLength, IsArray } from 'class-validator';
 
 export class AdminLoginDto {
   @IsString()
@@ -243,6 +243,15 @@ export class CreateAnnouncementDto {
   @IsBoolean()
   @IsOptional()
   isActive?: boolean;
+
+  @IsString()
+  @IsOptional()
+  targetType?: string; // 'ALL' | 'SPECIFIC' | 'BULK'
+
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  targetUserIds?: string[];
 }
 
 export class UpdateAnnouncementDto {
@@ -261,6 +270,15 @@ export class UpdateAnnouncementDto {
   @IsBoolean()
   @IsOptional()
   isActive?: boolean;
+
+  @IsString()
+  @IsOptional()
+  targetType?: string;
+
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  targetUserIds?: string[];
 }
 
 export class UpdateAppConfigDto {

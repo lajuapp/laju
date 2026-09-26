@@ -153,6 +153,9 @@ export interface SystemAnnouncement {
   title: string;
   content: string;
   type: 'INFO' | 'WARNING' | 'MAINTENANCE';
+  targetType?: 'ALL' | 'SPECIFIC' | 'BULK';
+  targetUserIds?: string[];
+  targetUserCount?: number;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;

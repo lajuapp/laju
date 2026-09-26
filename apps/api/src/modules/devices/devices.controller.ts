@@ -75,16 +75,17 @@ export class DevicesController {
     res.write(`data: ${JSON.stringify({ type: 'CONNECTED', userId, timestamp: Date.now() })}\n\n`);
 
     const channel = `user:${userId}`;
+    const globalChannel = 'announcements:global';
     const subscriber = this.devicesService.getRedisSubscriber();
 
     const onMessage = (chan: string, msg: string) => {
-      if (chan === channel) {
+      if (chan === channel || chan === globalChannel) {
         res.write(`data: ${msg}\n\n`);
       }
     };
 
     if (subscriber) {
-      subscriber.subscribe(channel).catch(() => {});
+      subscriber.subscribe(channel, globalChannel).catch(() => {});
       subscriber.on('message', onMessage);
     }
 

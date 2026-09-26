@@ -30,6 +30,8 @@ const announcementSchema = z.object({
   title: z.string().min(3, 'Judul pengumuman minimal 3 karakter'),
   content: z.string().min(5, 'Isi pengumuman minimal 5 karakter'),
   type: z.enum(['INFO', 'WARNING', 'MAINTENANCE']),
+  targetType: z.enum(['ALL', 'SPECIFIC', 'BULK']).default('ALL'),
+  targetUserIds: z.string().optional(),
   isActive: z.boolean().default(true),
 });
 
@@ -56,6 +58,7 @@ export function AnnouncementsPage() {
     register,
     handleSubmit,
     reset,
+    watch,
     formState: { errors },
   } = useForm<AnnouncementFormValues>({
     resolver: zodResolver(announcementSchema),
@@ -63,14 +66,33 @@ export function AnnouncementsPage() {
       title: '',
       content: '',
       type: 'INFO',
+      targetType: 'ALL',
+      targetUserIds: '',
       isActive: true,
     },
   });
 
+  const watchTargetType = watch('targetType');
+
   const onSubmit = async (data: AnnouncementFormValues) => {
     try {
       setErrorMessage(null);
-      await createAnnouncement.mutateAsync(data);
+      const payload: any = {
+        title: data.title,
+        content: data.content,
+        type: data.type,
+        targetType: data.targetType,
+        isActive: data.isActive,
+      };
+
+      if (data.targetType !== 'ALL' && data.targetUserIds) {
+        payload.targetUserIds = data.targetUserIds
+          .split(/[\n,]+/)
+          .map((s) => s.trim())
+          .filter((s) => s.length > 0);
+      }
+
+      await createAnnouncement.mutateAsync(payload);
       setIsModalOpen(false);
       reset();
     } catch (err: any) {
@@ -108,6 +130,18 @@ export function AnnouncementsPage() {
     }
   };
 
+  const getTargetBadge = (targetType?: string, count?: number) => {
+    switch (targetType) {
+      case 'SPECIFIC':
+        return <Badge variant="neutral">Pengguna Khusus (1)</Badge>;
+      case 'BULK':
+        return <Badge variant="warning">Bulk ({count || 0} Pengguna)</Badge>;
+      case 'ALL':
+      default:
+        return <Badge variant="brand">Semua Pengguna (Broadcast)</Badge>;
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -142,6 +176,7 @@ export function AnnouncementsPage() {
               <tr>
                 <th className="px-5 py-3.5">Judul & Isi</th>
                 <th className="px-5 py-3.5">Tipe</th>
+                <th className="px-5 py-3.5">Target Penerima</th>
                 <th className="px-5 py-3.5">Status</th>
                 <th className="px-5 py-3.5">Dibuat Pada</th>
                 <th className="px-5 py-3.5 text-right">Tindakan</th>
@@ -150,7 +185,7 @@ export function AnnouncementsPage() {
             <tbody className="divide-y divide-neutral-100">
               {isLoading ? (
                 <tr>
-                  <td colSpan={5} className="px-5 py-8 text-center text-neutral-400">
+                  <td colSpan={6} className="px-5 py-8 text-center text-neutral-400">
                     Memuat daftar pengumuman...
                   </td>
                 </tr>
@@ -165,6 +200,9 @@ export function AnnouncementsPage() {
                     </td>
                     <td className="px-5 py-3.5">
                       {getTypeBadge(item.type)}
+                    </td>
+                    <td className="px-5 py-3.5">
+                      {getTargetBadge(item.targetType, item.targetUserCount)}
                     </td>
                     <td className="px-5 py-3.5">
                       {item.isActive ? (
@@ -203,7 +241,7 @@ export function AnnouncementsPage() {
                 ))
               ) : (
                 <tr>
-                  <td colSpan={5} className="px-5 py-8 text-center text-neutral-400">
+                  <td colSpan={6} className="px-5 py-8 text-center text-neutral-400">
                     Belum ada pengumuman dibuat
                   </td>
                 </tr>
@@ -246,6 +284,52 @@ export function AnnouncementsPage() {
             {...register('title')}
             error={errors.title?.message}
           />
+
+          <div>
+            <label className="block text-[11px] font-bold text-neutral-700 mb-1.5 uppercase tracking-wider">
+              Target Penerima Broadcast Push Notif
+            </label>
+            <select
+              {...register('targetType')}
+              className="w-full text-xs rounded-xl border border-neutral-200 px-3 py-2 text-neutral-900 bg-white focus:outline-none focus:ring-2 focus:ring-neutral-900/10 focus:border-neutral-900"
+            >
+              <option value="ALL">📢 Semua Pengguna (Broadcast All Users)</option>
+              <option value="SPECIFIC">👤 Satu Pengguna Khusus (Specific User)</option>
+              <option value="BULK">👥 Daftar Banyak Pengguna (Bulk Users)</option>
+            </select>
+          </div>
+
+          {watchTargetType === 'SPECIFIC' && (
+            <div>
+              <label className="block text-[11px] font-bold text-neutral-700 mb-1.5 uppercase tracking-wider">
+                Username, Nomor Telepon, atau User ID Penerima
+              </label>
+              <Input
+                placeholder="Contoh: @dimas atau 08123456789 atau user UUID"
+                {...register('targetUserIds')}
+              />
+              <p className="text-[10px] text-neutral-400 mt-1">
+                Push notifikasi dan pengumuman hanya akan dikirimkan ke perangkat akun pengguna ini.
+              </p>
+            </div>
+          )}
+
+          {watchTargetType === 'BULK' && (
+            <div>
+              <label className="block text-[11px] font-bold text-neutral-700 mb-1.5 uppercase tracking-wider">
+                Daftar Username, Nomor Telepon, atau User ID (Pisahkan dengan koma atau baris baru)
+              </label>
+              <textarea
+                rows={3}
+                placeholder="@dimas, @budi, 081234567890"
+                {...register('targetUserIds')}
+                className="w-full text-xs rounded-xl border border-neutral-200 px-3 py-2 text-neutral-900 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-900/10 focus:border-neutral-900 transition-all resize-none"
+              />
+              <p className="text-[10px] text-neutral-400 mt-1">
+                Push notifikasi dan pengumuman akan dikirimkan serentak ke perangkat daftar pengguna di atas.
+              </p>
+            </div>
+          )}
 
           <div>
             <label className="block text-[11px] font-bold text-neutral-700 mb-1.5 uppercase tracking-wider">

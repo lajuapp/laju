@@ -3,11 +3,14 @@ import {
   NotFoundException,
   ForbiddenException,
   BadRequestException,
-  UnauthorizedException
+  UnauthorizedException,
+  Optional
 } from '@nestjs/common';
 import * as crypto from 'crypto';
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../../infrastructure/prisma/prisma.service';
+import { GotifyService } from '../../infrastructure/gotify/gotify.service';
+import { RedisService } from '../../infrastructure/redis/redis.service';
 import {
   RequestConversationAccessDto,
   AdminPasswordLoginDto,
@@ -26,7 +29,11 @@ import {
 
 @Injectable()
 export class AdminService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Optional() private readonly gotifyService?: GotifyService,
+    @Optional() private readonly redisService?: RedisService
+  ) {}
 
   // Password-based authentication for Backoffice
   async loginWithPassword(dto: AdminPasswordLoginDto) {
@@ -742,22 +749,60 @@ export class AdminService {
     });
   }
 
-  // System Announcements
+  // System Announcements & Push Broadcast
   async listAnnouncements() {
-    return this.prisma.systemAnnouncement.findMany({
+    const announcements = await this.prisma.systemAnnouncement.findMany({
       orderBy: { createdAt: 'desc' }
     });
+
+    if (!this.redisService) return announcements;
+
+    return Promise.all(
+      announcements.map(async (a) => {
+        try {
+          const targetMeta = await this.redisService!.get(`announcement:${a.id}:target`);
+          if (targetMeta) {
+            const parsed = JSON.parse(targetMeta);
+            return { ...a, ...parsed };
+          }
+        } catch (_) {}
+        return { ...a, targetType: 'ALL' };
+      })
+    );
   }
 
-  async getActiveAnnouncements() {
-    return this.prisma.systemAnnouncement.findMany({
+  async getActiveAnnouncements(userId?: string) {
+    const announcements = await this.prisma.systemAnnouncement.findMany({
       where: { isActive: true },
       orderBy: { createdAt: 'desc' }
     });
+
+    if (!userId || !this.redisService) {
+      return announcements;
+    }
+
+    const filtered = await Promise.all(
+      announcements.map(async (a) => {
+        try {
+          const targetMeta = await this.redisService!.get(`announcement:${a.id}:target`);
+          if (targetMeta) {
+            const parsed = JSON.parse(targetMeta);
+            if (parsed.targetType === 'ALL') return a;
+            if (Array.isArray(parsed.targetUserIds) && parsed.targetUserIds.includes(userId)) {
+              return a;
+            }
+            return null;
+          }
+        } catch (_) {}
+        return a;
+      })
+    );
+
+    return filtered.filter(Boolean);
   }
 
   async createAnnouncement(dto: CreateAnnouncementDto) {
-    return this.prisma.systemAnnouncement.create({
+    const announcement = await this.prisma.systemAnnouncement.create({
       data: {
         title: dto.title,
         content: dto.content,
@@ -765,6 +810,166 @@ export class AdminService {
         isActive: dto.isActive !== undefined ? dto.isActive : true
       }
     });
+
+    const targetType = (dto.targetType || 'ALL').toUpperCase();
+    let matchedUsers: any[] = [];
+
+    if (targetType === 'SPECIFIC' || targetType === 'BULK') {
+      const rawIdentifiers = dto.targetUserIds || [];
+      const cleanIdentifiers: string[] = [];
+
+      for (const raw of rawIdentifiers) {
+        if (!raw) continue;
+        const trimmed = raw.trim();
+        if (!trimmed) continue;
+        cleanIdentifiers.push(trimmed);
+        if (trimmed.startsWith('@')) {
+          cleanIdentifiers.push(trimmed.substring(1));
+        }
+        const digits = trimmed.replace(/\D/g, '');
+        if (digits.length >= 6) {
+          cleanIdentifiers.push(digits);
+          cleanIdentifiers.push(`+${digits}`);
+        }
+      }
+
+      if (cleanIdentifiers.length > 0) {
+        matchedUsers = await this.prisma.user.findMany({
+          where: {
+            status: 'ACTIVE',
+            OR: [
+              { id: { in: cleanIdentifiers } },
+              { username: { in: cleanIdentifiers, mode: 'insensitive' } },
+              { phoneNumber: { in: cleanIdentifiers } }
+            ]
+          },
+          include: {
+            devices: {
+              where: { status: 'ACTIVE' },
+              include: { pushDevices: true }
+            }
+          }
+        });
+      }
+    } else {
+      // ALL
+      matchedUsers = await this.prisma.user.findMany({
+        where: { status: 'ACTIVE' },
+        include: {
+          devices: {
+            where: { status: 'ACTIVE' },
+            include: { pushDevices: true }
+          }
+        }
+      });
+    }
+
+    const targetUserIds = matchedUsers.map((u) => u.id);
+
+    // Save targeting metadata in Redis
+    if (this.redisService) {
+      try {
+        await this.redisService.set(
+          `announcement:${announcement.id}:target`,
+          JSON.stringify({
+            targetType,
+            targetUserIds,
+            totalRecipients: matchedUsers.length
+          })
+        );
+      } catch (_) {}
+    }
+
+    // Broadcast Push Notification if active
+    let pushDeliveredCount = 0;
+    if (dto.isActive !== false) {
+      for (const user of matchedUsers) {
+        // Publish to user Redis real-time channel
+        if (this.redisService) {
+          try {
+            await this.redisService.getClient().publish(
+              `user:${user.id}`,
+              JSON.stringify({
+                type: 'SYSTEM_ANNOUNCEMENT',
+                id: announcement.id,
+                title: announcement.title,
+                content: announcement.content,
+                announcementType: announcement.type,
+                targetType,
+                createdAt: announcement.createdAt
+              })
+            );
+          } catch (_) {}
+        }
+
+        // Send Gotify/FCM push to each device
+        if (this.gotifyService && user.devices) {
+          for (const dev of user.devices) {
+            const tokens: string[] = [];
+            if (dev.pushDevices) {
+              for (const pd of dev.pushDevices) {
+                if (pd.clientToken) tokens.push(pd.clientToken);
+              }
+            }
+            if (dev.pushToken && !tokens.includes(dev.pushToken)) {
+              tokens.push(dev.pushToken);
+            }
+
+            if (tokens.length === 0) {
+              await this.gotifyService.sendPushNotification({
+                title: `[Pengumuman] ${announcement.title}`,
+                message: announcement.content,
+                priority: 6
+              }).catch(() => {});
+              pushDeliveredCount++;
+            } else {
+              for (const tok of tokens) {
+                await this.gotifyService.sendPushNotification({
+                  targetToken: tok,
+                  title: `[Pengumuman] ${announcement.title}`,
+                  message: announcement.content,
+                  priority: 6
+                }).catch(() => {});
+                pushDeliveredCount++;
+              }
+            }
+          }
+        }
+      }
+
+      // If targetType is ALL, also publish to global Gotify app stream & global Redis channel
+      if (targetType === 'ALL') {
+        if (this.gotifyService) {
+          await this.gotifyService.sendPushNotification({
+            title: `[Pengumuman] ${announcement.title}`,
+            message: announcement.content,
+            priority: 6
+          }).catch(() => {});
+        }
+        if (this.redisService) {
+          try {
+            await this.redisService.getClient().publish(
+              'announcements:global',
+              JSON.stringify({
+                type: 'SYSTEM_ANNOUNCEMENT',
+                id: announcement.id,
+                title: announcement.title,
+                content: announcement.content,
+                announcementType: announcement.type,
+                createdAt: announcement.createdAt
+              })
+            );
+          } catch (_) {}
+        }
+      }
+    }
+
+    return {
+      ...announcement,
+      targetType,
+      targetUserCount: matchedUsers.length,
+      deliveredPushCount: pushDeliveredCount
+    };
   }
 
   async updateAnnouncement(id: string, dto: UpdateAnnouncementDto) {

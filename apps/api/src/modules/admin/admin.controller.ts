@@ -13,7 +13,8 @@ import {
   HttpStatus,
   Optional,
   Logger,
-  BadRequestException
+  BadRequestException,
+  Query
 } from '@nestjs/common';
 import { Response } from 'express';
 import { AdminService } from './admin.service';
@@ -415,8 +416,8 @@ export class AdminController {
   }
 
   @Get('announcements/public')
-  getActiveAnnouncements() {
-    return this.adminService.getActiveAnnouncements();
+  getActiveAnnouncements(@Query('userId') userId?: string) {
+    return this.adminService.getActiveAnnouncements(userId);
   }
 
   @Post('announcements')

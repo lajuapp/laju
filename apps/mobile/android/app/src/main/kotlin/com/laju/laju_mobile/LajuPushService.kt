@@ -288,6 +288,11 @@ class LajuPushService : Service() {
                     val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
                     nm.cancel(NOTIFICATION_ID_CALL)
                 }
+                "SYSTEM_ANNOUNCEMENT" -> {
+                    val title = obj.optString("title", "Pengumuman Resmi")
+                    val content = obj.optString("content", "")
+                    showAnnouncementNotification(title, content)
+                }
             }
         } catch (e: Exception) {
             e.printStackTrace()
@@ -382,6 +387,40 @@ class LajuPushService : Service() {
             .setAutoCancel(true)
 
         nm.notify(conversationId.hashCode(), builder.build())
+    }
+
+    private fun showAnnouncementNotification(title: String, content: String) {
+        val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+
+        val intent = Intent(this, MainActivity::class.java).apply {
+            action = Intent.ACTION_MAIN
+            addCategory(Intent.CATEGORY_LAUNCHER)
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra("laju_type", "announcement")
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            this,
+            System.currentTimeMillis().toInt(),
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val soundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+
+        val builder = NotificationCompat.Builder(this, CHANNEL_MESSAGES)
+            .setSmallIcon(R.mipmap.ic_launcher)
+            .setContentTitle("📢 $title")
+            .setContentText(content)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(content))
+            .setPriority(NotificationCompat.PRIORITY_MAX)
+            .setCategory(NotificationCompat.CATEGORY_MESSAGE)
+            .setSound(soundUri)
+            .setVibrate(longArrayOf(0, 300, 200, 300))
+            .setContentIntent(pendingIntent)
+            .setAutoCancel(true)
+
+        val notifId = (System.currentTimeMillis() % 100000).toInt() + 1000
+        nm.notify(notifId, builder.build())
     }
 
     private fun declineCallInBackground(callId: String) {

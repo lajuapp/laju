@@ -21,6 +21,8 @@ export function useCreateAnnouncement() {
       content: string;
       type: string;
       isActive?: boolean;
+      targetType?: string;
+      targetUserIds?: string[];
     }) => {
       const res = await apiClient.post('/admin/announcements', payload);
       return res.data;
