@@ -1,8 +1,7 @@
-FROM node:20-alpine AS builder
+FROM node:20-slim AS builder
 
 WORKDIR /app
 
-RUN apk add --no-cache libc6-compat
 RUN corepack enable && corepack prepare pnpm@8.15.3 --activate
 
 ENV NODE_ENV=development
@@ -24,13 +23,12 @@ WORKDIR /app/packages/shared-types
 RUN pnpm build || true
 
 WORKDIR /app/apps/portal
-RUN pnpm run build 2>&1 || (echo "=== NEXT BUILD ERROR ===" >&2 && pnpm run build >&2 && exit 1)
+RUN pnpm run build
 
-FROM node:20-alpine AS runner
+FROM node:20-slim AS runner
 
 WORKDIR /app
 
-RUN apk add --no-cache libc6-compat
 RUN corepack enable && corepack prepare pnpm@8.15.3 --activate
 
 ENV NODE_ENV=production
