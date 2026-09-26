@@ -12,7 +12,7 @@ COPY package.json pnpm-workspace.yaml pnpm-lock.yaml* ./
 COPY packages/shared-types ./packages/shared-types
 COPY apps/backoffice ./apps/backoffice
 
-RUN pnpm install --frozen-lockfile=false --prod=false
+RUN NODE_ENV=development pnpm install --frozen-lockfile=false --prod=false
 
 WORKDIR /app/packages/shared-types
 RUN pnpm build

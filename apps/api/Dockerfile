@@ -15,7 +15,7 @@ COPY packages/shared-types ./packages/shared-types
 COPY apps/api ./apps/api
 
 # Install all dependencies including devDependencies
-RUN pnpm install --frozen-lockfile=false --prod=false
+RUN NODE_ENV=development pnpm install --frozen-lockfile=false --prod=false
 
 # Build shared types
 WORKDIR /app/packages/shared-types

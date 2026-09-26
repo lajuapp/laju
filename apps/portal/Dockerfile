@@ -4,6 +4,7 @@ WORKDIR /app
 
 RUN corepack enable && corepack prepare pnpm@8.15.3 --activate
 
+# Explicitly ensure NODE_ENV=development so pnpm installs all build dependencies
 ENV NODE_ENV=development
 ARG NEXT_PUBLIC_API_URL=https://api.laju.chat
 ARG NEXT_PUBLIC_APP_URL=https://laju.chat
@@ -14,7 +15,8 @@ COPY package.json pnpm-workspace.yaml pnpm-lock.yaml* ./
 COPY packages/shared-types ./packages/shared-types
 COPY apps/portal ./apps/portal
 
-RUN pnpm install --frozen-lockfile=false --prod=false
+# Force development install so typescript & tailwind are always present
+RUN NODE_ENV=development pnpm install --frozen-lockfile=false --prod=false
 
 WORKDIR /app/packages/shared-types
 RUN pnpm build || true
