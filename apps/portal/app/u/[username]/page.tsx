@@ -7,6 +7,8 @@ interface UserPageProps {
   };
 }
 
+export const dynamic = 'force-dynamic';
+
 export async function generateMetadata({ params }: UserPageProps): Promise<Metadata> {
   const username = params.username.startsWith('@') ? params.username : `@${params.username}`;
 

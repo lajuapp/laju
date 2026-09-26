@@ -7,6 +7,8 @@ export const metadata: Metadata = {
     'Download aplikasi LAJU Messenger versi terbaru untuk Android secara langsung. Aman, cepat, dan terenkripsi.',
 };
 
+export const dynamic = 'force-dynamic';
+
 async function getLatestAppConfig() {
   try {
     const apiUrl =

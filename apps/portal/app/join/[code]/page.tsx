@@ -7,6 +7,8 @@ interface JoinPageProps {
   };
 }
 
+export const dynamic = 'force-dynamic';
+
 async function getGroupInviteInfo(code: string) {
   try {
     const apiUrl =
