@@ -29,6 +29,7 @@ class WebRTCCallService {
   bool _isInitializing = false;
   String? _lastProcessedOfferSdp;
   String? _lastProcessedAnswerSdp;
+  RTCSessionDescription? _localDescription;
 
   // ICE Candidate Queue (avoids dropping candidates arriving before remote description)
   final List<RTCIceCandidate> _pendingIceCandidates = [];
@@ -305,6 +306,7 @@ class WebRTCCallService {
       _offerSent = false;
       _lastProcessedOfferSdp = null;
       _lastProcessedAnswerSdp = null;
+      _localDescription = null;
 
       // Initialize renderers
       _localRenderer = RTCVideoRenderer();
@@ -443,7 +445,7 @@ class WebRTCCallService {
       debugPrint('[WebRTC] ensureOffer: peerConnection is null, delaying...');
       return;
     }
-    if (_hasRemoteDescription && _peerConnection?.remoteDescription != null) {
+    if (_hasRemoteDescription) {
       debugPrint('[WebRTC] ensureOffer: already connected with remote description, skipping');
       return;
     }
@@ -459,12 +461,13 @@ class WebRTCCallService {
     if (_peerConnection == null) return;
     try {
       RTCSessionDescription offer;
-      if (_peerConnection!.localDescription != null &&
+      if (_localDescription != null &&
           _peerConnection!.signalingState == RTCSignalingState.RTCSignalingStateHaveLocalOffer) {
-        offer = _peerConnection!.localDescription!;
+        offer = _localDescription!;
       } else {
         offer = await _peerConnection!.createOffer(_offerConstraints);
         await _peerConnection!.setLocalDescription(offer);
+        _localDescription = offer;
       }
       debugPrint('[WebRTC] Sending SDP offer for call $_currentCallId');
       _sendSignal('webrtc_offer', {
@@ -498,6 +501,7 @@ class WebRTCCallService {
 
       final answer = await _peerConnection!.createAnswer();
       await _peerConnection!.setLocalDescription(answer);
+      _localDescription = answer;
       debugPrint('[WebRTC] Sending SDP answer');
       _sendSignal('webrtc_answer', {
         'callId': _currentCallId,
@@ -568,6 +572,7 @@ class WebRTCCallService {
         'mandatory': {'OfferToReceiveAudio': true, 'OfferToReceiveVideo': true},
       });
       await _peerConnection!.setLocalDescription(offer);
+      _localDescription = offer;
       _sendSignal('webrtc_offer', {
         'callId': _currentCallId,
         'targetUserId': _remoteUserId,
@@ -619,6 +624,7 @@ class WebRTCCallService {
     _isInitializing = false;
     _lastProcessedOfferSdp = null;
     _lastProcessedAnswerSdp = null;
+    _localDescription = null;
 
     try {
       await _ws?.close();
