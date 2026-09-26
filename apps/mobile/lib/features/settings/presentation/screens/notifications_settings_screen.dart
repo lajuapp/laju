@@ -1610,6 +1610,33 @@ class _NotificationsSettingsScreenState extends State<NotificationsSettingsScree
                       },
                     ),
                   ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: isDark ? Colors.white70 : Colors.black87,
+                        side: BorderSide(
+                          color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.15),
+                        ),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      ),
+                      icon: const Icon(Icons.battery_charging_full_rounded, size: 18),
+                      label: const Text(
+                        'Pengecualian Penghemat Baterai (Latar Belakang)',
+                        style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600),
+                      ),
+                      onPressed: () async {
+                        final isIgnored = await PushNotificationService.instance.isIgnoringBatteryOptimizations();
+                        if (isIgnored && context.mounted) {
+                          LajuToast.info(context, 'Aplikasi sudah dikecualikan dari pembatasan baterai.');
+                        } else {
+                          await PushNotificationService.instance.requestIgnoreBatteryOptimizations();
+                        }
+                      },
+                    ),
+                  ),
                 ],
               ),
             ),

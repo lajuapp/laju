@@ -152,4 +152,22 @@ class PushNotificationService {
       return {'success': false, 'message': 'Terjadi kesalahan: $e'};
     }
   }
+
+  Future<bool> isIgnoringBatteryOptimizations() async {
+    try {
+      final res = await _systemNotifChannel.invokeMethod<bool>('isIgnoringBatteryOptimizations');
+      return res ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<bool> requestIgnoreBatteryOptimizations() async {
+    try {
+      final res = await _systemNotifChannel.invokeMethod<bool>('requestIgnoreBatteryOptimizations');
+      return res ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
 }

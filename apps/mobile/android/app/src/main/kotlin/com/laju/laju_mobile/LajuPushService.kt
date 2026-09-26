@@ -8,6 +8,7 @@ import android.content.Context
 import android.content.Intent
 import android.media.AudioAttributes
 import android.media.RingtoneManager
+import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
@@ -103,16 +104,26 @@ class LajuPushService : Service() {
 
         if (action == ACTION_STOP) {
             stopStream()
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                    stopForeground(STOP_FOREGROUND_REMOVE)
+                } else {
+                    @Suppress("DEPRECATION")
+                    stopForeground(true)
+                }
+            } catch (_: Exception) {}
             stopSelf()
             return START_NOT_STICKY
         }
+
+        // Always promote to foreground service within 5 seconds of startForegroundService
+        startForegroundSyncNotification()
 
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val baseUrl = intent?.getStringExtra(KEY_BASE_URL) ?: prefs.getString(KEY_BASE_URL, "") ?: ""
         val token = intent?.getStringExtra(KEY_TOKEN) ?: prefs.getString(KEY_TOKEN, "") ?: ""
 
         if (baseUrl.isNotEmpty() && token.isNotEmpty()) {
-            startForegroundSyncNotification()
             startPushStream(baseUrl, token)
         }
 
@@ -124,25 +135,52 @@ class LajuPushService : Service() {
             val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
             val syncChannel = NotificationChannel(
                 CHANNEL_BACKGROUND,
-                "Laju Background Sync",
-                NotificationManager.IMPORTANCE_MIN
+                "Layanan Latar Belakang LAJU",
+                NotificationManager.IMPORTANCE_LOW
             ).apply {
-                description = "Sinkronisasi pesan dan panggilan terenkripsi"
+                description = "Menjaga koneksi aman untuk menerima panggilan dan pesan saat aplikasi ditutup"
                 setShowBadge(false)
             }
             nm.createNotificationChannel(syncChannel)
         }
 
+        val launchIntent = Intent(this, MainActivity::class.java).apply {
+            action = Intent.ACTION_MAIN
+            addCategory(Intent.CATEGORY_LAUNCHER)
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            this,
+            0,
+            launchIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
         val notif = NotificationCompat.Builder(this, CHANNEL_BACKGROUND)
             .setSmallIcon(R.mipmap.ic_launcher)
-            .setContentTitle("Laju Secure Messenger")
-            .setContentText("Layanan terenkripsi aktif di latar belakang")
-            .setPriority(NotificationCompat.PRIORITY_MIN)
+            .setContentTitle("LAJU Messenger Aktif")
+            .setContentText("Layanan pesan & panggilan terenkripsi tetap terhubung")
+            .setPriority(NotificationCompat.PRIORITY_LOW)
             .setOngoing(true)
+            .setContentIntent(pendingIntent)
             .build()
 
         try {
-            startForeground(NOTIFICATION_ID_SYNC, notif)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                startForeground(
+                    NOTIFICATION_ID_SYNC,
+                    notif,
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+                )
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(
+                    NOTIFICATION_ID_SYNC,
+                    notif,
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+                )
+            } else {
+                startForeground(NOTIFICATION_ID_SYNC, notif)
+            }
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -448,19 +486,19 @@ class LajuPushService : Service() {
     override fun onTaskRemoved(rootIntent: Intent?) {
         super.onTaskRemoved(rootIntent)
         try {
-            val restartIntent = Intent(applicationContext, LajuPushService::class.java).apply {
-                action = ACTION_START
+            val restartIntent = Intent(applicationContext, LajuPushReceiver::class.java).apply {
+                action = "com.laju.RESTART_PUSH_SERVICE"
             }
-            val restartPendingIntent = PendingIntent.getService(
+            val restartPendingIntent = PendingIntent.getBroadcast(
                 applicationContext,
                 1001,
                 restartIntent,
-                PendingIntent.FLAG_ONE_SHOT or PendingIntent.FLAG_IMMUTABLE
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
             val alarmManager = getSystemService(Context.ALARM_SERVICE) as? android.app.AlarmManager
             alarmManager?.set(
                 android.app.AlarmManager.ELAPSED_REALTIME,
-                android.os.SystemClock.elapsedRealtime() + 2000,
+                android.os.SystemClock.elapsedRealtime() + 1000,
                 restartPendingIntent
             )
         } catch (_: Exception) {}
