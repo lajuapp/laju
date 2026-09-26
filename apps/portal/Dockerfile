@@ -4,7 +4,7 @@ WORKDIR /app
 
 RUN corepack enable && corepack prepare pnpm@8.15.3 --activate
 
-ENV NODE_ENV=development
+ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
 ARG NEXT_PUBLIC_API_URL=https://api.laju.chat
@@ -23,7 +23,7 @@ WORKDIR /app/packages/shared-types
 RUN pnpm build || true
 
 WORKDIR /app/apps/portal
-RUN pnpm run build
+RUN NODE_ENV=production pnpm run build
 
 FROM node:20-slim AS runner
 
