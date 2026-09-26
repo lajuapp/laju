@@ -11,13 +11,11 @@ export const dynamic = 'force-dynamic';
 
 async function getLatestAppConfig() {
   try {
-    const apiUrl =
-      process.env.INTERNAL_API_URL ||
-      process.env.NEXT_PUBLIC_API_URL ||
-      'http://localhost:3000';
+    const raw = (process.env.INTERNAL_API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000').trim();
+    const apiUrl = raw.startsWith('http://') || raw.startsWith('https://') ? raw.replace(/\/+$/, '') : `https://${raw.replace(/\/+$/, '')}`;
 
     const res = await fetch(`${apiUrl}/admin/app-config/public`, {
-      next: { revalidate: 30 },
+      cache: 'no-store',
     });
 
     if (res.ok) {
@@ -37,7 +35,10 @@ function formatFileSize(bytes?: number | null) {
 
 export default async function DownloadPage() {
   const config = await getLatestAppConfig();
-  const publicApiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://api.laju.chat';
+  const rawPublicUrl = (process.env.NEXT_PUBLIC_API_URL || 'https://api.laju.chat').trim();
+  const publicApiUrl = rawPublicUrl.startsWith('http://') || rawPublicUrl.startsWith('https://')
+    ? rawPublicUrl.replace(/\/+$/, '')
+    : `https://${rawPublicUrl.replace(/\/+$/, '')}`;
 
   const version = config?.latestAndroidVersion || '1.0.0';
   const sizeText = formatFileSize(config?.apkSize);

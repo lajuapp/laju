@@ -11,13 +11,11 @@ export const dynamic = 'force-dynamic';
 
 async function getGroupInviteInfo(code: string) {
   try {
-    const apiUrl =
-      process.env.INTERNAL_API_URL ||
-      process.env.NEXT_PUBLIC_API_URL ||
-      'http://localhost:3000';
+    const raw = (process.env.INTERNAL_API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000').trim();
+    const apiUrl = raw.startsWith('http://') || raw.startsWith('https://') ? raw.replace(/\/+$/, '') : `https://${raw.replace(/\/+$/, '')}`;
 
     const res = await fetch(`${apiUrl}/conversations/invite/${encodeURIComponent(code)}/info`, {
-      next: { revalidate: 60 },
+      cache: 'no-store',
     });
 
     if (res.ok) {

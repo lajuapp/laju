@@ -23,23 +23,27 @@ RUN NODE_ENV=development pnpm install --frozen-lockfile=false --prod=false
 WORKDIR /app/packages/shared-types
 RUN pnpm build || true
 
-WORKDIR /app
-RUN pnpm --filter @secure-messenger/portal build
+WORKDIR /app/apps/portal
+RUN pnpm run build 2>&1 || (echo "=== NEXT BUILD ERROR ===" >&2 && pnpm run build >&2 && exit 1)
 
 FROM node:20-alpine AS runner
 
 WORKDIR /app
 
 RUN apk add --no-cache libc6-compat
+RUN corepack enable && corepack prepare pnpm@8.15.3 --activate
 
 ENV NODE_ENV=production
 ENV PORT=3002
 ENV NEXT_TELEMETRY_DISABLED=1
 
-COPY --from=builder /app/apps/portal/.next/standalone ./
-COPY --from=builder /app/apps/portal/.next/static ./apps/portal/.next/static
-COPY --from=builder /app/apps/portal/public ./apps/portal/public
+COPY --chown=node:node --from=builder /app/package.json /app/pnpm-workspace.yaml ./
+COPY --chown=node:node --from=builder /app/node_modules ./node_modules
+COPY --chown=node:node --from=builder /app/packages/shared-types ./packages/shared-types
+COPY --chown=node:node --from=builder /app/apps/portal ./apps/portal
+
+WORKDIR /app/apps/portal
 
 EXPOSE 3002
 
-CMD ["node", "apps/portal/server.js"]
+CMD ["node_modules/.bin/next", "start", "-p", "3002"]
