@@ -682,14 +682,18 @@ class CallSessionController extends ChangeNotifier with WidgetsBindingObserver {
         _declinedCallId = null;
         if (_lastRingingCallId != null) {
           // Caller ended or cancelled before receiver answered -> Log as missed call!
+          final missedCallId = _lastRingingCallId;
           final missedName = _lastRingingCallerName ?? 'Panggilan';
           final missedId = _lastRingingCallerId;
           final missedPhone = _lastRingingCallerPhone;
           final missedAvatar = _lastRingingCallerAvatar ?? _resolveAvatar(missedId, missedPhone, missedName);
           final missedIsVideo = _lastRingingIsVideo;
+          final logId = (missedCallId != null && missedCallId.isNotEmpty && !missedCallId.startsWith('call-'))
+              ? missedCallId
+              : 'call-log-${DateTime.now().millisecondsSinceEpoch}';
 
           LocalDatabase.instance.insertCallLog(
-            id: 'call-log-${DateTime.now().millisecondsSinceEpoch}',
+            id: logId,
             contactName: missedName,
             contactId: missedId,
             contactPhone: missedPhone,
@@ -863,8 +867,11 @@ class CallSessionController extends ChangeNotifier with WidgetsBindingObserver {
     AppNotificationService.instance.dismissAll();
 
     final resolvedAvatar = avatarUrl ?? _resolveAvatar(callerId, callerPhone, callerName);
+    final logId = (incomingCallId.isNotEmpty && !incomingCallId.startsWith('call-'))
+        ? incomingCallId
+        : 'call-log-${DateTime.now().millisecondsSinceEpoch}';
     LocalDatabase.instance.insertCallLog(
-      id: 'call-log-${DateTime.now().millisecondsSinceEpoch}',
+      id: logId,
       contactName: callerName,
       contactId: callerId ?? 'unknown',
       contactPhone: callerPhone,

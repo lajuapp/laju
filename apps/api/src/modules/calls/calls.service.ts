@@ -607,14 +607,9 @@ export class CallsService {
   async getCallHistory(userId: string) {
     const calls = await this.prisma.call.findMany({
       where: {
-        OR: [
-          { initiatorId: userId },
-          {
-            participants: {
-              some: { userId }
-            }
-          }
-        ]
+        participants: {
+          some: { userId }
+        }
       },
       include: {
         participants: {
