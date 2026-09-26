@@ -73,6 +73,26 @@ services:
         condition: service_healthy
     networks: [internal, edge]
 
+  portal:
+    container_name: laju-portal
+    build:
+      context: .
+      dockerfile: apps/portal/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://api.laju.chat}
+        NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-https://laju.chat}
+    restart: unless-stopped
+    env_file:
+      - .env
+    expose:
+      - "3002"
+    ports:
+      - "3002:3002"
+    depends_on:
+      api:
+        condition: service_healthy
+    networks: [internal, edge]
+
   postgres:
     container_name: laju-postgres
     image: postgres:16-alpine
