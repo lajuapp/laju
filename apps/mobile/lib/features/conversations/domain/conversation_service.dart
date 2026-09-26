@@ -585,16 +585,16 @@ class ConversationService {
         body: {
           'type': 'GROUP',
           'title': title,
+          if (description != null && description.isNotEmpty) 'description': description,
           'participantUserIds': validParticipants,
         },
       );
 
       if (response.isSuccess && response.rawJson is Map) {
-        final convId = response.rawJson['id'];
-        if (description != null && description.isNotEmpty && convId != null) {
-          await updateGroup(conversationId: convId, description: description);
-        }
+        final convId = response.rawJson['id']?.toString();
         return convId;
+      } else {
+        debugPrint('[ConversationService] createGroupConversation failed: ${response.statusCode} ${response.errorMessage}');
       }
     } catch (e) {
       debugPrint('[ConversationService] createGroupConversation error: $e');

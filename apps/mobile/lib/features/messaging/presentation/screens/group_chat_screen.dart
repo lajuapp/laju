@@ -57,6 +57,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
     }
     _loadMessages();
     _startPolling();
+    GroupController.instance.fetchGroupFromBackend(widget.groupId);
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _scrollToBottom(immediate: true);
@@ -670,8 +671,12 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
       animation: GroupController.instance,
       builder: (context, _) {
         final group = GroupController.instance.getGroup(widget.groupId);
-        final displayName = group?.name ?? widget.groupName ?? 'Operations Team';
-        final memberCount = group?.members.length ?? 6;
+        final displayName = (group?.name != null && group!.name.isNotEmpty)
+            ? group.name
+            : ((widget.groupName != null && widget.groupName!.isNotEmpty)
+                ? widget.groupName!
+                : context.tr('groupChat'));
+        final memberCount = group?.members.length ?? 0;
         final isUserAdmin = GroupController.instance.isCurrentUserAdmin(widget.groupId);
         final canSend = group == null || group.canSendMessages || isUserAdmin;
 
@@ -1021,7 +1026,9 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                                     );
                                   }
                                   return Text(
-                                    '$memberCount ${context.tr('members')}',
+                                    memberCount > 0
+                                        ? '$memberCount ${context.tr('members')}'
+                                        : context.tr('groupChat'),
                                     style: TextStyle(
                                       fontSize: 11,
                                       color: isDark ? AppColors.darkTextSecondary : const Color(0xFF6B7280),

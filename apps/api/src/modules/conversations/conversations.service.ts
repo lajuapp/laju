@@ -230,12 +230,36 @@ export class ConversationsService {
             payload: JSON.stringify({
               type: dto.type,
               creatorId: currentUserId,
+              title: dto.title || 'Grup Baru',
+              description: dto.description || null,
               participants: [currentUserId, ...uniqueMemberIds]
             })
           }
         });
 
-        return tx.conversation.findUnique({
+        if (dto.description && this.redis) {
+          try {
+            await this.redis.set(`conversation:${conv.id}:description`, dto.description);
+          } catch (_) {}
+        }
+
+        // Notify other members via Redis event stream
+        try {
+          const publisher = this.redis?.getClient();
+          if (publisher) {
+            const payload = JSON.stringify({
+              type: 'NEW_CONVERSATION',
+              conversationId: conv.id,
+              title: dto.title || 'Grup Baru',
+              creatorId: currentUserId
+            });
+            for (const memberId of uniqueMemberIds) {
+              publisher.publish(`user:${memberId}`, payload).catch(() => {});
+            }
+          }
+        } catch (_) {}
+
+        const created = await tx.conversation.findUnique({
           where: { id: conv.id },
           include: {
             members: {
@@ -247,6 +271,11 @@ export class ConversationsService {
             }
           }
         });
+
+        return {
+          ...created,
+          description: dto.description || null
+        };
       });
     }
   }
@@ -337,8 +366,24 @@ export class ConversationsService {
       })
     );
 
+    const [description, avatarUrl, permissionsStr] = await Promise.all([
+      this.redis?.get(`conversation:${conversationId}:description`).catch(() => null),
+      this.redis?.get(`conversation:${conversationId}:avatarUrl`).catch(() => null),
+      this.redis?.get(`conversation:${conversationId}:permissions`).catch(() => null)
+    ]);
+
+    let permissions: any = undefined;
+    if (permissionsStr) {
+      try {
+        permissions = JSON.parse(permissionsStr);
+      } catch (_) {}
+    }
+
     return {
       ...conv,
+      description: description ?? undefined,
+      avatarUrl: avatarUrl ?? undefined,
+      permissions,
       members: enrichedMembers
     };
   }
@@ -458,7 +503,22 @@ export class ConversationsService {
         }
       });
 
-      return conv;
+      if (dto.description !== undefined && this.redis) {
+        try {
+          await this.redis.set(`conversation:${conversationId}:description`, dto.description);
+        } catch (_) {}
+      }
+      if (dto.permissions !== undefined && this.redis) {
+        try {
+          await this.redis.set(`conversation:${conversationId}:permissions`, JSON.stringify(dto.permissions));
+        } catch (_) {}
+      }
+
+      return {
+        ...conv,
+        description: dto.description,
+        permissions: dto.permissions
+      };
     });
 
     return updated;

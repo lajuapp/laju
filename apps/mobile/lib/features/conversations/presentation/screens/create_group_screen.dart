@@ -30,8 +30,9 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
         _availableContacts = results.map((u) => GroupMemberItem(
           id: u.id,
           name: u.username,
-          phone: '@${u.username}',
+          phone: (u.phoneNumber != null && u.phoneNumber!.isNotEmpty) ? u.phoneNumber! : '@${u.username}',
           role: u.status ?? 'Pengguna Terverifikasi LAJU',
+          avatarUrl: u.avatarUrl,
           isOnline: true,
         )).toList();
       });
@@ -45,8 +46,9 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
         _availableContacts = results.map((u) => GroupMemberItem(
           id: u.id,
           name: u.username,
-          phone: '@${u.username}',
+          phone: (u.phoneNumber != null && u.phoneNumber!.isNotEmpty) ? u.phoneNumber! : '@${u.username}',
           role: u.status ?? 'Pengguna Terverifikasi LAJU',
+          avatarUrl: u.avatarUrl,
           isOnline: true,
         )).toList();
       });
@@ -165,6 +167,7 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
                         children: [
                           ModernAvatar(
                             name: member.name,
+                            imagePath: member.avatarUrl,
                             radius: 24,
                             isVerified: false,
                           ),
@@ -262,6 +265,7 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
                   onTap: () => _toggleContact(contact.id),
                   leading: ModernAvatar(
                     name: contact.name,
+                    imagePath: contact.avatarUrl,
                     radius: 22,
                     isOnline: contact.isOnline,
                     isVerified: true,

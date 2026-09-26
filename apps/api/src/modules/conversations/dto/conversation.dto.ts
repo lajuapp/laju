@@ -9,6 +9,10 @@ export class CreateConversationDto {
   @IsOptional()
   title?: string;
 
+  @IsString()
+  @IsOptional()
+  description?: string;
+
   @IsArray()
   @IsString({ each: true })
   @IsNotEmpty({ each: true })

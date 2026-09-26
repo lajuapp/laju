@@ -213,6 +213,9 @@ class _CreateGroupDetailsScreenState extends State<CreateGroupDetailsScreen> {
       ),
     ]);
 
+    // Sync conversations list in background so all home listeners update immediately
+    ConversationService.instance.fetchConversations().catchError((_) => <ConversationModel>[]);
+
     if (!mounted) return;
 
     LajuToast.success(context, '${context.tr('groupCreated')} "$name"');
