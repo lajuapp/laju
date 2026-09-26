@@ -273,7 +273,9 @@ class LajuPushService : Service() {
                     val callId = obj.optString("callId", "")
                     val callerName = obj.optString("initiatorName", "Kontak")
                     val isVideo = obj.optBoolean("isVideo", false)
-                    showIncomingCallNotification(callId, callerName, isVideo)
+                    if (!MainActivity.isAppInForeground) {
+                        showIncomingCallNotification(callId, callerName, isVideo)
+                    }
                 }
                 "NEW_MESSAGE" -> {
                     val convId = obj.optString("conversationId", "")

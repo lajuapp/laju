@@ -21,8 +21,9 @@ enum CallStatus {
   ended,
 }
 
-class CallSessionController extends ChangeNotifier {
+class CallSessionController extends ChangeNotifier with WidgetsBindingObserver {
   CallSessionController._() {
+    WidgetsBinding.instance.addObserver(this);
     _initChannelHandler();
     _startIncomingCallPoller();
     checkLaunchPayload();
@@ -36,6 +37,23 @@ class CallSessionController extends ChangeNotifier {
     };
   }
   static final CallSessionController instance = CallSessionController._();
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused) {
+      // If an incoming call is ringing and user minimizes app, elevate to Android system notification
+      if (_lastRingingCallId != null && !_isActive) {
+        _systemNotifChannel.invokeMethod('showCallNotification', {
+          'callId': _lastRingingCallId,
+          'callerName': _lastRingingCallerName ?? 'Panggilan',
+          'isVideo': _lastRingingIsVideo,
+        }).catchError((_) {});
+      }
+    } else if (state == AppLifecycleState.resumed) {
+      // Returned to foreground: cancel duplicate system notification so user only interacts with in-app banner
+      _systemNotifChannel.invokeMethod('cancelNotification', {'id': 9999}).catchError((_) {});
+    }
+  }
 
   @override
   void notifyListeners() {
@@ -625,34 +643,40 @@ class CallSessionController extends ChangeNotifier {
           _lastRingingCallerAvatar = resolvedAvatar;
           _lastRingingIsVideo = isVideo;
 
-          // Trigger native Android system notification with ringing tone and full-screen heads-up
-          _systemNotifChannel.invokeMethod('showCallNotification', {
-            'callId': incomingCallId,
-            'callerName': callerName,
-            'isVideo': isVideo,
-          }).catchError((_) {});
+          final isForeground = WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
 
-          AppNotificationService.instance.showIncomingCall(
-            callerName: callerName,
-            isVideo: isVideo,
-            avatarUrl: resolvedAvatar,
-            onAccept: () => answerIncomingCall(
-              incomingCallId,
+          if (isForeground) {
+            // Foreground: ONLY show in-app popup overlay banner. Cancel any system notification.
+            _systemNotifChannel.invokeMethod('cancelNotification', {'id': 9999}).catchError((_) {});
+            AppNotificationService.instance.showIncomingCall(
               callerName: callerName,
               isVideo: isVideo,
-              callerId: callerId,
-              callerPhone: callerPhone,
               avatarUrl: resolvedAvatar,
-            ),
-            onDecline: () => declineIncomingCall(
-              incomingCallId,
-              callerName: callerName,
-              isVideo: isVideo,
-              callerId: callerId,
-              callerPhone: callerPhone,
-              avatarUrl: resolvedAvatar,
-            ),
-          );
+              onAccept: () => answerIncomingCall(
+                incomingCallId,
+                callerName: callerName,
+                isVideo: isVideo,
+                callerId: callerId,
+                callerPhone: callerPhone,
+                avatarUrl: resolvedAvatar,
+              ),
+              onDecline: () => declineIncomingCall(
+                incomingCallId,
+                callerName: callerName,
+                isVideo: isVideo,
+                callerId: callerId,
+                callerPhone: callerPhone,
+                avatarUrl: resolvedAvatar,
+              ),
+            );
+          } else {
+            // Background / Minimized: Trigger native Android system notification
+            _systemNotifChannel.invokeMethod('showCallNotification', {
+              'callId': incomingCallId,
+              'callerName': callerName,
+              'isVideo': isVideo,
+            }).catchError((_) {});
+          }
         }
       } else {
         _declinedCallId = null;
@@ -742,8 +766,15 @@ class CallSessionController extends ChangeNotifier {
     String? callerPhone,
     String? avatarUrl,
   }) async {
+    // Immediately stop ringing, dismiss all banners/notifications, and flag session active
+    _isActive = true;
+    _lastRingingCallId = null;
+    _lastRingingCallerName = null;
+    _lastRingingCallerId = null;
+    _lastRingingCallerPhone = null;
+    _lastRingingCallerAvatar = null;
     _systemNotifChannel.invokeMethod('cancelNotification', {'id': 9999}).catchError((_) {});
-    AppNotificationService.instance.dismiss();
+    AppNotificationService.instance.dismissAll();
 
     var effectiveIsVideo = isVideo;
     final permResult = await CallPermissionService.instance.checkAndRequestPermissions(
@@ -773,18 +804,12 @@ class CallSessionController extends ChangeNotifier {
     _contactUserId = callerId;
     _contactPhone = callerPhone;
     _avatarUrl = avatarUrl ?? _resolveAvatar(callerId, callerPhone, callerName);
-    _isActive = true;
     _isOutgoing = false;
     _isVideo = effectiveIsVideo;
     _isVideoOn = effectiveIsVideo;
     _isSpeaker = effectiveIsVideo;
     _durationSeconds = 0;
     _hasLoggedCurrentCall = false;
-    _lastRingingCallId = null;
-    _lastRingingCallerName = null;
-    _lastRingingCallerId = null;
-    _lastRingingCallerPhone = null;
-    _lastRingingCallerAvatar = null;
     _status = CallStatus.connected;
     _startTimer();
     _initCallAudio();
@@ -826,15 +851,17 @@ class CallSessionController extends ChangeNotifier {
     String? callerPhone,
     String? avatarUrl,
   }) async {
-    _systemNotifChannel.invokeMethod('cancelNotification', {'id': 9999}).catchError((_) {});
-    AppNotificationService.instance.dismiss();
-
+    _isActive = false;
+    _status = CallStatus.idle;
     _declinedCallId = incomingCallId;
     _lastRingingCallId = null;
     _lastRingingCallerName = null;
     _lastRingingCallerId = null;
     _lastRingingCallerPhone = null;
     _lastRingingCallerAvatar = null;
+    _systemNotifChannel.invokeMethod('cancelNotification', {'id': 9999}).catchError((_) {});
+    AppNotificationService.instance.dismissAll();
+
     final resolvedAvatar = avatarUrl ?? _resolveAvatar(callerId, callerPhone, callerName);
     LocalDatabase.instance.insertCallLog(
       id: 'call-log-${DateTime.now().millisecondsSinceEpoch}',

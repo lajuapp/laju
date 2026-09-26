@@ -170,15 +170,27 @@ class AppNotificationService extends ChangeNotifier {
   }
 
 
-  void dismiss() {
+  void dismissAll() {
     _dismissTimer?.cancel();
     try {
       LajuSoundService.stopRingtone();
     } catch (_) {}
+    var changed = false;
     if (_currentNotification != null) {
       _currentNotification = null;
+      changed = true;
+    }
+    if (_currentPopupNotification != null) {
+      _currentPopupNotification = null;
+      changed = true;
+    }
+    if (changed) {
       notifyListeners();
     }
+  }
+
+  void dismiss() {
+    dismissAll();
   }
 
   void dismissPopup() {

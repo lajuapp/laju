@@ -129,6 +129,7 @@ class MainActivity : FlutterFragmentActivity() {
 
     companion object {
         var instance: MainActivity? = null
+        var isAppInForeground: Boolean = false
     }
 
     override fun onCreate(savedInstanceState: android.os.Bundle?) {
@@ -136,6 +137,22 @@ class MainActivity : FlutterFragmentActivity() {
         super.onCreate(savedInstanceState)
         createNotificationChannels()
         handleIntent(intent)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        isAppInForeground = true
+    }
+
+    override fun onPause() {
+        super.onPause()
+        isAppInForeground = false
+    }
+
+    override fun onDestroy() {
+        isAppInForeground = false
+        if (instance == this) instance = null
+        super.onDestroy()
     }
 
     override fun onNewIntent(intent: Intent) {
