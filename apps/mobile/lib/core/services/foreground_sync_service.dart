@@ -23,7 +23,7 @@ class ForegroundSyncService with WidgetsBindingObserver {
 
   void start() {
     _poller?.cancel();
-    _poller = Timer.periodic(const Duration(milliseconds: 3000), (_) {
+    _poller = Timer.periodic(const Duration(milliseconds: 1500), (_) {
       tick();
     });
     // Fire an immediate tick

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../../core/core.dart';
 import '../../../home/presentation/screens/home_screen.dart';
 import '../../domain/call_session_controller.dart';
+import '../../domain/webrtc_call_service.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 
 class ActiveCallScreen extends StatefulWidget {
@@ -84,8 +85,8 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
         _isVideoEnabled = session.isVideoOn;
       });
     }
-    if (session.status == CallStatus.rejected || session.status == CallStatus.ended) {
-      Future.delayed(const Duration(milliseconds: 700), () {
+    if (session.status == CallStatus.rejected || session.status == CallStatus.ended || session.status == CallStatus.busy) {
+      Future.delayed(const Duration(milliseconds: 1200), () {
         if (mounted) {
           _exitCall();
         }
@@ -142,6 +143,7 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
       case CallStatus.connected:
         return const Color(0xFF10B981).withValues(alpha: 0.15);
       case CallStatus.rejected:
+      case CallStatus.busy:
         return AppColors.danger.withValues(alpha: 0.18);
       case CallStatus.ended:
       default:
@@ -158,6 +160,7 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
       case CallStatus.connected:
         return const Color(0xFF10B981).withValues(alpha: 0.4);
       case CallStatus.rejected:
+      case CallStatus.busy:
         return AppColors.danger.withValues(alpha: 0.5);
       case CallStatus.ended:
       default:
@@ -174,6 +177,7 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
       case CallStatus.connected:
         return const Color(0xFF10B981);
       case CallStatus.rejected:
+      case CallStatus.busy:
         return AppColors.danger;
       case CallStatus.ended:
       default:
@@ -768,82 +772,142 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
 
   Widget _buildRemoteVideoView({required bool isPip, required Color textPrimary, required Color textSecondary}) {
     final session = CallSessionController.instance;
-    if (session.webRtcRemoteRenderer != null && session.isWebRtcRemoteVideoReady) {
-      return SizedBox.expand(
-        child: RTCVideoView(
-          session.webRtcRemoteRenderer!,
-          objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
-        ),
-      );
-    }
+    return ValueListenableBuilder<RTCPeerConnectionState>(
+      valueListenable: WebRTCCallService.instance.connectionStateNotifier,
+      builder: (context, connState, _) {
+        final isConnectingOrDisconnected =
+            connState == RTCPeerConnectionState.RTCPeerConnectionStateDisconnected ||
+            connState == RTCPeerConnectionState.RTCPeerConnectionStateConnecting;
 
-    // Modern elegant placeholder (gradient + frosted avatar) while waiting for peer or when peer video is off
-    return Container(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            Color(0xFF0F172A),
-            Color(0xFF1E293B),
-            Color(0xFF0B132B),
-          ],
-        ),
-      ),
-      width: double.infinity,
-      height: double.infinity,
-      child: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            ModernAvatar(
-              name: widget.contactName,
-              imagePath: _resolvedAvatarUrl,
-              radius: isPip ? 26 : 48,
-              isVerified: true,
-            ),
-            SizedBox(height: isPip ? 6 : 14),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 6),
-              child: Text(
-                widget.contactName,
-                style: TextStyle(
-                  fontSize: isPip ? 11 : 16,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.white,
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+        if (session.webRtcRemoteRenderer != null && session.isWebRtcRemoteVideoReady) {
+          return Stack(
+            fit: StackFit.expand,
+            children: [
+              RTCVideoView(
+                session.webRtcRemoteRenderer!,
+                objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
               ),
-            ),
-            const SizedBox(height: 4),
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: isPip ? 5 : 7,
-                  height: isPip ? 5 : 7,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: session.status == CallStatus.connected ? const Color(0xFF10B981) : AppColors.primary,
+              if (isConnectingOrDisconnected && !isPip)
+                Positioned(
+                  top: 90,
+                  left: 20,
+                  right: 20,
+                  child: Center(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.75),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: Colors.amber.withValues(alpha: 0.4), width: 1),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: const [
+                          SizedBox(
+                            width: 13,
+                            height: 13,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.amber),
+                          ),
+                          SizedBox(width: 8),
+                          Text(
+                            'Koneksi tidak stabil, memulihkan video...',
+                            style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
                 ),
-                const SizedBox(width: 4),
-                Text(
-                  session.status == CallStatus.connected
-                      ? 'Menyambungkan video HD...'
-                      : session.statusLabel,
-                  style: TextStyle(
-                    fontSize: isPip ? 9 : 12,
-                    fontWeight: FontWeight.w600,
-                    color: const Color(0xFF94A3B8),
+            ],
+          );
+        }
+
+        // Modern elegant placeholder (gradient + frosted avatar) while waiting for peer or when peer video is off
+        return Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                Color(0xFF0F172A),
+                Color(0xFF1E293B),
+                Color(0xFF0B132B),
+              ],
+            ),
+          ),
+          width: double.infinity,
+          height: double.infinity,
+          child: Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                ModernAvatar(
+                  name: widget.contactName,
+                  imagePath: _resolvedAvatarUrl,
+                  radius: isPip ? 26 : 48,
+                  isVerified: true,
+                ),
+                SizedBox(height: isPip ? 6 : 14),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 6),
+                  child: Text(
+                    widget.contactName,
+                    style: TextStyle(
+                      fontSize: isPip ? 11 : 16,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (isConnectingOrDisconnected) ...[
+                      const SizedBox(
+                        width: 11,
+                        height: 11,
+                        child: CircularProgressIndicator(strokeWidth: 1.8, color: Colors.amber),
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        'Menghubungkan sinyal video...',
+                        style: TextStyle(
+                          fontSize: isPip ? 9 : 12,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.amber,
+                        ),
+                      ),
+                    ] else ...[
+                      Container(
+                        width: isPip ? 5 : 7,
+                        height: isPip ? 5 : 7,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: session.status == CallStatus.connected ? const Color(0xFF10B981) : AppColors.primary,
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        session.status == CallStatus.connected
+                            ? 'Menyambungkan video HD...'
+                            : session.statusLabel,
+                        style: TextStyle(
+                          fontSize: isPip ? 9 : 12,
+                          fontWeight: FontWeight.w600,
+                          color: const Color(0xFF94A3B8),
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
               ],
             ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 }

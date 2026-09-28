@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import '../../../../core/core.dart';
-import 'wallpaper_settings_screen.dart';
 
 class AppearanceSettingsScreen extends StatelessWidget {
   const AppearanceSettingsScreen({super.key});
@@ -151,11 +150,6 @@ class AppearanceSettingsScreen extends StatelessWidget {
         final currentMode = ThemeModeController.instance.value;
         final isDark = ThemeModeController.instance.isDarkMode(context);
         final langCode = LocaleController.instance.value.languageCode;
-        final activeWallpaperId = ChatAppearanceController.instance.selectedWallpaper;
-        final activeWallpaper = kPresetWallpapers.firstWhere(
-          (w) => w.id == activeWallpaperId,
-          orElse: () => kPresetWallpapers.first,
-        );
         final activeFontSize = ChatAppearanceController.instance.fontSize;
 
         return Scaffold(
@@ -264,76 +258,12 @@ class AppearanceSettingsScreen extends StatelessWidget {
                   blurSigma: 16,
                   child: Column(
                     children: [
-                      // Wallpaper tile
-                      Material(
-                        color: Colors.transparent,
-                        child: ListTile(
-                          shape: const RoundedRectangleBorder(
-                            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-                          ),
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                          leading: Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.04),
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: Icon(Icons.wallpaper_rounded, color: isDark ? AppColors.primary : const Color(0xFF2563EB), size: 20),
-                          ),
-                          title: Text(
-                            context.tr('chatWallpaper'),
-                            style: TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w600,
-                              color: isDark ? Colors.white : const Color(0xFF111827),
-                            ),
-                          ),
-                          subtitle: Text(
-                            activeWallpaper.getName(langCode),
-                            style: TextStyle(
-                              fontSize: 12.5,
-                              color: isDark ? const Color(0xFF9CA3AF) : const Color(0xFF6B7280),
-                            ),
-                          ),
-                          trailing: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Container(
-                                width: 22,
-                                height: 22,
-                                decoration: BoxDecoration(
-                                  color: activeWallpaper.backgroundColor,
-                                  shape: BoxShape.circle,
-                                  border: Border.all(color: Colors.grey.shade400, width: 1),
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              const Icon(Icons.arrow_forward_ios_rounded, size: 14, color: Color(0xFF9CA3AF)),
-                            ],
-                          ),
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(builder: (context) => const WallpaperSettingsScreen()),
-                            );
-                          },
-                        ),
-                      ),
-
-                      Divider(
-                        height: 1,
-                        thickness: 0.5,
-                        indent: 56,
-                        endIndent: 16,
-                        color: isDark ? Colors.white.withValues(alpha: 0.07) : const Color(0xFFE2E8F0),
-                      ),
-
                       // Font size tile
                       Material(
                         color: Colors.transparent,
                         child: ListTile(
-                          shape: const RoundedRectangleBorder(
-                            borderRadius: BorderRadius.vertical(bottom: Radius.circular(20)),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(20),
                           ),
                           contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                           leading: Container(

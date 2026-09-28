@@ -154,6 +154,24 @@ class MainActivity : FlutterFragmentActivity() {
     override fun onDestroy() {
         isAppInForeground = false
         if (instance == this) instance = null
+        stopCallTone()
+        stopRealtimeCallAudio()
+        try {
+            mediaRecorder?.stop()
+        } catch (_: Exception) {}
+        try {
+            mediaRecorder?.release()
+        } catch (_: Exception) {}
+        mediaRecorder = null
+
+        try {
+            mediaPlayer?.stop()
+        } catch (_: Exception) {}
+        try {
+            mediaPlayer?.release()
+        } catch (_: Exception) {}
+        mediaPlayer = null
+
         super.onDestroy()
     }
 
@@ -2604,27 +2622,5 @@ class MainActivity : FlutterFragmentActivity() {
                 result.success(data)
             }
         }.start()
-    }
-
-    override fun onDestroy() {
-        stopCallTone()
-        stopRealtimeCallAudio()
-        try {
-            mediaRecorder?.stop()
-        } catch (_: Exception) {}
-        try {
-            mediaRecorder?.release()
-        } catch (_: Exception) {}
-        mediaRecorder = null
-
-        try {
-            mediaPlayer?.stop()
-        } catch (_: Exception) {}
-        try {
-            mediaPlayer?.release()
-        } catch (_: Exception) {}
-        mediaPlayer = null
-
-        super.onDestroy()
     }
 }

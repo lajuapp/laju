@@ -18,6 +18,7 @@ import 'image_preview_send_screen.dart';
 import 'document_preview_send_screen.dart';
 import '../widgets/sticker_picker_sheet.dart';
 import '../../domain/models/sticker_model.dart';
+import 'chat_media_gallery_screen.dart';
 
 class ChatScreen extends StatefulWidget {
   final String conversationId;
@@ -131,7 +132,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   void _startPolling() {
     _pollTimer?.cancel();
-    _pollTimer = Timer.periodic(const Duration(milliseconds: 1500), (_) async {
+    _pollTimer = Timer.periodic(const Duration(milliseconds: 1000), (_) async {
       _syncMessages();
     });
   }
@@ -704,7 +705,7 @@ class _ChatScreenState extends State<ChatScreen> {
       senderName: 'You',
       content: sticker.name,
       attachmentName: sticker.id,
-      attachmentPath: sticker.assetPath,
+      attachmentPath: sticker.effectivePathOrUrl,
       timestamp: DateTime.now(),
       isOutgoing: true,
       contentType: MessageContentType.sticker,
@@ -724,7 +725,7 @@ class _ChatScreenState extends State<ChatScreen> {
       text: sticker.name,
       clientMessageId: stkId,
       messageType: 'STICKER',
-      attachmentPath: sticker.assetPath,
+      attachmentPath: sticker.effectivePathOrUrl,
       attachmentName: sticker.id,
       replyTo: replyToCopy,
     );
@@ -733,7 +734,7 @@ class _ChatScreenState extends State<ChatScreen> {
       setState(() {
         final idx = _messages.indexWhere((m) => m.id == stkId || m.clientMessageId == stkId);
         if (idx != -1) {
-          _messages[idx] = sent.copyWith(attachmentPath: sticker.assetPath);
+          _messages[idx] = sent.copyWith(attachmentPath: sticker.effectivePathOrUrl);
         }
       });
       _syncMessages();
@@ -755,114 +756,7 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  void _showMediaSheet(BuildContext context, bool isDark) {
-    final mediaList = _messages.where((m) => m.contentType == MessageContentType.attachment).toList();
-    if (mediaList.isEmpty) {
-      LajuToast.info(context, 'Belum ada media atau berkas dibagikan dalam obrolan ini');
-      return;
-    }
 
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: isDark ? const Color(0xFF0F172A) : Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (sheetContext) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'Media & Lampiran (${mediaList.length})',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                        color: isDark ? Colors.white : const Color(0xFF0F172A),
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.close_rounded),
-                      onPressed: () => Navigator.pop(sheetContext),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Flexible(
-                  child: ListView.separated(
-                    shrinkWrap: true,
-                    itemCount: mediaList.length,
-                    separatorBuilder: (_, __) => Divider(height: 1, color: isDark ? Colors.white10 : Colors.black12),
-                    itemBuilder: (ctx, i) {
-                      final item = mediaList[i];
-                      final name = item.attachmentName ?? item.content;
-                      final isImg = item.attachmentPath != null &&
-                          (item.attachmentPath!.startsWith('data:image') ||
-                              item.attachmentPath!.endsWith('.jpg') ||
-                              item.attachmentPath!.endsWith('.png') ||
-                              item.attachmentPath!.endsWith('.jpeg'));
-
-                      return ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        leading: Container(
-                          width: 42,
-                          height: 42,
-                          decoration: BoxDecoration(
-                            color: AppColors.primary.withValues(alpha: 0.15),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Icon(
-                            isImg ? Icons.image_rounded : Icons.insert_drive_file_rounded,
-                            color: AppColors.primary,
-                          ),
-                        ),
-                        title: Text(
-                          name,
-                          style: TextStyle(
-                            fontSize: 13.5,
-                            fontWeight: FontWeight.w600,
-                            color: isDark ? Colors.white : const Color(0xFF111827),
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        subtitle: Text(
-                          DateFormat('dd MMM yyyy, HH:mm').format(item.timestamp.toLocal()),
-                          style: TextStyle(
-                            fontSize: 11.5,
-                            color: isDark ? AppColors.darkTextSecondary : const Color(0xFF6B7280),
-                          ),
-                        ),
-                        onTap: () {
-                          Navigator.pop(sheetContext);
-                          if (isImg && item.attachmentPath != null) {
-                            LajuImageViewer.show(
-                              context,
-                              imagePath: item.attachmentPath!,
-                              title: item.isOutgoing ? 'Anda' : item.senderName,
-                              subtitle: DateFormat('dd MMM yyyy, HH:mm').format(item.timestamp.toLocal()),
-                            );
-                          } else {
-                            LajuToast.info(context, 'Membuka $name');
-                          }
-                        },
-                      );
-                    },
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
 
   void _confirmClearChat(BuildContext context, bool isDark) {
     showDialog(
@@ -903,13 +797,15 @@ class _ChatScreenState extends State<ChatScreen> {
                 foregroundColor: Colors.white,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
               ),
-              onPressed: () {
+              onPressed: () async {
                 Navigator.pop(dialogCtx);
                 setState(() {
                   _messages.clear();
                 });
-                ConversationService.instance.updateMemoryMessages(_conversationId, []);
-                LajuToast.info(context, 'Chat berhasil dibersihkan');
+                await ConversationService.instance.clearConversationMessages(_conversationId);
+                if (context.mounted) {
+                  LajuToast.info(context, 'Chat berhasil dibersihkan');
+                }
               },
               child: const Text('Bersihkan Pesan', style: TextStyle(fontWeight: FontWeight.w700)),
             ),
@@ -1166,7 +1062,16 @@ class _ChatScreenState extends State<ChatScreen> {
                         });
                         break;
                       case 'media':
-                        _showMediaSheet(context, isDark);
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => ChatMediaGalleryScreen(
+                              chatTitle: widget.title,
+                              conversationId: _conversationId,
+                              messages: _messages,
+                            ),
+                          ),
+                        );
                         break;
                       case 'search':
                         setState(() => _isSearching = true);
@@ -1175,7 +1080,10 @@ class _ChatScreenState extends State<ChatScreen> {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (context) => const WallpaperSettingsScreen(),
+                            builder: (context) => WallpaperSettingsScreen(
+                              chatId: _conversationId,
+                              chatTitle: widget.title,
+                            ),
                           ),
                         );
                         break;
@@ -1231,38 +1139,50 @@ class _ChatScreenState extends State<ChatScreen> {
         listenable: ChatAppearanceController.instance,
         builder: (context, _) {
           final isDark = ThemeModeController.instance.isDarkMode(context);
-          final activeWallpaperId = ChatAppearanceController.instance.selectedWallpaper;
-          final activeWallpaper = kPresetWallpapers.firstWhere(
-            (w) => w.id == activeWallpaperId,
-            orElse: () => kPresetWallpapers.first,
-          );
-          final assetPath = activeWallpaper.getAssetPath(isDark);
+          final chatWallpaperId = ChatAppearanceController.instance.getChatWallpaper(_conversationId);
+          final activeWallpaper = ChatAppearanceController.instance.findWallpaper(chatWallpaperId);
 
           final screenSize = MediaQuery.sizeOf(context);
+
+          // Clean neutral default background canvas when no wallpaper is selected
+          final defaultCanvasColor = isDark ? const Color(0xFF0B141A) : const Color(0xFFEFEAE2);
 
           return Stack(
             clipBehavior: Clip.hardEdge,
             children: [
-              // Fixed Background Wallpaper Color fallback (unaffected by keyboard resize)
+              // Fixed Background Layer (Clean Canvas or Configured Wallpaper)
               Positioned(
                 top: 0,
                 left: 0,
                 width: screenSize.width,
                 height: screenSize.height,
                 child: Container(
-                  color: isDark ? const Color(0xFF071216) : activeWallpaper.backgroundColor,
+                  decoration: BoxDecoration(
+                    color: activeWallpaper != null ? activeWallpaper.backgroundColor : defaultCanvasColor,
+                    gradient: activeWallpaper != null && activeWallpaper.category == 'GRADIENT'
+                        ? LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [
+                              activeWallpaper.backgroundColor,
+                              activeWallpaper.backgroundColor.withValues(alpha: 0.75),
+                              const Color(0xFF0F172A),
+                            ],
+                          )
+                        : null,
+                  ),
                 ),
               ),
 
-              // Fixed Wallpaper Image asset (never jumps/rescales when keyboard appears)
-              if (assetPath != null)
+              // Remote Wallpaper Image from Backoffice if present
+              if (activeWallpaper != null && activeWallpaper.hasRemoteImage)
                 Positioned(
                   top: 0,
                   left: 0,
                   width: screenSize.width,
                   height: screenSize.height,
-                  child: Image.asset(
-                    assetPath,
+                  child: Image.network(
+                    resolveMediaUrl(activeWallpaper.remoteImageUrl),
                     fit: BoxFit.cover,
                     alignment: Alignment.topCenter,
                     errorBuilder: (context, error, stackTrace) => const SizedBox(),

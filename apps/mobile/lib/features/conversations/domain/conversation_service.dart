@@ -121,6 +121,8 @@ class ConversationService {
   void updateMemoryMessages(String conversationId, List<MessageModel> messages) {
     if (messages.isNotEmpty) {
       _inMemoryMessages[conversationId] = List<MessageModel>.from(messages);
+    } else {
+      _inMemoryMessages[conversationId] = [];
     }
   }
 
@@ -279,6 +281,17 @@ class ConversationService {
           final msgs = item['messages'] as List?;
           if (msgs != null && msgs.isNotEmpty) {
             final latest = msgs[0];
+            final rawMsg = (latest['ciphertext'] ?? '') as String;
+            if (rawMsg.contains('"type":"wallpaper_change"') || rawMsg.contains('"wallpaper_change"')) {
+              try {
+                final parsed = jsonDecode(rawMsg);
+                if (parsed is Map && parsed['type'] == 'wallpaper_change') {
+                  final wpId = parsed['wallpaperId'] as String? ?? 'none';
+                  ChatAppearanceController.instance.syncRemoteChatWallpaper(convId, wpId);
+                }
+              } catch (_) {}
+            }
+
             final latestMsgId = latest['id'] as String?;
             final senderId = latest['senderUserId'] as String?;
 
@@ -287,7 +300,6 @@ class ConversationService {
                 _seenMessageIds.add(latestMsgId);
 
                 if (_isInitialSyncComplete) {
-                  final rawMsg = (latest['ciphertext'] ?? '') as String;
                   final msgType = latest['messageType'] as String?;
                   DataStorageController.instance.recordMessageReceived(
                     bytes: rawMsg.isNotEmpty ? rawMsg.length : 64,
@@ -322,7 +334,12 @@ class ConversationService {
                       final parsed = jsonDecode(preview);
                       final msgType = parsed['type'] as String?;
                       final cap = (parsed['caption'] ?? '') as String;
-                      if (msgType == 'document') {
+                      if (msgType == 'wallpaper_change') {
+                        final wpName = (parsed['wallpaperName'] ?? '') as String;
+                        preview = wpName == 'Default Polos'
+                            ? 'Menyetel wallpaper ke default'
+                            : 'Mengubah wallpaper ke "$wpName"';
+                      } else if (msgType == 'document') {
                         final fn = (parsed['fileName'] as String?) ?? 'Dokumen';
                         preview = cap.isNotEmpty ? cap : fn;
                       } else if (msgType == 'audio') {
@@ -423,7 +440,12 @@ class ConversationService {
               final parsed = jsonDecode(lastMsg);
               final msgType = parsed['type'] as String?;
               final cap = (parsed['caption'] ?? '') as String;
-              if (msgType == 'audio') {
+              if (msgType == 'wallpaper_change') {
+                final wpName = (parsed['wallpaperName'] ?? '') as String;
+                lastMsg = wpName == 'Default Polos'
+                    ? 'Menyetel wallpaper ke default'
+                    : 'Mengubah wallpaper ke "$wpName"';
+              } else if (msgType == 'audio') {
                 lastMsg = 'Pesan Suara';
               } else if (msgType == 'sticker') {
                 lastMsg = 'Stiker';
@@ -702,10 +724,21 @@ class ConversationService {
   /// Return messages from local SQLite cache for a conversation (offline-safe, instant).
   Future<List<MessageModel>> getMessagesFromCache(String conversationId) async {
     final cached = await LocalDatabase.instance.getMessages(conversationId);
-    if (cached.isNotEmpty) {
-      updateMemoryMessages(conversationId, cached);
+    final prefs = await SharedPreferences.getInstance();
+    final clearedStr = prefs.getString('laju_chat_cleared_at_$conversationId');
+    List<MessageModel> result = cached;
+    if (clearedStr != null) {
+      final clearedAt = DateTime.tryParse(clearedStr);
+      if (clearedAt != null) {
+        result = cached.where((m) => m.timestamp.isAfter(clearedAt)).toList();
+      }
     }
-    return cached;
+    if (result.isNotEmpty) {
+      updateMemoryMessages(conversationId, result);
+    } else {
+      updateMemoryMessages(conversationId, []);
+    }
+    return result;
   }
 
   /// Fetch message history for a conversation
@@ -769,6 +802,8 @@ class ConversationService {
                       conversationId: conversationId,
                       senderName: (r['senderName'] ?? 'Contact') as String,
                       content: (r['content'] ?? '') as String,
+                      attachmentPath: r['attachmentPath'] as String?,
+                      attachmentName: r['attachmentName'] as String?,
                       timestamp: DateTime.now(),
                       isOutgoing: false,
                       contentType: MessageContentType.values.firstWhere(
@@ -834,6 +869,18 @@ class ConversationService {
                     contentText = (parsed['caption'] ?? '') as String;
                   } else if (parsed['type'] == 'reply') {
                     contentText = (parsed['text'] ?? '') as String;
+                  } else if (parsed['type'] == 'wallpaper_change') {
+                    contentType = MessageContentType.systemNotice;
+                    final wpId = parsed['wallpaperId'] as String? ?? 'none';
+                    final wpName = (parsed['wallpaperName'] ?? (wpId == 'none' ? 'Default Polos' : wpId)) as String;
+                    final senderName = isOutgoing ? 'Anda' : (m['senderUser']?['username'] ?? 'Kontak');
+                    contentText = wpId == 'none'
+                        ? '$senderName menyetel wallpaper obrolan ke default'
+                        : '$senderName mengubah wallpaper obrolan menjadi "$wpName"';
+                    ChatAppearanceController.instance.syncRemoteChatWallpaper(conversationId, wpId);
+                    if (effectiveConvId != conversationId) {
+                      ChatAppearanceController.instance.syncRemoteChatWallpaper(effectiveConvId, wpId);
+                    }
                   }
                 }
               } catch (_) {}
@@ -906,10 +953,22 @@ class ConversationService {
           }).toList();
 
           final deduplicated = MessageModel.deduplicate(messages);
+          final prefs = await SharedPreferences.getInstance();
+          final clearedStr = prefs.getString('laju_chat_cleared_at_$conversationId') ??
+              prefs.getString('laju_chat_cleared_at_$effectiveConvId');
+          List<MessageModel> finalMessages = deduplicated;
+          if (clearedStr != null) {
+            final clearedAt = DateTime.tryParse(clearedStr);
+            if (clearedAt != null) {
+              finalMessages = deduplicated.where((m) => m.timestamp.isAfter(clearedAt)).toList();
+            }
+          }
           // Persist to local cache and memory cache
-          updateMemoryMessages(conversationId, deduplicated);
-          LocalDatabase.instance.upsertMessages(conversationId, deduplicated);
-          return deduplicated;
+          updateMemoryMessages(conversationId, finalMessages);
+          if (finalMessages.isNotEmpty) {
+            LocalDatabase.instance.upsertMessages(conversationId, finalMessages);
+          }
+          return finalMessages;
         }
       }
     } catch (e) {
@@ -940,6 +999,8 @@ class ConversationService {
         'senderName': replyTo.senderName,
         'content': replyTo.displaySnippet,
         'contentType': replyTo.contentType.name,
+        if (replyTo.attachmentPath != null) 'attachmentPath': replyTo.attachmentPath,
+        if (replyTo.attachmentName != null) 'attachmentName': replyTo.attachmentName,
       };
     }
 
@@ -1169,6 +1230,57 @@ class ConversationService {
     }
   }
 
+  /// Broadcast chat wallpaper change to all participants in conversation
+  Future<void> sendWallpaperChange({
+    required String conversationId,
+    required String wallpaperId,
+    String? wallpaperName,
+  }) async {
+    final wpName = wallpaperName ?? (wallpaperId == 'none' ? 'Default Polos' : wallpaperId);
+    final payload = jsonEncode({
+      'type': 'wallpaper_change',
+      'wallpaperId': wallpaperId,
+      'wallpaperName': wpName,
+    });
+
+    final msgId = 'wp-${DateTime.now().millisecondsSinceEpoch}';
+    final sent = await sendMessage(
+      conversationId: conversationId,
+      text: payload,
+      clientMessageId: msgId,
+      messageType: 'TEXT',
+    );
+
+    final noticeText = wallpaperId == 'none'
+        ? 'Anda menyetel wallpaper obrolan ke default'
+        : 'Anda mengubah wallpaper obrolan menjadi "$wpName"';
+
+    final systemMsg = (sent != null)
+        ? sent.copyWith(
+            contentType: MessageContentType.systemNotice,
+            content: noticeText,
+          )
+        : MessageModel(
+            id: msgId,
+            clientMessageId: msgId,
+            conversationId: conversationId,
+            senderName: 'You',
+            content: noticeText,
+            timestamp: DateTime.now(),
+            isOutgoing: true,
+            contentType: MessageContentType.systemNotice,
+            status: MessageDeliveryStatus.sent,
+          );
+
+    await LocalDatabase.instance.insertSentMessage(systemMsg);
+
+    final mem = _inMemoryMessages[conversationId];
+    if (mem != null) {
+      mem.add(systemMsg);
+      _inMemoryMessages[conversationId] = mem;
+    }
+  }
+
   /// Delete a message for everyone
   Future<bool> deleteMessage(String messageId) async {
     try {
@@ -1233,6 +1345,46 @@ class ConversationService {
     } catch (e) {
       debugPrint('[ConversationService] toggleReaction error: $e');
       return false;
+    }
+  }
+
+  /// Clear all messages of a conversation locally on this device
+  Future<void> clearConversationMessages(String conversationId) async {
+    final effectiveConvId = _tempToRealConvMap[conversationId] ?? conversationId;
+
+    // 1. Clear in-memory messages
+    _inMemoryMessages[conversationId] = [];
+    if (effectiveConvId != conversationId) {
+      _inMemoryMessages[effectiveConvId] = [];
+    }
+
+    // 2. Clear SQLite local database messages
+    await LocalDatabase.instance.clearMessages(conversationId);
+    if (effectiveConvId != conversationId) {
+      await LocalDatabase.instance.clearMessages(effectiveConvId);
+    }
+
+    // 3. Save cleared timestamp to SharedPreferences so background sync does not resurrect old messages
+    final nowIso = DateTime.now().toIso8601String();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('laju_chat_cleared_at_$conversationId', nowIso);
+    if (effectiveConvId != conversationId) {
+      await prefs.setString('laju_chat_cleared_at_$effectiveConvId', nowIso);
+    }
+
+    // 4. Update conversation snippet in local conversation list
+    final currentList = inMemoryConversations ?? conversationsNotifier.value;
+    final idx = currentList.indexWhere((c) => c.id == conversationId || c.id == effectiveConvId);
+    if (idx != -1) {
+      final old = currentList[idx];
+      final updated = old.copyWith(
+        lastMessage: '',
+        unreadCount: 0,
+      );
+      currentList[idx] = updated;
+      inMemoryConversations = List.from(currentList);
+      conversationsNotifier.value = List.from(currentList);
+      await LocalDatabase.instance.upsertConversations([updated]);
     }
   }
 }

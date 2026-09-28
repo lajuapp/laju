@@ -18,12 +18,14 @@ enum CallStatus {
   ringing,
   connected,
   rejected,
+  busy,
   ended,
 }
 
 class CallSessionController extends ChangeNotifier with WidgetsBindingObserver {
   CallSessionController._() {
     WidgetsBinding.instance.addObserver(this);
+    AppNotificationService.instance.isCallActiveChecker = () => _isActive;
     _initChannelHandler();
     _startIncomingCallPoller();
     checkLaunchPayload();
@@ -103,6 +105,7 @@ class CallSessionController extends ChangeNotifier with WidgetsBindingObserver {
   String? _lastRingingCallerAvatar;
   bool _lastRingingIsVideo = false;
   bool _hasLoggedCurrentCall = false;
+  final Set<String> _handledCallIds = {};
 
   // Getters
   String? get callId => _callId;
@@ -139,6 +142,8 @@ class CallSessionController extends ChangeNotifier with WidgetsBindingObserver {
         return formattedDuration;
       case CallStatus.rejected:
         return 'Panggilan Ditolak';
+      case CallStatus.busy:
+        return 'Sedang Sibuk';
       case CallStatus.ended:
         return 'Panggilan Berakhir';
       case CallStatus.idle:
@@ -225,6 +230,10 @@ class CallSessionController extends ChangeNotifier with WidgetsBindingObserver {
     _isMinimized = false;
     _isActive = true;
     _status = CallStatus.connecting;
+
+    _systemNotifChannel.invokeMethod('cancelNotification', {'id': 9999}).catchError((_) {});
+    _systemNotifChannel.invokeMethod('cancelAll').catchError((_) {});
+    AppNotificationService.instance.dismissAll();
 
     // Immediately initialize WebRTC local preview for caller so they see themselves while ringing
     WebRTCCallService.instance.initializePeerConnection(
@@ -395,43 +404,18 @@ class CallSessionController extends ChangeNotifier with WidgetsBindingObserver {
       if (!hasPerm) {
         await _audioChannel.invokeMethod('requestRecordPermission');
       }
-      final localIp = await _audioChannel.invokeMethod<String>('getLocalIp') ?? '127.0.0.1';
 
-      // Exchange IP with peer over signaling
-      if (_callId != null && !_callId!.startsWith('call-') && !_callId!.startsWith('group-')) {
-        await ApiClient.instance.post(
-          ApiEndpoints.callSignal(_callId!),
-          body: {
-            'signal': {
-              'type': 'AUDIO_P2P',
-              'ip': localIp,
-              'port': _isOutgoing ? 50005 : 50006,
-            }
-          },
-        );
-      }
-
-      // Start native audio engine (default to local subnet broadcast/peer)
-      final remotePort = _isOutgoing ? 50006 : 50005;
-      final localPort = _isOutgoing ? 50005 : 50006;
-
-      await _audioChannel.invokeMethod('startCallAudio', {
-        'remoteIp': '255.255.255.255', // Subnet broadcast allows instant P2P audio connection on LAN
-        'remotePort': remotePort,
-        'localPort': localPort,
-        'isSpeaker': _isSpeaker || _isVideo,
-        'isVideo': _isVideo,
-        'baseUrl': EnvConfig.instance.apiBaseUrl,
-        'callId': _callId ?? '',
-        'token': ApiClient.instance.authToken ?? '',
-      });
+      // Configure native audio routing to MODE_IN_COMMUNICATION & speaker/earpiece
+      final useSpeaker = _isSpeaker || _isVideo;
+      await _audioChannel.invokeMethod('setSpeaker', {'speaker': useSpeaker});
+      WebRTCCallService.instance.setSpeakerphone(useSpeaker);
     } catch (_) {}
   }
-
 
   Future<void> _stopCallAudio() async {
     try {
       await _audioChannel.invokeMethod('stopCallAudio');
+      await _audioChannel.invokeMethod('setSpeaker', {'speaker': false});
     } catch (_) {}
   }
 
@@ -599,12 +583,27 @@ class CallSessionController extends ChangeNotifier with WidgetsBindingObserver {
         );
         if (resp.isSuccess && resp.rawJson is Map && resp.rawJson['id'] != null) {
           _callId = resp.rawJson['id'];
+          _handledCallIds.add(_callId!);
           _startCallStatusPoller();
           WebRTCCallService.instance.connectSignaling(
             callId: _callId!,
             isInitiator: true,
             remoteUserId: callee,
           ).catchError((_) {});
+        } else if (resp.statusCode == 409 ||
+            (resp.rawJson is Map &&
+                (resp.rawJson['message']?.toString().contains('panggilan lain') == true ||
+                 resp.rawJson['message']?.toString().contains('Sibuk') == true))) {
+          _status = CallStatus.busy;
+          _playCallTone('busy');
+          notifyListeners();
+          final ctx = AppNavigation.navigatorKey.currentContext;
+          if (ctx != null) {
+            LajuToast.info(ctx, 'Kontak sedang berada dalam panggilan lain');
+          }
+          Future.delayed(const Duration(milliseconds: 2500), () {
+            endCall();
+          });
         }
       }
     } catch (_) {}
@@ -620,9 +619,33 @@ class CallSessionController extends ChangeNotifier with WidgetsBindingObserver {
 
   /// Checks for any incoming calls targeting this user on the backend
   Future<void> checkForIncomingCalls() async {
-    if (_isActive || ApiClient.instance.authToken == null) return;
+    if (ApiClient.instance.authToken == null) return;
+
+    if (_isActive) {
+      // User is already busy in an active call!
+      // Check if there is an incoming call targeting us, and immediately auto-reject it as BUSY so caller knows
+      try {
+        final resp = await ApiClient.instance.get(ApiEndpoints.callIncoming);
+        if (resp.isSuccess && resp.rawJson is Map) {
+          final data = resp.rawJson;
+          final incomingCallId = data['callId'] as String?;
+          if (incomingCallId != null &&
+              incomingCallId.isNotEmpty &&
+              incomingCallId != _callId &&
+              !_handledCallIds.contains(incomingCallId)) {
+            _handledCallIds.add(incomingCallId);
+            await ApiClient.instance.post(ApiEndpoints.callReject(incomingCallId));
+          }
+        }
+      } catch (_) {}
+      return;
+    }
+
     try {
       final resp = await ApiClient.instance.get(ApiEndpoints.callIncoming);
+      // RE-CHECK: user could have answered or started a call while awaiting HTTP
+      if (_isActive) return;
+
       if (resp.isSuccess && resp.rawJson is Map) {
         final data = resp.rawJson;
         final incomingCallId = data['callId'] as String?;
@@ -634,6 +657,8 @@ class CallSessionController extends ChangeNotifier with WidgetsBindingObserver {
         final isVideo = data['isVideo'] == true;
 
         if (incomingCallId != null &&
+            incomingCallId != _callId &&
+            !_handledCallIds.contains(incomingCallId) &&
             incomingCallId != _lastRingingCallId &&
             incomingCallId != _declinedCallId) {
           _lastRingingCallId = incomingCallId;
@@ -648,6 +673,7 @@ class CallSessionController extends ChangeNotifier with WidgetsBindingObserver {
           if (isForeground) {
             // Foreground: ONLY show in-app popup overlay banner. Cancel any system notification.
             _systemNotifChannel.invokeMethod('cancelNotification', {'id': 9999}).catchError((_) {});
+            _systemNotifChannel.invokeMethod('cancelAll').catchError((_) {});
             AppNotificationService.instance.showIncomingCall(
               callerName: callerName,
               isVideo: isVideo,
@@ -680,7 +706,7 @@ class CallSessionController extends ChangeNotifier with WidgetsBindingObserver {
         }
       } else {
         _declinedCallId = null;
-        if (_lastRingingCallId != null) {
+        if (_lastRingingCallId != null && !_isActive) {
           // Caller ended or cancelled before receiver answered -> Log as missed call!
           final missedCallId = _lastRingingCallId;
           final missedName = _lastRingingCallerName ?? 'Panggilan';
@@ -705,13 +731,17 @@ class CallSessionController extends ChangeNotifier with WidgetsBindingObserver {
             timestamp: DateTime.now().millisecondsSinceEpoch,
           );
 
+          if (missedCallId != null) {
+            _handledCallIds.add(missedCallId);
+          }
           _lastRingingCallId = null;
           _lastRingingCallerName = null;
           _lastRingingCallerId = null;
           _lastRingingCallerPhone = null;
           _lastRingingCallerAvatar = null;
-          AppNotificationService.instance.dismiss();
+          AppNotificationService.instance.dismissAll();
           _systemNotifChannel.invokeMethod('cancelNotification', {'id': 9999}).catchError((_) {});
+          _systemNotifChannel.invokeMethod('cancelAll').catchError((_) {});
           notifyListeners();
         }
       }
@@ -772,12 +802,14 @@ class CallSessionController extends ChangeNotifier with WidgetsBindingObserver {
   }) async {
     // Immediately stop ringing, dismiss all banners/notifications, and flag session active
     _isActive = true;
-    _lastRingingCallId = null;
+    _handledCallIds.add(incomingCallId);
+    _lastRingingCallId = incomingCallId;
     _lastRingingCallerName = null;
     _lastRingingCallerId = null;
     _lastRingingCallerPhone = null;
     _lastRingingCallerAvatar = null;
     _systemNotifChannel.invokeMethod('cancelNotification', {'id': 9999}).catchError((_) {});
+    _systemNotifChannel.invokeMethod('cancelAll').catchError((_) {});
     AppNotificationService.instance.dismissAll();
 
     var effectiveIsVideo = isVideo;
@@ -858,12 +890,14 @@ class CallSessionController extends ChangeNotifier with WidgetsBindingObserver {
     _isActive = false;
     _status = CallStatus.idle;
     _declinedCallId = incomingCallId;
+    _handledCallIds.add(incomingCallId);
     _lastRingingCallId = null;
     _lastRingingCallerName = null;
     _lastRingingCallerId = null;
     _lastRingingCallerPhone = null;
     _lastRingingCallerAvatar = null;
     _systemNotifChannel.invokeMethod('cancelNotification', {'id': 9999}).catchError((_) {});
+    _systemNotifChannel.invokeMethod('cancelAll').catchError((_) {});
     AppNotificationService.instance.dismissAll();
 
     final resolvedAvatar = avatarUrl ?? _resolveAvatar(callerId, callerPhone, callerName);

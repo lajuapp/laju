@@ -18,6 +18,7 @@ import 'image_preview_send_screen.dart';
 import 'document_preview_send_screen.dart';
 import '../widgets/sticker_picker_sheet.dart';
 import '../../domain/models/sticker_model.dart';
+import 'chat_media_gallery_screen.dart';
 
 class GroupChatScreen extends StatefulWidget {
   final String groupId;
@@ -176,7 +177,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
 
   void _startPolling() {
     _pollTimer?.cancel();
-    _pollTimer = Timer.periodic(const Duration(milliseconds: 1500), (_) async {
+    _pollTimer = Timer.periodic(const Duration(milliseconds: 1000), (_) async {
       _syncMessages();
     });
   }
@@ -627,7 +628,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
       senderName: 'You',
       content: sticker.name,
       attachmentName: sticker.id,
-      attachmentPath: sticker.assetPath,
+      attachmentPath: sticker.effectivePathOrUrl,
       timestamp: DateTime.now(),
       isOutgoing: true,
       contentType: MessageContentType.sticker,
@@ -647,7 +648,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
       text: sticker.name,
       clientMessageId: stkId,
       messageType: 'STICKER',
-      attachmentPath: sticker.assetPath,
+      attachmentPath: sticker.effectivePathOrUrl,
       attachmentName: sticker.id,
       replyTo: replyToCopy,
     );
@@ -656,7 +657,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
       setState(() {
         final idx = _messages.indexWhere((m) => m.id == stkId || m.clientMessageId == stkId);
         if (idx != -1) {
-          _messages[idx] = sent.copyWith(attachmentPath: sticker.assetPath);
+          _messages[idx] = sent.copyWith(attachmentPath: sticker.effectivePathOrUrl);
         }
       });
       _syncMessages();
@@ -680,114 +681,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
         final isUserAdmin = GroupController.instance.isCurrentUserAdmin(widget.groupId);
         final canSend = group == null || group.canSendMessages || isUserAdmin;
 
-  void _showMediaSheet(BuildContext context, bool isDark) {
-    final mediaList = _messages.where((m) => m.contentType == MessageContentType.attachment).toList();
-    if (mediaList.isEmpty) {
-      LajuToast.info(context, 'Belum ada media atau berkas dibagikan dalam grup ini');
-      return;
-    }
 
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: isDark ? const Color(0xFF0F172A) : Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (sheetContext) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'Media Grup (${mediaList.length})',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                        color: isDark ? Colors.white : const Color(0xFF0F172A),
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.close_rounded),
-                      onPressed: () => Navigator.pop(sheetContext),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Flexible(
-                  child: ListView.separated(
-                    shrinkWrap: true,
-                    itemCount: mediaList.length,
-                    separatorBuilder: (_, __) => Divider(height: 1, color: isDark ? Colors.white10 : Colors.black12),
-                    itemBuilder: (ctx, i) {
-                      final item = mediaList[i];
-                      final name = item.attachmentName ?? item.content;
-                      final isImg = item.attachmentPath != null &&
-                          (item.attachmentPath!.startsWith('data:image') ||
-                              item.attachmentPath!.endsWith('.jpg') ||
-                              item.attachmentPath!.endsWith('.png') ||
-                              item.attachmentPath!.endsWith('.jpeg'));
-
-                      return ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        leading: Container(
-                          width: 42,
-                          height: 42,
-                          decoration: BoxDecoration(
-                            color: AppColors.primary.withValues(alpha: 0.15),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Icon(
-                            isImg ? Icons.image_rounded : Icons.insert_drive_file_rounded,
-                            color: AppColors.primary,
-                          ),
-                        ),
-                        title: Text(
-                          name,
-                          style: TextStyle(
-                            fontSize: 13.5,
-                            fontWeight: FontWeight.w600,
-                            color: isDark ? Colors.white : const Color(0xFF111827),
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        subtitle: Text(
-                          DateFormat('dd MMM yyyy, HH:mm').format(item.timestamp.toLocal()),
-                          style: TextStyle(
-                            fontSize: 11.5,
-                            color: isDark ? AppColors.darkTextSecondary : const Color(0xFF6B7280),
-                          ),
-                        ),
-                        onTap: () {
-                          Navigator.pop(sheetContext);
-                          if (isImg && item.attachmentPath != null) {
-                            LajuImageViewer.show(
-                              context,
-                              imagePath: item.attachmentPath!,
-                              title: item.isOutgoing ? 'Anda' : item.senderName,
-                              subtitle: DateFormat('dd MMM yyyy, HH:mm').format(item.timestamp.toLocal()),
-                            );
-                          } else {
-                            LajuToast.info(context, 'Membuka $name');
-                          }
-                        },
-                      );
-                    },
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
 
   void _confirmClearChat(BuildContext context, bool isDark) {
     showDialog(
@@ -828,13 +722,15 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                 foregroundColor: Colors.white,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
               ),
-              onPressed: () {
+              onPressed: () async {
                 Navigator.pop(dialogCtx);
                 setState(() {
                   _messages.clear();
                 });
-                ConversationService.instance.updateMemoryMessages(widget.groupId, []);
-                LajuToast.info(context, 'Pesan grup berhasil dibersihkan');
+                await ConversationService.instance.clearConversationMessages(widget.groupId);
+                if (context.mounted) {
+                  LajuToast.info(context, 'Pesan grup berhasil dibersihkan');
+                }
               },
               child: const Text('Bersihkan Pesan', style: TextStyle(fontWeight: FontWeight.w700)),
             ),
@@ -883,10 +779,13 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                 foregroundColor: Colors.white,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
               ),
-              onPressed: () {
+              onPressed: () async {
                 Navigator.pop(dialogCtx);
-                Navigator.pop(context);
-                LajuToast.info(context, 'Anda telah keluar dari grup');
+                await ConversationService.instance.leaveGroup(widget.groupId);
+                if (context.mounted) {
+                  Navigator.pop(context);
+                  LajuToast.info(context, 'Anda telah keluar dari grup');
+                }
               },
               child: const Text('Keluar', style: TextStyle(fontWeight: FontWeight.w700)),
             ),
@@ -1084,7 +983,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                     PopupMenuButton<String>(
                       color: isDark ? AppColors.darkSurfaceElevated : Colors.white,
                       icon: Icon(Icons.more_vert_rounded, color: isDark ? Colors.white : const Color(0xFF111827)),
-                      onSelected: (value) {
+                      onSelected: (value) async {
                         switch (value) {
                           case 'info':
                             Navigator.push(
@@ -1099,7 +998,16 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                             );
                             break;
                           case 'media':
-                            _showMediaSheet(context, isDark);
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => ChatMediaGalleryScreen(
+                                  chatTitle: displayName,
+                                  conversationId: widget.groupId,
+                                  messages: _messages,
+                                ),
+                              ),
+                            );
                             break;
                           case 'search':
                             setState(() => _isSearching = true);
@@ -1108,17 +1016,27 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                             Navigator.push(
                               context,
                               MaterialPageRoute(
-                                builder: (context) => const WallpaperSettingsScreen(),
+                                builder: (context) => WallpaperSettingsScreen(
+                                  chatId: widget.groupId,
+                                  chatTitle: widget.groupName ?? 'Grup',
+                                ),
                               ),
                             );
                             break;
                           case 'disappearing':
-                            Navigator.push(
+                            final res = await Navigator.push<String>(
                               context,
                               MaterialPageRoute(
                                 builder: (context) => const DisappearingMessagesScreen(initialTimer: 'Off'),
                               ),
                             );
+                            if (res != null && mounted) {
+                              int? seconds;
+                              if (res == '24 hours') seconds = 86400;
+                              else if (res == '7 days') seconds = 604800;
+                              else if (res == '90 days') seconds = 7776000;
+                              await ConversationService.instance.updateConversationDisappearingTimer(widget.groupId, seconds);
+                            }
                             break;
                           case 'clear':
                             _confirmClearChat(context, isDark);
@@ -1144,13 +1062,13 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
           body: ListenableBuilder(
             listenable: ChatAppearanceController.instance,
             builder: (context, _) {
-              final activeWallpaperId = ChatAppearanceController.instance.selectedWallpaper;
-              final activeWallpaper = kPresetWallpapers.firstWhere(
-                (w) => w.id == activeWallpaperId,
-                orElse: () => kPresetWallpapers.first,
-              );
-              final assetPath = activeWallpaper.getAssetPath(isDark);
+              final isDark = ThemeModeController.instance.isDarkMode(context);
+              final groupWallpaperId = ChatAppearanceController.instance.getChatWallpaper(widget.groupId);
+              final activeWallpaper = ChatAppearanceController.instance.findWallpaper(groupWallpaperId);
               final screenSize = MediaQuery.sizeOf(context);
+
+              // Clean neutral default background canvas when no wallpaper is selected
+              final defaultCanvasColor = isDark ? const Color(0xFF0B141A) : const Color(0xFFEFEAE2);
 
               return Stack(
                 clipBehavior: Clip.hardEdge,
@@ -1161,17 +1079,30 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                     width: screenSize.width,
                     height: screenSize.height,
                     child: Container(
-                      color: isDark ? const Color(0xFF071216) : activeWallpaper.backgroundColor,
+                      decoration: BoxDecoration(
+                        color: activeWallpaper != null ? activeWallpaper.backgroundColor : defaultCanvasColor,
+                        gradient: activeWallpaper != null && activeWallpaper.category == 'GRADIENT'
+                            ? LinearGradient(
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                                colors: [
+                                  activeWallpaper.backgroundColor,
+                                  activeWallpaper.backgroundColor.withValues(alpha: 0.75),
+                                  const Color(0xFF0F172A),
+                                ],
+                              )
+                            : null,
+                      ),
                     ),
                   ),
-                  if (assetPath != null)
+                  if (activeWallpaper != null && activeWallpaper.hasRemoteImage)
                     Positioned(
                       top: 0,
                       left: 0,
                       width: screenSize.width,
                       height: screenSize.height,
-                      child: Image.asset(
-                        assetPath,
+                      child: Image.network(
+                        resolveMediaUrl(activeWallpaper.remoteImageUrl),
                         fit: BoxFit.cover,
                         alignment: Alignment.topCenter,
                         errorBuilder: (context, error, stackTrace) => const SizedBox(),

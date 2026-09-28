@@ -89,6 +89,10 @@ class ApiEndpoints {
   static String messageReactions(String messageId) => '/messages/$messageId/reactions';
   static String messageReactionDelete(String messageId, String emoji) =>
       '/messages/$messageId/reactions/$emoji';
+
+  // Dynamic Content (Wallpapers & Stickers from Backoffice)
+  static const String publicWallpapers = '/admin/wallpapers/public';
+  static const String publicStickers = '/admin/stickers/public';
 }
 
 

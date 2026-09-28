@@ -63,7 +63,7 @@ class _FloatingCallOverlayState extends State<FloatingCallOverlay> with SingleTi
             widget.child,
 
             // Global In-App Notification Banner
-            if (notification != null)
+            if (notification != null && !(call.isActive && notification.isCall))
               Positioned(
                 top: MediaQuery.of(context).padding.top + 8,
                 left: 14,

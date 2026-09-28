@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import '../../../../core/core.dart';
 import '../../domain/models/message_model.dart';
+import '../../domain/services/sticker_service.dart';
 import '../../../settings/domain/privacy_controller.dart';
 import 'voice_note_player.dart';
 
@@ -215,7 +216,13 @@ class ChatBubble extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.lock_rounded, size: 12, color: AppColors.primary),
+            Icon(
+              message.content.toLowerCase().contains('wallpaper')
+                  ? Icons.wallpaper_rounded
+                  : Icons.lock_rounded,
+              size: 12,
+              color: AppColors.primary,
+            ),
             const SizedBox(width: 6),
             Flexible(
               child: Text(
@@ -601,7 +608,18 @@ class ChatBubble extends StatelessWidget {
     final content = message.content;
 
     if (path.isNotEmpty) {
-      if (path.startsWith('assets/')) {
+      if (path.startsWith('http://') ||
+          path.startsWith('https://') ||
+          path.startsWith('/') ||
+          path.startsWith('admin/media')) {
+        return Image.network(
+          resolveMediaUrl(path),
+          width: 145,
+          height: 145,
+          fit: BoxFit.contain,
+          errorBuilder: (_, _, _) => _buildFallbackStickerIcon(isDark),
+        );
+      } else if (path.startsWith('assets/')) {
         assetToUse = path;
       } else if (File(path).existsSync()) {
         return Image.file(
@@ -622,6 +640,22 @@ class ChatBubble extends StatelessWidget {
             errorBuilder: (_, __, ___) => _buildFallbackStickerIcon(isDark),
           );
         } catch (_) {}
+      }
+    }
+
+    // Try finding in StickerService (remote or local)
+    final foundSticker = StickerService.instance.findSticker(path.isNotEmpty ? path : name);
+    if (foundSticker != null) {
+      if (foundSticker.isRemote) {
+        return Image.network(
+          resolveMediaUrl(foundSticker.effectivePathOrUrl),
+          width: 145,
+          height: 145,
+          fit: BoxFit.contain,
+          errorBuilder: (_, _, _) => _buildFallbackStickerIcon(isDark),
+        );
+      } else {
+        assetToUse = foundSticker.assetPath;
       }
     }
 
@@ -950,6 +984,20 @@ class ChatBubble extends StatelessWidget {
           : Icons.photo_camera_rounded;
     }
 
+    final isReplySticker = reply.contentType == MessageContentType.sticker ||
+        reply.content.startsWith('sticker:') ||
+        (reply.attachmentName != null &&
+            (reply.attachmentName!.startsWith('cat_') ||
+                reply.attachmentName!.contains('sticker')));
+
+    String? quotedThumbPath = reply.attachmentPath;
+    if ((quotedThumbPath == null || quotedThumbPath.isEmpty) && isReplySticker) {
+      quotedThumbPath = reply.attachmentName ?? reply.content;
+      if (quotedThumbPath != null && quotedThumbPath.startsWith('sticker:')) {
+        quotedThumbPath = quotedThumbPath.substring(8);
+      }
+    }
+
     return Container(
       margin: EdgeInsets.only(
         left: isImage ? 4 : 0,
@@ -1025,7 +1073,7 @@ class ChatBubble extends StatelessWidget {
                 ),
               ),
             ),
-            if (reply.attachmentPath != null && reply.attachmentPath!.isNotEmpty) ...[
+            if (quotedThumbPath != null && quotedThumbPath.isNotEmpty) ...[
               const SizedBox(width: 4),
               ClipRRect(
                 borderRadius: const BorderRadius.only(
@@ -1035,7 +1083,10 @@ class ChatBubble extends StatelessWidget {
                 child: SizedBox(
                   width: 48,
                   height: 48,
-                  child: _buildQuotedMediaThumbnail(reply.attachmentPath!),
+                  child: _buildQuotedMediaThumbnail(
+                    quotedThumbPath,
+                    isSticker: isReplySticker,
+                  ),
                 ),
               ),
             ],
@@ -1045,41 +1096,69 @@ class ChatBubble extends StatelessWidget {
     );
   }
 
-  Widget _buildQuotedMediaThumbnail(String path) {
+  Widget _buildQuotedMediaThumbnail(String path, {bool isSticker = false}) {
+    final fit = isSticker ? BoxFit.contain : BoxFit.cover;
+    final fallbackIcon = isSticker
+        ? const Icon(Icons.emoji_emotions_rounded, size: 20, color: Colors.white54)
+        : const Icon(Icons.image, size: 20, color: Colors.white54);
+
     if (path.startsWith('data:image')) {
       try {
         final b64 = path.contains(',') ? path.split(',').last : path;
         return Image.memory(
           base64Decode(b64),
-          fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => const Icon(Icons.image, size: 20, color: Colors.white54),
+          fit: fit,
+          errorBuilder: (_, __, ___) => fallbackIcon,
         );
       } catch (_) {}
     }
-    if (path.startsWith('http://') || path.startsWith('https://')) {
+    if (path.startsWith('http://') ||
+        path.startsWith('https://') ||
+        path.startsWith('/') ||
+        path.startsWith('admin/media')) {
       return Image.network(
-        path,
-        fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => const Icon(Icons.image, size: 20, color: Colors.white54),
+        resolveMediaUrl(path),
+        fit: fit,
+        errorBuilder: (_, __, ___) => fallbackIcon,
       );
     }
     if (File(path).existsSync()) {
       return Image.file(
         File(path),
-        fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => const Icon(Icons.image, size: 20, color: Colors.white54),
+        fit: fit,
+        errorBuilder: (_, __, ___) => fallbackIcon,
       );
     }
     if (path.startsWith('assets/')) {
       return Image.asset(
         path,
-        fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => const Icon(Icons.image, size: 20, color: Colors.white54),
+        fit: fit,
+        errorBuilder: (_, __, ___) => fallbackIcon,
       );
     }
+
+    if (isSticker) {
+      final found = StickerService.instance.findSticker(path);
+      if (found != null) {
+        if (found.isRemote) {
+          return Image.network(
+            resolveMediaUrl(found.effectivePathOrUrl),
+            fit: BoxFit.contain,
+            errorBuilder: (_, __, ___) => fallbackIcon,
+          );
+        } else {
+          return Image.asset(
+            found.effectivePathOrUrl,
+            fit: BoxFit.contain,
+            errorBuilder: (_, __, ___) => fallbackIcon,
+          );
+        }
+      }
+    }
+
     return Container(
       color: Colors.black26,
-      child: const Icon(Icons.image, size: 20, color: Colors.white54),
+      child: fallbackIcon,
     );
   }
 

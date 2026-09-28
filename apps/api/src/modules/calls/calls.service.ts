@@ -3,6 +3,7 @@ import {
   NotFoundException,
   ForbiddenException,
   BadRequestException,
+  ConflictException,
   Optional
 } from '@nestjs/common';
 import { PrismaService } from '../../infrastructure/prisma/prisma.service';
@@ -61,6 +62,38 @@ export class CallsService {
       }
 
       const resolvedCalleeUserId = targetUser.id;
+
+      // 1. Check if callee is currently in an active or ringing call (Busy)
+      const calleeActiveCall = await tx.callParticipant.findFirst({
+        where: {
+          userId: resolvedCalleeUserId,
+          state: { in: ['CONNECTED', 'RINGING'] },
+          call: {
+            state: { in: ['INITIATED', 'CONNECTED'] },
+            startedAt: { gte: new Date(Date.now() - 3600 * 1000) }
+          }
+        }
+      });
+
+      if (calleeActiveCall) {
+        throw new ConflictException('Pengguna sedang dalam panggilan lain (Sibuk)');
+      }
+
+      // 2. Check if caller is already in another call
+      const callerActiveCall = await tx.callParticipant.findFirst({
+        where: {
+          userId: callerUserId,
+          state: { in: ['CONNECTED', 'RINGING'] },
+          call: {
+            state: { in: ['INITIATED', 'CONNECTED'] },
+            startedAt: { gte: new Date(Date.now() - 3600 * 1000) }
+          }
+        }
+      });
+
+      if (callerActiveCall) {
+        throw new ConflictException('Anda sedang dalam panggilan lain');
+      }
 
       const call = await tx.call.create({
         data: {

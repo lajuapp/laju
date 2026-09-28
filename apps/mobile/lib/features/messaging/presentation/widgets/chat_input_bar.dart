@@ -3,11 +3,13 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
+import '../../../../core/network/media_url_resolver.dart';
 import '../../../../core/services/voice_note_service.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/theme_controller.dart';
 import '../../../../core/widgets/laju_toast.dart';
 import '../../domain/models/message_model.dart';
+import '../../domain/services/sticker_service.dart';
 
 class ChatInputBar extends StatefulWidget {
   final Function(String text) onSend;
@@ -346,93 +348,8 @@ class _ChatInputBarState extends State<ChatInputBar> with SingleTickerProviderSt
                 ],
 
                 // Replying To Preview Banner
-                if (widget.replyingTo != null && widget.editingMessage == null && !_isRecording) ...[
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                    margin: const EdgeInsets.fromLTRB(10, 8, 10, 2),
-                    decoration: BoxDecoration(
-                      color: inputBg,
-                      borderRadius: BorderRadius.circular(12),
-                      border: const Border(
-                        left: BorderSide(color: AppColors.primary, width: 4),
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Row(
-                                children: [
-                                  const Icon(Icons.reply_rounded, size: 14, color: AppColors.primary),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    'Membalas ${widget.replyingTo!.senderName}',
-                                    style: const TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w700,
-                                      color: AppColors.primary,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 2),
-                              Row(
-                                children: [
-                                  if (widget.replyingTo!.contentType == MessageContentType.sticker) ...[
-                                    Icon(Icons.emoji_emotions_rounded, size: 13, color: hintCol),
-                                    const SizedBox(width: 3),
-                                  ] else if (widget.replyingTo!.contentType == MessageContentType.voiceNote) ...[
-                                    Icon(Icons.mic_rounded, size: 13, color: hintCol),
-                                    const SizedBox(width: 3),
-                                  ] else if (widget.replyingTo!.contentType == MessageContentType.location) ...[
-                                    Icon(Icons.location_on_rounded, size: 13, color: hintCol),
-                                    const SizedBox(width: 3),
-                                  ] else if (widget.replyingTo!.contentType == MessageContentType.attachment) ...[
-                                    Icon(Icons.photo_camera_rounded, size: 13, color: hintCol),
-                                    const SizedBox(width: 3),
-                                  ],
-                                  Expanded(
-                                    child: Text(
-                                      widget.replyingTo!.displaySnippet,
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        color: hintCol,
-                                      ),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                        if (widget.replyingTo!.attachmentPath != null && widget.replyingTo!.attachmentPath!.isNotEmpty) ...[
-                          const SizedBox(width: 8),
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(6),
-                            child: SizedBox(
-                              width: 38,
-                              height: 38,
-                              child: _buildReplyThumbnail(widget.replyingTo!.attachmentPath!),
-                            ),
-                          ),
-                          const SizedBox(width: 4),
-                        ],
-                        IconButton(
-                          icon: Icon(Icons.close_rounded, size: 18, color: hintCol),
-                          visualDensity: VisualDensity.compact,
-                          splashRadius: 16,
-                          onPressed: widget.onCancelReply,
-                          tooltip: 'Batal Balas',
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
+                if (widget.replyingTo != null && widget.editingMessage == null && !_isRecording)
+                  _buildReplyingBanner(inputBg, hintCol),
 
                 // Active Recording Bar or Normal Input Bar
                 if (_isRecording)
@@ -676,41 +593,175 @@ class _ChatInputBarState extends State<ChatInputBar> with SingleTickerProviderSt
     );
   }
 
-  Widget _buildReplyThumbnail(String path) {
+  Widget _buildReplyingBanner(Color inputBg, Color hintCol) {
+    final reply = widget.replyingTo!;
+    final isReplyingToSticker = reply.contentType == MessageContentType.sticker ||
+        reply.content.startsWith('sticker:') ||
+        (reply.attachmentName != null &&
+            (reply.attachmentName!.startsWith('cat_') ||
+                reply.attachmentName!.contains('sticker')));
+
+    String? replyThumbPath = reply.attachmentPath;
+    if ((replyThumbPath == null || replyThumbPath.isEmpty) && isReplyingToSticker) {
+      replyThumbPath = reply.attachmentName ?? reply.content;
+      if (replyThumbPath != null && replyThumbPath.startsWith('sticker:')) {
+        replyThumbPath = replyThumbPath.substring(8);
+      }
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      margin: const EdgeInsets.fromLTRB(10, 8, 10, 2),
+      decoration: BoxDecoration(
+        color: inputBg,
+        borderRadius: BorderRadius.circular(12),
+        border: const Border(
+          left: BorderSide(color: AppColors.primary, width: 4),
+        ),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.reply_rounded, size: 14, color: AppColors.primary),
+                    const SizedBox(width: 4),
+                    Text(
+                      'Membalas ${reply.senderName}',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.primary,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 2),
+                Row(
+                  children: [
+                    if (reply.contentType == MessageContentType.sticker) ...[
+                      Icon(Icons.emoji_emotions_rounded, size: 13, color: hintCol),
+                      const SizedBox(width: 3),
+                    ] else if (reply.contentType == MessageContentType.voiceNote) ...[
+                      Icon(Icons.mic_rounded, size: 13, color: hintCol),
+                      const SizedBox(width: 3),
+                    ] else if (reply.contentType == MessageContentType.location) ...[
+                      Icon(Icons.location_on_rounded, size: 13, color: hintCol),
+                      const SizedBox(width: 3),
+                    ] else if (reply.contentType == MessageContentType.attachment) ...[
+                      Icon(Icons.photo_camera_rounded, size: 13, color: hintCol),
+                      const SizedBox(width: 3),
+                    ],
+                    Expanded(
+                      child: Text(
+                        reply.displaySnippet,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: hintCol,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          if (replyThumbPath != null && replyThumbPath.isNotEmpty) ...[
+            const SizedBox(width: 8),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(6),
+              child: SizedBox(
+                width: 38,
+                height: 38,
+                child: _buildReplyThumbnail(
+                  replyThumbPath,
+                  isSticker: isReplyingToSticker,
+                ),
+              ),
+            ),
+            const SizedBox(width: 4),
+          ],
+          IconButton(
+            icon: Icon(Icons.close_rounded, size: 18, color: hintCol),
+            visualDensity: VisualDensity.compact,
+            splashRadius: 16,
+            onPressed: widget.onCancelReply,
+            tooltip: 'Batal Balas',
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildReplyThumbnail(String path, {bool isSticker = false}) {
+    final fit = isSticker ? BoxFit.contain : BoxFit.cover;
+    final fallbackIcon = isSticker
+        ? const Icon(Icons.emoji_emotions_rounded, size: 18, color: Colors.grey)
+        : const Icon(Icons.image, size: 18, color: Colors.grey);
+
     if (path.startsWith('data:image')) {
       try {
         final b64 = path.contains(',') ? path.split(',').last : path;
         return Image.memory(
           base64Decode(b64),
-          fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => const Icon(Icons.image, size: 18, color: Colors.grey),
+          fit: fit,
+          errorBuilder: (_, __, ___) => fallbackIcon,
         );
       } catch (_) {}
     }
-    if (path.startsWith('http://') || path.startsWith('https://')) {
+    if (path.startsWith('http://') ||
+        path.startsWith('https://') ||
+        path.startsWith('/') ||
+        path.startsWith('admin/media')) {
       return Image.network(
-        path,
-        fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => const Icon(Icons.image, size: 18, color: Colors.grey),
+        resolveMediaUrl(path),
+        fit: fit,
+        errorBuilder: (_, __, ___) => fallbackIcon,
       );
     }
     if (File(path).existsSync()) {
       return Image.file(
         File(path),
-        fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => const Icon(Icons.image, size: 18, color: Colors.grey),
+        fit: fit,
+        errorBuilder: (_, __, ___) => fallbackIcon,
       );
     }
     if (path.startsWith('assets/')) {
       return Image.asset(
         path,
-        fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => const Icon(Icons.image, size: 18, color: Colors.grey),
+        fit: fit,
+        errorBuilder: (_, __, ___) => fallbackIcon,
       );
     }
+
+    if (isSticker) {
+      final found = StickerService.instance.findSticker(path);
+      if (found != null) {
+        if (found.isRemote) {
+          return Image.network(
+            resolveMediaUrl(found.effectivePathOrUrl),
+            fit: BoxFit.contain,
+            errorBuilder: (_, __, ___) => fallbackIcon,
+          );
+        } else {
+          return Image.asset(
+            found.effectivePathOrUrl,
+            fit: BoxFit.contain,
+            errorBuilder: (_, __, ___) => fallbackIcon,
+          );
+        }
+      }
+    }
+
     return Container(
       color: Colors.black12,
-      child: const Icon(Icons.image, size: 18, color: Colors.grey),
+      child: fallbackIcon,
     );
   }
 }

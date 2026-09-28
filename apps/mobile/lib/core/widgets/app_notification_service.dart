@@ -50,6 +50,7 @@ class AppNotificationService extends ChangeNotifier {
   InAppNotificationItem? _currentNotification;
   InAppNotificationItem? _currentPopupNotification;
   Timer? _dismissTimer;
+  bool Function()? isCallActiveChecker;
 
   InAppNotificationItem? get currentNotification => _currentNotification;
   InAppNotificationItem? get currentPopupNotification => _currentPopupNotification;
@@ -137,6 +138,9 @@ class AppNotificationService extends ChangeNotifier {
     required VoidCallback onDecline,
     String? avatarUrl,
   }) {
+    if (isCallActiveChecker?.call() == true) {
+      return;
+    }
     _dismissTimer?.cancel();
     _currentNotification = InAppNotificationItem(
       id: 'incoming-call-${DateTime.now().millisecondsSinceEpoch}',

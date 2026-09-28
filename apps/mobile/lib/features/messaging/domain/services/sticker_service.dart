@@ -1,6 +1,9 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../../../../core/network/api_client.dart';
+import '../../../../core/network/api_endpoints.dart';
 import '../models/sticker_model.dart';
 
 class StickerService extends ChangeNotifier {
@@ -9,12 +12,17 @@ class StickerService extends ChangeNotifier {
 
   static const String _kRecentKey = 'laju_recent_stickers';
   static const String _kFavoriteKey = 'laju_favorite_stickers';
+  static const String _kRemotePacksKey = 'laju_remote_stickers_cache';
 
   final List<StickerItem> _recentStickers = [];
   final List<String> _favoriteIds = [];
+  final List<StickerPack> _remotePacks = [];
+  bool _isLoadingRemote = false;
 
   List<StickerItem> get recentStickers => List.unmodifiable(_recentStickers);
   List<String> get favoriteIds => List.unmodifiable(_favoriteIds);
+  List<StickerPack> get remotePacks => List.unmodifiable(_remotePacks);
+  bool get isLoadingRemote => _isLoadingRemote;
 
   static const List<StickerItem> kSampleCatStickers = [
     StickerItem(
@@ -48,9 +56,35 @@ class StickerService extends ChangeNotifier {
   );
 
   List<StickerPack> getAllPacks() {
-    return [
-      kDefaultPack,
-    ];
+    return List.unmodifiable(_remotePacks);
+  }
+
+  /// Find a sticker by ID, name, or asset/image URL
+  StickerItem? findSticker(String idOrPath) {
+    if (idOrPath.trim().isEmpty) return null;
+    for (final pack in getAllPacks()) {
+      for (final s in pack.stickers) {
+        if (s.id == idOrPath ||
+            s.name == idOrPath ||
+            s.assetPath == idOrPath ||
+            s.effectivePathOrUrl == idOrPath ||
+            idOrPath.contains(s.id) ||
+            idOrPath.endsWith('${s.id}.png')) {
+          return s;
+        }
+      }
+    }
+    for (final s in _recentStickers) {
+      if (s.id == idOrPath ||
+          s.name == idOrPath ||
+          s.assetPath == idOrPath ||
+          s.effectivePathOrUrl == idOrPath ||
+          idOrPath.contains(s.id) ||
+          idOrPath.endsWith('${s.id}.png')) {
+        return s;
+      }
+    }
+    return null;
   }
 
   Future<void> init() async {
@@ -70,8 +104,99 @@ class StickerService extends ChangeNotifier {
         _favoriteIds.clear();
         _favoriteIds.addAll(favList);
       }
-      notifyListeners();
+
+      // Load cached remote sticker packs
+      final cachedPacksJson = prefs.getStringList(_kRemotePacksKey);
+      if (cachedPacksJson != null && cachedPacksJson.isNotEmpty) {
+        _remotePacks.clear();
+        for (final item in cachedPacksJson) {
+          try {
+            _remotePacks.add(StickerPack.fromJson(jsonDecode(item) as Map<String, dynamic>));
+          } catch (_) {}
+        }
+      }
+
+      if (_remotePacks.isNotEmpty) {
+        scheduleMicrotask(() {
+          notifyListeners();
+        });
+      }
+
+      // Refresh in background
+      fetchRemoteStickers();
     } catch (_) {}
+  }
+
+  /// Fetches published sticker packs from Backoffice
+  Future<void> fetchRemoteStickers() async {
+    _isLoadingRemote = true;
+    scheduleMicrotask(() {
+      notifyListeners();
+    });
+
+    try {
+      final response = await ApiClient.instance.get(ApiEndpoints.publicStickers);
+      if (response.isSuccess && response.rawJson is List) {
+        final list = response.rawJson as List;
+        final parsed = <StickerPack>[];
+
+        for (final item in list) {
+          if (item is Map) {
+            final packId = item['id'] as String? ?? '';
+            final packName = item['name'] as String? ?? 'Sticker Pack';
+            final cover = item['coverUrl'] as String?;
+            final pub = item['publisher'] as String?;
+            final desc = item['description'] as String?;
+            final stickersList = item['stickers'] as List? ?? [];
+            final stickers = <StickerItem>[];
+
+            for (final s in stickersList) {
+              if (s is Map) {
+                final sId = s['id'] as String? ?? '';
+                final sName = s['name'] as String? ?? 'Stiker';
+                final sImg = s['imageUrl'] as String? ?? '';
+                final sEmoji = s['emoji'] as String? ?? '✨';
+
+                stickers.add(StickerItem(
+                  id: sId,
+                  name: sName,
+                  assetPath: sImg,
+                  imageUrl: sImg,
+                  packId: packId,
+                  emoji: sEmoji,
+                ));
+              }
+            }
+
+            if (stickers.isNotEmpty) {
+              parsed.add(StickerPack(
+                id: packId,
+                name: packName,
+                iconEmoji: '✨',
+                coverUrl: cover,
+                publisher: pub,
+                description: desc,
+                stickers: stickers,
+              ));
+            }
+          }
+        }
+
+        _remotePacks.clear();
+        _remotePacks.addAll(parsed);
+        notifyListeners();
+
+        // Persist cache
+        final prefs = await SharedPreferences.getInstance();
+        final serialized = _remotePacks.map((p) => jsonEncode(p.toJson())).toList();
+        await prefs.setStringList(_kRemotePacksKey, serialized);
+      }
+    } catch (_) {
+      // Keep existing cached packs on network failure
+    } finally {
+      _isLoadingRemote = false;
+      notifyListeners();
+    }
   }
 
   Future<void> recordStickerUsage(StickerItem sticker) async {
@@ -103,17 +228,5 @@ class StickerService extends ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setStringList(_kFavoriteKey, _favoriteIds);
     } catch (_) {}
-  }
-
-  StickerItem? findSticker(String idOrPath) {
-    for (final s in kSampleCatStickers) {
-      if (s.id == idOrPath ||
-          s.assetPath == idOrPath ||
-          idOrPath.contains(s.id) ||
-          idOrPath.endsWith('${s.id}.png')) {
-        return s;
-      }
-    }
-    return null;
   }
 }

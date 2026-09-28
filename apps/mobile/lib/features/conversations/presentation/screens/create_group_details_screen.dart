@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../../../core/core.dart';
 import '../../../messaging/presentation/screens/group_chat_screen.dart';
 import '../../domain/group_controller.dart';
+import '../../domain/conversation_service.dart';
 import '../../domain/models/conversation_model.dart';
 
 class CreateGroupDetailsScreen extends StatefulWidget {

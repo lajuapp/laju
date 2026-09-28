@@ -60,11 +60,17 @@ class WebRTCCallService {
       _remoteStream != null &&
       _remoteStream!.getVideoTracks().isNotEmpty;
 
+  final ValueNotifier<RTCPeerConnectionState> connectionStateNotifier =
+      ValueNotifier<RTCPeerConnectionState>(RTCPeerConnectionState.RTCPeerConnectionStateNew);
+
   static const Map<String, dynamic> _iceServers = {
     'iceServers': [
       {'urls': 'stun:stun.l.google.com:19302'},
       {'urls': 'stun:stun1.l.google.com:19302'},
       {'urls': 'stun:stun2.l.google.com:19302'},
+      {'urls': 'stun:stun3.l.google.com:19302'},
+      {'urls': 'stun:stun4.l.google.com:19302'},
+      {'urls': 'stun:stun.relay.metered.ca:80'},
     ],
     'sdpSemantics': 'unified-plan',
     'iceCandidatePoolSize': 10,
@@ -159,6 +165,11 @@ class WebRTCCallService {
         case 'CALL_ENDED':
         case 'CALL_REJECTED':
           onCallEnded?.call();
+          break;
+
+        case 'RESTART_ICE':
+          debugPrint('[WebRTC] Remote requested ICE restart');
+          ensureOfferCreatedAndSent(forceResend: true, iceRestart: true);
           break;
 
         default:
@@ -322,21 +333,24 @@ class WebRTCCallService {
               'echoCancellation': true,
               'noiseSuppression': true,
               'autoGainControl': true,
+              'highpassFilter': true,
+              'typingNoiseDetection': true,
             } : false,
             'video': isVideo ? {
               'facingMode': 'user',
-              'mandatory': {
-                'minWidth': '640',
-                'minHeight': '480',
-                'minFrameRate': '30',
-              },
-              'optional': [],
+              'optional': [
+                {'minWidth': '320'},
+                {'minHeight': '240'},
+                {'maxWidth': '1280'},
+                {'maxHeight': '720'},
+                {'maxFrameRate': '30'},
+              ],
             } : false,
           };
 
           _localStream = await navigator.mediaDevices.getUserMedia(mediaConstraints);
         } catch (e) {
-          debugPrint('[WebRTC] High-res getUserMedia failed: $e, trying simple constraints...');
+          debugPrint('[WebRTC] Adaptive getUserMedia failed: $e, trying simple constraints...');
           try {
             _localStream = await navigator.mediaDevices.getUserMedia({
               'audio': isAudio,
@@ -411,6 +425,7 @@ class WebRTCCallService {
       // Connection state changes
       _peerConnection!.onConnectionState = (RTCPeerConnectionState state) {
         debugPrint('[WebRTC] Connection state: $state');
+        connectionStateNotifier.value = state;
         if (state == RTCPeerConnectionState.RTCPeerConnectionStateConnected) {
           onCallConnected?.call();
           onRendererReady?.call(_localRenderer!, _remoteRenderer!);
@@ -440,32 +455,50 @@ class WebRTCCallService {
     }
   }
 
-  Future<void> ensureOfferCreatedAndSent({bool forceResend = false}) async {
+  /// Optimize SDP to enable Opus in-band Forward Error Correction (FEC) & DTX
+  String _optimizeSdp(String sdp) {
+    if (sdp.isEmpty) return sdp;
+    return sdp.replaceAll(
+      'minptime=10;useinbandfec=1',
+      'minptime=10;useinbandfec=1;usedtx=1;maxaveragebitrate=32000',
+    ).replaceAll(
+      'useinbandfec=1',
+      'useinbandfec=1;usedtx=1;maxaveragebitrate=32000',
+    );
+  }
+
+  Future<void> ensureOfferCreatedAndSent({bool forceResend = false, bool iceRestart = false}) async {
     if (_peerConnection == null) {
       debugPrint('[WebRTC] ensureOffer: peerConnection is null, delaying...');
       return;
     }
-    if (_hasRemoteDescription) {
+    if (_hasRemoteDescription && !iceRestart) {
       debugPrint('[WebRTC] ensureOffer: already connected with remote description, skipping');
       return;
     }
-    if (_offerSent && !forceResend) {
+    if (_offerSent && !forceResend && !iceRestart) {
       debugPrint('[WebRTC] ensureOffer: Offer already sent, skipping duplicate');
       return;
     }
     _offerSent = true;
-    await _createAndSendOffer();
+    await _createAndSendOffer(iceRestart: iceRestart);
   }
 
-  Future<void> _createAndSendOffer() async {
+  Future<void> _createAndSendOffer({bool iceRestart = false}) async {
     if (_peerConnection == null) return;
     try {
       RTCSessionDescription offer;
-      if (_localDescription != null && _localDescription!.type == 'offer') {
+      if (!iceRestart && _localDescription != null && _localDescription!.type == 'offer') {
         offer = _localDescription!;
         debugPrint('[WebRTC] Reusing existing local SDP offer for resend');
       } else {
-        offer = await _peerConnection!.createOffer(_offerConstraints);
+        final constraints = Map<String, dynamic>.from(_offerConstraints);
+        if (iceRestart) {
+          constraints['iceRestart'] = true;
+        }
+        final rawOffer = await _peerConnection!.createOffer(constraints);
+        final optimizedSdp = _optimizeSdp(rawOffer.sdp ?? '');
+        offer = RTCSessionDescription(optimizedSdp, rawOffer.type);
         await _peerConnection!.setLocalDescription(offer);
         _localDescription = offer;
       }
@@ -493,7 +526,9 @@ class WebRTCCallService {
       _hasRemoteDescription = true;
       await _drainPendingCandidates();
 
-      final answer = await _peerConnection!.createAnswer();
+      final rawAnswer = await _peerConnection!.createAnswer();
+      final optimizedSdp = _optimizeSdp(rawAnswer.sdp ?? '');
+      final answer = RTCSessionDescription(optimizedSdp, rawAnswer.type);
       await _peerConnection!.setLocalDescription(answer);
       _localDescription = answer;
       debugPrint('[WebRTC] Sending SDP answer');
@@ -554,21 +589,14 @@ class WebRTCCallService {
 
   Future<void> _restartIce() async {
     debugPrint('[WebRTC] Restarting ICE...');
-    if (_peerConnection == null || !_isInitiator) return;
-    try {
-      final offer = await _peerConnection!.createOffer({
-        'iceRestart': true,
-        'mandatory': {'OfferToReceiveAudio': true, 'OfferToReceiveVideo': true},
-      });
-      await _peerConnection!.setLocalDescription(offer);
-      _localDescription = offer;
-      _sendSignal('webrtc_offer', {
+    if (_peerConnection == null) return;
+    if (_isInitiator) {
+      ensureOfferCreatedAndSent(forceResend: true, iceRestart: true);
+    } else {
+      _sendSignal('restart_ice', {
         'callId': _currentCallId,
         'targetUserId': _remoteUserId,
-        'sdp': {'type': offer.type, 'sdp': offer.sdp},
       });
-    } catch (e) {
-      debugPrint('[WebRTC] ICE restart error: $e');
     }
   }
 
