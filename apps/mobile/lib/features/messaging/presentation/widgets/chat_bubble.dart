@@ -602,90 +602,40 @@ class ChatBubble extends StatelessWidget {
   }
 
   Widget _buildStickerGraphic(BuildContext context, bool isDark) {
-    String? assetToUse;
+    String? pathOrUrl;
     final path = message.attachmentPath ?? '';
     final name = message.attachmentName ?? '';
     final content = message.content;
 
     if (path.isNotEmpty) {
-      if (path.startsWith('http://') ||
-          path.startsWith('https://') ||
-          path.startsWith('/') ||
-          path.startsWith('admin/media')) {
-        return Image.network(
-          resolveMediaUrl(path),
-          width: 145,
-          height: 145,
-          fit: BoxFit.contain,
-          errorBuilder: (_, _, _) => _buildFallbackStickerIcon(isDark),
-        );
-      } else if (path.startsWith('assets/')) {
-        assetToUse = path;
-      } else if (File(path).existsSync()) {
-        return Image.file(
-          File(path),
-          width: 145,
-          height: 145,
-          fit: BoxFit.contain,
-          errorBuilder: (_, __, ___) => _buildFallbackStickerIcon(isDark),
-        );
-      } else if (path.startsWith('data:image')) {
-        try {
-          final b64 = path.split(',').last;
-          return Image.memory(
-            base64Decode(b64),
-            width: 145,
-            height: 145,
-            fit: BoxFit.contain,
-            errorBuilder: (_, __, ___) => _buildFallbackStickerIcon(isDark),
-          );
-        } catch (_) {}
+      pathOrUrl = path;
+    } else {
+      // Try finding in StickerService (remote or local)
+      final foundSticker = StickerService.instance.findSticker(name);
+      if (foundSticker != null) {
+        pathOrUrl = foundSticker.isRemote ? foundSticker.effectivePathOrUrl : foundSticker.assetPath;
       }
     }
 
-    // Try finding in StickerService (remote or local)
-    final foundSticker = StickerService.instance.findSticker(path.isNotEmpty ? path : name);
-    if (foundSticker != null) {
-      if (foundSticker.isRemote) {
-        return Image.network(
-          resolveMediaUrl(foundSticker.effectivePathOrUrl),
-          width: 145,
-          height: 145,
-          fit: BoxFit.contain,
-          errorBuilder: (_, _, _) => _buildFallbackStickerIcon(isDark),
-        );
-      } else {
-        assetToUse = foundSticker.assetPath;
-      }
-    }
-
-    if (assetToUse == null) {
+    if (pathOrUrl == null || pathOrUrl.isEmpty) {
       if (name == 'cat_cool' || content.contains('cat_cool') || content.toLowerCase() == 'keren') {
-        assetToUse = 'assets/images/stickers/cat_cool.png';
+        pathOrUrl = 'assets/images/stickers/cat_cool.png';
       } else if (name == 'cat_cheer' || content.contains('cat_cheer') || content.toLowerCase() == 'semangat') {
-        assetToUse = 'assets/images/stickers/cat_cheer.png';
+        pathOrUrl = 'assets/images/stickers/cat_cheer.png';
       } else {
-        assetToUse = 'assets/images/stickers/cat_thumbs_up.png';
+        pathOrUrl = 'assets/images/stickers/cat_thumbs_up.png';
       }
     }
 
-    return Image.asset(
-      assetToUse,
+    return LajuAnimatedSticker(
+      pathOrUrl: pathOrUrl,
       width: 145,
       height: 145,
       fit: BoxFit.contain,
-      errorBuilder: (_, __, ___) {
-        final altPath = assetToUse!.replaceFirst('assets/images/stickers/', 'assets/stickers/');
-        return Image.asset(
-          altPath,
-          width: 145,
-          height: 145,
-          fit: BoxFit.contain,
-          errorBuilder: (_, __, ___) => _buildFallbackStickerIcon(isDark),
-        );
-      },
+      fallback: _buildFallbackStickerIcon(isDark),
     );
   }
+
 
   Widget _buildFallbackStickerIcon(bool isDark) {
     return Container(

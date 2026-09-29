@@ -1430,19 +1430,40 @@ class _StatusViewScreenState extends State<StatusViewScreen>
                             icon: const Icon(Icons.arrow_back_rounded, color: Colors.white, size: 24),
                             onPressed: _safeClose,
                           ),
-                          ModernAvatar(
-                            name: widget.contactName,
-                            imagePath: (widget.avatarUrl != null && widget.avatarUrl!.isNotEmpty)
-                                ? widget.avatarUrl
-                                : (story.isPhoto && story.imageAsset != null && story.imageAsset!.isNotEmpty
-                                    ? story.imageAsset
-                                    : _stories.cast<StatusStoryItem?>().firstWhere(
-                                        (s) => s != null && s.isPhoto && s.imageAsset != null && s.imageAsset!.isNotEmpty,
-                                        orElse: () => null,
-                                      )?.imageAsset),
-                            radius: 19,
-                            isVerified: true,
-                          ),
+                          if (widget.isOfficial || story.isOfficial)
+                            Container(
+                              width: 38,
+                              height: 38,
+                              decoration: const BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: Colors.white,
+                              ),
+                              clipBehavior: Clip.antiAlias,
+                              padding: const EdgeInsets.all(4),
+                              child: Image.asset(
+                                'assets/images/logo_no_bg.png',
+                                fit: BoxFit.contain,
+                                errorBuilder: (_, __, ___) => const Icon(
+                                  Icons.shield_rounded,
+                                  color: Color(0xFF0284C7),
+                                  size: 22,
+                                ),
+                              ),
+                            )
+                          else
+                            ModernAvatar(
+                              name: widget.contactName,
+                              imagePath: (widget.avatarUrl != null && widget.avatarUrl!.isNotEmpty)
+                                  ? widget.avatarUrl
+                                  : (story.isPhoto && story.imageAsset != null && story.imageAsset!.isNotEmpty
+                                      ? story.imageAsset
+                                      : _stories.cast<StatusStoryItem?>().firstWhere(
+                                          (s) => s != null && s.isPhoto && s.imageAsset != null && s.imageAsset!.isNotEmpty,
+                                          orElse: () => null,
+                                        )?.imageAsset),
+                              radius: 19,
+                              isVerified: true,
+                            ),
                           const SizedBox(width: 10),
                           Expanded(
                             child: Column(

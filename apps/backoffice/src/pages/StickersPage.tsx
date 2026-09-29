@@ -14,6 +14,10 @@ import {
   X,
   Film,
   FolderUp,
+  Eye,
+  Copy,
+  Check,
+  Scissors,
 } from 'lucide-react';
 import {
   useStickerPacksList,
@@ -31,8 +35,9 @@ import { Input } from '../components/ui/Input';
 import { Badge } from '../components/ui/Badge';
 import { Pagination } from '../components/ui/Pagination';
 import { usePagination } from '../hooks/usePagination';
-import { StickerPackItem } from '../api/types';
+import { StickerPackItem, StickerItem } from '../api/types';
 import { ApngFrameStudioModal } from '../components/stickers/ApngFrameStudioModal';
+import { SpriteSheetExtractorModal } from '../components/stickers/SpriteSheetExtractorModal';
 import { resolveMediaUrl } from '../api/client';
 
 const packSchema = z.object({
@@ -64,6 +69,7 @@ export function StickersPage() {
   const [isAddStickerModalOpen, setIsAddStickerModalOpen] = useState(false);
   const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
   const [isApngStudioOpen, setIsApngStudioOpen] = useState(false);
+  const [isSpriteSheetExtractorOpen, setIsSpriteSheetExtractorOpen] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   // File upload state for Pack Cover
@@ -277,6 +283,10 @@ export function StickersPage() {
     });
   };
 
+  const [previewSticker, setPreviewSticker] = useState<StickerItem | null>(null);
+  const [previewBg, setPreviewBg] = useState<'checker' | 'dark' | 'light'>('checker');
+  const [copiedUrl, setCopiedUrl] = useState(false);
+
   // Sync selectedPack with fresh query data
   const currentActivePack = packs?.find((p) => p.id === selectedPack?.id) || selectedPack;
 
@@ -423,7 +433,19 @@ export function StickersPage() {
                   <Button
                     size="sm"
                     variant="outline"
-                    icon={<Film className="w-3.5 h-3.5 text-neutral-700" />}
+                    icon={<Scissors className="w-3.5 h-3.5 text-cyan-600" />}
+                    onClick={() => {
+                      setErrorMessage(null);
+                      setIsSpriteSheetExtractorOpen(true);
+                    }}
+                  >
+                    Ekstraktor Sprite Sheet
+                  </Button>
+
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    icon={<Film className="w-3.5 h-3.5 text-indigo-600" />}
                     onClick={() => {
                       setErrorMessage(null);
                       setIsApngStudioOpen(true);
@@ -442,7 +464,7 @@ export function StickersPage() {
                       setIsBulkModalOpen(true);
                     }}
                   >
-                    Unggah Massal (Non-APNG)
+                    Unggah Massal
                   </Button>
 
                   <Button
@@ -474,40 +496,83 @@ export function StickersPage() {
               <div className="mt-5 space-y-4">
                 {stickersPagination.paginatedItems && stickersPagination.paginatedItems.length > 0 ? (
                   <>
-                    <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3">
-                      {stickersPagination.paginatedItems.map((stk) => (
-                        <div
-                          key={stk.id}
-                          className="p-3 rounded-xl border border-neutral-100 bg-neutral-50/50 hover:bg-neutral-100/80 transition-all flex flex-col items-center justify-between group relative"
-                        >
-                          <button
-                            onClick={() => handleOpenDeleteSticker(stk.id)}
-                            className="absolute top-1.5 right-1.5 p-1 rounded-md bg-white border border-neutral-200 text-neutral-400 hover:text-rose-600 opacity-0 group-hover:opacity-100 transition-opacity shadow-xs"
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3.5">
+                      {stickersPagination.paginatedItems.map((stk) => {
+                        const ext = stk.imageUrl?.split('.').pop()?.toUpperCase() || 'PNG';
+                        const isAnimated = ext === 'APNG' || ext === 'GIF' || ext === 'WEBP';
+                        return (
+                          <div
+                            key={stk.id}
+                            onClick={() => {
+                              setPreviewSticker(stk);
+                              setCopiedUrl(false);
+                            }}
+                            className="p-3 rounded-2xl border border-neutral-200/80 bg-white hover:border-neutral-400 hover:shadow-md transition-all flex flex-col items-center justify-between group relative cursor-pointer"
                           >
-                            <X className="w-3 h-3" />
-                          </button>
-
-                          <div className="w-16 h-16 flex items-center justify-center p-1">
-                            <img
-                              src={resolveMediaUrl(stk.imageUrl)}
-                              alt={stk.name}
-                              className="max-w-full max-h-full object-contain"
-                              onError={(e) => {
-                                (e.target as HTMLElement).style.opacity = '0.3';
-                              }}
-                            />
-                          </div>
-
-                          <div className="mt-2 text-center w-full">
-                            <p className="text-[11px] font-bold text-neutral-800 truncate">{stk.name}</p>
-                            {stk.emoji && (
-                              <span className="text-[10px] font-mono text-neutral-400 bg-neutral-100 px-1.5 py-0.5 rounded inline-block mt-0.5">
-                                {stk.emoji}
+                            {/* Format Badge */}
+                            <div className="absolute top-2 left-2 z-10">
+                              <span
+                                className={`text-[9px] font-bold px-1.5 py-0.5 rounded-md shadow-2xs ${
+                                  isAnimated
+                                    ? 'bg-indigo-600 text-white'
+                                    : 'bg-neutral-100 text-neutral-600 border border-neutral-200'
+                                }`}
+                              >
+                                {ext}
                               </span>
-                            )}
+                            </div>
+
+                            {/* Delete button */}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleOpenDeleteSticker(stk.id);
+                              }}
+                              className="absolute top-2 right-2 p-1.5 rounded-lg bg-white/90 border border-neutral-200 text-neutral-400 hover:text-rose-600 opacity-0 group-hover:opacity-100 transition-opacity shadow-xs z-10"
+                              title="Hapus stiker"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+
+                            {/* Sticker Preview Stage with Transparency Checkerboard */}
+                            <div
+                              className="w-full aspect-square max-w-[110px] rounded-xl flex items-center justify-center p-2 relative overflow-hidden transition-transform duration-200 group-hover:scale-105 border border-neutral-100 mt-3"
+                              style={{
+                                backgroundColor: '#ffffff',
+                                backgroundImage:
+                                  'linear-gradient(45deg, #f1f5f9 25%, transparent 25%), linear-gradient(-45deg, #f1f5f9 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #f1f5f9 75%), linear-gradient(-45deg, transparent 75%, #f1f5f9 75%)',
+                                backgroundSize: '12px 12px',
+                                backgroundPosition: '0 0, 0 6px, 6px -6px, -6px 0px',
+                              }}
+                            >
+                              <img
+                                src={resolveMediaUrl(stk.imageUrl)}
+                                alt={stk.name}
+                                className="max-w-full max-h-full object-contain filter drop-shadow-xs"
+                                loading="lazy"
+                                onError={(e) => {
+                                  (e.target as HTMLElement).style.opacity = '0.3';
+                                }}
+                              />
+                            </div>
+
+                            <div className="mt-2.5 text-center w-full">
+                              <p className="text-xs font-bold text-neutral-800 truncate" title={stk.name}>
+                                {stk.name}
+                              </p>
+                              {stk.emoji ? (
+                                <span className="text-[10px] font-mono text-neutral-500 bg-neutral-100 px-1.5 py-0.5 rounded-md inline-block mt-0.5 border border-neutral-200/50">
+                                  :{stk.emoji}:
+                                </span>
+                              ) : (
+                                <span className="text-[10px] text-neutral-400 inline-block mt-0.5">
+                                  Klik untuk pratinjau
+                                </span>
+                              )}
+                            </div>
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
 
                     {stickersPagination.totalItems > stickersPagination.pageSize && (
@@ -867,6 +932,154 @@ export function StickersPage() {
           packName={currentActivePack.name}
         />
       )}
+
+      {/* Modal: Ekstraktor Sprite Sheet Atlas (Phaser Tools Engine) */}
+      {currentActivePack && (
+        <SpriteSheetExtractorModal
+          isOpen={isSpriteSheetExtractorOpen}
+          onClose={() => setIsSpriteSheetExtractorOpen(false)}
+          packId={currentActivePack.id}
+          packName={currentActivePack.name}
+        />
+      )}
+
+      {/* Modal: Pratinjau Resolusi Tinggi & Penguji Animasi Stiker */}
+      <Modal
+        isOpen={!!previewSticker}
+        onClose={() => setPreviewSticker(null)}
+        title={previewSticker ? `Pratinjau Stiker: ${previewSticker.name}` : 'Pratinjau Stiker'}
+        maxWidth="md"
+      >
+        {previewSticker && (
+          <div className="space-y-4">
+            {/* Background switcher for transparency test */}
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-neutral-500">Latar Belakang Pratinjau:</span>
+              <div className="flex items-center gap-1.5 bg-neutral-100 p-1 rounded-xl">
+                <button
+                  type="button"
+                  onClick={() => setPreviewBg('checker')}
+                  className={`text-[11px] font-semibold px-2.5 py-1 rounded-lg transition-all ${
+                    previewBg === 'checker'
+                      ? 'bg-white text-neutral-900 shadow-xs'
+                      : 'text-neutral-500 hover:text-neutral-900'
+                  }`}
+                >
+                  Kotak Catur
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPreviewBg('light')}
+                  className={`text-[11px] font-semibold px-2.5 py-1 rounded-lg transition-all ${
+                    previewBg === 'light'
+                      ? 'bg-white text-neutral-900 shadow-xs'
+                      : 'text-neutral-500 hover:text-neutral-900'
+                  }`}
+                >
+                  Putih
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPreviewBg('dark')}
+                  className={`text-[11px] font-semibold px-2.5 py-1 rounded-lg transition-all ${
+                    previewBg === 'dark'
+                      ? 'bg-neutral-900 text-white shadow-xs'
+                      : 'text-neutral-500 hover:text-neutral-900'
+                  }`}
+                >
+                  Gelap
+                </button>
+              </div>
+            </div>
+
+            {/* Display Stage */}
+            <div
+              className="w-full h-64 rounded-2xl flex items-center justify-center p-6 border border-neutral-200/80 transition-colors relative overflow-hidden"
+              style={{
+                backgroundColor: previewBg === 'dark' ? '#0F172A' : '#ffffff',
+                backgroundImage:
+                  previewBg === 'checker'
+                    ? 'linear-gradient(45deg, #f1f5f9 25%, transparent 25%), linear-gradient(-45deg, #f1f5f9 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #f1f5f9 75%), linear-gradient(-45deg, transparent 75%, #f1f5f9 75%)'
+                    : undefined,
+                backgroundSize: '16px 16px',
+                backgroundPosition: '0 0, 0 8px, 8px -8px, -8px 0px',
+              }}
+            >
+              <img
+                src={resolveMediaUrl(previewSticker.imageUrl)}
+                alt={previewSticker.name}
+                className="max-w-full max-h-full object-contain filter drop-shadow-md select-none"
+              />
+            </div>
+
+            {/* Details & Actions */}
+            <div className="bg-neutral-50 rounded-xl p-3.5 border border-neutral-200/80 space-y-2 text-xs">
+              <div className="flex items-center justify-between">
+                <span className="text-neutral-500">Nama Stiker:</span>
+                <span className="font-bold text-neutral-900">{previewSticker.name}</span>
+              </div>
+              {previewSticker.emoji && (
+                <div className="flex items-center justify-between">
+                  <span className="text-neutral-500">Shortcut / Emoji:</span>
+                  <span className="font-mono bg-white px-2 py-0.5 rounded border border-neutral-200 font-semibold">
+                    :{previewSticker.emoji}:
+                  </span>
+                </div>
+              )}
+              <div className="flex items-center justify-between">
+                <span className="text-neutral-500">Format File:</span>
+                <span className="font-semibold text-neutral-700">
+                  {previewSticker.imageUrl.split('.').pop()?.toUpperCase() || 'PNG'}
+                </span>
+              </div>
+              <div className="flex items-center justify-between pt-1 border-t border-neutral-200">
+                <span className="text-neutral-500">Direct URL:</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(resolveMediaUrl(previewSticker.imageUrl));
+                    setCopiedUrl(true);
+                    setTimeout(() => setCopiedUrl(false), 2000);
+                  }}
+                  className="flex items-center gap-1 text-[11px] font-semibold text-emerald-600 hover:text-emerald-700 bg-white px-2 py-1 rounded border border-neutral-200 shadow-2xs"
+                >
+                  {copiedUrl ? (
+                    <>
+                      <Check className="w-3 h-3" /> Tersalin
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-3 h-3" /> Salin URL
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+
+            <div className="flex justify-between items-center pt-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-rose-600 hover:bg-rose-50"
+                onClick={() => {
+                  const id = previewSticker.id;
+                  setPreviewSticker(null);
+                  handleOpenDeleteSticker(id);
+                }}
+              >
+                <Trash2 className="w-4 h-4 mr-1.5" /> Hapus Stiker
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPreviewSticker(null)}
+              >
+                Tutup
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
 
       {/* Modal Hapus Paket Stiker */}
       <ConfirmModal

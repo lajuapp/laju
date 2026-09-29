@@ -81,21 +81,12 @@ class _StickerPickerSheetState extends State<StickerPickerSheet> {
                 Container(
                   width: 160,
                   height: 160,
-                  alignment: Alignment.center,
-                  child: sticker.isRemote
-                      ? Image.network(
-                          resolveMediaUrl(sticker.effectivePathOrUrl),
-                          fit: BoxFit.contain,
-                          errorBuilder: (_, _, _) => const Icon(
-                            Icons.broken_image_rounded,
-                            size: 64,
-                            color: Colors.grey,
-                          ),
-                        )
-                      : Image.asset(
-                          sticker.assetPath,
-                          fit: BoxFit.contain,
-                        ),
+                  child: LajuAnimatedSticker(
+                    pathOrUrl: sticker.isRemote ? sticker.effectivePathOrUrl : sticker.assetPath,
+                    width: 160,
+                    height: 160,
+                    fit: BoxFit.contain,
+                  ),
                 ),
                 const SizedBox(height: 14),
                 Text(
@@ -609,20 +600,12 @@ class _StickerPickerSheetState extends State<StickerPickerSheet> {
           padding: const EdgeInsets.all(6),
           child: Hero(
             tag: 'sticker_${sticker.id}',
-            child: sticker.isRemote
-                ? Image.network(
-                    resolveMediaUrl(sticker.effectivePathOrUrl),
-                    fit: BoxFit.contain,
-                    errorBuilder: (_, _, _) => const Icon(
-                      Icons.sticky_note_2_rounded,
-                      size: 32,
-                      color: Colors.grey,
-                    ),
-                  )
-                : Image.asset(
-                    sticker.assetPath,
-                    fit: BoxFit.contain,
-                  ),
+            child: LajuAnimatedSticker(
+              pathOrUrl: sticker.isRemote ? sticker.effectivePathOrUrl : sticker.assetPath,
+              width: 64,
+              height: 64,
+              fit: BoxFit.contain,
+            ),
           ),
         ),
       ),

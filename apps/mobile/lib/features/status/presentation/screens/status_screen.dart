@@ -1808,7 +1808,7 @@ class StatusScreenState extends State<StatusScreen> with AutomaticKeepAliveClien
             MaterialPageRoute(
               builder: (context) => StatusViewScreen(
                 contactName: 'LAJU Official',
-                avatarUrl: null,
+                avatarUrl: 'assets/images/logo_no_bg.png',
                 stories: _officialStories,
                 isOfficial: true,
                 onStatusDeleted: _loadStatuses,
@@ -1846,22 +1846,23 @@ class StatusScreenState extends State<StatusScreen> with AutomaticKeepAliveClien
               child: Container(
                 width: 46,
                 height: 46,
-                decoration: const BoxDecoration(
+                decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  gradient: LinearGradient(
-                    colors: [Color(0xFF0284C7), Color(0xFF0369A1)],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                ),
-                child: const Center(
-                  child: Text(
-                    'L',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w900,
-                      fontSize: 20,
+                  color: isDark ? const Color(0xFF0F172A) : Colors.white,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.08),
+                      blurRadius: 4,
                     ),
+                  ],
+                ),
+                clipBehavior: Clip.antiAlias,
+                padding: const EdgeInsets.all(5),
+                child: Image.asset(
+                  'assets/images/logo_no_bg.png',
+                  fit: BoxFit.contain,
+                  errorBuilder: (_, __, ___) => const Center(
+                    child: Icon(Icons.shield_rounded, color: Color(0xFF0284C7), size: 24),
                   ),
                 ),
               ),
