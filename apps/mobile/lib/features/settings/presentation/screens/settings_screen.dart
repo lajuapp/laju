@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import '../../../../core/core.dart';
 import '../../../auth/domain/auth_controller.dart';
 import '../../../auth/presentation/screens/welcome_screen.dart';
-import '../../../devices/presentation/screens/linked_devices_screen.dart';
 import 'package:laju_mobile/features/security/presentation/screens/security_screen.dart';
 import '../../domain/account_controller.dart';
 import 'account_screen.dart';
@@ -185,19 +184,6 @@ class SettingsScreen extends StatelessWidget {
                           Navigator.push(
                             context,
                             MaterialPageRoute(builder: (context) => const SecurityScreen()),
-                          );
-                        },
-                      ),
-                      _buildInnerDivider(isDark),
-                      _buildSettingTile(
-                        context,
-                        Icons.devices_rounded,
-                        const Color(0xFF06B6D4),
-                        'Perangkat Tertaut',
-                        () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(builder: (context) => const LinkedDevicesScreen()),
                           );
                         },
                       ),

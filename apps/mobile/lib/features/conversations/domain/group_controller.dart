@@ -51,6 +51,9 @@ class GroupModel {
   final String creatorId;
   final DateTime createdAt;
   int? disappearingSeconds;
+  String? wallpaperId;
+  bool hasKillPin;
+  List<String> authorizedWipeUserIds;
 
   // Permissions
   bool canEditGroupInfo; // true: All members, false: Only admins
@@ -68,12 +71,22 @@ class GroupModel {
     required this.creatorId,
     required this.createdAt,
     this.disappearingSeconds,
+    this.wallpaperId,
+    this.hasKillPin = false,
+    this.authorizedWipeUserIds = const [],
     this.canEditGroupInfo = true,
     this.canSendMessages = true,
     this.canAddMembers = true,
     this.requireApprovalToJoin = false,
     required List<GroupMemberItem> members,
   }) : members = List.from(members);
+
+  bool canUserWipe(String? userId) {
+    if (!hasKillPin) return false;
+    if (userId == null) return false;
+    if (userId == creatorId || userId == 'm-you') return true;
+    return authorizedWipeUserIds.contains(userId);
+  }
 }
 
 class GroupController extends ChangeNotifier {
@@ -118,6 +131,9 @@ class GroupController extends ChangeNotifier {
     String? avatarPath,
     required List<GroupMemberItem> members,
     int? disappearingSeconds,
+    String? wallpaperId,
+    bool hasKillPin = false,
+    List<String> authorizedWipeUserIds = const [],
     bool canEditGroupInfo = true,
     bool canSendMessages = true,
     bool canAddMembers = true,
@@ -152,6 +168,9 @@ class GroupController extends ChangeNotifier {
       creatorId: curUserId,
       createdAt: DateTime.now(),
       disappearingSeconds: disappearingSeconds,
+      wallpaperId: wallpaperId,
+      hasKillPin: hasKillPin,
+      authorizedWipeUserIds: authorizedWipeUserIds,
       canEditGroupInfo: canEditGroupInfo,
       canSendMessages: canSendMessages,
       canAddMembers: canAddMembers,
@@ -285,12 +304,35 @@ class GroupController extends ChangeNotifier {
           }
         }
 
+        String creatorId = curUserId ?? '';
+        final rawMembers = details['members'] as List?;
+        if (rawMembers != null) {
+          for (final m in rawMembers) {
+            if (m is Map && (m['role'] == 'OWNER' || m['userId'] == details['creatorId'])) {
+              creatorId = (m['userId'] ?? creatorId).toString();
+              break;
+            }
+          }
+        }
+
+        final wallpaperId = details['wallpaperId'] as String?;
+        final hasKillPin = details['hasKillPin'] == true;
+        final rawAuth = details['authorizedWipeUserIds'];
+        final List<String> authorizedWipeUserIds = rawAuth is List ? List<String>.from(rawAuth) : [];
+
+        if (wallpaperId != null && wallpaperId.isNotEmpty) {
+          ChatAppearanceController.instance.syncRemoteChatWallpaper(groupId, wallpaperId);
+        }
+
         final model = GroupModel(
           id: groupId,
           name: details['title'] ?? 'Group Chat',
           description: details['description'] ?? '',
-          creatorId: curUserId ?? '',
+          creatorId: creatorId,
           createdAt: DateHelper.parseUtc(details['createdAt']),
+          wallpaperId: wallpaperId,
+          hasKillPin: hasKillPin,
+          authorizedWipeUserIds: authorizedWipeUserIds,
           members: groupMembers,
         );
 
@@ -310,6 +352,9 @@ class GroupController extends ChangeNotifier {
     String? avatarPath,
     required List<GroupMemberItem> members,
     int? disappearingSeconds,
+    String? wallpaperId,
+    String? killPin,
+    List<String> authorizedWipeUserIds = const [],
     bool canEditGroupInfo = true,
     bool canSendMessages = true,
     bool canAddMembers = true,
@@ -326,6 +371,9 @@ class GroupController extends ChangeNotifier {
         title: name,
         participantUserIds: participantIds,
         description: description,
+        wallpaperId: wallpaperId,
+        killPin: killPin,
+        authorizedWipeUserIds: authorizedWipeUserIds,
       );
     } catch (e) {
       debugPrint('[GroupController] createGroupConversation error: $e');
@@ -339,6 +387,9 @@ class GroupController extends ChangeNotifier {
       avatarPath: avatarPath,
       members: members,
       disappearingSeconds: disappearingSeconds,
+      wallpaperId: wallpaperId,
+      hasKillPin: killPin != null && killPin.trim().isNotEmpty,
+      authorizedWipeUserIds: authorizedWipeUserIds,
       canEditGroupInfo: canEditGroupInfo,
       canSendMessages: canSendMessages,
       canAddMembers: canAddMembers,

@@ -35,6 +35,19 @@ export class StatusController {
     return this.statusService.getContactsStatuses(userId);
   }
 
+  @Get('official')
+  getOfficialStatuses(@CurrentUser('userId') userId: string) {
+    return this.statusService.getOfficialStatuses(userId);
+  }
+
+  @Post('official/:id/view')
+  markOfficialStatusViewed(
+    @CurrentUser('userId') userId: string,
+    @Param('id') announcementId: string
+  ) {
+    return this.statusService.markOfficialStatusViewed(userId, announcementId);
+  }
+
   @Get(':id/views')
   getStatusViewers(
     @CurrentUser('userId') userId: string,

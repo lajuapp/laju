@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import '../../../../core/core.dart';
 import '../../domain/models/message_model.dart';
@@ -740,6 +741,186 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
     );
   }
 
+  void _confirmDestructiveWipe(BuildContext context, bool isDark) {
+    final pinController = TextEditingController();
+    bool obscurePin = true;
+    bool isWiping = false;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogCtx) {
+        return StatefulBuilder(
+          builder: (dCtx, setDialogState) {
+            return AlertDialog(
+              backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+                side: const BorderSide(color: AppColors.danger, width: 1.5),
+              ),
+              title: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: AppColors.danger.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(Icons.warning_amber_rounded, color: AppColors.danger, size: 22),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Hancurkan Chat Grup?',
+                      style: TextStyle(
+                        fontSize: 16.5,
+                        fontWeight: FontWeight.bold,
+                        color: isDark ? Colors.white : const Color(0xFF0F172A),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'PERINGATAN: Tindakan ini akan menghapus SEMUA riwayat obrolan grup ini secara permanen dari server dan semua perangkat anggota. Pesan tidak dapat dipulihkan.',
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      color: isDark ? const Color(0xFFFCA5A5) : const Color(0xFFB91C1C),
+                      height: 1.35,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  Text(
+                    'Masukkan PIN Darurat untuk melanjutkan:',
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: pinController,
+                    keyboardType: TextInputType.number,
+                    obscureText: obscurePin,
+                    maxLength: 6,
+                    autofocus: true,
+                    enabled: !isWiping,
+                    inputFormatters: [
+                      FilteringTextInputFormatter.digitsOnly,
+                      LengthLimitingTextInputFormatter(6),
+                    ],
+                    style: TextStyle(
+                      color: isDark ? Colors.white : const Color(0xFF0F172A),
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 4.0,
+                    ),
+                    decoration: InputDecoration(
+                      hintText: 'PIN (4-6 Digit)',
+                      hintStyle: TextStyle(
+                        color: isDark ? const Color(0xFF64748B) : const Color(0xFF94A3B8),
+                        letterSpacing: 0,
+                      ),
+                      prefixIcon: const Icon(Icons.pin_rounded, color: AppColors.danger),
+                      suffixIcon: IconButton(
+                        icon: Icon(
+                          obscurePin ? Icons.visibility_off : Icons.visibility,
+                          color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+                          size: 20,
+                        ),
+                        onPressed: () {
+                          setDialogState(() => obscurePin = !obscurePin);
+                        },
+                      ),
+                      counterText: '',
+                      filled: true,
+                      fillColor: isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(
+                          color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
+                        ),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: AppColors.danger, width: 1.5),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: isWiping ? null : () => Navigator.pop(dialogCtx),
+                  child: Text(
+                    'Batal',
+                    style: TextStyle(
+                      color: isDark ? Colors.white70 : const Color(0xFF64748B),
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.danger,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                  onPressed: isWiping
+                      ? null
+                      : () async {
+                          final pin = pinController.text.trim();
+                          if (pin.length < 4 || pin.length > 6) {
+                            LajuToast.error(context, 'Masukkan 4-6 digit PIN');
+                            return;
+                          }
+
+                          setDialogState(() => isWiping = true);
+
+                          try {
+                            await ConversationService.instance.destructiveWipeGroup(widget.groupId, pin);
+                            if (mounted) {
+                              setState(() {
+                                _messages.clear();
+                              });
+                            }
+                            if (dialogCtx.mounted) {
+                              Navigator.pop(dialogCtx);
+                            }
+                            if (context.mounted) {
+                              LajuToast.success(context, 'Riwayat obrolan grup berhasil dihancurkan untuk semua orang');
+                            }
+                          } catch (e) {
+                            setDialogState(() => isWiping = false);
+                            final msg = e.toString().replaceAll('Exception: ', '');
+                            if (context.mounted) {
+                              LajuToast.error(context, msg);
+                            }
+                          }
+                        },
+                  child: isWiping
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                        )
+                      : const Text(
+                          'Hancurkan Semua',
+                          style: TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
   void _confirmLeaveGroup(BuildContext context, bool isDark) {
     showDialog(
       context: context,
@@ -1038,6 +1219,9 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                               await ConversationService.instance.updateConversationDisappearingTimer(widget.groupId, seconds);
                             }
                             break;
+                          case 'destructive_wipe':
+                            _confirmDestructiveWipe(context, isDark);
+                            break;
                           case 'clear':
                             _confirmClearChat(context, isDark);
                             break;
@@ -1046,16 +1230,33 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                             break;
                         }
                       },
-                      itemBuilder: (context) => [
-                        _buildMenuItem('info', Icons.info_outline_rounded, 'Info Grup', isDark),
-                        _buildMenuItem('media', Icons.perm_media_outlined, 'Media & Lampiran', isDark),
-                        _buildMenuItem('search', Icons.search_rounded, 'Cari Pesan', isDark),
-                        _buildMenuItem('wallpaper', Icons.wallpaper_rounded, 'Wallpaper Chat', isDark),
-                        _buildMenuItem('disappearing', Icons.timer_outlined, 'Pesan Sementara', isDark),
-                        const PopupMenuDivider(height: 1),
-                        _buildMenuItem('clear', Icons.delete_sweep_outlined, 'Bersihkan Chat', isDark),
-                        _buildMenuItem('leave', Icons.exit_to_app_rounded, 'Keluar dari Grup', isDark, isDestructive: true),
-                      ],
+                      itemBuilder: (context) {
+                        final currentGroup = GroupController.instance.getGroup(widget.groupId);
+                        final curUserId = ApiClient.instance.userId;
+                        final showDestructiveOption = currentGroup == null ||
+                            (currentGroup.hasKillPin && currentGroup.canUserWipe(curUserId));
+
+                        return [
+                          _buildMenuItem('info', Icons.info_outline_rounded, 'Info Grup', isDark),
+                          _buildMenuItem('media', Icons.perm_media_outlined, 'Media & Lampiran', isDark),
+                          _buildMenuItem('search', Icons.search_rounded, 'Cari Pesan', isDark),
+                          _buildMenuItem('wallpaper', Icons.wallpaper_rounded, 'Wallpaper Chat', isDark),
+                          _buildMenuItem('disappearing', Icons.timer_outlined, 'Pesan Sementara', isDark),
+                          const PopupMenuDivider(height: 1),
+                          if (showDestructiveOption) ...[
+                            _buildMenuItem(
+                              'destructive_wipe',
+                              Icons.warning_amber_rounded,
+                              'Hancurkan Riwayat Grup',
+                              isDark,
+                              isDestructive: true,
+                            ),
+                            const PopupMenuDivider(height: 1),
+                          ],
+                          _buildMenuItem('clear', Icons.delete_sweep_outlined, 'Bersihkan Chat', isDark),
+                          _buildMenuItem('leave', Icons.exit_to_app_rounded, 'Keluar dari Grup', isDark, isDestructive: true),
+                        ];
+                      },
                     ),
                   ],
                 ),

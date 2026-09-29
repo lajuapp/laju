@@ -205,6 +205,11 @@ export class CreateStickerItemDto {
   emoji?: string;
 }
 
+export class CreateBulkStickersDto {
+  @IsArray()
+  items: CreateStickerItemDto[];
+}
+
 export class RequestConversationAccessDto {
   @IsString()
   @IsNotEmpty()
@@ -252,6 +257,30 @@ export class CreateAnnouncementDto {
   @IsString({ each: true })
   @IsOptional()
   targetUserIds?: string[];
+
+  @IsString()
+  @IsOptional()
+  mediaType?: string; // 'TEXT' | 'IMAGE'
+
+  @IsString()
+  @IsOptional()
+  mediaUrl?: string;
+
+  @IsString()
+  @IsOptional()
+  backgroundColor?: string;
+
+  @IsString()
+  @IsOptional()
+  actionUrl?: string;
+
+  @IsString()
+  @IsOptional()
+  actionTitle?: string;
+
+  @IsInt()
+  @IsOptional()
+  durationHours?: number;
 }
 
 export class UpdateAnnouncementDto {
@@ -279,6 +308,30 @@ export class UpdateAnnouncementDto {
   @IsString({ each: true })
   @IsOptional()
   targetUserIds?: string[];
+
+  @IsString()
+  @IsOptional()
+  mediaType?: string;
+
+  @IsString()
+  @IsOptional()
+  mediaUrl?: string;
+
+  @IsString()
+  @IsOptional()
+  backgroundColor?: string;
+
+  @IsString()
+  @IsOptional()
+  actionUrl?: string;
+
+  @IsString()
+  @IsOptional()
+  actionTitle?: string;
+
+  @IsInt()
+  @IsOptional()
+  durationHours?: number;
 }
 
 export class UpdateAppConfigDto {

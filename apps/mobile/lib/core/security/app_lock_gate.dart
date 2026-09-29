@@ -40,14 +40,21 @@ class _AppLockGateState extends State<AppLockGate> with WidgetsBindingObserver {
     return ListenableBuilder(
       listenable: _lockCtrl,
       builder: (context, _) {
-        if (_lockCtrl.isCurrentlyLocked) {
-          return AppLockScreen(
-            onUnlocked: () {
-              _lockCtrl.unlockApp();
-            },
-          );
-        }
-        return widget.child;
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            widget.child,
+            if (_lockCtrl.isCurrentlyLocked)
+              Positioned.fill(
+                child: AppLockScreen(
+                  isGate: true,
+                  onUnlocked: () {
+                    _lockCtrl.unlockApp();
+                  },
+                ),
+              ),
+          ],
+        );
       },
     );
   }

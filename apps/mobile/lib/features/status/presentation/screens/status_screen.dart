@@ -56,6 +56,7 @@ class StatusScreenState extends State<StatusScreen> with AutomaticKeepAliveClien
   final TextEditingController _searchController = TextEditingController();
   String _selectedPrivacy = 'contacts'; // 'contacts', 'contacts_except', 'only_share'
   final List<StatusStoryItem> _myStories = [];
+  final List<StatusStoryItem> _officialStories = [];
   final List<StatusContactGroup> _recentUpdates = [];
   final List<StatusContactGroup> _viewedUpdates = [];
   Timer? _pollingTimer;
@@ -66,6 +67,9 @@ class StatusScreenState extends State<StatusScreen> with AutomaticKeepAliveClien
     // Instant cache hydration (Stale-While-Revalidate)
     if (StatusService.instance.cachedMyStatuses.isNotEmpty) {
       _myStories.addAll(StatusService.instance.cachedMyStatuses);
+    }
+    if (StatusService.instance.cachedOfficialStatuses.isNotEmpty) {
+      _officialStories.addAll(StatusService.instance.cachedOfficialStatuses);
     }
     if (StatusService.instance.cachedContactGroups.isNotEmpty) {
       for (final group in StatusService.instance.cachedContactGroups) {
@@ -85,7 +89,10 @@ class StatusScreenState extends State<StatusScreen> with AutomaticKeepAliveClien
     if (identical(a, b)) return true;
     if (a.length != b.length) return false;
     for (int i = 0; i < a.length; i++) {
-      if (a[i].id != b[i].id || a[i].text != b[i].text || a[i].time != b[i].time) {
+      if (a[i].id != b[i].id ||
+          a[i].text != b[i].text ||
+          a[i].time != b[i].time ||
+          a[i].viewers.length != b[i].viewers.length) {
         return false;
       }
     }
@@ -110,6 +117,7 @@ class StatusScreenState extends State<StatusScreen> with AutomaticKeepAliveClien
   Future<void> _loadStatuses() async {
     try {
       final myStatuses = await StatusService.instance.getMyStatuses();
+      final officialStatuses = await StatusService.instance.getOfficialStatuses();
       final contactGroups = await StatusService.instance.getContactsStatuses();
 
       if (!mounted) return;
@@ -125,14 +133,18 @@ class StatusScreenState extends State<StatusScreen> with AutomaticKeepAliveClien
       }
 
       final myStoriesChanged = !_areMyStoriesEqual(_myStories, myStatuses);
+      final officialChanged = !_areMyStoriesEqual(_officialStories, officialStatuses);
       final recentChanged = !_areContactGroupsEqual(_recentUpdates, newRecent);
       final viewedChanged = !_areContactGroupsEqual(_viewedUpdates, newViewed);
 
-      if (myStoriesChanged || recentChanged || viewedChanged) {
+      if (myStoriesChanged || officialChanged || recentChanged || viewedChanged) {
         setState(() {
           _myStories
             ..clear()
             ..addAll(myStatuses);
+          _officialStories
+            ..clear()
+            ..addAll(officialStatuses);
           _recentUpdates
             ..clear()
             ..addAll(newRecent);
@@ -1443,6 +1455,52 @@ class StatusScreenState extends State<StatusScreen> with AutomaticKeepAliveClien
               const SizedBox(height: 20),
             ],
 
+            // Official LAJU Status Section
+            if (_officialStories.isNotEmpty && (!_isSearching || query.isEmpty || _officialStories.any((s) => s.text.toLowerCase().contains(query)))) ...[
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                child: Row(
+                  children: [
+                    Text(
+                      'Pembaruan Resmi',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: isDark ? AppColors.darkTextSecondary : const Color(0xFF4B5563),
+                        letterSpacing: 0.3,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 1.5),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF0284C7).withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.verified_rounded, size: 11, color: Color(0xFF0284C7)),
+                          SizedBox(width: 3),
+                          Text(
+                            'Resmi',
+                            style: TextStyle(
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF0284C7),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 8),
+              _buildOfficialStatusCard(context, isDark),
+              const SizedBox(height: 20),
+            ],
+
             if (filteredRecent.isNotEmpty) ...[
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
@@ -1732,6 +1790,139 @@ class StatusScreenState extends State<StatusScreen> with AutomaticKeepAliveClien
           ),
         );
       },
+    );
+  }
+
+  Widget _buildOfficialStatusCard(BuildContext context, bool isDark) {
+    final hasUnread = _officialStories.any((s) => s.viewers.isEmpty);
+    final firstStory = _officialStories.first;
+
+    return LajuGlassCard(
+      borderRadius: 18,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => StatusViewScreen(
+                contactName: 'LAJU Official',
+                avatarUrl: null,
+                stories: _officialStories,
+                isOfficial: true,
+                onStatusDeleted: _loadStatuses,
+              ),
+            ),
+          ).then((_) => _loadStatuses());
+        },
+        child: Row(
+          children: [
+            // Avatar with verified gradient ring
+            Container(
+              padding: const EdgeInsets.all(2.5),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: hasUnread
+                    ? const LinearGradient(
+                        colors: [Color(0xFF0284C7), Color(0xFF38BDF8), Color(0xFF6366F1)],
+                      )
+                    : null,
+                border: hasUnread
+                    ? null
+                    : Border.all(
+                        color: isDark ? Colors.white24 : Colors.black12,
+                        width: 2,
+                      ),
+                boxShadow: hasUnread
+                    ? [
+                        BoxShadow(
+                          color: const Color(0xFF0284C7).withValues(alpha: 0.35),
+                          blurRadius: 8,
+                        ),
+                      ]
+                    : null,
+              ),
+              child: Container(
+                width: 46,
+                height: 46,
+                decoration: const BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: LinearGradient(
+                    colors: [Color(0xFF0284C7), Color(0xFF0369A1)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                ),
+                child: const Center(
+                  child: Text(
+                    'L',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w900,
+                      fontSize: 20,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Text(
+                        'LAJU Official',
+                        style: TextStyle(
+                          fontSize: 15.5,
+                          fontWeight: FontWeight.w700,
+                          color: isDark ? Colors.white : const Color(0xFF111827),
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      const Icon(
+                        Icons.verified_rounded,
+                        color: Color(0xFF0284C7),
+                        size: 16,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    '${firstStory.time} • ${firstStory.text.replaceAll('\n', ' ')}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      color: hasUnread
+                          ? (isDark ? Colors.white : const Color(0xFF111827))
+                          : (isDark ? AppColors.darkTextSecondary : const Color(0xFF6B7280)),
+                      fontWeight: hasUnread ? FontWeight.w600 : FontWeight.normal,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (hasUnread)
+              Container(
+                width: 9,
+                height: 9,
+                decoration: const BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Color(0xFF0284C7),
+                ),
+              )
+            else
+              Icon(
+                Icons.chevron_right_rounded,
+                size: 20,
+                color: isDark ? Colors.white24 : const Color(0xFFCBD5E1),
+              ),
+          ],
+        ),
+      ),
     );
   }
 }

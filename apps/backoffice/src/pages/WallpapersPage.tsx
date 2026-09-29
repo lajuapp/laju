@@ -44,7 +44,7 @@ export function WallpapersPage() {
   const deleteWallpaper = useDeleteWallpaper();
   const mediaUpload = useMediaUpload();
 
-  const pagination = usePagination(wallpapers || [], { initialPageSize: 8 });
+  const pagination = usePagination(wallpapers || [], { initialPageSize: 10 });
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -157,37 +157,57 @@ export function WallpapersPage() {
         </div>
       ) : pagination.paginatedItems && pagination.paginatedItems.length > 0 ? (
         <div className="space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
             {pagination.paginatedItems.map((wp) => (
               <div
                 key={wp.id}
-                className="bg-white rounded-2xl border border-neutral-200/80 p-4 shadow-xs flex flex-col justify-between group hover:border-neutral-300 transition-all hover:shadow-sm"
+                className="bg-white rounded-2xl border border-neutral-200/80 p-3 shadow-xs flex flex-col justify-between group hover:border-neutral-300 transition-all hover:shadow-sm"
               >
-                {/* Preview Window Frame */}
+                {/* 9:16 Full Screen Portrait Preview Frame */}
                 <div
-                  className="h-36 rounded-xl border border-neutral-200/70 overflow-hidden relative flex items-center justify-center shadow-inner"
+                  className="w-full aspect-[9/16] rounded-xl border border-neutral-200/80 overflow-hidden relative flex items-center justify-center shadow-inner group/img bg-neutral-900"
                   style={{
                     backgroundColor: wp.colorHex || '#1E293B',
-                    backgroundImage: wp.imageUrl ? `url(${resolveMediaUrl(wp.imageUrl)})` : undefined,
-                    backgroundSize: 'cover',
-                    backgroundPosition: 'center',
                   }}
                 >
+                  {wp.imageUrl ? (
+                    <img
+                      src={resolveMediaUrl(wp.imageUrl)}
+                      alt={wp.name}
+                      className="w-full h-full object-cover"
+                      loading="lazy"
+                    />
+                  ) : (
+                    <div
+                      className="w-full h-full flex flex-col items-center justify-center p-3 text-center"
+                      style={{ backgroundColor: wp.colorHex || '#1E293B' }}
+                    >
+                      <Sparkles className="w-6 h-6 text-white/40 mb-1" />
+                      <span className="text-[10px] font-mono text-white/70">Warna Solid</span>
+                    </div>
+                  )}
+
+                  {/* Smartphone top speaker/camera pill */}
+                  <div className="absolute top-2 left-1/2 -translate-x-1/2 w-8 h-1 bg-black/30 rounded-full backdrop-blur-xs pointer-events-none" />
+
                   {wp.isDefault && (
-                    <span className="absolute top-2 left-2 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500 text-white shadow-sm flex items-center gap-1">
+                    <span className="absolute top-2 left-2 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500 text-white shadow-sm flex items-center gap-1 z-10">
                       <CheckCircle className="w-3 h-3" />
                       Default
                     </span>
                   )}
-                  <span className="absolute bottom-2 right-2 text-[10px] font-mono px-2 py-0.5 rounded bg-black/50 text-white backdrop-blur-xs">
+                  <span className="absolute bottom-2 right-2 text-[10px] font-mono px-2 py-0.5 rounded bg-black/60 text-white backdrop-blur-xs z-10">
                     {wp.category}
+                  </span>
+                  <span className="absolute bottom-2 left-2 text-[9px] font-semibold px-1.5 py-0.5 rounded bg-black/40 text-white/90 backdrop-blur-xs z-10">
+                    9:16
                   </span>
                 </div>
 
                 {/* Meta Info */}
                 <div className="mt-3">
                   <div className="flex items-center justify-between">
-                    <h3 className="text-xs font-bold text-neutral-900 truncate">{wp.name}</h3>
+                    <h3 className="text-xs font-bold text-neutral-900 truncate" title={wp.name}>{wp.name}</h3>
                     {wp.colorHex && (
                       <span className="text-[10px] font-mono text-neutral-400">
                         {wp.colorHex}
@@ -226,7 +246,7 @@ export function WallpapersPage() {
               totalPages={pagination.totalPages}
               totalItems={pagination.totalItems}
               pageSize={pagination.pageSize}
-              pageSizeOptions={[8, 16, 32, 64]}
+              pageSizeOptions={[10, 20, 40, 80]}
               onPageChange={pagination.goToPage}
               onPageSizeChange={pagination.setPageSize}
             />
@@ -307,22 +327,27 @@ export function WallpapersPage() {
                   className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
                 />
                 {previewUrl ? (
-                  <div className="flex items-center justify-center gap-3">
-                    <img
-                      src={previewUrl}
-                      alt="Preview"
-                      className="w-16 h-16 rounded-lg object-cover border border-neutral-200"
-                    />
-                    <div className="text-left text-xs text-neutral-600">
-                      <p className="font-bold truncate max-w-[200px]">{selectedFile?.name}</p>
-                      <p className="text-[11px] text-neutral-400">Klik untuk ganti file</p>
+                  <div className="flex flex-col items-center justify-center gap-2 py-2">
+                    <div className="w-28 aspect-[9/16] rounded-xl overflow-hidden border-2 border-neutral-300 shadow-sm relative bg-neutral-900">
+                      <img
+                        src={previewUrl}
+                        alt="Preview 9:16"
+                        className="w-full h-full object-cover"
+                      />
+                      <span className="absolute bottom-1.5 right-1.5 text-[9px] font-mono px-1.5 py-0.5 rounded bg-black/60 text-white">
+                        9:16
+                      </span>
+                    </div>
+                    <div className="text-center text-xs text-neutral-600">
+                      <p className="font-bold truncate max-w-[220px]">{selectedFile?.name}</p>
+                      <p className="text-[11px] text-neutral-400 mt-0.5">Rasio Layar 9:16 • Klik untuk ganti file</p>
                     </div>
                   </div>
                 ) : (
-                  <div className="space-y-1 text-neutral-500">
-                    <Upload className="w-5 h-5 mx-auto text-neutral-400" />
-                    <p className="text-xs font-medium">Pilih file gambar (PNG, JPG, WEBP)</p>
-                    <p className="text-[10px] text-neutral-400">Maksimal 5MB • Resolusi potret disarankan</p>
+                  <div className="space-y-1.5 text-neutral-500 py-3">
+                    <Upload className="w-6 h-6 mx-auto text-neutral-400" />
+                    <p className="text-xs font-semibold">Pilih file gambar (PNG, JPG, WEBP)</p>
+                    <p className="text-[11px] text-neutral-400">Rasio potret 9:16 disarankan (misal 1080x1920) agar pas di layar ponsel</p>
                   </div>
                 )}
               </div>

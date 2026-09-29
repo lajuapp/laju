@@ -269,5 +269,79 @@ export class StatusService {
 
     return { success: true };
   }
+
+  async getOfficialStatuses(userId: string) {
+    const announcements = await this.prisma.systemAnnouncement.findMany({
+      where: { isActive: true },
+      orderBy: { createdAt: 'asc' }
+    });
+
+    const now = new Date();
+    const results: any[] = [];
+
+    for (const a of announcements) {
+      let meta: any = {};
+      let target: any = { targetType: 'ALL' };
+      let isViewed = false;
+
+      if (this.redis) {
+        try {
+          const metaStr = await this.redis.get(`announcement:${a.id}:meta`);
+          if (metaStr) meta = JSON.parse(metaStr);
+        } catch (_) {}
+
+        try {
+          const targetMeta = await this.redis.get(`announcement:${a.id}:target`);
+          if (targetMeta) target = JSON.parse(targetMeta);
+        } catch (_) {}
+
+        try {
+          const viewed = await this.redis.getClient().sismember(`announcement:${a.id}:views`, userId);
+          isViewed = viewed === 1;
+        } catch (_) {}
+      }
+
+      // Check target audience
+      if (target.targetType !== 'ALL') {
+        if (!Array.isArray(target.targetUserIds) || !target.targetUserIds.includes(userId)) {
+          continue; // not for this user
+        }
+      }
+
+      // Check expiration
+      if (meta.expiresAt) {
+        const exp = new Date(meta.expiresAt);
+        if (now > exp) {
+          continue; // expired
+        }
+      }
+
+      results.push({
+        id: a.id,
+        title: a.title,
+        content: a.content,
+        type: a.type,
+        mediaType: meta.mediaType || 'TEXT',
+        mediaUrl: meta.mediaUrl || null,
+        backgroundColor: meta.backgroundColor || '#0F3E37',
+        actionUrl: meta.actionUrl || null,
+        actionTitle: meta.actionTitle || null,
+        createdAt: a.createdAt,
+        expiresAt: meta.expiresAt || null,
+        isViewed
+      });
+    }
+
+    return results;
+  }
+
+  async markOfficialStatusViewed(userId: string, announcementId: string) {
+    if (this.redis) {
+      try {
+        await this.redis.getClient().sadd(`announcement:${announcementId}:views`, userId);
+      } catch (_) {}
+    }
+    return { success: true };
+  }
 }
 

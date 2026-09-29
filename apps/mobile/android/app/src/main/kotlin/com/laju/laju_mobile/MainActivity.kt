@@ -1255,6 +1255,22 @@ class MainActivity : FlutterFragmentActivity() {
                         result.error("STORAGE_ERROR", e.message, null)
                     }
                 }
+                "openUrl" -> {
+                    try {
+                        val urlStr = call.argument<String>("url")
+                        if (!urlStr.isNullOrEmpty()) {
+                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(urlStr)).apply {
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+                            startActivity(intent)
+                            result.success(true)
+                        } else {
+                            result.success(false)
+                        }
+                    } catch (e: Exception) {
+                        result.error("OPEN_URL_ERROR", e.message, null)
+                    }
+                }
                 else -> result.notImplemented()
             }
         }

@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../../../core/core.dart';
 import '../../domain/status_service.dart';
 import '../../../conversations/domain/conversation_service.dart';
@@ -53,6 +54,9 @@ class StatusStoryItem {
   final List<StatusViewerItem> viewers;
   final DateTime? createdAt;
   final DateTime? expiresAt;
+  final String? actionTitle;
+  final String? actionUrl;
+  final bool isOfficial;
 
   const StatusStoryItem({
     this.id,
@@ -64,6 +68,9 @@ class StatusStoryItem {
     this.viewers = const [],
     this.createdAt,
     this.expiresAt,
+    this.actionTitle,
+    this.actionUrl,
+    this.isOfficial = false,
   });
 
   bool get isExpired {
@@ -82,6 +89,7 @@ class StatusViewScreen extends StatefulWidget {
   final String? avatarUrl;
   final List<StatusStoryItem> stories;
   final bool isMyStatus;
+  final bool isOfficial;
   final String? contactUserId;
   final VoidCallback? onStatusDeleted;
 
@@ -91,6 +99,7 @@ class StatusViewScreen extends StatefulWidget {
     this.avatarUrl,
     required this.stories,
     this.isMyStatus = false,
+    this.isOfficial = false,
     this.contactUserId,
     this.onStatusDeleted,
   });
@@ -135,8 +144,24 @@ class _StatusViewScreenState extends State<StatusViewScreen>
     if (_stories.isNotEmpty && _currentIndex < _stories.length) {
       final story = _stories[_currentIndex];
       if (story.id != null) {
-        StatusService.instance.markStatusViewed(story.id!);
+        if (widget.isOfficial || story.isOfficial) {
+          StatusService.instance.markOfficialStatusViewed(story.id!);
+        } else {
+          StatusService.instance.markStatusViewed(story.id!);
+        }
       }
+    }
+  }
+
+  void _openActionUrl(String url) async {
+    _animController.stop();
+    try {
+      await const MethodChannel('com.laju/device').invokeMethod('openUrl', {'url': url});
+    } catch (e) {
+      debugPrint('[StatusViewScreen] openUrl error: $e');
+    }
+    if (!_isPopping && mounted) {
+      _animController.forward();
     }
   }
 
@@ -1423,13 +1448,28 @@ class _StatusViewScreenState extends State<StatusViewScreen>
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(
-                                  widget.contactName,
-                                  style: const TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w700,
-                                    color: Colors.white,
-                                  ),
+                                Row(
+                                  children: [
+                                    Flexible(
+                                      child: Text(
+                                        widget.contactName,
+                                        style: const TextStyle(
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.w700,
+                                          color: Colors.white,
+                                        ),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                    if (widget.isOfficial || story.isOfficial) ...[
+                                      const SizedBox(width: 4),
+                                      const Icon(
+                                        Icons.verified_rounded,
+                                        color: Color(0xFF38BDF8),
+                                        size: 16,
+                                      ),
+                                    ],
+                                  ],
                                 ),
                                 Text(
                                   story.time,
@@ -1537,6 +1577,86 @@ class _StatusViewScreenState extends State<StatusViewScreen>
                                 ),
                               ),
                             ),
+                          )
+                        else if (widget.isOfficial || story.isOfficial)
+                          Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (story.actionUrl != null && story.actionUrl!.isNotEmpty)
+                                GestureDetector(
+                                  onTap: () => _openActionUrl(story.actionUrl!),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 10),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      borderRadius: BorderRadius.circular(24),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: Colors.black.withValues(alpha: 0.3),
+                                          blurRadius: 10,
+                                          offset: const Offset(0, 3),
+                                        ),
+                                      ],
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Text(
+                                          story.actionTitle?.isNotEmpty == true
+                                              ? story.actionTitle!
+                                              : 'Buka Tautan',
+                                          style: const TextStyle(
+                                            color: Color(0xFF0F172A),
+                                            fontSize: 14,
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 6),
+                                        const Icon(Icons.open_in_new_rounded, color: Color(0xFF0F172A), size: 16),
+                                      ],
+                                    ),
+                                  ),
+                                )
+                              else
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withValues(alpha: 0.15),
+                                    borderRadius: BorderRadius.circular(20),
+                                  ),
+                                  child: const Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.verified_rounded, color: Color(0xFF38BDF8), size: 14),
+                                      SizedBox(width: 6),
+                                      Text(
+                                        'Status Resmi LAJU',
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              const SizedBox(height: 10),
+                              const Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.verified_user_rounded, size: 11, color: Colors.white60),
+                                  SizedBox(width: 5),
+                                  Text(
+                                    'Pembaruan resmi terverifikasi dari LAJU',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: Colors.white60,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
                           )
                         else
                           Column(

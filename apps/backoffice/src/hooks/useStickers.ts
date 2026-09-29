@@ -102,6 +102,28 @@ export function useAddStickerItem() {
   });
 }
 
+export function useAddBulkStickers() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      packId,
+      items,
+    }: {
+      packId: string;
+      items: { name: string; imageUrl: string; emoji?: string }[];
+    }) => {
+      const res = await apiClient.post(`/admin/stickers/packs/${packId}/stickers/bulk`, {
+        items,
+      });
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'stickerPacks'] });
+    },
+  });
+}
+
 export function useDeleteStickerItem() {
   const queryClient = useQueryClient();
 

@@ -13,12 +13,14 @@ import {
   ChevronRight,
   X,
   Film,
+  FolderUp,
 } from 'lucide-react';
 import {
   useStickerPacksList,
   useCreateStickerPack,
   useDeleteStickerPack,
   useAddStickerItem,
+  useAddBulkStickers,
   useDeleteStickerItem,
 } from '../hooks/useStickers';
 import { useMediaUpload } from '../hooks/useMediaUpload';
@@ -53,12 +55,14 @@ export function StickersPage() {
   const createPack = useCreateStickerPack();
   const deletePack = useDeleteStickerPack();
   const addSticker = useAddStickerItem();
+  const addBulkStickers = useAddBulkStickers();
   const deleteSticker = useDeleteStickerItem();
   const mediaUpload = useMediaUpload();
 
   const [isPackModalOpen, setIsPackModalOpen] = useState(false);
   const [selectedPack, setSelectedPack] = useState<StickerPackItem | null>(null);
   const [isAddStickerModalOpen, setIsAddStickerModalOpen] = useState(false);
+  const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
   const [isApngStudioOpen, setIsApngStudioOpen] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -69,6 +73,16 @@ export function StickersPage() {
   // File upload state for Sticker Item
   const [stickerFile, setStickerFile] = useState<File | null>(null);
   const [stickerPreview, setStickerPreview] = useState<string | null>(null);
+
+  // Bulk Sticker upload state
+  const [bulkItems, setBulkItems] = useState<Array<{
+    file: File;
+    name: string;
+    emoji: string;
+    previewUrl: string;
+  }>>([]);
+  const [isUploadingBulk, setIsUploadingBulk] = useState(false);
+  const [bulkProgress, setBulkProgress] = useState({ current: 0, total: 0 });
 
   const {
     register: registerPack,
@@ -150,6 +164,80 @@ export function StickersPage() {
       setStickerPreview(null);
     } catch (err: any) {
       setErrorMessage(err.response?.data?.message || 'Gagal mengunggah stiker');
+    }
+  };
+
+  const handleBulkFilesSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files) return;
+    const files = Array.from(e.target.files);
+    const newItems = files.map((file) => {
+      const baseName = file.name.substring(0, file.name.lastIndexOf('.')) || file.name;
+      const cleanName = baseName
+        .replace(/[_-]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .replace(/\b\w/g, (c) => c.toUpperCase());
+
+      return {
+        file,
+        name: cleanName || 'Stiker',
+        emoji: '',
+        previewUrl: URL.createObjectURL(file),
+      };
+    });
+
+    setBulkItems((prev) => [...prev, ...newItems]);
+  };
+
+  const handleRemoveBulkItem = (index: number) => {
+    setBulkItems((prev) => {
+      const copy = [...prev];
+      URL.revokeObjectURL(copy[index].previewUrl);
+      copy.splice(index, 1);
+      return copy;
+    });
+  };
+
+  const handleUpdateBulkItem = (index: number, field: 'name' | 'emoji', value: string) => {
+    setBulkItems((prev) => {
+      const copy = [...prev];
+      copy[index] = { ...copy[index], [field]: value };
+      return copy;
+    });
+  };
+
+  const onSubmitBulkStickers = async () => {
+    if (!selectedPack || bulkItems.length === 0) return;
+    setIsUploadingBulk(true);
+    setBulkProgress({ current: 0, total: bulkItems.length });
+    setErrorMessage(null);
+
+    try {
+      const uploadedItems: Array<{ name: string; imageUrl: string; emoji?: string }> = [];
+
+      for (let i = 0; i < bulkItems.length; i++) {
+        const item = bulkItems[i];
+        setBulkProgress({ current: i + 1, total: bulkItems.length });
+        const uploadRes = await mediaUpload.mutateAsync(item.file);
+        uploadedItems.push({
+          name: item.name.trim() || `Stiker ${i + 1}`,
+          imageUrl: uploadRes.url,
+          emoji: item.emoji.trim() || undefined,
+        });
+      }
+
+      await addBulkStickers.mutateAsync({
+        packId: selectedPack.id,
+        items: uploadedItems,
+      });
+
+      bulkItems.forEach((b) => URL.revokeObjectURL(b.previewUrl));
+      setBulkItems([]);
+      setIsBulkModalOpen(false);
+    } catch (err: any) {
+      setErrorMessage(err.response?.data?.message || 'Gagal mengunggah stiker massal');
+    } finally {
+      setIsUploadingBulk(false);
     }
   };
 
@@ -342,6 +430,19 @@ export function StickersPage() {
                     }}
                   >
                     Studio Animasi APNG
+                  </Button>
+
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    icon={<FolderUp className="w-3.5 h-3.5 text-emerald-600" />}
+                    onClick={() => {
+                      setErrorMessage(null);
+                      setBulkItems([]);
+                      setIsBulkModalOpen(true);
+                    }}
+                  >
+                    Unggah Massal (Non-APNG)
                   </Button>
 
                   <Button
@@ -602,6 +703,159 @@ export function StickersPage() {
             </Button>
           </div>
         </form>
+      </Modal>
+
+      {/* Modal: Unggah Massal Stiker (Non-APNG) */}
+      <Modal
+        isOpen={isBulkModalOpen}
+        onClose={() => {
+          if (!isUploadingBulk) {
+            bulkItems.forEach((b) => URL.revokeObjectURL(b.previewUrl));
+            setBulkItems([]);
+            setIsBulkModalOpen(false);
+          }
+        }}
+        title={`Unggah Massal Stiker (${currentActivePack?.name || 'Paket'})`}
+        maxWidth="xl"
+      >
+        <div className="space-y-4">
+          <p className="text-xs text-neutral-500">
+            Pilih banyak file gambar sekaligus (PNG transparan atau WEBP). Nama stiker akan dibuat otomatis dari nama file dan dapat Anda sesuaikan.
+          </p>
+
+          {errorMessage && (
+            <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              <span>{errorMessage}</span>
+            </div>
+          )}
+
+          {/* Multi-file dropzone / input */}
+          <div className="border-2 border-dashed border-neutral-300 rounded-xl p-5 text-center hover:border-emerald-500 transition-colors cursor-pointer relative bg-neutral-50/50">
+            <input
+              type="file"
+              multiple
+              accept="image/png,image/webp,image/jpeg"
+              onChange={handleBulkFilesSelect}
+              disabled={isUploadingBulk}
+              className="absolute inset-0 opacity-0 cursor-pointer w-full h-full disabled:cursor-not-allowed"
+            />
+            <div className="space-y-1.5 text-neutral-600">
+              <FolderUp className="w-8 h-8 mx-auto text-emerald-600" />
+              <p className="text-xs font-bold text-neutral-800">
+                Klik atau Seret Banyak Gambar ke Sini
+              </p>
+              <p className="text-[11px] text-neutral-400">
+                Pilih sekaligus banyak gambar (PNG/WEBP transparan disarankan • 512x512 px)
+              </p>
+            </div>
+          </div>
+
+          {/* Selected Files Grid Preview */}
+          {bulkItems.length > 0 && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-xs font-semibold text-neutral-700">
+                <span>Daftar Stiker Siap Diunggah ({bulkItems.length} item)</span>
+                {!isUploadingBulk && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      bulkItems.forEach((b) => URL.revokeObjectURL(b.previewUrl));
+                      setBulkItems([]);
+                    }}
+                    className="text-[11px] text-rose-600 hover:text-rose-700"
+                  >
+                    Hapus Semua
+                  </button>
+                )}
+              </div>
+
+              <div className="max-h-64 overflow-y-auto space-y-2 pr-1 border border-neutral-200/80 rounded-xl p-2 bg-neutral-50/30">
+                {bulkItems.map((item, idx) => (
+                  <div
+                    key={idx}
+                    className="flex items-center gap-3 p-2 bg-white rounded-lg border border-neutral-200 shadow-xs"
+                  >
+                    <div className="w-12 h-12 rounded-lg bg-neutral-100 flex items-center justify-center border border-neutral-200 shrink-0 p-1">
+                      <img
+                        src={item.previewUrl}
+                        alt={item.name}
+                        className="w-full h-full object-contain"
+                      />
+                    </div>
+                    <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <input
+                        type="text"
+                        value={item.name}
+                        disabled={isUploadingBulk}
+                        onChange={(e) => handleUpdateBulkItem(idx, 'name', e.target.value)}
+                        placeholder="Nama stiker"
+                        className="text-xs px-2.5 py-1.5 rounded-md border border-neutral-200 focus:outline-none focus:border-emerald-500 font-medium"
+                      />
+                      <input
+                        type="text"
+                        value={item.emoji}
+                        disabled={isUploadingBulk}
+                        onChange={(e) => handleUpdateBulkItem(idx, 'emoji', e.target.value)}
+                        placeholder="Tag emoji opsional (misal: smile)"
+                        className="text-xs px-2.5 py-1.5 rounded-md border border-neutral-200 focus:outline-none focus:border-emerald-500"
+                      />
+                    </div>
+                    {!isUploadingBulk && (
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveBulkItem(idx)}
+                        className="p-1 rounded text-neutral-400 hover:text-rose-600 shrink-0"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Progress bar during bulk upload */}
+          {isUploadingBulk && (
+            <div className="space-y-2 p-3 bg-emerald-50 rounded-xl border border-emerald-200">
+              <div className="flex justify-between text-xs font-semibold text-emerald-800">
+                <span>Mengunggah stiker ke server...</span>
+                <span>{bulkProgress.current} / {bulkProgress.total}</span>
+              </div>
+              <div className="w-full bg-emerald-200 rounded-full h-2 overflow-hidden">
+                <div
+                  className="bg-emerald-600 h-2 rounded-full transition-all duration-300"
+                  style={{ width: `${(bulkProgress.current / bulkProgress.total) * 100}%` }}
+                />
+              </div>
+            </div>
+          )}
+
+          <div className="flex justify-end gap-2 pt-4 border-t border-neutral-100">
+            <Button
+              type="button"
+              variant="outline"
+              disabled={isUploadingBulk}
+              onClick={() => {
+                bulkItems.forEach((b) => URL.revokeObjectURL(b.previewUrl));
+                setBulkItems([]);
+                setIsBulkModalOpen(false);
+              }}
+            >
+              Batal
+            </Button>
+            <Button
+              type="button"
+              variant="primary"
+              disabled={bulkItems.length === 0 || isUploadingBulk}
+              isLoading={isUploadingBulk}
+              onClick={onSubmitBulkStickers}
+            >
+              Unggah Semua ({bulkItems.length} Stiker)
+            </Button>
+          </div>
+        </div>
       </Modal>
 
       {/* Modal: APNG Frame & Sprite Sheet Studio */}

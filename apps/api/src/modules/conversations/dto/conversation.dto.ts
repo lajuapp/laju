@@ -17,6 +17,19 @@ export class CreateConversationDto {
   @IsString({ each: true })
   @IsNotEmpty({ each: true })
   participantUserIds: string[];
+
+  @IsString()
+  @IsOptional()
+  wallpaperId?: string;
+
+  @IsString()
+  @IsOptional()
+  killPin?: string;
+
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  authorizedWipeUserIds?: string[];
 }
 
 export class AddMemberDto {
@@ -43,6 +56,19 @@ export class UpdateConversationDto {
   @IsOptional()
   description?: string;
 
+  @IsString()
+  @IsOptional()
+  wallpaperId?: string;
+
+  @IsString()
+  @IsOptional()
+  killPin?: string;
+
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  authorizedWipeUserIds?: string[];
+
   @IsOptional()
   permissions?: {
     canEditGroupInfo?: boolean;
@@ -50,5 +76,11 @@ export class UpdateConversationDto {
     canAddMembers?: boolean;
     requireApprovalToJoin?: boolean;
   };
+}
+
+export class DestructiveWipeDto {
+  @IsString()
+  @IsNotEmpty()
+  pin: string;
 }
 

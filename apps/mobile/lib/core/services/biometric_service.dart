@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import '../security/app_lock_controller.dart';
 
 class BiometricAvailability {
   final bool isAvailable;
@@ -69,6 +70,7 @@ class BiometricService {
     String negativeButtonText = 'Batal',
   }) async {
     try {
+      AppLockController.instance.markBiometricAuthStarted();
       final result = await _channel.invokeMapMethod<String, dynamic>('authenticate', {
         'title': title,
         if (subtitle != null) 'subtitle': subtitle,
@@ -84,6 +86,8 @@ class BiometricService {
     } catch (e) {
       debugPrint('[BiometricService] authenticate error: $e');
       return false;
+    } finally {
+      AppLockController.instance.markBiometricAuthFinished();
     }
   }
 }

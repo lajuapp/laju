@@ -186,6 +186,24 @@ class LocalDatabase {
     }
   }
 
+  /// Returns a single cached conversation by ID, or null if not found.
+  Future<ConversationModel?> getConversation(String id) async {
+    try {
+      final rows = await _database.query(
+        'conversations',
+        where: 'id = ?',
+        whereArgs: [id],
+        limit: 1,
+      );
+      if (rows.isNotEmpty) {
+        return _rowToConversation(rows.first);
+      }
+    } catch (e) {
+      debugPrint('[LocalDatabase] getConversation error: $e');
+    }
+    return null;
+  }
+
   /// Insert or replace a list of conversations in cache.
   Future<void> upsertConversations(List<ConversationModel> conversations) async {
     if (conversations.isEmpty) return;

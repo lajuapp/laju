@@ -23,6 +23,12 @@ export function useCreateAnnouncement() {
       isActive?: boolean;
       targetType?: string;
       targetUserIds?: string[];
+      mediaType?: 'TEXT' | 'IMAGE';
+      mediaUrl?: string;
+      backgroundColor?: string;
+      actionUrl?: string;
+      actionTitle?: string;
+      durationHours?: number;
     }) => {
       const res = await apiClient.post('/admin/announcements', payload);
       return res.data;
@@ -46,6 +52,12 @@ export function useUpdateAnnouncement() {
       content?: string;
       type?: string;
       isActive?: boolean;
+      mediaType?: 'TEXT' | 'IMAGE';
+      mediaUrl?: string;
+      backgroundColor?: string;
+      actionUrl?: string;
+      actionTitle?: string;
+      durationHours?: number;
     }) => {
       const res = await apiClient.patch(`/admin/announcements/${id}`, payload);
       return res.data;

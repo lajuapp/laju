@@ -590,6 +590,9 @@ class ConversationService {
     required String title,
     required List<String> participantUserIds,
     String? description,
+    String? wallpaperId,
+    String? killPin,
+    List<String>? authorizedWipeUserIds,
   }) async {
     final validParticipants = participantUserIds
         .map((id) => id.trim())
@@ -609,6 +612,10 @@ class ConversationService {
           'title': title,
           if (description != null && description.isNotEmpty) 'description': description,
           'participantUserIds': validParticipants,
+          if (wallpaperId != null && wallpaperId.isNotEmpty) 'wallpaperId': wallpaperId,
+          if (killPin != null && killPin.isNotEmpty) 'killPin': killPin,
+          if (authorizedWipeUserIds != null && authorizedWipeUserIds.isNotEmpty)
+            'authorizedWipeUserIds': authorizedWipeUserIds,
         },
       );
 
@@ -622,6 +629,38 @@ class ConversationService {
       debugPrint('[ConversationService] createGroupConversation error: $e');
     }
     return null;
+  }
+
+  /// Permanently wipe all messages and data for this conversation for all members
+  Future<bool> destructiveWipeGroup(String conversationId, String pin) async {
+    try {
+      final response = await ApiClient.instance.post(
+        ApiEndpoints.conversationDestructiveWipe(conversationId),
+        body: {'pin': pin.trim()},
+      );
+
+      if (response.isSuccess) {
+        // Clear local database messages for this conversation
+        await LocalDatabase.instance.clearMessages(conversationId);
+        // Also update local conversation entry lastMessage
+        final conv = await LocalDatabase.instance.getConversation(conversationId);
+        if (conv != null) {
+          final updated = conv.copyWith(
+            lastMessage: 'Pesan telah dihancurkan',
+            unreadCount: 0,
+          );
+          await LocalDatabase.instance.upsertConversations([updated]);
+        }
+        return true;
+      } else {
+        final msg = response.errorMessage ?? 'Gagal menghancurkan riwayat obrolan';
+        debugPrint('[ConversationService] destructiveWipeGroup failed: ${response.statusCode} $msg');
+        throw Exception(msg);
+      }
+    } catch (e) {
+      debugPrint('[ConversationService] destructiveWipeGroup error: $e');
+      rethrow;
+    }
   }
 
   /// Update group info (title, description, permissions)

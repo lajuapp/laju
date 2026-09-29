@@ -30,6 +30,7 @@ class ApiEndpoints {
   static String conversationLeave(String id) => '/conversations/$id/leave';
   static String conversationMessages(String id) => '/conversations/$id/messages';
   static String conversationTyping(String id) => '/conversations/$id/typing';
+  static String conversationDestructiveWipe(String id) => '/conversations/$id/destructive-wipe';
 
   // Messages
   static String messageById(String id) => '/messages/$id';
@@ -80,6 +81,8 @@ class ApiEndpoints {
   static const String status = '/status';
   static const String statusMe = '/status/me';
   static const String statusContacts = '/status/contacts';
+  static const String statusOfficial = '/status/official';
+  static String statusOfficialView(String id) => '/status/official/$id/view';
   static String statusView(String id) => '/status/$id/view';
   static String statusViews(String id) => '/status/$id/views';
   static String statusReact(String id) => '/status/$id/react';

@@ -14,7 +14,8 @@ import {
   CreateConversationDto,
   AddMemberDto,
   ChangeMemberRoleDto,
-  UpdateConversationDto
+  UpdateConversationDto,
+  DestructiveWipeDto
 } from './dto/conversation.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -106,6 +107,15 @@ export class ConversationsController {
     @Query('cursor') cursor?: string
   ) {
     return this.conversationsService.listMessages(userId, conversationId, limit, cursor);
+  }
+
+  @Post(':id/destructive-wipe')
+  destructiveWipe(
+    @CurrentUser('userId') userId: string,
+    @Param('id') conversationId: string,
+    @Body() dto: DestructiveWipeDto
+  ) {
+    return this.conversationsService.destructiveWipe(userId, conversationId, dto.pin);
   }
 
   @Post(':id/typing')

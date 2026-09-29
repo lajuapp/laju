@@ -157,6 +157,14 @@ export interface SystemAnnouncement {
   targetUserIds?: string[];
   targetUserCount?: number;
   isActive: boolean;
+  mediaType?: 'TEXT' | 'IMAGE';
+  mediaUrl?: string;
+  backgroundColor?: string;
+  actionUrl?: string;
+  actionTitle?: string;
+  durationHours?: number;
+  expiresAt?: string;
+  viewsCount?: number;
   createdAt: string;
   updatedAt: string;
 }

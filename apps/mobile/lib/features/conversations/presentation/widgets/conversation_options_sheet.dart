@@ -192,42 +192,6 @@ class ConversationOptionsSheet {
                     subCol: subCol,
                   ),
 
-                  // Action 5: Mark as Read / Unread
-                  _buildOptionTile(
-                    context: ctx,
-                    icon: conversation.unreadCount > 0 ? Icons.mark_chat_read_outlined : Icons.mark_chat_unread_outlined,
-                    iconColor: const Color(0xFF06B6D4),
-                    title: conversation.unreadCount > 0 ? 'Tandai Sudah Dibaca' : 'Tandai Belum Dibaca',
-                    subtitle: 'Ubah indikator status pesan obrolan ini',
-                    onTap: () => Navigator.pop(ctx, ConversationActionType.toggleRead),
-                    titleCol: titleCol,
-                    subCol: subCol,
-                  ),
-
-                  // Action 6: Tag / Label
-                  _buildOptionTile(
-                    context: ctx,
-                    icon: Icons.label_outline_rounded,
-                    iconColor: const Color(0xFFEC4899),
-                    title: 'Beri Label / Kategori',
-                    subtitle: 'Kategorikan chat (Pribadi, Kerja, Prioritas, Bisnis)',
-                    onTap: () => Navigator.pop(ctx, ConversationActionType.addLabel),
-                    titleCol: titleCol,
-                    subCol: subCol,
-                  ),
-
-                  // Action 7: Clear Chat History
-                  _buildOptionTile(
-                    context: ctx,
-                    icon: Icons.cleaning_services_outlined,
-                    iconColor: const Color(0xFFEAB308),
-                    title: 'Bersihkan Riwayat Pesan',
-                    subtitle: 'Hapus seluruh isi pesan tanpa menghapus kontak',
-                    onTap: () => Navigator.pop(ctx, ConversationActionType.clearChat),
-                    titleCol: titleCol,
-                    subCol: subCol,
-                  ),
-
                   Divider(height: 1, color: dividerCol),
                   const SizedBox(height: 4),
 

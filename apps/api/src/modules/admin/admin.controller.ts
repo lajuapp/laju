@@ -29,6 +29,7 @@ import {
   CreateStickerPackDto,
   UpdateStickerPackDto,
   CreateStickerItemDto,
+  CreateBulkStickersDto,
   RequestConversationAccessDto,
   ApproveConversationAccessDto,
   SuspendUserDto,
@@ -238,6 +239,15 @@ export class AdminController {
     @Body() dto: CreateStickerItemDto
   ) {
     return this.adminService.addStickerItem(packId, dto);
+  }
+
+  @Post('stickers/packs/:packId/stickers/bulk')
+  @UseGuards(AdminAuthGuard)
+  addBulkStickers(
+    @Param('packId') packId: string,
+    @Body() dto: CreateBulkStickersDto
+  ) {
+    return this.adminService.addBulkStickers(packId, dto.items);
   }
 
   @Delete('stickers/:id')

@@ -42,7 +42,7 @@ export function AppLayout() {
       items: [
         { label: 'Wallpaper Obrolan', to: '/wallpapers', icon: ImageIcon },
         { label: 'Stiker & Packs', to: '/stickers', icon: Smile },
-        { label: 'Pengumuman', to: '/announcements', icon: Megaphone },
+        { label: 'Status Resmi LAJU', to: '/announcements', icon: Sparkles },
       ],
     },
     {

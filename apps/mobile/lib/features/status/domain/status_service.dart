@@ -13,6 +13,7 @@ class StatusService {
   /// In-memory cache for TanStack Query-style stale-while-revalidate hydration
   List<StatusStoryItem> cachedMyStatuses = [];
   List<StatusContactGroup> cachedContactGroups = [];
+  List<StatusStoryItem> cachedOfficialStatuses = [];
 
   /// Create a new status story (text or image)
   Future<StatusStoryItem?> postStatus({
@@ -175,6 +176,115 @@ class StatusService {
     } catch (e) {
       debugPrint('[StatusService] markStatusViewed error: $e');
     }
+  }
+
+  /// Get official announcements & visual stories from LAJU
+  Future<List<StatusStoryItem>> getOfficialStatuses() async {
+    try {
+      final response = await ApiClient.instance.get(ApiEndpoints.statusOfficial);
+      if (response.isSuccess && response.rawJson is List) {
+        final list = response.rawJson as List;
+        final items = list
+            .map((item) => _mapOfficialStoryItem(item as Map<String, dynamic>))
+            .where((s) => !s.isExpired)
+            .toList();
+        cachedOfficialStatuses = items;
+        return items;
+      }
+    } catch (e) {
+      debugPrint('[StatusService] getOfficialStatuses error: $e');
+    }
+    return cachedOfficialStatuses.where((s) => !s.isExpired).toList();
+  }
+
+  /// Mark official status announcement as viewed
+  Future<void> markOfficialStatusViewed(String storyId) async {
+    try {
+      await ApiClient.instance.post(ApiEndpoints.statusOfficialView(storyId));
+      DataStorageController.instance.recordStatusReceived(bytes: 1024);
+    } catch (e) {
+      debugPrint('[StatusService] markOfficialStatusViewed error: $e');
+    }
+  }
+
+  StatusStoryItem _mapOfficialStoryItem(Map<String, dynamic> json) {
+    final id = json['id'] as String?;
+    final title = json['title'] as String? ?? 'Pengumuman Resmi';
+    final content = json['content'] as String? ?? '';
+    final mediaType = json['mediaType'] as String? ?? 'TEXT';
+    final mediaUrl = json['mediaUrl'] as String?;
+    final bgHex = json['backgroundColor'] as String?;
+    final actionTitle = json['actionTitle'] as String?;
+    final actionUrl = json['actionUrl'] as String?;
+    final createdAtStr = json['createdAt'] as String?;
+    final expiresAtStr = json['expiresAt'] as String?;
+    final isViewed = json['isViewed'] == true;
+
+    Color bgColor = const Color(0xFF0F172A);
+    if (bgHex != null && bgHex.isNotEmpty) {
+      try {
+        final cleanHex = bgHex.replaceAll('#', '');
+        if (cleanHex.length == 6) {
+          bgColor = Color(int.parse('FF$cleanHex', radix: 16));
+        } else if (cleanHex.length == 8) {
+          bgColor = Color(int.parse(cleanHex, radix: 16));
+        }
+      } catch (_) {}
+    }
+
+    DateTime? createdAtDt;
+    DateTime? expiresAtDt;
+    String timeStr = 'Resmi';
+
+    if (createdAtStr != null) {
+      try {
+        createdAtDt = DateHelper.parseUtc(createdAtStr);
+        final diff = DateTime.now().difference(createdAtDt);
+        if (diff.inMinutes < 1) {
+          timeStr = 'Baru saja';
+        } else if (diff.inHours < 1) {
+          timeStr = '${diff.inMinutes} menit yang lalu';
+        } else if (diff.inHours < 24) {
+          timeStr = '${diff.inHours} jam yang lalu';
+        } else {
+          timeStr = 'Kemarin';
+        }
+      } catch (_) {}
+    }
+
+    if (expiresAtStr != null) {
+      try {
+        expiresAtDt = DateHelper.parseUtc(expiresAtStr);
+      } catch (_) {}
+    }
+
+    final isPhoto = mediaType == 'IMAGE' && mediaUrl != null && mediaUrl.isNotEmpty;
+    final resolvedUrl = isPhoto ? resolveMediaUrl(mediaUrl) : null;
+
+    final viewers = isViewed
+        ? [
+            StatusViewerItem(
+              userId: 'me',
+              username: 'Anda',
+              viewedAt: DateTime.now(),
+            )
+          ]
+        : const <StatusViewerItem>[];
+
+    return StatusStoryItem(
+      id: id,
+      text: isPhoto ? (content.isNotEmpty ? content : title) : '$title\n\n$content',
+      time: timeStr,
+      backgroundColor: bgColor,
+      imageAsset: resolvedUrl,
+      isPhoto: isPhoto,
+      isOfficial: true,
+      actionTitle: actionTitle,
+      actionUrl: actionUrl,
+      viewers: viewers,
+      createdAt: createdAtDt,
+      expiresAt: expiresAtDt,
+    );
   }
 
   /// Delete a status story

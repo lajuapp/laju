@@ -5,8 +5,13 @@ import '../../../../core/core.dart';
 
 class AppLockScreen extends StatefulWidget {
   final VoidCallback? onUnlocked;
+  final bool isGate;
 
-  const AppLockScreen({super.key, this.onUnlocked});
+  const AppLockScreen({
+    super.key,
+    this.onUnlocked,
+    this.isGate = false,
+  });
 
   @override
   State<AppLockScreen> createState() => _AppLockScreenState();
@@ -21,6 +26,7 @@ class _AppLockScreenState extends State<AppLockScreen> with TickerProviderStateM
   late bool _showPinMode;
   String _enteredPin = '';
   bool _isError = false;
+  bool _isAuthenticating = false;
 
   @override
   void initState() {
@@ -57,38 +63,41 @@ class _AppLockScreenState extends State<AppLockScreen> with TickerProviderStateM
   }
 
   Future<void> _triggerBiometricAuth() async {
-    final authenticated = await BiometricService.instance.authenticate(
-      title: LocaleController.instance.value.languageCode == 'id'
-          ? 'Buka Kunci LAJU'
-          : 'Unlock LAJU',
-      subtitle: LocaleController.instance.value.languageCode == 'id'
-          ? 'Sentuh sensor sidik jari atau gunakan PIN perangkat'
-          : 'Touch the fingerprint sensor or use device credentials',
-    );
-    if (authenticated && mounted) {
-      _triggerUnlock();
+    if (_isAuthenticating) return;
+    _isAuthenticating = true;
+    try {
+      final authenticated = await BiometricService.instance.authenticate(
+        title: LocaleController.instance.value.languageCode == 'id'
+            ? 'Buka Kunci LAJU'
+            : 'Unlock LAJU',
+        subtitle: LocaleController.instance.value.languageCode == 'id'
+            ? 'Sentuh sensor sidik jari atau gunakan PIN perangkat'
+            : 'Touch the fingerprint sensor or use device credentials',
+      );
+      if (authenticated && mounted) {
+        _triggerUnlock();
+      } else if (!authenticated && mounted) {
+        setState(() {
+          _showPinMode = true;
+        });
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isAuthenticating = false);
+      } else {
+        _isAuthenticating = false;
+      }
     }
   }
 
   void _triggerUnlock() {
     HapticFeedback.mediumImpact();
     AppLockController.instance.unlockApp();
-    LajuToast.success(
-      context,
-      LocaleController.instance.value.languageCode == 'id'
-          ? 'Kunci terbuka'
-          : 'Unlocked',
-      duration: const Duration(milliseconds: 900),
-    );
-    Future.delayed(const Duration(milliseconds: 300), () {
-      if (mounted) {
-        if (widget.onUnlocked != null) {
-          widget.onUnlocked!();
-        } else {
-          Navigator.pop(context);
-        }
-      }
-    });
+    if (widget.onUnlocked != null) {
+      widget.onUnlocked!();
+    } else if (Navigator.canPop(context)) {
+      Navigator.pop(context);
+    }
   }
 
   void _onDigitPressed(String digit) {
@@ -152,35 +161,43 @@ class _AppLockScreenState extends State<AppLockScreen> with TickerProviderStateM
     final textColor = isDark ? Colors.white : const Color(0xFF0F172A);
     final subtitleColor = isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B);
 
-    return Scaffold(
-      backgroundColor: bgColor,
-      body: SafeArea(
-        child: Stack(
-          children: [
-            // Close / Exit button if pushed from navigation
-            if (Navigator.canPop(context))
-              Positioned(
-                top: 8,
-                right: 12,
-                child: IconButton(
-                  icon: Icon(
-                    Icons.close_rounded,
-                    color: isDark ? Colors.white70 : const Color(0xFF475569),
-                    size: 24,
+    return PopScope(
+      canPop: !widget.isGate,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop && widget.isGate) {
+          SystemNavigator.pop();
+        }
+      },
+      child: Scaffold(
+        backgroundColor: bgColor,
+        body: SafeArea(
+          child: Stack(
+            children: [
+              // Close / Exit button if pushed from navigation (not shown when acting as the app lock gate)
+              if (!widget.isGate && Navigator.canPop(context))
+                Positioned(
+                  top: 8,
+                  right: 12,
+                  child: IconButton(
+                    icon: Icon(
+                      Icons.close_rounded,
+                      color: isDark ? Colors.white70 : const Color(0xFF475569),
+                      size: 24,
+                    ),
+                    onPressed: () => Navigator.pop(context),
+                    tooltip: 'Close',
                   ),
-                  onPressed: () => Navigator.pop(context),
-                  tooltip: 'Close',
                 ),
-              ),
 
-            // Main View (Biometric or PIN Dialpad)
-            AnimatedSwitcher(
-              duration: const Duration(milliseconds: 250),
-              child: _showPinMode
-                  ? _buildPinDialpadView(isDark, langCode, textColor, subtitleColor)
-                  : _buildBiometricView(isDark, langCode, textColor, subtitleColor),
-            ),
-          ],
+              // Main View (Biometric or PIN Dialpad)
+              AnimatedSwitcher(
+                duration: const Duration(milliseconds: 250),
+                child: _showPinMode
+                    ? _buildPinDialpadView(isDark, langCode, textColor, subtitleColor)
+                    : _buildBiometricView(isDark, langCode, textColor, subtitleColor),
+              ),
+            ],
+          ),
         ),
       ),
     );

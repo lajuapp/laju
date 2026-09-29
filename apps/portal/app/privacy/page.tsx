@@ -183,15 +183,30 @@ export default function PrivacyPage() {
           {/* Section 1 */}
           <section className="p-6 sm:p-8 rounded-3xl bg-white border border-stone-200/80 shadow-sm space-y-4">
             <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-              <Smartphone className="h-5 w-5 text-[#0D382C]" />
-              <span>1. Data yang Diperlukan untuk Registrasi</span>
+              <Key className="h-5 w-5 text-[#0D382C]" />
+              <span>1. Registrasi 100% Bebas Identitas Pribadi (Tanpa Email & Nomor Telepon)</span>
             </h3>
             <p>
-              Untuk menggunakan layanan LAJU, Anda hanya perlu mendaftarkan nomor ponsel aktif untuk verifikasi kode satu kali (OTP). Nomor ponsel ini digunakan sebagai pengenal akun unik agar kontak Anda dapat menemukan Anda di dalam sistem LAJU.
+              LAJU dibangun dengan prinsip privasi radikal: <strong>kami tidak meminta, tidak mengumpulkan, dan tidak memerlukan informasi identitas pribadi (No Personal Identifiable Information / Zero PII)</strong>.
             </p>
-            <p>
-              Kami tidak meminta nama asli lengkap, alamat fisik, nomor identitas kependudukan (KTP/Passport), tanggal lahir, maupun informasi pembayaran apa pun.
-            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+              <div className="p-3 rounded-2xl bg-stone-50 border border-stone-200 flex items-start gap-2.5">
+                <span className="text-rose-600 font-bold">✕</span>
+                <span className="text-xs text-slate-700"><strong>Tanpa Nomor Telepon:</strong> Tidak ada SMS, tidak ada kode OTP seluler, dan nomor ponsel Anda tidak pernah ditanyakan atau disimpan.</span>
+              </div>
+              <div className="p-3 rounded-2xl bg-stone-50 border border-stone-200 flex items-start gap-2.5">
+                <span className="text-rose-600 font-bold">✕</span>
+                <span className="text-xs text-slate-700"><strong>Tanpa Alamat Email:</strong> Anda tidak perlu mendaftarkan, menautkan, atau memverifikasi email apa pun.</span>
+              </div>
+              <div className="p-3 rounded-2xl bg-stone-50 border border-stone-200 flex items-start gap-2.5">
+                <span className="text-rose-600 font-bold">✕</span>
+                <span className="text-xs text-slate-700"><strong>Tanpa Identitas Kependudukan:</strong> Tidak meminta nama asli, KTP/Paspor, data biometrik, ataupun tanggal lahir.</span>
+              </div>
+              <div className="p-3 rounded-2xl bg-stone-50 border border-stone-200 flex items-start gap-2.5">
+                <span className="text-emerald-700 font-bold">✓</span>
+                <span className="text-xs text-slate-700"><strong>Kriptografi Murni:</strong> Akun Anda beroperasi murni melalui pasangan kunci kriptografi publik-privat (Ed25519 & X25519) dan username unik pilihan Anda.</span>
+              </div>
+            </div>
           </section>
 
           {/* Section 2 */}
@@ -202,10 +217,10 @@ export default function PrivacyPage() {
             </h3>
             <ul className="list-disc list-inside space-y-2.5">
               <li>
-                <strong className="text-slate-900">Isi Percakapan:</strong> Pesan teks, dokumen, rekaman suara, foto, dan video tidak pernah berada dalam bentuk terbuka (plaintext) di infrastruktur server kami.
+                <strong className="text-slate-900">Isi Percakapan:</strong> Pesan teks, dokumen, rekaman suara, foto, dan video tidak pernah berada dalam bentuk terbuka (plaintext) di infrastruktur server kami. Seluruh pesan dienkripsi end-to-end sebelum dikirimkan.
               </li>
               <li>
-                <strong className="text-slate-900">Buku Kontak Mentah:</strong> Pencocokan kontak dilakukan dengan enkripsi searah (hashing aman) di memori sementara, tanpa menyalin nomor atau nama di buku telepon Anda ke basis data server.
+                <strong className="text-slate-900">Buku Kontak & Buku Telepon:</strong> Kami tidak pernah mengunggah, menyalin, atau menyimpan buku kontak ponsel Anda. Penambahan kontak dilakukan secara sukarela menggunakan Username, QR Code, atau tautan kontak terenkripsi.
               </li>
               <li>
                 <strong className="text-slate-900">Lokasi Real-Time:</strong> Kami tidak meminta izin pelacakan lokasi latar belakang (GPS tracking) dan tidak merekam koordinat geografis Anda.

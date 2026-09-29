@@ -743,6 +743,26 @@ export class AdminService {
     });
   }
 
+  async addBulkStickers(packId: string, items: CreateStickerItemDto[]) {
+    const pack = await this.prisma.stickerPack.findUnique({ where: { id: packId } });
+    if (!pack) throw new NotFoundException('Sticker pack not found');
+
+    if (!items || items.length === 0) {
+      return { count: 0 };
+    }
+
+    const created = await this.prisma.stickerItem.createMany({
+      data: items.map(item => ({
+        packId,
+        name: item.name,
+        imageUrl: item.imageUrl,
+        emoji: item.emoji || null,
+      }))
+    });
+
+    return { count: created.count };
+  }
+
   async deleteStickerItem(id: string) {
     return this.prisma.stickerItem.delete({
       where: { id }
@@ -759,14 +779,25 @@ export class AdminService {
 
     return Promise.all(
       announcements.map(async (a) => {
+        let meta: any = {};
+        let target: any = { targetType: 'ALL' };
+        let viewsCount = 0;
+
+        try {
+          const metaStr = await this.redisService!.get(`announcement:${a.id}:meta`);
+          if (metaStr) meta = JSON.parse(metaStr);
+        } catch (_) {}
+
         try {
           const targetMeta = await this.redisService!.get(`announcement:${a.id}:target`);
-          if (targetMeta) {
-            const parsed = JSON.parse(targetMeta);
-            return { ...a, ...parsed };
-          }
+          if (targetMeta) target = JSON.parse(targetMeta);
         } catch (_) {}
-        return { ...a, targetType: 'ALL' };
+
+        try {
+          viewsCount = await this.redisService!.getClient().scard(`announcement:${a.id}:views`);
+        } catch (_) {}
+
+        return { ...a, ...meta, ...target, viewsCount };
       })
     );
   }
@@ -810,6 +841,26 @@ export class AdminService {
         isActive: dto.isActive !== undefined ? dto.isActive : true
       }
     });
+
+    const durationHours = dto.durationHours !== undefined ? dto.durationHours : 24;
+    const expiresAt = durationHours > 0 ? new Date(Date.now() + durationHours * 3600 * 1000).toISOString() : null;
+
+    if (this.redisService) {
+      try {
+        await this.redisService.set(
+          `announcement:${announcement.id}:meta`,
+          JSON.stringify({
+            mediaType: dto.mediaType || 'TEXT',
+            mediaUrl: dto.mediaUrl || null,
+            backgroundColor: dto.backgroundColor || '#0F3E37',
+            actionUrl: dto.actionUrl || null,
+            actionTitle: dto.actionTitle || null,
+            durationHours,
+            expiresAt,
+          })
+        );
+      } catch (_) {}
+    }
 
     const targetType = (dto.targetType || 'ALL').toUpperCase();
     let matchedUsers: any[] = [];
@@ -975,13 +1026,50 @@ export class AdminService {
   async updateAnnouncement(id: string, dto: UpdateAnnouncementDto) {
     const announcement = await this.prisma.systemAnnouncement.findUnique({ where: { id } });
     if (!announcement) throw new NotFoundException('Pengumuman tidak ditemukan');
-    return this.prisma.systemAnnouncement.update({
-      where: { id },
-      data: dto
-    });
+
+    const prismaData: any = {};
+    if (dto.title !== undefined) prismaData.title = dto.title;
+    if (dto.content !== undefined) prismaData.content = dto.content;
+    if (dto.type !== undefined) prismaData.type = dto.type;
+    if (dto.isActive !== undefined) prismaData.isActive = dto.isActive;
+
+    const updated = Object.keys(prismaData).length > 0
+      ? await this.prisma.systemAnnouncement.update({
+          where: { id },
+          data: prismaData
+        })
+      : announcement;
+
+    if (this.redisService) {
+      try {
+        const existingMetaStr = await this.redisService.get(`announcement:${id}:meta`);
+        let meta = existingMetaStr ? JSON.parse(existingMetaStr) : {};
+        if (dto.mediaType !== undefined) meta.mediaType = dto.mediaType;
+        if (dto.mediaUrl !== undefined) meta.mediaUrl = dto.mediaUrl;
+        if (dto.backgroundColor !== undefined) meta.backgroundColor = dto.backgroundColor;
+        if (dto.actionUrl !== undefined) meta.actionUrl = dto.actionUrl;
+        if (dto.actionTitle !== undefined) meta.actionTitle = dto.actionTitle;
+        if (dto.durationHours !== undefined) {
+          meta.durationHours = dto.durationHours;
+          meta.expiresAt = dto.durationHours > 0
+            ? new Date(Date.now() + dto.durationHours * 3600 * 1000).toISOString()
+            : null;
+        }
+        await this.redisService.set(`announcement:${id}:meta`, JSON.stringify(meta));
+      } catch (_) {}
+    }
+
+    return updated;
   }
 
   async deleteAnnouncement(id: string) {
+    if (this.redisService) {
+      try {
+        await this.redisService.del(`announcement:${id}:meta`);
+        await this.redisService.del(`announcement:${id}:target`);
+        await this.redisService.del(`announcement:${id}:views`);
+      } catch (_) {}
+    }
     return this.prisma.systemAnnouncement.delete({
       where: { id }
     });

@@ -3,14 +3,18 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import {
-  Megaphone,
+  Sparkles,
   Plus,
   Trash2,
   AlertCircle,
-  Info,
-  AlertTriangle,
-  Wrench,
+  Eye,
+  Clock,
+  ExternalLink,
+  Image as ImageIcon,
+  Type,
+  Upload,
   CheckCircle,
+  Smartphone,
 } from 'lucide-react';
 import {
   useAnnouncementsList,
@@ -18,6 +22,7 @@ import {
   useUpdateAnnouncement,
   useDeleteAnnouncement,
 } from '../hooks/useAnnouncements';
+import { useMediaUpload } from '../hooks/useMediaUpload';
 import { Button } from '../components/ui/Button';
 import { Modal } from '../components/ui/Modal';
 import { ConfirmModal } from '../components/ui/ConfirmModal';
@@ -25,14 +30,31 @@ import { Input } from '../components/ui/Input';
 import { Badge } from '../components/ui/Badge';
 import { Pagination } from '../components/ui/Pagination';
 import { usePagination } from '../hooks/usePagination';
+import { resolveMediaUrl } from '../api/client';
+
+const COLOR_PRESETS = [
+  { name: 'Dark Navy', hex: '#0F172A' },
+  { name: 'Deep Slate', hex: '#1E293B' },
+  { name: 'Forest Green', hex: '#15803D' },
+  { name: 'Royal Purple', hex: '#7E22CE' },
+  { name: 'Crimson Red', hex: '#B91C1C' },
+  { name: 'Warm Amber', hex: '#C2410C' },
+  { name: 'Ocean Blue', hex: '#0369A1' },
+];
 
 const announcementSchema = z.object({
-  title: z.string().min(3, 'Judul pengumuman minimal 3 karakter'),
-  content: z.string().min(5, 'Isi pengumuman minimal 5 karakter'),
+  title: z.string().min(3, 'Judul status minimal 3 karakter'),
+  content: z.string().min(5, 'Isi pesan status minimal 5 karakter'),
   type: z.enum(['INFO', 'WARNING', 'MAINTENANCE']),
   targetType: z.enum(['ALL', 'SPECIFIC', 'BULK']).default('ALL'),
   targetUserIds: z.string().optional(),
   isActive: z.boolean().default(true),
+  mediaType: z.enum(['TEXT', 'IMAGE']).default('TEXT'),
+  mediaUrl: z.string().optional(),
+  backgroundColor: z.string().default('#1E293B'),
+  durationHours: z.number().default(24),
+  actionTitle: z.string().optional(),
+  actionUrl: z.string().optional(),
 });
 
 type AnnouncementFormValues = z.infer<typeof announcementSchema>;
@@ -42,9 +64,12 @@ export function AnnouncementsPage() {
   const createAnnouncement = useCreateAnnouncement();
   const updateAnnouncement = useUpdateAnnouncement();
   const deleteAnnouncement = useDeleteAnnouncement();
+  const mediaUpload = useMediaUpload();
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [filePreview, setFilePreview] = useState<string | null>(null);
 
   const [deleteModal, setDeleteModal] = useState<{
     isOpen: boolean;
@@ -59,6 +84,7 @@ export function AnnouncementsPage() {
     handleSubmit,
     reset,
     watch,
+    setValue,
     formState: { errors },
   } = useForm<AnnouncementFormValues>({
     resolver: zodResolver(announcementSchema),
@@ -69,20 +95,53 @@ export function AnnouncementsPage() {
       targetType: 'ALL',
       targetUserIds: '',
       isActive: true,
+      mediaType: 'TEXT',
+      mediaUrl: '',
+      backgroundColor: '#1E293B',
+      durationHours: 24,
+      actionTitle: '',
+      actionUrl: '',
     },
   });
 
+  const watchMediaType = watch('mediaType');
   const watchTargetType = watch('targetType');
+  const watchBackgroundColor = watch('backgroundColor');
+  const watchTitle = watch('title');
+  const watchContent = watch('content');
+  const watchActionTitle = watch('actionTitle');
+  const watchActionUrl = watch('actionUrl');
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      setSelectedFile(file);
+      setFilePreview(URL.createObjectURL(file));
+    }
+  };
 
   const onSubmit = async (data: AnnouncementFormValues) => {
     try {
       setErrorMessage(null);
+      let finalMediaUrl = data.mediaUrl;
+
+      if (data.mediaType === 'IMAGE' && selectedFile) {
+        const uploadRes = await mediaUpload.mutateAsync(selectedFile);
+        finalMediaUrl = uploadRes.url;
+      }
+
       const payload: any = {
         title: data.title,
         content: data.content,
         type: data.type,
         targetType: data.targetType,
         isActive: data.isActive,
+        mediaType: data.mediaType,
+        mediaUrl: finalMediaUrl || undefined,
+        backgroundColor: data.backgroundColor,
+        durationHours: Number(data.durationHours),
+        actionTitle: data.actionTitle?.trim() || undefined,
+        actionUrl: data.actionUrl?.trim() || undefined,
       };
 
       if (data.targetType !== 'ALL' && data.targetUserIds) {
@@ -95,9 +154,11 @@ export function AnnouncementsPage() {
       await createAnnouncement.mutateAsync(payload);
       setIsModalOpen(false);
       reset();
+      setSelectedFile(null);
+      setFilePreview(null);
     } catch (err: any) {
       setErrorMessage(
-        err.response?.data?.message || 'Gagal membuat pengumuman baru'
+        err.response?.data?.message || 'Gagal membuat Status Resmi LAJU'
       );
     }
   };
@@ -142,16 +203,36 @@ export function AnnouncementsPage() {
     }
   };
 
+  const formatExpiryTime = (expiresAt?: string, durationHours?: number) => {
+    if (!expiresAt) {
+      if (durationHours === 0) return 'Permanen';
+      return '-';
+    }
+    const exp = new Date(expiresAt).getTime();
+    const now = Date.now();
+    const diffHours = Math.round((exp - now) / (1000 * 60 * 60));
+    if (diffHours <= 0) return 'Kedaluwarsa';
+    if (diffHours < 24) return `Sisa ${diffHours} jam`;
+    const days = Math.floor(diffHours / 24);
+    return `Sisa ${days} hari`;
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-extrabold tracking-tight text-neutral-900">
-            Pengumuman Sistem (Announcements)
-          </h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-xl font-extrabold tracking-tight text-neutral-900">
+              Status Resmi LAJU (Official Stories)
+            </h1>
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800">
+              <Sparkles className="w-3 h-3 text-amber-600" />
+              Story Otomatis
+            </span>
+          </div>
           <p className="text-xs text-neutral-500 mt-1">
-            Kelola pengumuman resmi dan pesan pembaruan yang ditampilkan pada aplikasi mobile
+            Status ini muncul langsung di tab Status aplikasi mobile dengan badge terverifikasi dan ring gradien biru LAJU
           </p>
         </div>
 
@@ -161,10 +242,12 @@ export function AnnouncementsPage() {
           onClick={() => {
             setErrorMessage(null);
             reset();
+            setSelectedFile(null);
+            setFilePreview(null);
             setIsModalOpen(true);
           }}
         >
-          Buat Pengumuman
+          Buat Status Resmi
         </Button>
       </div>
 
@@ -174,9 +257,11 @@ export function AnnouncementsPage() {
           <table className="w-full text-left text-xs">
             <thead className="bg-neutral-50/70 border-b border-neutral-100 text-neutral-500 uppercase tracking-wider text-[10px] font-bold">
               <tr>
-                <th className="px-5 py-3.5">Judul & Isi</th>
-                <th className="px-5 py-3.5">Tipe</th>
-                <th className="px-5 py-3.5">Target Penerima</th>
+                <th className="px-5 py-3.5">Pratinjau Story</th>
+                <th className="px-5 py-3.5">Judul & Pesan</th>
+                <th className="px-5 py-3.5">Tipe & Target</th>
+                <th className="px-5 py-3.5">Durasi / Kedaluwarsa</th>
+                <th className="px-5 py-3.5">Dilihat</th>
                 <th className="px-5 py-3.5">Status</th>
                 <th className="px-5 py-3.5">Dibuat Pada</th>
                 <th className="px-5 py-3.5 text-right">Tindakan</th>
@@ -185,25 +270,81 @@ export function AnnouncementsPage() {
             <tbody className="divide-y divide-neutral-100">
               {isLoading ? (
                 <tr>
-                  <td colSpan={6} className="px-5 py-8 text-center text-neutral-400">
-                    Memuat daftar pengumuman...
+                  <td colSpan={8} className="px-5 py-8 text-center text-neutral-400">
+                    Memuat daftar status resmi...
                   </td>
                 </tr>
               ) : pagination.paginatedItems && pagination.paginatedItems.length > 0 ? (
                 pagination.paginatedItems.map((item) => (
                   <tr key={item.id} className="hover:bg-neutral-50/50 transition-colors">
-                    <td className="px-5 py-3.5 max-w-md">
-                      <p className="font-bold text-neutral-900">{item.title}</p>
+                    {/* Thumbnail Story 9:16 */}
+                    <td className="px-5 py-3.5 w-16">
+                      <div
+                        className="w-12 h-20 rounded-lg overflow-hidden border border-neutral-200 relative flex items-center justify-center shadow-xs bg-cover bg-center"
+                        style={{
+                          backgroundColor: item.backgroundColor || '#0F172A',
+                          backgroundImage: item.mediaUrl ? `url(${resolveMediaUrl(item.mediaUrl)})` : undefined,
+                        }}
+                      >
+                        {!item.mediaUrl && (
+                          <div className="p-1 text-center">
+                            <span className="text-[7px] font-bold text-white line-clamp-3 leading-tight drop-shadow-xs">
+                              {item.title}
+                            </span>
+                          </div>
+                        )}
+                        <span className="absolute bottom-1 right-1 bg-black/60 text-[8px] text-white px-1 rounded font-semibold">
+                          9:16
+                        </span>
+                      </div>
+                    </td>
+
+                    <td className="px-5 py-3.5 max-w-xs">
+                      <p className="font-bold text-neutral-900 flex items-center gap-1.5">
+                        {item.title}
+                        {item.mediaType === 'IMAGE' ? (
+                          <span className="text-[10px] text-sky-600 bg-sky-50 px-1.5 py-0.5 rounded font-medium flex items-center gap-0.5">
+                            <ImageIcon className="w-2.5 h-2.5" /> Flyer
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-purple-600 bg-purple-50 px-1.5 py-0.5 rounded font-medium flex items-center gap-0.5">
+                            <Type className="w-2.5 h-2.5" /> Teks
+                          </span>
+                        )}
+                      </p>
                       <p className="text-neutral-500 text-[11px] mt-0.5 line-clamp-2 leading-relaxed">
                         {item.content}
                       </p>
+                      {item.actionUrl && (
+                        <div className="mt-1 flex items-center gap-1 text-[10px] text-blue-600 font-medium">
+                          <ExternalLink className="w-2.5 h-2.5" />
+                          <span>{item.actionTitle || 'Buka Tautan'}</span>
+                        </div>
+                      )}
                     </td>
+
+                    <td className="px-5 py-3.5 space-y-1">
+                      <div>{getTypeBadge(item.type)}</div>
+                      <div>{getTargetBadge(item.targetType, item.targetUserCount)}</div>
+                    </td>
+
+                    <td className="px-5 py-3.5 text-neutral-700 font-medium text-[11px]">
+                      <div className="flex items-center gap-1">
+                        <Clock className="w-3.5 h-3.5 text-neutral-400" />
+                        <span>{formatExpiryTime(item.expiresAt, item.durationHours)}</span>
+                      </div>
+                      <span className="text-[10px] text-neutral-400">
+                        {item.durationHours === 0 ? 'Permanen' : `${item.durationHours || 24} Jam`}
+                      </span>
+                    </td>
+
                     <td className="px-5 py-3.5">
-                      {getTypeBadge(item.type)}
+                      <div className="inline-flex items-center gap-1 text-xs font-semibold text-neutral-700 bg-neutral-100 px-2 py-1 rounded-md">
+                        <Eye className="w-3.5 h-3.5 text-neutral-500" />
+                        <span>{item.viewsCount || 0}</span>
+                      </div>
                     </td>
-                    <td className="px-5 py-3.5">
-                      {getTargetBadge(item.targetType, item.targetUserCount)}
-                    </td>
+
                     <td className="px-5 py-3.5">
                       {item.isActive ? (
                         <Badge variant="success">Aktif Tayang</Badge>
@@ -211,6 +352,7 @@ export function AnnouncementsPage() {
                         <Badge variant="neutral">Nonaktif</Badge>
                       )}
                     </td>
+
                     <td className="px-5 py-3.5 text-neutral-500 text-[11px]">
                       {new Date(item.createdAt).toLocaleDateString('id-ID', {
                         day: 'numeric',
@@ -220,6 +362,7 @@ export function AnnouncementsPage() {
                         minute: '2-digit',
                       })}
                     </td>
+
                     <td className="px-5 py-3.5 text-right space-x-2">
                       <Button
                         size="sm"
@@ -241,8 +384,8 @@ export function AnnouncementsPage() {
                 ))
               ) : (
                 <tr>
-                  <td colSpan={6} className="px-5 py-8 text-center text-neutral-400">
-                    Belum ada pengumuman dibuat
+                  <td colSpan={8} className="px-5 py-8 text-center text-neutral-400">
+                    Belum ada status resmi LAJU dibuat
                   </td>
                 </tr>
               )}
@@ -263,12 +406,13 @@ export function AnnouncementsPage() {
         </div>
       </div>
 
-      {/* Modal Buat Pengumuman Baru */}
+      {/* Modal Buat Status Resmi Baru */}
       <Modal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
-        title="Buat Pengumuman Baru"
-        description="Siarkan informasi atau pemeliharaan kepada seluruh pengguna aplikasi"
+        title="Buat Status Resmi LAJU Baru"
+        description="Siarkan status visual story 9:16 dengan badge resmi LAJU ke seluruh pengguna aplikasi"
+        maxWidth="3xl"
       >
         {errorMessage && (
           <div className="mb-4 p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2">
@@ -277,101 +421,292 @@ export function AnnouncementsPage() {
           </div>
         )}
 
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-          <Input
-            label="Judul Pengumuman"
-            placeholder="Contoh: Pemeliharaan Server Berkala"
-            {...register('title')}
-            error={errors.title?.message}
-          />
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            {/* Form Fields (Left Column) */}
+            <div className="lg:col-span-7 space-y-4">
+              {/* Media Type Selector */}
+              <div>
+                <label className="block text-[11px] font-bold text-neutral-700 mb-1.5 uppercase tracking-wider">
+                  Format Tampilan Story
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setValue('mediaType', 'TEXT')}
+                    className={`flex items-center justify-center gap-2 p-3 rounded-xl border text-xs font-semibold transition-all ${
+                      watchMediaType === 'TEXT'
+                        ? 'border-neutral-900 bg-neutral-900 text-white shadow-xs'
+                        : 'border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-50'
+                    }`}
+                  >
+                    <Type className="w-4 h-4" />
+                    Status Teks Gradien
+                  </button>
 
-          <div>
-            <label className="block text-[11px] font-bold text-neutral-700 mb-1.5 uppercase tracking-wider">
-              Target Penerima Broadcast Push Notif
-            </label>
-            <select
-              {...register('targetType')}
-              className="w-full text-xs rounded-xl border border-neutral-200 px-3 py-2 text-neutral-900 bg-white focus:outline-none focus:ring-2 focus:ring-neutral-900/10 focus:border-neutral-900"
-            >
-              <option value="ALL">📢 Semua Pengguna (Broadcast All Users)</option>
-              <option value="SPECIFIC">👤 Satu Pengguna Khusus (Specific User)</option>
-              <option value="BULK">👥 Daftar Banyak Pengguna (Bulk Users)</option>
-            </select>
-          </div>
+                  <button
+                    type="button"
+                    onClick={() => setValue('mediaType', 'IMAGE')}
+                    className={`flex items-center justify-center gap-2 p-3 rounded-xl border text-xs font-semibold transition-all ${
+                      watchMediaType === 'IMAGE'
+                        ? 'border-neutral-900 bg-neutral-900 text-white shadow-xs'
+                        : 'border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-50'
+                    }`}
+                  >
+                    <ImageIcon className="w-4 h-4" />
+                    Flyer / Gambar (9:16)
+                  </button>
+                </div>
+              </div>
 
-          {watchTargetType === 'SPECIFIC' && (
-            <div>
-              <label className="block text-[11px] font-bold text-neutral-700 mb-1.5 uppercase tracking-wider">
-                Username, Nomor Telepon, atau User ID Penerima
-              </label>
+              {/* Flyer File Upload if IMAGE */}
+              {watchMediaType === 'IMAGE' && (
+                <div>
+                  <label className="block text-[11px] font-bold text-neutral-700 mb-1.5 uppercase tracking-wider">
+                    Upload Banner Flyer (Rasio Rekomendasi 9:16)
+                  </label>
+                  <label className="border-2 border-dashed border-neutral-300 rounded-xl p-4 flex flex-col items-center justify-center gap-2 hover:bg-neutral-50 transition-colors cursor-pointer text-center block">
+                    <Upload className="w-6 h-6 text-neutral-400" />
+                    <div>
+                      <span className="text-xs font-semibold text-neutral-800">
+                        {selectedFile ? selectedFile.name : 'Pilih gambar dari perangkat'}
+                      </span>
+                      <p className="text-[11px] text-neutral-400 mt-0.5">
+                        Format PNG, JPG, WEBP (1080 x 1920 px disarankan)
+                      </p>
+                    </div>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleFileChange}
+                      className="hidden"
+                    />
+                  </label>
+                </div>
+              )}
+
+              {/* Background Color Preset if TEXT */}
+              {watchMediaType === 'TEXT' && (
+                <div>
+                  <label className="block text-[11px] font-bold text-neutral-700 mb-1.5 uppercase tracking-wider">
+                    Warna Latar Belakang Story
+                  </label>
+                  <div className="flex flex-wrap items-center gap-2 mb-2">
+                    {COLOR_PRESETS.map((preset) => (
+                      <button
+                        key={preset.hex}
+                        type="button"
+                        onClick={() => setValue('backgroundColor', preset.hex)}
+                        className={`w-7 h-7 rounded-full border-2 transition-all flex items-center justify-center ${
+                          watchBackgroundColor === preset.hex
+                            ? 'border-neutral-900 ring-2 ring-neutral-400 scale-110'
+                            : 'border-transparent hover:scale-105'
+                        }`}
+                        style={{ backgroundColor: preset.hex }}
+                        title={preset.name}
+                      >
+                        {watchBackgroundColor === preset.hex && (
+                          <div className="w-1.5 h-1.5 rounded-full bg-white" />
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                  <Input
+                    placeholder="#1E293B"
+                    {...register('backgroundColor')}
+                    error={errors.backgroundColor?.message}
+                  />
+                </div>
+              )}
+
               <Input
-                placeholder="Contoh: @dimas atau 08123456789 atau user UUID"
-                {...register('targetUserIds')}
+                label="Judul Status Resmi"
+                placeholder="Contoh: Fitur Baru LAJU v2.5 Rilis!"
+                {...register('title')}
+                error={errors.title?.message}
               />
-              <p className="text-[10px] text-neutral-400 mt-1">
-                Push notifikasi dan pengumuman hanya akan dikirimkan ke perangkat akun pengguna ini.
-              </p>
-            </div>
-          )}
 
-          {watchTargetType === 'BULK' && (
-            <div>
-              <label className="block text-[11px] font-bold text-neutral-700 mb-1.5 uppercase tracking-wider">
-                Daftar Username, Nomor Telepon, atau User ID (Pisahkan dengan koma atau baris baru)
+              <div>
+                <label className="block text-[11px] font-bold text-neutral-700 mb-1.5 uppercase tracking-wider">
+                  Isi Pesan Status
+                </label>
+                <textarea
+                  {...register('content')}
+                  rows={3}
+                  placeholder="Tuliskan pesan atau detail pengumuman yang akan dibaca pengguna..."
+                  className="w-full text-xs rounded-xl border border-neutral-200 px-3 py-2 text-neutral-900 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-900/10 focus:border-neutral-900 transition-all resize-none"
+                />
+                {errors.content && (
+                  <p className="text-[11px] text-rose-600 font-medium mt-1">
+                    {errors.content.message}
+                  </p>
+                )}
+              </div>
+
+              {/* Durasi Tayang Story */}
+              <div>
+                <label className="block text-[11px] font-bold text-neutral-700 mb-1.5 uppercase tracking-wider">
+                  Durasi Tayang Status
+                </label>
+                <select
+                  {...register('durationHours', { valueAsNumber: true })}
+                  className="w-full text-xs rounded-xl border border-neutral-200 px-3 py-2 text-neutral-900 bg-white focus:outline-none focus:ring-2 focus:ring-neutral-900/10 focus:border-neutral-900"
+                >
+                  <option value={24}>24 Jam (Standar Status Mobile)</option>
+                  <option value={48}>48 Jam (2 Hari)</option>
+                  <option value={72}>3 Hari</option>
+                  <option value={168}>7 Hari (1 Minggu)</option>
+                  <option value={0}>Permanen (Hingga dihapus manual)</option>
+                </select>
+              </div>
+
+              {/* Action Button (Optional) */}
+              <div className="grid grid-cols-2 gap-3 p-3 bg-neutral-50 rounded-xl border border-neutral-100">
+                <div className="col-span-2">
+                  <span className="text-[11px] font-bold text-neutral-700 uppercase tracking-wider">
+                    Tombol Aksi Tautan (Opsional)
+                  </span>
+                  <p className="text-[10px] text-neutral-400 mt-0.5">
+                    Menampilkan tombol navigasi / link di bagian bawah layar story
+                  </p>
+                </div>
+                <Input
+                  label="Label Tombol"
+                  placeholder="Contoh: Buka Tautan"
+                  {...register('actionTitle')}
+                />
+                <Input
+                  label="URL Tujuan"
+                  placeholder="https://..."
+                  {...register('actionUrl')}
+                />
+              </div>
+
+              {/* Target Penerima */}
+              <div>
+                <label className="block text-[11px] font-bold text-neutral-700 mb-1.5 uppercase tracking-wider">
+                  Target Penerima Status
+                </label>
+                <select
+                  {...register('targetType')}
+                  className="w-full text-xs rounded-xl border border-neutral-200 px-3 py-2 text-neutral-900 bg-white focus:outline-none focus:ring-2 focus:ring-neutral-900/10 focus:border-neutral-900"
+                >
+                  <option value="ALL">📢 Semua Pengguna (Broadcast All Users)</option>
+                  <option value="SPECIFIC">👤 Satu Pengguna Khusus (Specific User)</option>
+                  <option value="BULK">👥 Daftar Banyak Pengguna (Bulk Users)</option>
+                </select>
+              </div>
+
+              {watchTargetType === 'SPECIFIC' && (
+                <div>
+                  <Input
+                    label="Username / User ID Penerima"
+                    placeholder="@dimas atau 08123456789"
+                    {...register('targetUserIds')}
+                  />
+                </div>
+              )}
+
+              {watchTargetType === 'BULK' && (
+                <div>
+                  <label className="block text-[11px] font-bold text-neutral-700 mb-1.5 uppercase tracking-wider">
+                    Daftar Penerima (Koma / Baris Baru)
+                  </label>
+                  <textarea
+                    rows={2}
+                    placeholder="@dimas, @budi, 081234567890"
+                    {...register('targetUserIds')}
+                    className="w-full text-xs rounded-xl border border-neutral-200 px-3 py-2 text-neutral-900 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-900/10 focus:border-neutral-900 transition-all resize-none"
+                  />
+                </div>
+              )}
+
+              <div className="flex items-center gap-2 pt-1">
+                <input
+                  type="checkbox"
+                  id="isActive"
+                  {...register('isActive')}
+                  className="rounded border-neutral-300 text-neutral-900 focus:ring-neutral-900 h-4 w-4"
+                />
+                <label htmlFor="isActive" className="text-xs text-neutral-700 font-medium cursor-pointer">
+                  Langsung aktifkan dan siarkan status resmi ini
+                </label>
+              </div>
+            </div>
+
+            {/* Live 9:16 Smartphone Mockup Preview (Right Column) */}
+            <div className="lg:col-span-5 flex flex-col items-center">
+              <label className="block text-[11px] font-bold text-neutral-700 mb-2 uppercase tracking-wider self-start flex items-center gap-1.5">
+                <Smartphone className="w-3.5 h-3.5 text-neutral-500" />
+                Live Preview Status Mobile (9:16)
               </label>
-              <textarea
-                rows={3}
-                placeholder="@dimas, @budi, 081234567890"
-                {...register('targetUserIds')}
-                className="w-full text-xs rounded-xl border border-neutral-200 px-3 py-2 text-neutral-900 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-900/10 focus:border-neutral-900 transition-all resize-none"
-              />
-              <p className="text-[10px] text-neutral-400 mt-1">
-                Push notifikasi dan pengumuman akan dikirimkan serentak ke perangkat daftar pengguna di atas.
+
+              {/* Smartphone Frame */}
+              <div className="w-[230px] h-[408px] rounded-[32px] bg-black p-2.5 shadow-2xl border-4 border-neutral-800 relative flex flex-col overflow-hidden">
+                {/* Speaker pill notch */}
+                <div className="absolute top-3 left-1/2 -translate-x-1/2 w-14 h-3 bg-neutral-900 rounded-full z-30" />
+
+                {/* Story Screen Area */}
+                <div
+                  className="w-full h-full rounded-[22px] overflow-hidden relative flex flex-col justify-between p-3.5 bg-cover bg-center transition-colors"
+                  style={{
+                    backgroundColor: watchBackgroundColor || '#1E293B',
+                    backgroundImage: filePreview ? `url(${filePreview})` : undefined,
+                  }}
+                >
+                  {/* Subtle dark gradient overlay for text legibility */}
+                  <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-transparent to-black/80 pointer-events-none" />
+
+                  {/* Top Bar: Progress & Official Header */}
+                  <div className="relative z-10 space-y-2 pt-2">
+                    {/* Story progress bar */}
+                    <div className="w-full h-0.5 bg-white/30 rounded-full overflow-hidden">
+                      <div className="w-1/2 h-full bg-white rounded-full animate-pulse" />
+                    </div>
+
+                    {/* Official Author Info */}
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded-full bg-sky-500 flex items-center justify-center text-white font-bold text-[10px] ring-2 ring-white/50 shadow-sm">
+                        L
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1">
+                          <span className="text-[11px] font-bold text-white drop-shadow-sm truncate">
+                            LAJU Official
+                          </span>
+                          <CheckCircle className="w-3 h-3 text-sky-400 fill-sky-400" />
+                        </div>
+                        <span className="text-[9px] text-white/70">Resmi</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Center Text (if TEXT story or with caption) */}
+                  <div className="relative z-10 my-auto text-center px-2 py-4">
+                    <h3 className="text-sm font-extrabold text-white leading-tight drop-shadow-md">
+                      {watchTitle || 'Judul Status Resmi'}
+                    </h3>
+                    <p className="text-[11px] text-white/90 mt-1.5 leading-relaxed drop-shadow-sm line-clamp-5">
+                      {watchContent || 'Isi konten status resmi LAJU akan muncul di sini...'}
+                    </p>
+                  </div>
+
+                  {/* Bottom: Action Button if configured */}
+                  <div className="relative z-10 pb-1">
+                    {watchActionTitle && (
+                      <div className="w-full py-1.5 px-3 rounded-full bg-white/95 text-neutral-900 text-center font-bold text-[10px] shadow-lg flex items-center justify-center gap-1">
+                        <span>{watchActionTitle}</span>
+                        <ExternalLink className="w-2.5 h-2.5" />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <p className="text-[10px] text-neutral-400 mt-2 text-center">
+                Rasio 9:16 Fullscreen Story Viewer
               </p>
             </div>
-          )}
-
-          <div>
-            <label className="block text-[11px] font-bold text-neutral-700 mb-1.5 uppercase tracking-wider">
-              Tipe Pengumuman
-            </label>
-            <select
-              {...register('type')}
-              className="w-full text-xs rounded-xl border border-neutral-200 px-3 py-2 text-neutral-900 bg-white focus:outline-none focus:ring-2 focus:ring-neutral-900/10 focus:border-neutral-900"
-            >
-              <option value="INFO">Informasi Biasa</option>
-              <option value="WARNING">Peringatan Penting</option>
-              <option value="MAINTENANCE">Jadwal Pemeliharaan</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-[11px] font-bold text-neutral-700 mb-1.5 uppercase tracking-wider">
-              Isi Pesan Pengumuman
-            </label>
-            <textarea
-              {...register('content')}
-              rows={4}
-              placeholder="Tuliskan detail pengumuman yang akan dibaca pengguna..."
-              className="w-full text-xs rounded-xl border border-neutral-200 px-3 py-2 text-neutral-900 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-900/10 focus:border-neutral-900 transition-all resize-none"
-            />
-            {errors.content && (
-              <p className="text-[11px] text-rose-600 font-medium mt-1">
-                {errors.content.message}
-              </p>
-            )}
-          </div>
-
-          <div className="flex items-center gap-2 pt-1">
-            <input
-              type="checkbox"
-              id="isActive"
-              {...register('isActive')}
-              className="rounded border-neutral-300 text-neutral-900 focus:ring-neutral-900 h-4 w-4"
-            />
-            <label htmlFor="isActive" className="text-xs text-neutral-700 font-medium cursor-pointer">
-              Langsung aktifkan dan siarkan pengumuman ini
-            </label>
           </div>
 
           <div className="flex justify-end gap-2 pt-4 border-t border-neutral-100">
@@ -385,9 +720,9 @@ export function AnnouncementsPage() {
             <Button
               type="submit"
               variant="primary"
-              isLoading={createAnnouncement.isPending}
+              isLoading={createAnnouncement.isPending || mediaUpload.isPending}
             >
-              Simpan Pengumuman
+              Terbitkan Status Resmi
             </Button>
           </div>
         </form>
@@ -398,9 +733,9 @@ export function AnnouncementsPage() {
         isOpen={deleteModal.isOpen}
         onClose={() => setDeleteModal({ isOpen: false, id: '', title: '' })}
         onConfirm={handleConfirmDelete}
-        title="Hapus Pengumuman"
-        description={`Yakin ingin menghapus pengumuman "${deleteModal.title}"? Pengumuman tidak akan lagi ditampilkan pada perangkat pengguna.`}
-        confirmText="Hapus Pengumuman"
+        title="Hapus Status Resmi"
+        description={`Yakin ingin menghapus status resmi "${deleteModal.title}"? Status ini tidak akan lagi tampil di tab Status aplikasi pengguna.`}
+        confirmText="Hapus Status"
         cancelText="Batal"
         variant="danger"
         isLoading={deleteAnnouncement.isPending}

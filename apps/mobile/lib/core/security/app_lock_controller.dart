@@ -13,7 +13,9 @@ class AppLockController extends ChangeNotifier {
   bool _showNotificationPreview = false;
   bool _isCurrentlyLocked = false;
   DateTime? _lastPausedTime;
+  DateTime? _lastUnlockedTime;
   bool _isExternalIntentActive = false;
+  bool _isBiometricPromptActive = false;
 
   bool get isAppLockEnabled => _isAppLockEnabled;
   bool get isBiometricEnabled => _isBiometricEnabled;
@@ -22,6 +24,7 @@ class AppLockController extends ChangeNotifier {
   bool get hasSetPin => _hasSetPin;
   bool get showNotificationPreview => _showNotificationPreview;
   bool get isCurrentlyLocked => _isAppLockEnabled && _isCurrentlyLocked;
+  bool get isBiometricPromptActive => _isBiometricPromptActive;
 
   /// Loads security lock preferences from persistent storage
   Future<void> init() async {
@@ -38,6 +41,11 @@ class AppLockController extends ChangeNotifier {
         _hasSetPin = prefs.getBool('app_lock_has_pin') ?? false;
       }
       _showNotificationPreview = prefs.getBool('app_lock_show_preview') ?? false;
+
+      // On cold start, if App Lock is enabled, lock immediately
+      if (_isAppLockEnabled) {
+        _isCurrentlyLocked = true;
+      }
       notifyListeners();
     } catch (e) {
       debugPrint('[AppLockController] init error: $e');
@@ -46,6 +54,15 @@ class AppLockController extends ChangeNotifier {
 
   bool verifyPin(String input) {
     return _hasSetPin && input == _pinCode;
+  }
+
+  void markBiometricAuthStarted() {
+    _isBiometricPromptActive = true;
+  }
+
+  void markBiometricAuthFinished() {
+    _isBiometricPromptActive = false;
+    _lastPausedTime = null;
   }
 
   void markExternalIntentStarted() {
@@ -58,6 +75,8 @@ class AppLockController extends ChangeNotifier {
   }
 
   void unlockApp() {
+    _lastPausedTime = null;
+    _lastUnlockedTime = DateTime.now();
     if (_isCurrentlyLocked) {
       _isCurrentlyLocked = false;
       notifyListeners();
@@ -65,6 +84,15 @@ class AppLockController extends ChangeNotifier {
   }
 
   void lockApp() {
+    if (!_isAppLockEnabled) return;
+    if (_isBiometricPromptActive) return;
+    if (_isExternalIntentActive) return;
+    // Prevent immediate re-locking right after successful unlock (5s grace period)
+    if (_lastUnlockedTime != null &&
+        DateTime.now().difference(_lastUnlockedTime!).inSeconds < 5) {
+      return;
+    }
+
     if (!_isCurrentlyLocked) {
       _isCurrentlyLocked = true;
       notifyListeners();
@@ -72,23 +100,39 @@ class AppLockController extends ChangeNotifier {
   }
 
   void onAppPaused() {
-    if (_isExternalIntentActive) return;
+    // If the app is pausing because of native BiometricPrompt or Camera/Gallery intent, ignore it
+    if (_isExternalIntentActive || _isBiometricPromptActive) return;
     _lastPausedTime = DateTime.now();
   }
 
   void onAppResumed() {
-    if (_isExternalIntentActive) {
+    if (_isExternalIntentActive || _isBiometricPromptActive) {
       _isExternalIntentActive = false;
       _lastPausedTime = null;
       return;
     }
-    if (!_isAppLockEnabled) return;
+    if (!_isAppLockEnabled) {
+      _lastPausedTime = null;
+      return;
+    }
     if (_lastPausedTime == null) return;
 
-    final elapsed = DateTime.now().difference(_lastPausedTime!);
+    final pausedAt = _lastPausedTime!;
+    _lastPausedTime = null; // ALWAYS consume and clear so it can NEVER be evaluated twice
+
+    // If app is already locked, no need to lock again
+    if (_isCurrentlyLocked) return;
+
+    // Check if within recent unlock grace period
+    if (_lastUnlockedTime != null &&
+        DateTime.now().difference(_lastUnlockedTime!).inSeconds < 5) {
+      return;
+    }
+
+    final elapsed = DateTime.now().difference(pausedAt);
     int thresholdSeconds = 900;
     if (_autoLockTimeout == 'immediately') {
-      thresholdSeconds = 15; // At least 15 seconds buffer so camera/permission/quick switch never locks
+      thresholdSeconds = 2; // Immediately locks after user truly switched away (>2s in background)
     } else if (_autoLockTimeout == '1_min') {
       thresholdSeconds = 60;
     } else if (_autoLockTimeout == '15_min') {

@@ -4,6 +4,7 @@ import {
   ForbiddenException,
   BadRequestException
 } from '@nestjs/common';
+import * as crypto from 'crypto';
 import { PrismaService } from '../../infrastructure/prisma/prisma.service';
 import { RedisService } from '../../infrastructure/redis/redis.service';
 import { CreateConversationDto, AddMemberDto, ChangeMemberRoleDto, UpdateConversationDto } from './dto/conversation.dto';
@@ -242,6 +243,22 @@ export class ConversationsService {
             await this.redis.set(`conversation:${conv.id}:description`, dto.description);
           } catch (_) {}
         }
+        if (dto.wallpaperId && this.redis) {
+          try {
+            await this.redis.set(`conversation:${conv.id}:wallpaperId`, dto.wallpaperId);
+          } catch (_) {}
+        }
+        if (dto.killPin && this.redis) {
+          try {
+            const hash = crypto.createHash('sha256').update(dto.killPin.trim()).digest('hex');
+            await this.redis.set(`conversation:${conv.id}:killPinHash`, hash);
+            const authList = [currentUserId, ...(dto.authorizedWipeUserIds || [])];
+            await this.redis.set(
+              `conversation:${conv.id}:authorizedWipeUserIds`,
+              JSON.stringify(Array.from(new Set(authList)))
+            );
+          } catch (_) {}
+        }
 
         // Notify other members via Redis event stream
         try {
@@ -274,7 +291,10 @@ export class ConversationsService {
 
         return {
           ...created,
-          description: dto.description || null
+          description: dto.description || null,
+          wallpaperId: dto.wallpaperId || null,
+          hasKillPin: !!dto.killPin,
+          authorizedWipeUserIds: dto.killPin ? [currentUserId, ...(dto.authorizedWipeUserIds || [])] : []
         };
       });
     }
@@ -366,10 +386,13 @@ export class ConversationsService {
       })
     );
 
-    const [description, avatarUrl, permissionsStr] = await Promise.all([
+    const [description, avatarUrl, permissionsStr, wallpaperId, killPinHash, authWipeStr] = await Promise.all([
       this.redis?.get(`conversation:${conversationId}:description`).catch(() => null),
       this.redis?.get(`conversation:${conversationId}:avatarUrl`).catch(() => null),
-      this.redis?.get(`conversation:${conversationId}:permissions`).catch(() => null)
+      this.redis?.get(`conversation:${conversationId}:permissions`).catch(() => null),
+      this.redis?.get(`conversation:${conversationId}:wallpaperId`).catch(() => null),
+      this.redis?.get(`conversation:${conversationId}:killPinHash`).catch(() => null),
+      this.redis?.get(`conversation:${conversationId}:authorizedWipeUserIds`).catch(() => null)
     ]);
 
     let permissions: any = undefined;
@@ -379,10 +402,20 @@ export class ConversationsService {
       } catch (_) {}
     }
 
+    let authorizedWipeUserIds: string[] = [];
+    if (authWipeStr) {
+      try {
+        authorizedWipeUserIds = JSON.parse(authWipeStr);
+      } catch (_) {}
+    }
+
     return {
       ...conv,
       description: description ?? undefined,
       avatarUrl: avatarUrl ?? undefined,
+      wallpaperId: wallpaperId ?? undefined,
+      hasKillPin: !!killPinHash,
+      authorizedWipeUserIds,
       permissions,
       members: enrichedMembers
     };
@@ -513,11 +546,40 @@ export class ConversationsService {
           await this.redis.set(`conversation:${conversationId}:permissions`, JSON.stringify(dto.permissions));
         } catch (_) {}
       }
+      if (dto.wallpaperId !== undefined && this.redis) {
+        try {
+          if (dto.wallpaperId) {
+            await this.redis.set(`conversation:${conversationId}:wallpaperId`, dto.wallpaperId);
+          } else {
+            await this.redis.del(`conversation:${conversationId}:wallpaperId`);
+          }
+        } catch (_) {}
+      }
+      if (dto.killPin !== undefined && this.redis) {
+        try {
+          if (dto.killPin) {
+            const hash = crypto.createHash('sha256').update(dto.killPin.trim()).digest('hex');
+            await this.redis.set(`conversation:${conversationId}:killPinHash`, hash);
+          } else {
+            await this.redis.del(`conversation:${conversationId}:killPinHash`);
+            await this.redis.del(`conversation:${conversationId}:authorizedWipeUserIds`);
+          }
+        } catch (_) {}
+      }
+      if (dto.authorizedWipeUserIds !== undefined && this.redis) {
+        try {
+          await this.redis.set(
+            `conversation:${conversationId}:authorizedWipeUserIds`,
+            JSON.stringify(dto.authorizedWipeUserIds)
+          );
+        } catch (_) {}
+      }
 
       return {
         ...conv,
         description: dto.description,
-        permissions: dto.permissions
+        permissions: dto.permissions,
+        wallpaperId: dto.wallpaperId
       };
     });
 
@@ -761,5 +823,99 @@ export class ConversationsService {
     });
 
     return { success: true };
+  }
+
+  async destructiveWipe(userId: string, conversationId: string, pin: string) {
+    if (!pin || typeof pin !== 'string') {
+      throw new BadRequestException('PIN darurat wajib diisi');
+    }
+
+    const member = await this.prisma.conversationMember.findFirst({
+      where: { conversationId, userId, leftAt: null }
+    });
+    if (!member) {
+      throw new ForbiddenException('Bukan anggota dari obrolan grup ini');
+    }
+
+    const killPinHash = await this.redis?.get(`conversation:${conversationId}:killPinHash`).catch(() => null);
+    if (!killPinHash) {
+      throw new BadRequestException('Fitur sandi darurat belum diaktifkan pada grup ini');
+    }
+
+    // Verify authorized user: Owner is always authorized, or must be in authorizedWipeUserIds
+    const authWipeStr = await this.redis?.get(`conversation:${conversationId}:authorizedWipeUserIds`).catch(() => null);
+    let isAuthorized = member.role === 'OWNER';
+    if (authWipeStr) {
+      try {
+        const list = JSON.parse(authWipeStr);
+        if (Array.isArray(list) && list.includes(userId)) {
+          isAuthorized = true;
+        }
+      } catch (_) {}
+    }
+
+    if (!isAuthorized) {
+      throw new ForbiddenException('Anda tidak memiliki wewenang untuk menghancurkan riwayat grup ini');
+    }
+
+    // Verify PIN with stored hash
+    const inputHash = crypto.createHash('sha256').update(pin.trim()).digest('hex');
+    if (inputHash !== killPinHash) {
+      throw new ForbiddenException('PIN darurat salah');
+    }
+
+    // Permanently delete all messages in this conversation
+    const deleteResult = await this.prisma.message.deleteMany({
+      where: { conversationId }
+    });
+
+    // Create audit event
+    try {
+      await this.prisma.conversationEvent.create({
+        data: {
+          conversationId,
+          eventType: 'CONVERSATION_PURGED',
+          payload: JSON.stringify({
+            purgedBy: userId,
+            deletedCount: deleteResult.count,
+            timestamp: new Date().toISOString()
+          })
+        }
+      });
+    } catch (_) {}
+
+    // Clean up Redis caches
+    if (this.redis) {
+      try {
+        await this.redis.del(`conversation:${conversationId}:messages`);
+        await this.redis.del(`conversation:${conversationId}:lastMessage`);
+      } catch (_) {}
+    }
+
+    // Broadcast realtime event to all conversation members
+    try {
+      const publisher = this.redis?.getClient();
+      if (publisher) {
+        const members = await this.prisma.conversationMember.findMany({
+          where: { conversationId, leftAt: null },
+          select: { userId: true }
+        });
+        const payload = JSON.stringify({
+          type: 'CONVERSATION_PURGED',
+          conversationId,
+          purgedBy: userId,
+          timestamp: new Date().toISOString()
+        });
+        for (const m of members) {
+          publisher.publish(`user:${m.userId}`, payload).catch(() => {});
+        }
+      }
+    } catch (_) {}
+
+    return {
+      success: true,
+      deletedCount: deleteResult.count,
+      message: 'Seluruh riwayat obrolan grup telah dihancurkan secara permanen'
+    };
   }
 }

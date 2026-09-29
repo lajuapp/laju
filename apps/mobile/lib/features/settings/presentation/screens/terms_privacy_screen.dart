@@ -172,6 +172,18 @@ class _TermsPrivacyScreenState extends State<TermsPrivacyScreen>
           title: context.tr('termsSec4Title'),
           content: context.tr('termsSec4Body'),
         ),
+        const SizedBox(height: 12),
+        _buildSectionCard(
+          isDark,
+          title: context.tr('termsSec5Title'),
+          content: context.tr('termsSec5Body'),
+        ),
+        const SizedBox(height: 12),
+        _buildSectionCard(
+          isDark,
+          title: context.tr('termsSec6Title'),
+          content: context.tr('termsSec6Body'),
+        ),
       ],
     );
   }
