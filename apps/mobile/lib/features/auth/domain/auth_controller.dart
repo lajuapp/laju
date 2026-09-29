@@ -61,6 +61,7 @@ class AuthController extends ChangeNotifier {
   String? _reattestUsername;
   bool _isSuspended = false;
   String? _suspendedReason;
+  bool _isDeviceReplaced = false;
 
   static const MethodChannel _deviceChannel = MethodChannel('com.laju/device');
 
@@ -68,6 +69,7 @@ class AuthController extends ChangeNotifier {
   bool get isAuthenticated => _isAuthenticated;
   bool get isSuspended => _isSuspended;
   String? get suspendedReason => _suspendedReason;
+  bool get isDeviceReplaced => _isDeviceReplaced;
   AuthUser? get currentUser => _currentUser;
   String? get pendingIdentifier => _pendingIdentifier;
   String? get pendingUsername => _pendingUsername;
@@ -105,6 +107,7 @@ class AuthController extends ChangeNotifier {
     _isLoading = false;
     _isSuspended = false;
     _suspendedReason = null;
+    _isDeviceReplaced = false;
     notifyListeners();
   }
 
@@ -1110,8 +1113,8 @@ class AuthController extends ChangeNotifier {
       markSuspended(reason);
     };
     ApiClient.instance.onUnauthorized = () {
-      debugPrint('[AuthController] Session unauthorized (401), invalidating session');
-      logout();
+      debugPrint('[AuthController] Session unauthorized (401) — checking if displaced by another device');
+      handleDeviceReplaced();
     };
 
     try {
@@ -1284,7 +1287,25 @@ class AuthController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Called when this device's session was terminated by another device logging in.
+  /// Sets [isDeviceReplaced] so the login screen can show a targeted banner.
+  void handleDeviceReplaced() {
+    if (!_isAuthenticated) return; // Already logged out — avoid duplicate calls
+    _isDeviceReplaced = true;
+    ForegroundSyncService.instance.stop();
+    ApiClient.instance.clearAuth();
+    _isAuthenticated = false;
+    _isSuspended = false;
+    _suspendedReason = null;
+    _currentUser = null;
+    _clearSessionFromPrefs();
+    LocalDatabase.instance.clearAll();
+    notifyListeners();
+    debugPrint('[AuthController] Device replaced — session invalidated, user redirected to login');
+  }
+
   void logout() {
+    _isDeviceReplaced = false; // Clear replaced flag on explicit logout
     ForegroundSyncService.instance.stop();
     ApiClient.instance.clearAuth();
     _isAuthenticated = false;

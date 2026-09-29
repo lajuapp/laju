@@ -620,6 +620,38 @@ class _LoginScreenState extends State<LoginScreen>
       body: SafeArea(
         child: Column(
           children: [
+            // ── Device Replaced Banner ─────────────────────────────────────
+            ListenableBuilder(
+              listenable: AuthController.instance,
+              builder: (context, _) {
+                if (!AuthController.instance.isDeviceReplaced) {
+                  return const SizedBox.shrink();
+                }
+                return Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  color: const Color(0xFFFFF3CD),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.phone_android_rounded, color: Color(0xFF856404), size: 20),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'Akun kamu baru saja masuk di perangkat lain. Masuk kembali untuk melanjutkan.',
+                          style: const TextStyle(
+                            color: Color(0xFF856404),
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+            // ──────────────────────────────────────────────────────────────
+
             // Tab Content Area
             Expanded(
               child: TabBarView(

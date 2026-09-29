@@ -16,6 +16,7 @@ enum UserStatus {
 enum DeviceStatus {
   PENDING
   ACTIVE
+  INACTIVE
   MIGRATING
   REVOKED
   CONTAINED

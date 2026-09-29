@@ -142,9 +142,12 @@ export class DevicesService {
       throw new NotFoundException(`Device ${deviceUuid} not found`);
     }
 
-    if (device.status !== 'ACTIVE') {
-      throw new UnauthorizedException(`Device is not active (status: ${device.status})`);
+    if (device.status === 'REVOKED' || device.status === 'CONTAINED' || device.status === 'DECOMMISSIONED') {
+      throw new UnauthorizedException(`Device is permanently ${device.status}`);
     }
+    // NOTE: INACTIVE status is allowed — the device was displaced by single-device policy
+    // and the user is now re-authenticating. generateTokens() will re-activate it and
+    // displace the currently active device in turn.
 
     if (device.user.status !== 'ACTIVE') {
       throw new UnauthorizedException(`User account is ${device.user.status}`);
@@ -212,10 +215,13 @@ export class DevicesService {
       }
     }
 
-    // 5. Update device last seen
+    // 5. Update device last seen and re-activate if displaced (INACTIVE)
     await this.prisma.device.update({
       where: { id: device.id },
-      data: { lastSeenAt: new Date() }
+      data: {
+        lastSeenAt: new Date(),
+        ...(device.status === 'INACTIVE' ? { status: 'ACTIVE' } : {})
+      }
     });
 
     // 6. Record audit event

@@ -4,6 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import { AuthenticationService } from './authentication.service';
 import { AuthenticationController } from './authentication.controller';
 import { IdentityController } from './identity.controller';
+import { GotifyModule } from '../../infrastructure/gotify/gotify.module';
 
 @Module({
   imports: [
@@ -15,7 +16,8 @@ import { IdentityController } from './identity.controller';
           expiresIn: config.get<string>('JWT_EXPIRES_IN') || '7d'
         }
       })
-    })
+    }),
+    GotifyModule
   ],
   controllers: [AuthenticationController, IdentityController],
   providers: [AuthenticationService],

@@ -4,13 +4,15 @@ import {
   UnauthorizedException,
   BadRequestException,
   NotFoundException,
-  ForbiddenException
+  ForbiddenException,
+  Optional
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcryptjs';
 import * as crypto from 'crypto';
 import { PrismaService } from '../../infrastructure/prisma/prisma.service';
+import { GotifyService } from '../../infrastructure/gotify/gotify.service';
 import {
   RegisterDto,
   LoginDto,
@@ -26,7 +28,8 @@ export class AuthenticationService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
-    private readonly configService: ConfigService
+    private readonly configService: ConfigService,
+    @Optional() private readonly gotifyService?: GotifyService
   ) {}
 
   async sendOtp(dto: SendOtpDto) {
@@ -734,10 +737,71 @@ export class AuthenticationService {
     const secret = this.configService.get<string>('JWT_SECRET');
     const expiresIn = this.configService.get<string>('JWT_EXPIRES_IN') || '7d';
 
+    // ── Single-Device Policy ──────────────────────────────────────────────────
+    // Find all existing sessions belonging to OTHER devices for this user
+    const oldSessions = await prismaClient.session.findMany({
+      where: { userId, NOT: { deviceId } },
+      select: { deviceId: true }
+    });
+    const oldDeviceIds: string[] = [...new Set<string>(oldSessions.map((s: any) => s.deviceId))];
+
+    if (oldDeviceIds.length > 0) {
+      // 1. Invalidate all sessions on other devices
+      await prismaClient.session.deleteMany({
+        where: { userId, NOT: { deviceId } }
+      });
+
+      // 2. Fetch push tokens BEFORE marking INACTIVE (for notifications)
+      const displacedDevices = await prismaClient.device.findMany({
+        where: { id: { in: oldDeviceIds }, userId },
+        select: { id: true, pushToken: true, deviceUuid: true }
+      });
+
+      // 3. Mark displaced devices as INACTIVE (soft-kick; allows graceful re-login)
+      await prismaClient.device.updateMany({
+        where: { id: { in: oldDeviceIds }, userId },
+        data: { status: 'INACTIVE' }
+      });
+
+      // 4. Audit trail for each displaced device
+      for (const d of displacedDevices) {
+        await prismaClient.securityEvent.create({
+          data: {
+            userId,
+            deviceId: d.id,
+            eventType: 'DEVICE_DISPLACED',
+            severity: 'MEDIUM',
+            details: JSON.stringify({
+              newDeviceId: deviceId,
+              reason: 'single_device_policy',
+              displacedDeviceUuid: d.deviceUuid
+            })
+          }
+        });
+      }
+
+      // 5. Send push notification to each displaced device (best-effort)
+      if (this.gotifyService) {
+        for (const d of displacedDevices) {
+          if (d.pushToken) {
+            try {
+              await this.gotifyService.sendPushNotification({
+                targetToken: d.pushToken,
+                title: 'Sesi Berakhir',
+                message: 'Akun kamu baru saja masuk di perangkat lain. Kamu telah dikeluarkan secara otomatis.',
+                priority: 9
+              });
+            } catch (_) { /* non-blocking */ }
+          }
+        }
+      }
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
     const payload = { sub: userId, deviceId };
     const accessToken = this.jwtService.sign(payload, { secret, expiresIn });
 
-    // Store session record
+    // Store session record for the NEW device
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 7);
 
