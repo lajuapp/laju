@@ -290,31 +290,58 @@ export function SpriteSheetExtractorModal({
       const h = img.naturalHeight;
       setSheetDimensions({ width: w, height: h });
 
-      // Init Master Unified Grid to cover 100% of the sheet (no margin)
-      // Using zero margin so all columns/rows are always inside the green boundary at first load.
-      const initialW = w;
-      const initialH = h;
+      // Init Master Unified Grid to cover 96% of the sheet (2% margin each side)
+      // The margin gives clear visual context that the grid can be moved/resized.
+      const initialMarginX = Math.round(w * 0.02);
+      const initialMarginY = Math.round(h * 0.02);
+      const initialW = w - initialMarginX * 2;
+      const initialH = h - initialMarginY * 2;
 
-      setGridX(0);
-      setGridY(0);
+      setGridX(initialMarginX);
+      setGridY(initialMarginY);
       setGridWidth(initialW);
       setGridHeight(initialH);
 
-      const detectedCols = w >= h ? 4 : 3;
-      const detectedRows = w >= h ? 3 : 4;
-      setCols(detectedCols);
-      setRows(detectedRows);
+      // Smart cols/rows auto-detection: assume sprite cells are roughly square.
+      // Most sticker sprite sheets use square cells (w ≈ h per cell).
+      // So: cols/rows ≈ imageWidth/imageHeight → try 3, 4, 5, 6 per axis.
+      // Pick the combo closest to square cells with a reasonable total count (9–25).
+      const ratio = w / h; // imageWidth / imageHeight
+      let bestCols = 4;
+      let bestRows = 3;
+      let bestScore = Infinity;
+
+      for (let c = 2; c <= 8; c++) {
+        for (let r = 2; r <= 8; r++) {
+          const total = c * r;
+          if (total < 4 || total > 36) continue;
+          // Score: how "square" are the cells? (1.0 = perfect square)
+          const cellAspect = (w / c) / (h / r); // width/height of each cell
+          const squareness = Math.abs(Math.log(cellAspect)); // 0 = square
+          // Also prefer grids where col/row ratio ≈ image ratio
+          const layoutAspect = Math.abs(Math.log(c / r / ratio));
+          const score = squareness * 2 + layoutAspect;
+          if (score < bestScore) {
+            bestScore = score;
+            bestCols = c;
+            bestRows = r;
+          }
+        }
+      }
+
+      setCols(bestCols);
+      setRows(bestRows);
       setSpacingX(0);
       setSpacingY(0);
 
       // Generate default uniform boxes — snapping algorithm ensures last cell hits exactly gx+gw
       const initialBoxes = generateUniformGridBoxes(
-        0,
-        0,
+        initialMarginX,
+        initialMarginY,
         initialW,
         initialH,
-        detectedCols,
-        detectedRows,
+        bestCols,
+        bestRows,
         0,
         0
       );
@@ -330,7 +357,6 @@ export function SpriteSheetExtractorModal({
         setPan({ x: 0, y: 0 });
       }
     };
-
   };
 
   // Deterministik & Drift-Free Coordinate Transformation
