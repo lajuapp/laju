@@ -372,13 +372,15 @@ class StatusScreenState extends State<StatusScreen> with AutomaticKeepAliveClien
 
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       backgroundColor: isDark ? AppColors.darkSurface : Colors.white,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       builder: (ctx) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+        child: SingleChildScrollView(
+          physics: const BouncingScrollPhysics(),
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -387,7 +389,7 @@ class StatusScreenState extends State<StatusScreen> with AutomaticKeepAliveClien
                 child: Container(
                   width: 40,
                   height: 4,
-                  margin: const EdgeInsets.only(bottom: 16),
+                  margin: const EdgeInsets.only(bottom: 14),
                   decoration: BoxDecoration(
                     color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(2),
@@ -415,15 +417,15 @@ class StatusScreenState extends State<StatusScreen> with AutomaticKeepAliveClien
                   ),
                 ],
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: 2),
               Text(
                 'Unggah foto, video (maks 1 menit), atau buat status teks',
                 style: TextStyle(
-                  fontSize: 13,
+                  fontSize: 12.5,
                   color: isDark ? Colors.white60 : const Color(0xFF6B7280),
                 ),
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 16),
               Row(
                 children: [
                   Expanded(
@@ -439,7 +441,7 @@ class StatusScreenState extends State<StatusScreen> with AutomaticKeepAliveClien
                       },
                     ),
                   ),
-                  const SizedBox(width: 14),
+                  const SizedBox(width: 12),
                   Expanded(
                     child: _buildMediaPickerOption(
                       icon: Icons.photo_library_rounded,
@@ -455,7 +457,7 @@ class StatusScreenState extends State<StatusScreen> with AutomaticKeepAliveClien
                   ),
                 ],
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 10),
               Row(
                 children: [
                   Expanded(
@@ -471,7 +473,7 @@ class StatusScreenState extends State<StatusScreen> with AutomaticKeepAliveClien
                       },
                     ),
                   ),
-                  const SizedBox(width: 14),
+                  const SizedBox(width: 12),
                   Expanded(
                     child: _buildMediaPickerOption(
                       icon: Icons.video_library_rounded,
@@ -487,14 +489,14 @@ class StatusScreenState extends State<StatusScreen> with AutomaticKeepAliveClien
                   ),
                 ],
               ),
-              const SizedBox(height: 14),
+              const SizedBox(height: 12),
               Center(
                 child: TextButton.icon(
                   onPressed: () {
                     Navigator.pop(ctx);
                     _openTextStatusComposer();
                   },
-                  icon: const Icon(Icons.edit_rounded, size: 18, color: AppColors.primary),
+                  icon: const Icon(Icons.edit_rounded, size: 17, color: AppColors.primary),
                   label: Text(
                     'Buat Status Teks',
                     style: TextStyle(
@@ -524,7 +526,7 @@ class StatusScreenState extends State<StatusScreen> with AutomaticKeepAliveClien
       onTap: onTap,
       borderRadius: BorderRadius.circular(16),
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 12),
+        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 10),
         decoration: BoxDecoration(
           color: (isDark ? Colors.white : Colors.black).withValues(alpha: isDark ? 0.05 : 0.03),
           borderRadius: BorderRadius.circular(16),
@@ -535,24 +537,24 @@ class StatusScreenState extends State<StatusScreen> with AutomaticKeepAliveClien
         child: Column(
           children: [
             Container(
-              width: 52,
-              height: 52,
+              width: 44,
+              height: 44,
               decoration: BoxDecoration(
                 color: iconBg.withValues(alpha: 0.15),
                 shape: BoxShape.circle,
               ),
-              child: Icon(icon, color: iconBg, size: 26),
+              child: Icon(icon, color: iconBg, size: 22),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
             Text(
               title,
               style: TextStyle(
-                fontSize: 15,
+                fontSize: 14,
                 fontWeight: FontWeight.bold,
                 color: isDark ? Colors.white : const Color(0xFF111827),
               ),
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: 2),
             Text(
               subtitle,
               textAlign: TextAlign.center,
