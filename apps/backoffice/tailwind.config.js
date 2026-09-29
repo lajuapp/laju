@@ -8,16 +8,27 @@ export default {
     extend: {
       colors: {
         brand: {
-          50: '#F0FDF4',
-          100: '#DCFCE7',
-          200: '#BBF7D0',
-          300: '#86EFAC',
-          400: '#4ADE80',
-          500: '#22C55E',
-          600: '#16A34A',
-          700: '#15803D',
-          800: '#166534',
-          900: '#14532D',
+          50: '#E5FBF4',   // AppColors.primaryLight
+          100: '#C3F7E5',
+          200: '#90EED0',
+          300: '#54E2B7',
+          400: '#22D5A4',
+          500: '#00C896',  // AppColors.primary (LAJU Mint/Teal)
+          600: '#00A87E',
+          700: '#008C69',
+          800: '#006E53',
+          900: '#052C28',  // AppColors dark forest
+        },
+        laju: {
+          primary: '#00C896',
+          primaryDark: '#009F75',
+          primaryLight: '#E5FBF4',
+          darkBg: '#0B1015',
+          darkSurface: '#131B22',
+          darkElevated: '#1D2733',
+          darkBorder: '#263342',
+          lightBg: '#F8F9FA',
+          cyan: '#00B4D8',
         }
       },
       fontFamily: {

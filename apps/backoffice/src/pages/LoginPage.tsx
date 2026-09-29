@@ -47,13 +47,17 @@ export function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] flex flex-col justify-center items-center p-4 selection:bg-neutral-200">
+    <div className="min-h-screen bg-gradient-to-b from-[#F0FAF7] via-[#F8FAFC] to-[#FFFFFF] flex flex-col justify-center items-center p-4 selection:bg-brand-100">
       {/* Container Card */}
       <div className="w-full max-w-sm">
         {/* Brand Logo & Title */}
         <div className="text-center mb-8">
-          <div className="w-12 h-12 rounded-2xl bg-neutral-900 text-white mx-auto flex items-center justify-center font-black text-xl tracking-tight shadow-md mb-3">
-            LJ
+          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-[#070D12] via-[#0F1A24] to-[#052C28] mx-auto p-2 flex items-center justify-center shadow-md border border-brand-500/30 mb-3.5 transition-transform hover:scale-105">
+            <img
+              src="/images/logo_no_bg.png"
+              alt="LAJU"
+              className="w-full h-full object-contain filter drop-shadow-sm"
+            />
           </div>
           <h1 className="text-xl font-extrabold tracking-tight text-neutral-900">
             LAJU Backoffice
@@ -105,7 +109,7 @@ export function LoginPage() {
         {/* Security Note */}
         <div className="mt-6 text-center">
           <p className="text-[11px] text-neutral-400 flex items-center justify-center gap-1.5 font-medium">
-            <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+            <ShieldCheck className="w-3.5 h-3.5 text-brand-600" />
             Portal Administrasi Aman & Terproteksi
           </p>
         </div>

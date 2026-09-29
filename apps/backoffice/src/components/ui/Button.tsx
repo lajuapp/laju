@@ -20,7 +20,7 @@ export function Button({
   ...props
 }: ButtonProps) {
   const variantStyles = {
-    primary: 'bg-neutral-900 text-white hover:bg-neutral-800 active:bg-neutral-950 border border-transparent shadow-sm',
+    primary: 'bg-brand-500 text-white hover:bg-brand-600 active:bg-brand-700 border border-transparent shadow-xs shadow-brand-500/20 font-semibold',
     secondary: 'bg-neutral-100 text-neutral-800 hover:bg-neutral-200 active:bg-neutral-300 border border-neutral-200/80',
     outline: 'bg-white text-neutral-700 hover:bg-neutral-50 active:bg-neutral-100 border border-neutral-200 shadow-sm',
     danger: 'bg-rose-600 text-white hover:bg-rose-700 active:bg-rose-800 border border-transparent shadow-sm',

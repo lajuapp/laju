@@ -78,22 +78,22 @@ export function DashboardPage() {
 
       {/* Realtime Statistics: Device Online & Offline */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Online Devices Card (Green) */}
-        <div className="bg-gradient-to-r from-emerald-500/10 via-emerald-500/5 to-transparent bg-white rounded-2xl border border-emerald-200/80 p-5 shadow-xs flex items-center justify-between">
+        {/* Online Devices Card (Brand Mint) */}
+        <div className="bg-gradient-to-r from-brand-500/10 via-brand-500/5 to-transparent bg-white rounded-2xl border border-brand-200/90 p-5 shadow-xs hover:shadow-md hover:border-brand-300 transition-all duration-200 flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 border border-emerald-200/80 flex items-center justify-center flex-shrink-0">
+            <div className="w-12 h-12 rounded-2xl bg-brand-50 text-brand-600 border border-brand-200/90 flex items-center justify-center flex-shrink-0 shadow-2xs">
               <Radio className="w-6 h-6 animate-pulse" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-emerald-800 uppercase tracking-wider">
+                <span className="text-xs font-bold text-brand-800 uppercase tracking-wider">
                   Perangkat Online
                 </span>
-                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+                <span className="w-2 h-2 rounded-full bg-brand-500 animate-ping" />
               </div>
-              <div className="text-3xl font-black text-emerald-950 mt-0.5 tracking-tight flex items-baseline gap-2">
+              <div className="text-3xl font-black text-brand-950 mt-0.5 tracking-tight flex items-baseline gap-2">
                 {isLoading ? '...' : (stats?.overview.onlineDevices ?? stats?.overview.onlineUsers ?? 0)}
-                <span className="text-xs font-semibold text-emerald-600">aktif sekarang</span>
+                <span className="text-xs font-semibold text-brand-600">aktif sekarang</span>
               </div>
               <p className="text-[11px] text-neutral-500 mt-0.5">
                 Perangkat terhubung aktif dalam 3-5 menit terakhir
@@ -102,17 +102,17 @@ export function DashboardPage() {
           </div>
           <NavLink
             to="/devices"
-            className="text-xs font-bold text-emerald-700 hover:text-emerald-800 bg-emerald-50 px-3 py-1.5 rounded-xl border border-emerald-200/70 hover:bg-emerald-100/60 transition-all flex items-center gap-1"
+            className="text-xs font-bold text-brand-700 hover:text-brand-800 bg-brand-50 px-3 py-1.5 rounded-xl border border-brand-200 hover:bg-brand-100/70 transition-all flex items-center gap-1 shadow-2xs"
           >
             Lihat Online
             <ArrowUpRight className="w-3.5 h-3.5" />
           </NavLink>
         </div>
 
-        {/* Offline Devices Card (Gray) */}
-        <div className="bg-gradient-to-r from-neutral-500/10 via-neutral-500/5 to-transparent bg-white rounded-2xl border border-neutral-200/80 p-5 shadow-xs flex items-center justify-between">
+        {/* Offline Devices Card (Neutral) */}
+        <div className="bg-gradient-to-r from-neutral-500/10 via-neutral-500/5 to-transparent bg-white rounded-2xl border border-neutral-200/80 p-5 shadow-xs hover:shadow-md transition-all duration-200 flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-2xl bg-neutral-100 text-neutral-500 border border-neutral-200/80 flex items-center justify-center flex-shrink-0">
+            <div className="w-12 h-12 rounded-2xl bg-neutral-100 text-neutral-500 border border-neutral-200/80 flex items-center justify-center flex-shrink-0 shadow-2xs">
               <Smartphone className="w-6 h-6" />
             </div>
             <div>
@@ -133,7 +133,7 @@ export function DashboardPage() {
           </div>
           <NavLink
             to="/devices"
-            className="text-xs font-bold text-neutral-700 hover:text-neutral-900 bg-neutral-100 px-3 py-1.5 rounded-xl border border-neutral-200/80 hover:bg-neutral-200/60 transition-all flex items-center gap-1"
+            className="text-xs font-bold text-neutral-700 hover:text-neutral-900 bg-neutral-100 px-3 py-1.5 rounded-xl border border-neutral-200/80 hover:bg-neutral-200/60 transition-all flex items-center gap-1 shadow-2xs"
           >
             Kelola Perangkat
             <ArrowUpRight className="w-3.5 h-3.5" />
@@ -149,13 +149,13 @@ export function DashboardPage() {
             <NavLink
               key={idx}
               to={m.link}
-              className="bg-white rounded-2xl border border-neutral-200/80 p-5 shadow-xs hover:border-neutral-300 transition-all hover:shadow-sm group flex flex-col justify-between"
+              className="bg-white rounded-2xl border border-neutral-200/80 p-5 shadow-xs hover:border-brand-300 hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 group flex flex-col justify-between"
             >
               <div className="flex items-center justify-between mb-3">
-                <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${m.color}`}>
+                <div className={`w-9 h-9 rounded-xl flex items-center justify-center shadow-2xs ${m.color}`}>
                   <Icon className="w-4 h-4" />
                 </div>
-                <ArrowUpRight className="w-4 h-4 text-neutral-300 group-hover:text-neutral-700 transition-colors" />
+                <ArrowUpRight className="w-4 h-4 text-neutral-300 group-hover:text-brand-600 transition-colors" />
               </div>
 
               <div>
