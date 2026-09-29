@@ -134,7 +134,15 @@ export function SpriteSheetExtractorModal({
     initialGrid?: { x: number; y: number; width: number; height: number };
     initialBox?: CropBox;
     initialPan?: { x: number; y: number };
+    // Snapshot of grid params at drag start (avoids stale closure issues in handleMouseMove)
+    snapCols?: number;
+    snapRows?: number;
+    snapSpacingX?: number;
+    snapSpacingY?: number;
+    // Snapshot of boxes at drag start (for master_move shift)
+    snapBoxes?: CropBox[];
   } | null>(null);
+
 
   // Clean up object URLs when modal unmounts or closes
   useEffect(() => {
@@ -152,6 +160,12 @@ export function SpriteSheetExtractorModal({
       setSheetImageSrc(null);
       setSheetImage(null);
       setSheetDimensions({ width: 0, height: 0 });
+      setGridX(0);
+      setGridY(0);
+      setGridWidth(0);
+      setGridHeight(0);
+      setCols(4);
+      setRows(3);
       setBoxes([]);
       setSelectedBoxId(null);
       setSlices([]);
@@ -192,6 +206,9 @@ export function SpriteSheetExtractorModal({
   }, [selectedBoxId]);
 
   // Regenerate Uniform Grid Boxes
+  // Uses continuous float arithmetic internally, only rounds final pixel positions.
+  // The last cell in each row/column is always snapped to the exact grid boundary
+  // to prevent 1-2px rounding overflow that SVG clips by default.
   const generateUniformGridBoxes = useCallback((
     gx: number,
     gy: number,
@@ -203,24 +220,36 @@ export function SpriteSheetExtractorModal({
     spY: number
   ): CropBox[] => {
     if (gw <= 0 || gh <= 0 || cCount <= 0 || rCount <= 0) return [];
-    const cellW = Math.max(8, (gw - (cCount - 1) * spX) / cCount);
-    const cellH = Math.max(8, (gh - (rCount - 1) * spY) / rCount);
+    // Float cell size — NO rounding here to avoid accumulation
+    const cellW_f = Math.max(8, (gw - (cCount - 1) * spX) / cCount);
+    const cellH_f = Math.max(8, (gh - (rCount - 1) * spY) / rCount);
 
     const newBoxes: CropBox[] = [];
     for (let r = 0; r < rCount; r++) {
       for (let c = 0; c < cCount; c++) {
+        const x = Math.round(gx + c * (cellW_f + spX));
+        const y = Math.round(gy + r * (cellH_f + spY));
+        // Snap last column/row to exact grid boundary to eliminate rounding overflow
+        const xEnd = c === cCount - 1
+          ? Math.round(gx + gw)
+          : Math.round(gx + (c + 1) * (cellW_f + spX) - spX);
+        const yEnd = r === rCount - 1
+          ? Math.round(gy + gh)
+          : Math.round(gy + (r + 1) * (cellH_f + spY) - spY);
+
         newBoxes.push({
           id: `cell_${r}_${c}`,
-          x: Math.round(gx + c * (cellW + spX)),
-          y: Math.round(gy + r * (cellH + spY)),
-          width: Math.round(cellW),
-          height: Math.round(cellH),
+          x,
+          y,
+          width: Math.max(8, xEnd - x),
+          height: Math.max(8, yEnd - y),
           customized: false,
         });
       }
     }
     return newBoxes;
   }, []);
+
 
   // Recalculate Master Grid Bounding Box from current boxes
   const syncMasterGridFromBoxes = (currentBoxes: CropBox[]) => {
@@ -261,14 +290,13 @@ export function SpriteSheetExtractorModal({
       const h = img.naturalHeight;
       setSheetDimensions({ width: w, height: h });
 
-      // Init Master Unified Grid to cover 96% of the sheet neatly
-      const initialMarginX = Math.round(w * 0.02);
-      const initialMarginY = Math.round(h * 0.02);
-      const initialW = w - initialMarginX * 2;
-      const initialH = h - initialMarginY * 2;
+      // Init Master Unified Grid to cover 100% of the sheet (no margin)
+      // Using zero margin so all columns/rows are always inside the green boundary at first load.
+      const initialW = w;
+      const initialH = h;
 
-      setGridX(initialMarginX);
-      setGridY(initialMarginY);
+      setGridX(0);
+      setGridY(0);
       setGridWidth(initialW);
       setGridHeight(initialH);
 
@@ -279,10 +307,10 @@ export function SpriteSheetExtractorModal({
       setSpacingX(0);
       setSpacingY(0);
 
-      // Generate default uniform boxes
+      // Generate default uniform boxes — snapping algorithm ensures last cell hits exactly gx+gw
       const initialBoxes = generateUniformGridBoxes(
-        initialMarginX,
-        initialMarginY,
+        0,
+        0,
         initialW,
         initialH,
         detectedCols,
@@ -302,6 +330,7 @@ export function SpriteSheetExtractorModal({
         setPan({ x: 0, y: 0 });
       }
     };
+
   };
 
   // Deterministik & Drift-Free Coordinate Transformation
@@ -653,6 +682,12 @@ export function SpriteSheetExtractorModal({
       startX: coords.x,
       startY: coords.y,
       initialGrid: { x: gridX, y: gridY, width: gridWidth, height: gridHeight },
+      // Snapshot current grid params & boxes to avoid stale closure reads
+      snapCols: cols,
+      snapRows: rows,
+      snapSpacingX: spacingX,
+      snapSpacingY: spacingY,
+      snapBoxes: boxes.map((b) => ({ ...b })),
     };
   };
 
@@ -669,8 +704,14 @@ export function SpriteSheetExtractorModal({
       startX: coords.x,
       startY: coords.y,
       initialGrid: { x: gridX, y: gridY, width: gridWidth, height: gridHeight },
+      // Snapshot current grid params to avoid stale closure reads
+      snapCols: cols,
+      snapRows: rows,
+      snapSpacingX: spacingX,
+      snapSpacingY: spacingY,
     };
   };
+
 
   // Start Individual Box Move Drag
   const handleBoxMouseDown = (e: React.MouseEvent, box: CropBox) => {
@@ -726,7 +767,7 @@ export function SpriteSheetExtractorModal({
     const dx = coords.x - action.startX;
     const dy = coords.y - action.startY;
 
-    // 1. MASTER GRID MOVE: Shift all boxes and master boundary synchronously
+    // 1. MASTER GRID MOVE: Shift ALL boxes by delta (preserves custom sizes), uses snapshotted params
     if (action.type === 'master_move') {
       const init = action.initialGrid!;
       const newX = Math.round(Math.max(0, Math.min(sheetDimensions.width - init.width, init.x + dx)));
@@ -737,16 +778,26 @@ export function SpriteSheetExtractorModal({
       setGridX(newX);
       setGridY(newY);
 
-      // Re-generate uniform boxes at new origin
-      const shiftedBoxes = generateUniformGridBoxes(newX, newY, init.width, init.height, cols, rows, spacingX, spacingY);
-      setBoxes(shiftedBoxes);
+      // Shift ALL snapshotted boxes by delta — preserves custom-sized frames and does NOT use stale closure
+      const initBoxes = action.snapBoxes || [];
+      setBoxes(initBoxes.map((b) => ({
+        ...b,
+        x: Math.round(Math.max(0, Math.min(sheetDimensions.width - b.width, b.x + deltaX))),
+        y: Math.round(Math.max(0, Math.min(sheetDimensions.height - b.height, b.y + deltaY))),
+      })));
       return;
     }
 
-    // 2. MASTER GRID RESIZE: Pull handles to widen/stretch all rows & columns simultaneously!
+    // 2. MASTER GRID RESIZE: Pull handles to stretch all rows & columns simultaneously!
+    // Uses snapshotted cols/rows/spacing from ref to avoid stale closure values.
     if (action.type === 'master_resize') {
       const init = action.initialGrid!;
       const handle = action.handle!;
+      // Use snapshotted values — NOT the closure-captured cols/rows/spacingX/spacingY
+      const snapC = action.snapCols ?? cols;
+      const snapR = action.snapRows ?? rows;
+      const snapSX = action.snapSpacingX ?? spacingX;
+      const snapSY = action.snapSpacingY ?? spacingY;
 
       let newX = init.x;
       let newY = init.y;
@@ -754,20 +805,20 @@ export function SpriteSheetExtractorModal({
       let newH = init.height;
 
       if (handle.includes('w')) {
-        const clampedW = Math.max(cols * 16, init.width - dx);
+        const clampedW = Math.max(snapC * 16, init.width - dx);
         newX = init.x + (init.width - clampedW);
         newW = clampedW;
       }
       if (handle.includes('e')) {
-        newW = Math.max(cols * 16, Math.min(sheetDimensions.width - init.x, init.width + dx));
+        newW = Math.max(snapC * 16, Math.min(sheetDimensions.width - init.x, init.width + dx));
       }
       if (handle.includes('n')) {
-        const clampedH = Math.max(rows * 16, init.height - dy);
+        const clampedH = Math.max(snapR * 16, init.height - dy);
         newY = init.y + (init.height - clampedH);
         newH = clampedH;
       }
       if (handle.includes('s')) {
-        newH = Math.max(rows * 16, Math.min(sheetDimensions.height - init.y, init.height + dy));
+        newH = Math.max(snapR * 16, Math.min(sheetDimensions.height - init.y, init.height + dy));
       }
 
       newX = Math.round(Math.max(0, newX));
@@ -780,10 +831,12 @@ export function SpriteSheetExtractorModal({
       setGridWidth(newW);
       setGridHeight(newH);
 
-      const resizedBoxes = generateUniformGridBoxes(newX, newY, newW, newH, cols, rows, spacingX, spacingY);
+      // Use snapshotted cols/rows/spacing — NOT stale closure values
+      const resizedBoxes = generateUniformGridBoxes(newX, newY, newW, newH, snapC, snapR, snapSX, snapSY);
       setBoxes(resizedBoxes);
       return;
     }
+
 
     // 3. INDIVIDUAL BOX MOVE
     if (action.type === 'box_move') {
@@ -875,7 +928,8 @@ export function SpriteSheetExtractorModal({
       );
       return;
     }
-  }, [sheetDimensions, cols, rows, spacingX, spacingY, lockAspectRatio, generateUniformGridBoxes, getSvgCoordinates]);
+  }, [sheetDimensions, lockAspectRatio, generateUniformGridBoxes, getSvgCoordinates]);
+
 
   // Global Mouse Up Listener
   const handleMouseUp = useCallback(() => {
@@ -1780,6 +1834,7 @@ export function SpriteSheetExtractorModal({
                     className="absolute inset-0 w-full h-full pointer-events-auto"
                     width={sheetDimensions.width}
                     height={sheetDimensions.height}
+                    overflow="visible"
                   >
                     {/* Layer 1: Individual Sticker Cells */}
                     {boxes.map((box, idx) => {
