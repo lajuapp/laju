@@ -67,6 +67,7 @@ class LocalDatabase {
       attachment_path  TEXT,
       reply_to_json    TEXT,
       is_edited        INTEGER NOT NULL DEFAULT 0,
+      is_deleted       INTEGER NOT NULL DEFAULT 0,
       cached_at        INTEGER NOT NULL DEFAULT 0
     )
   ''';
@@ -136,6 +137,12 @@ class LocalDatabase {
         } catch (_) {}
         try {
           await db.execute('ALTER TABLE conversations ADD COLUMN participant_trust_score INTEGER');
+        } catch (_) {}
+        try {
+          await db.execute('ALTER TABLE messages ADD COLUMN is_deleted INTEGER NOT NULL DEFAULT 0');
+        } catch (_) {}
+        try {
+          await db.execute('CREATE TABLE IF NOT EXISTS deleted_for_me_messages (id TEXT PRIMARY KEY)');
         } catch (_) {}
 
         // Fix existing corrupted oversized rows from prior sessions that break SQLite CursorWindow (2MB limit)
@@ -230,13 +237,17 @@ class LocalDatabase {
   /// Returns cached messages for a conversation, ordered by timestamp ascending.
   Future<List<MessageModel>> getMessages(String conversationId) async {
     try {
+      final deletedForMe = await getDeletedForMeIds();
       final rows = await _database.query(
         'messages',
         where: 'conversation_id = ?',
         whereArgs: [conversationId],
         orderBy: 'timestamp ASC',
       );
-      final rawList = rows.map(_rowToMessage).toList();
+      final rawList = rows
+          .where((r) => !deletedForMe.contains(r['id'] as String))
+          .map(_rowToMessage)
+          .toList();
       return MessageModel.deduplicate(rawList);
     } catch (_) {
       return [];
@@ -313,6 +324,54 @@ class LocalDatabase {
       where: 'id = ?',
       whereArgs: [messageId],
     );
+  }
+
+  /// Mark a message as recalled/deleted for everyone.
+  Future<void> markMessageDeleted(String messageId) async {
+    try {
+      await _database.update(
+        'messages',
+        {
+          'is_deleted': 1,
+          'content': '__DELETED_FOR_EVERYONE__',
+          'attachment_name': null,
+          'attachment_size': null,
+          'attachment_path': null,
+        },
+        where: 'id = ? OR client_message_id = ?',
+        whereArgs: [messageId, messageId],
+      );
+    } catch (e) {
+      debugPrint('[LocalDatabase] markMessageDeleted error: $e');
+    }
+  }
+
+  /// Delete a message for current user only and track its ID so it does not reappear on sync.
+  Future<void> deleteMessageForMe(String messageId) async {
+    try {
+      await _database.delete(
+        'messages',
+        where: 'id = ? OR client_message_id = ?',
+        whereArgs: [messageId, messageId],
+      );
+      await _database.insert(
+        'deleted_for_me_messages',
+        {'id': messageId},
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    } catch (e) {
+      debugPrint('[LocalDatabase] deleteMessageForMe error: $e');
+    }
+  }
+
+  /// Returns set of message IDs deleted by user on this device.
+  Future<Set<String>> getDeletedForMeIds() async {
+    try {
+      final rows = await _database.query('deleted_for_me_messages');
+      return rows.map((r) => r['id'] as String).toSet();
+    } catch (_) {
+      return {};
+    }
   }
 
   /// Clear all messages for a specific conversation from local cache.
@@ -461,6 +520,7 @@ class LocalDatabase {
       'attachment_path': m.attachmentPath,
       'reply_to_json': replyToJson,
       'is_edited': m.isEdited ? 1 : 0,
+      'is_deleted': m.isRecalled ? 1 : 0,
       'cached_at': cachedAt,
     };
   }
@@ -491,12 +551,13 @@ class LocalDatabase {
       } catch (_) {}
     }
 
-    String content = (row['content'] ?? '') as String;
-    String? attName = row['attachment_name'] as String?;
-    String? attSize = row['attachment_size'] as String?;
-    String? attPath = row['attachment_path'] as String?;
+    final isDeleted = (row['is_deleted'] as int? ?? 0) == 1 || (row['content'] ?? '') == '__DELETED_FOR_EVERYONE__';
+    String content = isDeleted ? '__DELETED_FOR_EVERYONE__' : (row['content'] ?? '') as String;
+    String? attName = isDeleted ? null : row['attachment_name'] as String?;
+    String? attSize = isDeleted ? null : row['attachment_size'] as String?;
+    String? attPath = isDeleted ? null : row['attachment_path'] as String?;
 
-    if (content.startsWith('{') && (content.contains('"media"') || content.contains('"type"'))) {
+    if (!isDeleted && content.startsWith('{') && (content.contains('"media"') || content.contains('"type"'))) {
       try {
         final parsed = jsonDecode(content);
         if (parsed is Map) {
@@ -508,7 +569,7 @@ class LocalDatabase {
       } catch (_) {
         content = '';
       }
-    } else if (content.startsWith('data:') || content.startsWith('Berkas Dokumen Asli')) {
+    } else if (!isDeleted && (content.startsWith('data:') || content.startsWith('Berkas Dokumen Asli'))) {
       content = '';
     }
 
@@ -524,17 +585,20 @@ class LocalDatabase {
         (s) => s.name == row['status'],
         orElse: () => MessageDeliveryStatus.sent,
       ),
-      contentType: MessageContentType.values.firstWhere(
-        (t) => t.name == row['content_type'],
-        orElse: () => MessageContentType.text,
-      ),
+      contentType: isDeleted
+          ? MessageContentType.text
+          : MessageContentType.values.firstWhere(
+              (t) => t.name == row['content_type'],
+              orElse: () => MessageContentType.text,
+            ),
       isDisappearing: (row['is_disappearing'] as int) == 1,
       remainingSeconds: row['remaining_seconds'] as int?,
       attachmentName: attName,
       attachmentSize: attSize,
       attachmentPath: attPath,
-      replyTo: replyTo,
+      replyTo: isDeleted ? null : replyTo,
       isEdited: (row['is_edited'] as int) == 1,
+      isDeleted: isDeleted,
     );
   }
 

@@ -49,9 +49,17 @@ import android.os.Vibrator
 import android.os.VibratorManager
 import android.content.Context
 import android.os.PowerManager
+import android.widget.FrameLayout
+import android.widget.VideoView
+import android.view.View
 import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
+import io.flutter.plugin.common.BinaryMessenger
+import io.flutter.plugin.common.MethodCall
+import io.flutter.plugin.common.StandardMessageCodec
+import io.flutter.plugin.platform.PlatformView
+import io.flutter.plugin.platform.PlatformViewFactory
 import java.io.File
 import java.io.FileOutputStream
 import java.net.DatagramPacket
@@ -112,6 +120,8 @@ class MainActivity : FlutterFragmentActivity() {
     private val CONTACT_REQUEST_CODE = 1006
     private val CAMERA_PERMISSION_REQUEST_CODE = 1007
     private val LOCATION_PERMISSION_REQUEST_CODE = 1008
+    private val VIDEO_CAMERA_REQUEST_CODE = 1010
+    private val VIDEO_GALLERY_REQUEST_CODE = 1011
 
     private var currentCameraCapturePath: String? = null
     private var pendingCameraResult: MethodChannel.Result? = null
@@ -287,6 +297,12 @@ class MainActivity : FlutterFragmentActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
 
+        // Native Video Player PlatformView for Status and Media Playback
+        flutterEngine.platformViewsController.registry.registerViewFactory(
+            "com.laju/native_video_view",
+            NativeVideoPlayerFactory(flutterEngine.dartExecutor.binaryMessenger)
+        )
+
         // Camera & Gallery MethodChannel
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CAMERA_CHANNEL).setMethodCallHandler { call, result ->
             when (call.method) {
@@ -342,6 +358,46 @@ class MainActivity : FlutterFragmentActivity() {
                             startActivityForResult(intent, GALLERY_REQUEST_CODE)
                         } catch (e2: Exception) {
                             result.error("GALLERY_ERROR", e2.message, null)
+                            pendingCameraResult = null
+                        }
+                    }
+                }
+                "openVideoCamera" -> {
+                    pendingCameraResult = result
+                    val hasPerm = ContextCompat.checkSelfPermission(
+                        this,
+                        Manifest.permission.CAMERA
+                    ) == PackageManager.PERMISSION_GRANTED
+                    val hasAudio = ContextCompat.checkSelfPermission(
+                        this,
+                        Manifest.permission.RECORD_AUDIO
+                    ) == PackageManager.PERMISSION_GRANTED
+                    if (hasPerm && hasAudio) {
+                        launchSystemVideoCamera()
+                    } else {
+                        val perms = mutableListOf<String>()
+                        if (!hasPerm) perms.add(Manifest.permission.CAMERA)
+                        if (!hasAudio) perms.add(Manifest.permission.RECORD_AUDIO)
+                        ActivityCompat.requestPermissions(
+                            this,
+                            perms.toTypedArray(),
+                            CAMERA_PERMISSION_REQUEST_CODE
+                        )
+                    }
+                }
+                "openVideoGallery" -> {
+                    pendingCameraResult = result
+                    try {
+                        val intent = Intent(Intent.ACTION_PICK, MediaStore.Video.Media.EXTERNAL_CONTENT_URI)
+                        intent.type = "video/*"
+                        startActivityForResult(intent, VIDEO_GALLERY_REQUEST_CODE)
+                    } catch (e: Exception) {
+                        try {
+                            val intent = Intent(Intent.ACTION_GET_CONTENT)
+                            intent.type = "video/*"
+                            startActivityForResult(intent, VIDEO_GALLERY_REQUEST_CODE)
+                        } catch (e2: Exception) {
+                            result.error("VIDEO_GALLERY_ERROR", e2.message, null)
                             pendingCameraResult = null
                         }
                     }
@@ -1659,6 +1715,43 @@ class MainActivity : FlutterFragmentActivity() {
         }
     }
 
+    private fun launchSystemVideoCamera() {
+        try {
+            val storageDir = externalCacheDir ?: cacheDir
+            if (!storageDir.exists()) {
+                storageDir.mkdirs()
+            }
+            val videoFile = File(storageDir, "camera_video_${System.currentTimeMillis()}.mp4")
+            if (!videoFile.exists()) {
+                videoFile.createNewFile()
+            }
+            currentCameraCapturePath = videoFile.absolutePath
+            val videoUri = FileProvider.getUriForFile(
+                this,
+                "${applicationContext.packageName}.fileprovider",
+                videoFile
+            )
+            val intent = Intent(MediaStore.ACTION_VIDEO_CAPTURE).apply {
+                putExtra(MediaStore.EXTRA_OUTPUT, videoUri)
+                putExtra(MediaStore.EXTRA_DURATION_LIMIT, 60) // Enforce 60s max video duration!
+                putExtra(MediaStore.EXTRA_VIDEO_QUALITY, 1)
+                clipData = ClipData.newUri(contentResolver, "camera_video", videoUri)
+                addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION or Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            startActivityForResult(intent, VIDEO_CAMERA_REQUEST_CODE)
+        } catch (e: Exception) {
+            try {
+                val intent = Intent(MediaStore.ACTION_VIDEO_CAPTURE).apply {
+                    putExtra(MediaStore.EXTRA_DURATION_LIMIT, 60)
+                }
+                startActivityForResult(intent, VIDEO_CAMERA_REQUEST_CODE)
+            } catch (e2: Exception) {
+                pendingCameraResult?.error("VIDEO_CAMERA_ERROR", e2.message, null)
+                pendingCameraResult = null
+            }
+        }
+    }
+
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == RECORD_AUDIO_REQUEST_CODE) {
@@ -1779,6 +1872,115 @@ class MainActivity : FlutterFragmentActivity() {
                     pendingCameraResult?.success(optimized)
                 } catch (e: Exception) {
                     pendingCameraResult?.error("GALLERY_READ_FAILED", e.message, null)
+                }
+            } else {
+                pendingCameraResult?.success(null)
+            }
+            pendingCameraResult = null
+        } else if (requestCode == VIDEO_CAMERA_REQUEST_CODE) {
+            val capturedPath = currentCameraCapturePath
+            if (resultCode == Activity.RESULT_OK) {
+                var finalPath = capturedPath
+                if (finalPath == null || !File(finalPath).exists() || File(finalPath).length() == 0L) {
+                    if (data?.data != null) {
+                        try {
+                            val file = File(externalCacheDir ?: cacheDir, "camera_video_${System.currentTimeMillis()}.mp4")
+                            contentResolver.openInputStream(data.data!!)?.use { input ->
+                                FileOutputStream(file).use { output ->
+                                    input.copyTo(output)
+                                }
+                            }
+                            finalPath = file.absolutePath
+                        } catch (_: Exception) {}
+                    }
+                }
+                if (finalPath != null && File(finalPath).exists() && File(finalPath).length() > 0L) {
+                    var durationMs = 0L
+                    var thumbPath: String? = null
+                    try {
+                        val retriever = android.media.MediaMetadataRetriever()
+                        retriever.setDataSource(finalPath)
+                        val dStr = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)
+                        durationMs = dStr?.toLongOrNull() ?: 0L
+                        val frame = retriever.getFrameAtTime(1000000) ?: retriever.frameAtTime
+                        if (frame != null) {
+                            val tFile = File(externalCacheDir ?: cacheDir, "thumb_${System.currentTimeMillis()}.jpg")
+                            val out = FileOutputStream(tFile)
+                            frame.compress(Bitmap.CompressFormat.JPEG, 80, out)
+                            out.flush()
+                            out.close()
+                            thumbPath = tFile.absolutePath
+                        }
+                        retriever.release()
+                    } catch (_: Exception) {}
+
+                    if (durationMs > 61500L) {
+                        val res = HashMap<String, Any?>()
+                        res["error"] = "DURATION_EXCEEDED"
+                        res["durationSeconds"] = durationMs / 1000
+                        res["maxDurationSeconds"] = 60
+                        pendingCameraResult?.success(res)
+                    } else {
+                        val res = HashMap<String, Any?>()
+                        res["path"] = finalPath
+                        res["durationMs"] = durationMs
+                        res["fileSize"] = File(finalPath).length()
+                        res["thumbnailPath"] = thumbPath
+                        pendingCameraResult?.success(res)
+                    }
+                } else {
+                    pendingCameraResult?.success(null)
+                }
+            } else {
+                pendingCameraResult?.success(null)
+            }
+            pendingCameraResult = null
+            currentCameraCapturePath = null
+        } else if (requestCode == VIDEO_GALLERY_REQUEST_CODE) {
+            if (resultCode == Activity.RESULT_OK && data?.data != null) {
+                val uri = data.data!!
+                try {
+                    val destFile = File(externalCacheDir ?: cacheDir, "gallery_video_${System.currentTimeMillis()}.mp4")
+                    contentResolver.openInputStream(uri)?.use { input ->
+                        FileOutputStream(destFile).use { output ->
+                            input.copyTo(output)
+                        }
+                    }
+                    var durationMs = 0L
+                    var thumbPath: String? = null
+                    try {
+                        val retriever = android.media.MediaMetadataRetriever()
+                        retriever.setDataSource(destFile.absolutePath)
+                        val dStr = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)
+                        durationMs = dStr?.toLongOrNull() ?: 0L
+                        val frame = retriever.getFrameAtTime(1000000) ?: retriever.frameAtTime
+                        if (frame != null) {
+                            val tFile = File(externalCacheDir ?: cacheDir, "thumb_${System.currentTimeMillis()}.jpg")
+                            val out = FileOutputStream(tFile)
+                            frame.compress(Bitmap.CompressFormat.JPEG, 80, out)
+                            out.flush()
+                            out.close()
+                            thumbPath = tFile.absolutePath
+                        }
+                        retriever.release()
+                    } catch (_: Exception) {}
+
+                    if (durationMs > 61500L) {
+                        val res = HashMap<String, Any?>()
+                        res["error"] = "DURATION_EXCEEDED"
+                        res["durationSeconds"] = durationMs / 1000
+                        res["maxDurationSeconds"] = 60
+                        pendingCameraResult?.success(res)
+                    } else {
+                        val res = HashMap<String, Any?>()
+                        res["path"] = destFile.absolutePath
+                        res["durationMs"] = durationMs
+                        res["fileSize"] = destFile.length()
+                        res["thumbnailPath"] = thumbPath
+                        pendingCameraResult?.success(res)
+                    }
+                } catch (e: Exception) {
+                    pendingCameraResult?.error("VIDEO_READ_FAILED", e.message, null)
                 }
             } else {
                 pendingCameraResult?.success(null)
@@ -2638,5 +2840,135 @@ class MainActivity : FlutterFragmentActivity() {
                 result.success(data)
             }
         }.start()
+    }
+}
+
+class NativeVideoPlayerView(
+    context: Context,
+    id: Int,
+    private val params: Map<String, Any?>?,
+    messenger: BinaryMessenger
+) : PlatformView, MethodChannel.MethodCallHandler {
+
+    private val container = FrameLayout(context)
+    private val videoView = VideoView(context)
+    private val channel = MethodChannel(messenger, "com.laju/native_video_view_$id")
+    private var mediaPlayer: MediaPlayer? = null
+
+    init {
+        channel.setMethodCallHandler(this)
+        container.setBackgroundColor(android.graphics.Color.BLACK)
+
+        val layoutParams = FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            FrameLayout.LayoutParams.MATCH_PARENT
+        )
+        layoutParams.gravity = android.view.Gravity.CENTER
+        videoView.layoutParams = layoutParams
+        container.addView(videoView)
+
+        videoView.setOnPreparedListener { mp ->
+            mediaPlayer = mp
+            val loop = (params?.get("loop") as? Boolean) ?: false
+            mp.isLooping = loop
+            val isMuted = (params?.get("muted") as? Boolean) ?: false
+            if (isMuted) {
+                mp.setVolume(0f, 0f)
+            } else {
+                mp.setVolume(1f, 1f)
+            }
+
+            channel.invokeMethod("onPrepared", mapOf(
+                "durationMs" to mp.duration,
+                "width" to mp.videoWidth,
+                "height" to mp.videoHeight
+            ))
+
+            val autoPlay = (params?.get("autoPlay") as? Boolean) ?: true
+            if (autoPlay) {
+                videoView.start()
+            }
+        }
+
+        videoView.setOnCompletionListener {
+            channel.invokeMethod("onCompleted", null)
+        }
+
+        videoView.setOnErrorListener { _, what, extra ->
+            channel.invokeMethod("onError", mapOf("what" to what, "extra" to extra))
+            true
+        }
+
+        val videoSource = params?.get("url") as? String
+        if (!videoSource.isNullOrEmpty()) {
+            setSource(videoSource)
+        }
+    }
+
+    private fun setSource(source: String) {
+        try {
+            if (source.startsWith("http://") || source.startsWith("https://")) {
+                videoView.setVideoURI(Uri.parse(source))
+            } else {
+                val f = File(source)
+                if (f.exists()) {
+                    videoView.setVideoPath(f.absolutePath)
+                } else {
+                    videoView.setVideoURI(Uri.parse(source))
+                }
+            }
+        } catch (e: Exception) {
+            channel.invokeMethod("onError", mapOf("error" to (e.message ?: "Failed to set source")))
+        }
+    }
+
+    override fun getView(): View = container
+
+    override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
+        when (call.method) {
+            "play" -> {
+                videoView.start()
+                result.success(true)
+            }
+            "pause" -> {
+                videoView.pause()
+                result.success(true)
+            }
+            "seekTo" -> {
+                val pos = call.argument<Int>("positionMs") ?: 0
+                videoView.seekTo(pos)
+                result.success(true)
+            }
+            "setMuted" -> {
+                val muted = call.argument<Boolean>("muted") ?: false
+                try {
+                    if (muted) {
+                        mediaPlayer?.setVolume(0f, 0f)
+                    } else {
+                        mediaPlayer?.setVolume(1f, 1f)
+                    }
+                } catch (_: Exception) {}
+                result.success(true)
+            }
+            else -> result.notImplemented()
+        }
+    }
+
+    override fun dispose() {
+        channel.setMethodCallHandler(null)
+        try {
+            videoView.stopPlayback()
+        } catch (_: Exception) {}
+        container.removeAllViews()
+        mediaPlayer = null
+    }
+}
+
+class NativeVideoPlayerFactory(private val messenger: BinaryMessenger) :
+    PlatformViewFactory(StandardMessageCodec.INSTANCE) {
+    override fun create(context: Context, viewId: Int, args: Any?): PlatformView {
+        @Suppress("UNCHECKED_CAST")
+        val params = args as? Map<String, Any?>
+        return NativeVideoPlayerView(context, viewId, params, messenger)
     }
 }

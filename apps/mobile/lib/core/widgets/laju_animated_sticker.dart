@@ -6,6 +6,8 @@ import 'package:flutter/material.dart';
 import '../network/api_client.dart';
 import '../network/media_url_resolver.dart';
 import '../theme/app_colors.dart';
+import '../services/laju_media_cache_manager.dart';
+import 'laju_cached_image.dart';
 
 // ─── APNG MODELS & PARSER ──────────────────────────────────────────
 
@@ -290,14 +292,7 @@ class _LajuAnimatedStickerState extends State<LajuAnimatedSticker> {
         final data = await bundle.load(src);
         bytes = data.buffer.asUint8List();
       } else if (src.startsWith('http://') || src.startsWith('https://') || src.startsWith('/') || src.startsWith('admin/media')) {
-        final resolvedUrl = resolveMediaUrl(src);
-        final client = HttpClient();
-        final req = await client.getUrl(Uri.parse(resolvedUrl));
-        final res = await req.close();
-        if (res.statusCode == 200) {
-          final builder = await res.fold<BytesBuilder>(BytesBuilder(), (b, d) => b..add(d));
-          bytes = builder.takeBytes();
-        }
+        bytes = await LajuMediaCacheManager.instance.getBytes(src);
       } else if (File(src).existsSync()) {
         bytes = await File(src).readAsBytes();
       } else if (src.startsWith('data:image')) {
@@ -382,12 +377,15 @@ class _LajuAnimatedStickerState extends State<LajuAnimatedSticker> {
           errorBuilder: (_, __, ___) => _buildFallback(context),
         );
       } else if (src.startsWith('http://') || src.startsWith('https://') || src.startsWith('/') || src.startsWith('admin/media')) {
-        return Image.network(
-          resolveMediaUrl(src),
+        return LajuCachedImage(
+          imageUrlOrPath: src,
           width: widget.width,
           height: widget.height,
           fit: widget.fit,
-          errorBuilder: (_, __, ___) => _buildFallback(context),
+          cacheWidth: widget.width != null ? (widget.width! * 2).toInt() : 256,
+          cacheHeight: widget.height != null ? (widget.height! * 2).toInt() : 256,
+          placeholder: _buildFallback(context),
+          errorWidget: _buildFallback(context),
         );
       } else if (File(src).existsSync()) {
         return Image.file(
@@ -438,12 +436,15 @@ class _LajuAnimatedStickerState extends State<LajuAnimatedSticker> {
     }
 
     if (src.startsWith('http://') || src.startsWith('https://') || src.startsWith('/') || src.startsWith('admin/media')) {
-      return Image.network(
-        resolveMediaUrl(src),
+      return LajuCachedImage(
+        imageUrlOrPath: src,
         width: widget.width,
         height: widget.height,
         fit: widget.fit,
-        errorBuilder: (_, __, ___) => _buildFallback(context),
+        cacheWidth: widget.width != null ? (widget.width! * 2).toInt() : 256,
+        cacheHeight: widget.height != null ? (widget.height! * 2).toInt() : 256,
+        placeholder: _buildFallback(context),
+        errorWidget: _buildFallback(context),
       );
     }
 

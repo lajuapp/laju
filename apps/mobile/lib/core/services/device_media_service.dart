@@ -53,6 +53,36 @@ class DeviceMediaService {
     }
   }
 
+  /// Opens the device camera to record a video (enforcing max 60 seconds limit).
+  /// Returns a map with 'path', 'durationMs', 'fileSize', 'thumbnailPath',
+  /// or 'error' == 'DURATION_EXCEEDED' if video exceeds 60s.
+  static Future<Map<String, dynamic>?> openVideoCamera() async {
+    try {
+      AppLockController.instance.markExternalIntentStarted();
+      final res = await _channel.invokeMapMethod<String, dynamic>('openVideoCamera');
+      return res;
+    } catch (_) {
+      return null;
+    } finally {
+      AppLockController.instance.markExternalIntentFinished();
+    }
+  }
+
+  /// Opens the device gallery to pick a video file (enforcing max 60 seconds limit).
+  /// Returns a map with 'path', 'durationMs', 'fileSize', 'thumbnailPath',
+  /// or 'error' == 'DURATION_EXCEEDED' if video exceeds 60s.
+  static Future<Map<String, dynamic>?> openVideoGallery() async {
+    try {
+      AppLockController.instance.markExternalIntentStarted();
+      final res = await _channel.invokeMapMethod<String, dynamic>('openVideoGallery');
+      return res;
+    } catch (_) {
+      return null;
+    } finally {
+      AppLockController.instance.markExternalIntentFinished();
+    }
+  }
+
   /// Copies an image file into the application's permanent internal storage directory.
   /// This ensures profile pictures survive app restart and cache cleanups.
   static Future<String> savePermanentAvatar(String sourcePath) async {

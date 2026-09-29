@@ -4,13 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 
-import '../../../../core/network/media_url_resolver.dart';
-import '../../../../core/services/local_database.dart';
-import '../../../../core/theme/app_colors.dart';
-import '../../../../core/theme/theme_controller.dart';
-import '../../../../core/utils/date_helper.dart';
-import '../../../../core/widgets/laju_image_viewer.dart';
-import '../../../../core/widgets/laju_toast.dart';
+import '../../../../core/core.dart';
 import '../../domain/models/message_model.dart';
 import '../widgets/voice_note_player.dart';
 
@@ -316,11 +310,12 @@ class _ChatMediaGalleryScreenState extends State<ChatMediaGalleryScreen> with Si
         } else if (File(path).existsSync()) {
           imgWidget = Image.file(File(path), fit: BoxFit.cover);
         } else {
-          final resolved = resolveMediaUrl(path);
-          imgWidget = Image.network(
-            resolved,
+          imgWidget = LajuCachedImage(
+            imageUrlOrPath: path,
             fit: BoxFit.cover,
-            errorBuilder: (_, __, ___) => Container(
+            cacheWidth: 300,
+            cacheHeight: 300,
+            errorWidget: Container(
               color: isDark ? const Color(0xFF1E293B) : const Color(0xFFE2E8F0),
               child: const Icon(Icons.broken_image_rounded, color: Colors.grey),
             ),

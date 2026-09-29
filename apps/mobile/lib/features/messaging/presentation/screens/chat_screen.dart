@@ -8,6 +8,7 @@ import '../widgets/chat_input_bar.dart';
 import '../../../calls/presentation/screens/active_call_screen.dart';
 import '../../../security/presentation/screens/key_verification_screen.dart';
 import '../../../conversations/domain/conversation_service.dart';
+import '../../../conversations/domain/models/conversation_model.dart';
 import '../widgets/attachment_bottom_sheet.dart';
 import 'disappearing_messages_screen.dart';
 import '../../../conversations/presentation/screens/user_profile_screen.dart';
@@ -31,6 +32,7 @@ class ChatScreen extends StatefulWidget {
   final String? contactAbout;
   final int? contactTrustScore;
   final MessageModel? initialReplyTo;
+  final bool? isOnline;
 
   const ChatScreen({
     super.key,
@@ -44,6 +46,7 @@ class ChatScreen extends StatefulWidget {
     this.contactAbout,
     this.contactTrustScore,
     this.initialReplyTo,
+    this.isOnline,
   });
 
   @override
@@ -65,6 +68,13 @@ class _ChatScreenState extends State<ChatScreen> {
   late String _conversationId;
   late String _derivedSafetyNumber;
   String? _chatDisappearingTimer;
+
+  bool get _isCurrentPeerOnline {
+    final convs = ConversationService.instance.conversations;
+    final match = convs.where((c) => c.id == _conversationId || c.id == widget.conversationId);
+    if (match.isNotEmpty) return match.first.isOnline;
+    return widget.isOnline ?? false;
+  }
 
   @override
   void initState() {
@@ -911,7 +921,7 @@ class _ChatScreenState extends State<ChatScreen> {
                         phone: widget.contactPhone,
                         status: widget.contactAbout,
                         trustScore: widget.contactTrustScore,
-                        isOnline: true,
+                        isOnline: _isCurrentPeerOnline,
                         isVerified: true,
                         safetyNumber: _derivedSafetyNumber,
                         avatarUrl: widget.avatarUrl,
@@ -925,12 +935,18 @@ class _ChatScreenState extends State<ChatScreen> {
                 },
                 child: Row(
                   children: [
-                    ModernAvatar(
-                      name: widget.title,
-                      imagePath: widget.avatarUrl,
-                      radius: 19,
-                      isOnline: PrivacyController.instance.isOnlineVisible,
-                      isVerified: true,
+                    ValueListenableBuilder<List<ConversationModel>>(
+                      valueListenable: ConversationService.instance.conversationsNotifier,
+                      builder: (context, _, __) {
+                        return ModernAvatar(
+                          name: widget.title,
+                          imagePath: widget.avatarUrl,
+                          radius: 19,
+                          isOnline: _isCurrentPeerOnline && PrivacyController.instance.isOnlineVisible,
+                          showOfflineDot: true,
+                          isVerified: true,
+                        );
+                      },
                     ),
                     const SizedBox(width: 10),
                     Expanded(
@@ -987,32 +1003,43 @@ class _ChatScreenState extends State<ChatScreen> {
                                   ),
                                 );
                               }
-                              return Row(
-                                children: [
-                                  Container(
-                                    width: 6,
-                                    height: 6,
-                                    decoration: const BoxDecoration(
-                                      color: Color(0xFF10B981),
-                                      shape: BoxShape.circle,
-                                      boxShadow: [
-                                        BoxShadow(
-                                          color: Color(0xFF10B981),
-                                          blurRadius: 4,
+                              return ValueListenableBuilder<List<ConversationModel>>(
+                                valueListenable: ConversationService.instance.conversationsNotifier,
+                                builder: (context, _, __) {
+                                  final isPeerOnline = _isCurrentPeerOnline;
+                                  final statusColor = isPeerOnline ? const Color(0xFF10B981) : const Color(0xFF94A3B8);
+                                  final statusText = isPeerOnline ? 'Online' : 'Offline';
+
+                                  return Row(
+                                    children: [
+                                      Container(
+                                        width: 6,
+                                        height: 6,
+                                        decoration: BoxDecoration(
+                                          color: statusColor,
+                                          shape: BoxShape.circle,
+                                          boxShadow: isPeerOnline
+                                              ? const [
+                                                  BoxShadow(
+                                                    color: Color(0xFF10B981),
+                                                    blurRadius: 4,
+                                                  ),
+                                                ]
+                                              : null,
                                         ),
-                                      ],
-                                    ),
-                                  ),
-                                  const SizedBox(width: 4),
-                                  const Text(
-                                    'Online',
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      color: Color(0xFF10B981),
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ],
+                                      ),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        statusText,
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          color: statusColor,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ],
+                                  );
+                                },
                               );
                             },
                           ),
@@ -1049,7 +1076,7 @@ class _ChatScreenState extends State<ChatScreen> {
                               phone: widget.contactPhone,
                               status: widget.contactAbout,
                               trustScore: widget.contactTrustScore,
-                              isOnline: true,
+                              isOnline: _isCurrentPeerOnline,
                               isVerified: true,
                               safetyNumber: _derivedSafetyNumber,
                               avatarUrl: widget.avatarUrl,
@@ -1181,11 +1208,15 @@ class _ChatScreenState extends State<ChatScreen> {
                   left: 0,
                   width: screenSize.width,
                   height: screenSize.height,
-                  child: Image.network(
-                    resolveMediaUrl(activeWallpaper.remoteImageUrl),
+                  child: LajuCachedImage(
+                    imageUrlOrPath: activeWallpaper.remoteImageUrl,
+                    width: screenSize.width,
+                    height: screenSize.height,
                     fit: BoxFit.cover,
                     alignment: Alignment.topCenter,
-                    errorBuilder: (context, error, stackTrace) => const SizedBox(),
+                    placeholder: const SizedBox(),
+                    errorWidget: const SizedBox(),
+                    fadeDuration: const Duration(milliseconds: 250),
                   ),
                 ),
 
@@ -1305,10 +1336,32 @@ class _ChatScreenState extends State<ChatScreen> {
                                     onReactionSelected: (emoji) => _handleReaction(msg, emoji),
                                     onReply: _handleReply,
                                     onEdit: _handleEditMessage,
+                                    onRecall: () async {
+                                      final msgToRecall = displayedMsgs[index];
+                                      final ok = await ConversationService.instance.recallMessage(
+                                        msgToRecall.id,
+                                        widget.conversationId,
+                                      );
+                                      if (ok && mounted) {
+                                        setState(() {
+                                          final idx = _messages.indexWhere((m) => m.id == msgToRecall.id);
+                                          if (idx != -1) {
+                                            _messages[idx] = _messages[idx].copyWith(
+                                              content: '__DELETED_FOR_EVERYONE__',
+                                              isDeleted: true,
+                                            );
+                                          }
+                                        });
+                                        LajuToast.success(context, 'Pesan berhasil ditarik');
+                                      }
+                                    },
                                     onDelete: () async {
                                       final msgToDelete = displayedMsgs[index];
                                       setState(() => _messages.removeWhere((m) => m.id == msgToDelete.id));
-                                      await ConversationService.instance.deleteMessage(msgToDelete.id);
+                                      await ConversationService.instance.deleteMessageForMe(
+                                        msgToDelete.id,
+                                        widget.conversationId,
+                                      );
                                     },
                                   );
 

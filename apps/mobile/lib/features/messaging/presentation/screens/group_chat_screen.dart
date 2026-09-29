@@ -1074,6 +1074,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                       children: [
                         ModernAvatar(
                           name: displayName,
+                          imagePath: group?.avatarPath,
                           radius: 19,
                           isVerified: true,
                         ),
@@ -1302,11 +1303,15 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                       left: 0,
                       width: screenSize.width,
                       height: screenSize.height,
-                      child: Image.network(
-                        resolveMediaUrl(activeWallpaper.remoteImageUrl),
+                      child: LajuCachedImage(
+                        imageUrlOrPath: activeWallpaper.remoteImageUrl,
+                        width: screenSize.width,
+                        height: screenSize.height,
                         fit: BoxFit.cover,
                         alignment: Alignment.topCenter,
-                        errorBuilder: (context, error, stackTrace) => const SizedBox(),
+                        placeholder: const SizedBox(),
+                        errorWidget: const SizedBox(),
+                        fadeDuration: const Duration(milliseconds: 250),
                       ),
                     ),
                   Column(
@@ -1424,10 +1429,32 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                                 onReactionSelected: (emoji) => _handleReaction(msg, emoji),
                                 onReply: _handleReply,
                                 onEdit: _handleEditMessage,
+                                onRecall: () async {
+                                  final msgToRecall = displayedMsgs[index];
+                                  final ok = await ConversationService.instance.recallMessage(
+                                    msgToRecall.id,
+                                    widget.groupId,
+                                  );
+                                  if (ok && mounted) {
+                                    setState(() {
+                                      final idx = _messages.indexWhere((m) => m.id == msgToRecall.id);
+                                      if (idx != -1) {
+                                        _messages[idx] = _messages[idx].copyWith(
+                                          content: '__DELETED_FOR_EVERYONE__',
+                                          isDeleted: true,
+                                        );
+                                      }
+                                    });
+                                    LajuToast.success(context, 'Pesan berhasil ditarik');
+                                  }
+                                },
                                 onDelete: () async {
                                   final msgToDelete = displayedMsgs[index];
                                   setState(() => _messages.removeWhere((m) => m.id == msgToDelete.id));
-                                  await ConversationService.instance.deleteMessage(msgToDelete.id);
+                                  await ConversationService.instance.deleteMessageForMe(
+                                    msgToDelete.id,
+                                    widget.groupId,
+                                  );
                                 },
                               );
 

@@ -1,13 +1,23 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, BadRequestException, Optional, Logger, HttpStatus } from '@nestjs/common';
+import { Request, Response } from 'express';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as crypto from 'crypto';
 import { PrismaService } from '../../infrastructure/prisma/prisma.service';
 import { RedisService } from '../../infrastructure/redis/redis.service';
+import { SeaweedFsService } from '../../infrastructure/seaweedfs/seaweedfs.service';
 import { CreateStatusDto, StatusTypeDto } from './dto/status.dto';
+
+const STATUS_MEDIA_DIR = process.env.STATUS_MEDIA_DIR || path.join(process.cwd(), 'uploads', 'status-media');
 
 @Injectable()
 export class StatusService {
+  private readonly logger = new Logger(StatusService.name);
+
   constructor(
     private readonly prisma: PrismaService,
-    private readonly redis: RedisService
+    private readonly redis: RedisService,
+    @Optional() private readonly seaweedFs?: SeaweedFsService
   ) {}
 
   async createStatus(userId: string, dto: CreateStatusDto) {
@@ -342,6 +352,133 @@ export class StatusService {
       } catch (_) {}
     }
     return { success: true };
+  }
+
+  async uploadMedia(
+    userId: string,
+    body: { filename: string; mimeType: string; base64Data: string }
+  ) {
+    if (!body?.base64Data) {
+      throw new BadRequestException('base64Data is required');
+    }
+
+    const rawData = body.base64Data.includes(',')
+      ? body.base64Data.split(',')[1]
+      : body.base64Data;
+    const buffer = Buffer.from(rawData, 'base64');
+    const rawExt = body.filename?.split('.').pop()?.toLowerCase() || 'mp4';
+    const cleanExt = rawExt.replace(/[^a-zA-Z0-9]/g, '') || 'mp4';
+    const blobId = `status-${crypto.randomBytes(12).toString('hex')}.${cleanExt}`;
+    const contentType = body.mimeType || (cleanExt === 'mp4' ? 'video/mp4' : 'image/jpeg');
+
+    // 1. Persist to local disk storage
+    try {
+      if (!fs.existsSync(STATUS_MEDIA_DIR)) {
+        fs.mkdirSync(STATUS_MEDIA_DIR, { recursive: true });
+      }
+      const localFilePath = path.join(STATUS_MEDIA_DIR, blobId);
+      await fs.promises.writeFile(localFilePath, buffer);
+    } catch (fsErr: any) {
+      this.logger.error(`Error saving status media to local disk: ${fsErr.message}`);
+    }
+
+    // 2. Also persist to SeaweedFS if available
+    if (this.seaweedFs) {
+      try {
+        await this.seaweedFs.uploadBlob(blobId, buffer, contentType);
+      } catch (swErr: any) {
+        this.logger.warn(`SeaweedFS upload skipped or failed: ${swErr.message}`);
+      }
+    }
+
+    return {
+      url: `/status/media/${blobId}`,
+      blobId,
+      filename: body.filename,
+      size: buffer.length
+    };
+  }
+
+  async streamStatusMedia(blobId: string, req: Request, res: Response) {
+    const safeBlobId = path.basename(blobId);
+    if (!safeBlobId || safeBlobId.includes('..')) {
+      return res.status(HttpStatus.BAD_REQUEST).json({ error: 'Invalid blob ID' });
+    }
+
+    const ext = safeBlobId.split('.').pop()?.toLowerCase() || 'mp4';
+    let mime = 'video/mp4';
+    if (ext === 'jpg' || ext === 'jpeg') mime = 'image/jpeg';
+    else if (ext === 'png') mime = 'image/png';
+    else if (ext === 'webp') mime = 'image/webp';
+    else if (ext === 'gif') mime = 'image/gif';
+    else if (ext === 'mp4') mime = 'video/mp4';
+    else if (ext === 'webm') mime = 'video/webm';
+    else if (ext === 'mov') mime = 'video/quicktime';
+
+    res.setHeader('Accept-Ranges', 'bytes');
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+
+    // 1. Check local disk
+    const localFilePath = path.join(STATUS_MEDIA_DIR, safeBlobId);
+    if (fs.existsSync(localFilePath)) {
+      try {
+        const stat = fs.statSync(localFilePath);
+        const fileSize = stat.size;
+        const range = req.headers.range;
+
+        if (range) {
+          const parts = range.replace(/bytes=/, '').split('-');
+          const start = parseInt(parts[0], 10);
+          const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+
+          if (start >= fileSize || end >= fileSize || start > end) {
+            res.setHeader('Content-Range', `bytes */${fileSize}`);
+            return res.status(HttpStatus.REQUESTED_RANGE_NOT_SATISFIABLE).end();
+          }
+
+          const chunksize = end - start + 1;
+          const stream = fs.createReadStream(localFilePath, { start, end });
+          res.writeHead(HttpStatus.PARTIAL_CONTENT, {
+            'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+            'Accept-Ranges': 'bytes',
+            'Content-Length': chunksize,
+            'Content-Type': mime,
+            'Access-Control-Allow-Origin': '*',
+            'Cross-Origin-Resource-Policy': 'cross-origin',
+          });
+          return stream.pipe(res);
+        }
+
+        res.setHeader('Content-Type', mime);
+        res.setHeader('Content-Length', fileSize);
+        const stream = fs.createReadStream(localFilePath);
+        return stream.pipe(res);
+      } catch (err: any) {
+        this.logger.error(`Error reading local status file: ${err.message}`);
+      }
+    }
+
+    // 2. Fallback to SeaweedFS
+    if (this.seaweedFs) {
+      try {
+        const data = await this.seaweedFs.getBlob(safeBlobId);
+        if (data) {
+          const buf = Buffer.from(data);
+          try {
+            await fs.promises.writeFile(localFilePath, buf);
+          } catch (_) {}
+          res.setHeader('Content-Type', mime);
+          res.setHeader('Content-Length', buf.length);
+          return res.status(HttpStatus.OK).send(buf);
+        }
+      } catch (swErr: any) {
+        this.logger.error(`Error fetching from SeaweedFS: ${swErr.message}`);
+      }
+    }
+
+    return res.status(HttpStatus.NOT_FOUND).json({ error: 'Status media not found' });
   }
 }
 

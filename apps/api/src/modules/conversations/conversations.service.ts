@@ -243,6 +243,11 @@ export class ConversationsService {
             await this.redis.set(`conversation:${conv.id}:description`, dto.description);
           } catch (_) {}
         }
+        if (dto.avatarUrl && this.redis) {
+          try {
+            await this.redis.set(`conversation:${conv.id}:avatarUrl`, dto.avatarUrl);
+          } catch (_) {}
+        }
         if (dto.wallpaperId && this.redis) {
           try {
             await this.redis.set(`conversation:${conv.id}:wallpaperId`, dto.wallpaperId);
@@ -292,6 +297,7 @@ export class ConversationsService {
         return {
           ...created,
           description: dto.description || null,
+          avatarUrl: dto.avatarUrl || null,
           wallpaperId: dto.wallpaperId || null,
           hasKillPin: !!dto.killPin,
           authorizedWipeUserIds: dto.killPin ? [currentUserId, ...(dto.authorizedWipeUserIds || [])] : []
@@ -322,24 +328,38 @@ export class ConversationsService {
 
     return Promise.all(
       convs.map(async (conv) => {
-        const enrichedMembers = await Promise.all(
-          conv.members.map(async (m) => {
-            const [avatarUrl, about] = await Promise.all([
-              this.redis.get(`user:${m.userId}:avatar`),
-              this.redis.get(`user:${m.userId}:about`),
-            ]);
-            return {
-              ...m,
-              user: {
-                ...m.user,
-                avatarUrl,
-                about: about ?? 'Available'
-              }
-            };
-          })
-        );
+        const [enrichedMembers, convAvatarUrl] = await Promise.all([
+          Promise.all(
+            conv.members.map(async (m) => {
+              const [avatarUrl, about, onlineRaw] = await Promise.all([
+                this.redis.get(`user:${m.userId}:avatar`),
+                this.redis.get(`user:${m.userId}:about`),
+                this.redis.get(`user:${m.userId}:online`),
+              ]);
+              return {
+                ...m,
+                user: {
+                  ...m.user,
+                  avatarUrl,
+                  about: about ?? 'Available',
+                  isOnline: onlineRaw === '1'
+                }
+              };
+            })
+          ),
+          conv.type === 'GROUP'
+            ? this.redis?.get(`conversation:${conv.id}:avatarUrl`).catch(() => null)
+            : Promise.resolve(null),
+        ]);
+        const otherMember = conv.type === 'PERSONAL'
+          ? enrichedMembers.find((m) => m.userId !== userId)
+          : null;
+        const convIsOnline = otherMember ? (otherMember.user as any).isOnline === true : false;
+
         return {
           ...conv,
+          isOnline: convIsOnline,
+          avatarUrl: convAvatarUrl ?? undefined,
           members: enrichedMembers
         };
       })
@@ -371,20 +391,27 @@ export class ConversationsService {
 
     const enrichedMembers = await Promise.all(
       conv.members.map(async (m) => {
-        const [avatarUrl, about] = await Promise.all([
+        const [avatarUrl, about, onlineRaw] = await Promise.all([
           this.redis.get(`user:${m.userId}:avatar`),
           this.redis.get(`user:${m.userId}:about`),
+          this.redis.get(`user:${m.userId}:online`),
         ]);
         return {
           ...m,
           user: {
             ...m.user,
             avatarUrl,
-            about: about ?? 'Available'
+            about: about ?? 'Available',
+            isOnline: onlineRaw === '1'
           }
         };
       })
     );
+
+    const otherMember = conv.type === 'PERSONAL'
+      ? enrichedMembers.find((m) => m.userId !== userId)
+      : null;
+    const convIsOnline = otherMember ? (otherMember.user as any).isOnline === true : false;
 
     const [description, avatarUrl, permissionsStr, wallpaperId, killPinHash, authWipeStr] = await Promise.all([
       this.redis?.get(`conversation:${conversationId}:description`).catch(() => null),
@@ -411,6 +438,7 @@ export class ConversationsService {
 
     return {
       ...conv,
+      isOnline: convIsOnline,
       description: description ?? undefined,
       avatarUrl: avatarUrl ?? undefined,
       wallpaperId: wallpaperId ?? undefined,
@@ -544,6 +572,15 @@ export class ConversationsService {
       if (dto.permissions !== undefined && this.redis) {
         try {
           await this.redis.set(`conversation:${conversationId}:permissions`, JSON.stringify(dto.permissions));
+        } catch (_) {}
+      }
+      if (dto.avatarUrl !== undefined && this.redis) {
+        try {
+          if (dto.avatarUrl) {
+            await this.redis.set(`conversation:${conversationId}:avatarUrl`, dto.avatarUrl);
+          } else {
+            await this.redis.del(`conversation:${conversationId}:avatarUrl`);
+          }
         } catch (_) {}
       }
       if (dto.wallpaperId !== undefined && this.redis) {
@@ -705,7 +742,10 @@ export class ConversationsService {
 
     const whereClause: any = {
       conversationId: effectiveConversationId,
-      deletedAt: null
+      OR: [
+        { deletedAt: null },
+        { state: 'DELETED' }
+      ]
     };
     if (cursor !== undefined) {
       whereClause.sequence = { gt: cursor };

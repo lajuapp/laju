@@ -526,6 +526,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                           imagePath: _resolvedAvatarUrl,
                           radius: 46,
                           isOnline: widget.isOnline,
+                          showOfflineDot: true,
                           isVerified: widget.isVerified,
                         ),
                         const SizedBox(height: 14),
@@ -553,6 +554,46 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                             fontSize: 14,
                             color: textSecondary,
                             fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+
+                        // Online / Offline Status Chip
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3.5),
+                          decoration: BoxDecoration(
+                            color: widget.isOnline
+                                ? const Color(0xFF10B981).withValues(alpha: 0.12)
+                                : (isDark ? Colors.white10 : const Color(0xFFF1F5F9)),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(
+                              color: widget.isOnline
+                                  ? const Color(0xFF10B981).withValues(alpha: 0.3)
+                                  : (isDark ? Colors.white12 : const Color(0xFFE2E8F0)),
+                              width: 0.8,
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                width: 6.5,
+                                height: 6.5,
+                                decoration: BoxDecoration(
+                                  color: widget.isOnline ? const Color(0xFF10B981) : const Color(0xFF94A3B8),
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                              const SizedBox(width: 5),
+                              Text(
+                                widget.isOnline ? 'Online' : 'Offline',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                  color: widget.isOnline ? const Color(0xFF10B981) : const Color(0xFF94A3B8),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                         const SizedBox(height: 8),

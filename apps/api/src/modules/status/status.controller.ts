@@ -5,19 +5,40 @@ import {
   Delete,
   Param,
   Body,
-  UseGuards
+  UseGuards,
+  Req,
+  Res
 } from '@nestjs/common';
+import { Request, Response } from 'express';
 import { StatusService } from './status.service';
 import { CreateStatusDto, ReactStatusDto } from './dto/status.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 
 @Controller('status')
-@UseGuards(JwtAuthGuard)
 export class StatusController {
   constructor(private readonly statusService: StatusService) {}
 
+  @Post('upload')
+  @UseGuards(JwtAuthGuard)
+  uploadStatusMedia(
+    @CurrentUser('userId') userId: string,
+    @Body() body: { filename: string; mimeType: string; base64Data: string }
+  ) {
+    return this.statusService.uploadMedia(userId, body);
+  }
+
+  @Get('media/:blobId')
+  getStatusMedia(
+    @Param('blobId') blobId: string,
+    @Req() req: Request,
+    @Res() res: Response
+  ) {
+    return this.statusService.streamStatusMedia(blobId, req, res);
+  }
+
   @Post()
+  @UseGuards(JwtAuthGuard)
   createStatus(
     @CurrentUser('userId') userId: string,
     @Body() dto: CreateStatusDto
@@ -26,21 +47,25 @@ export class StatusController {
   }
 
   @Get('me')
+  @UseGuards(JwtAuthGuard)
   getMyStatuses(@CurrentUser('userId') userId: string) {
     return this.statusService.getMyStatuses(userId);
   }
 
   @Get('contacts')
+  @UseGuards(JwtAuthGuard)
   getContactsStatuses(@CurrentUser('userId') userId: string) {
     return this.statusService.getContactsStatuses(userId);
   }
 
   @Get('official')
+  @UseGuards(JwtAuthGuard)
   getOfficialStatuses(@CurrentUser('userId') userId: string) {
     return this.statusService.getOfficialStatuses(userId);
   }
 
   @Post('official/:id/view')
+  @UseGuards(JwtAuthGuard)
   markOfficialStatusViewed(
     @CurrentUser('userId') userId: string,
     @Param('id') announcementId: string
@@ -49,6 +74,7 @@ export class StatusController {
   }
 
   @Get(':id/views')
+  @UseGuards(JwtAuthGuard)
   getStatusViewers(
     @CurrentUser('userId') userId: string,
     @Param('id') storyId: string
@@ -57,6 +83,7 @@ export class StatusController {
   }
 
   @Post(':id/view')
+  @UseGuards(JwtAuthGuard)
   markStatusViewed(
     @CurrentUser('userId') userId: string,
     @Param('id') storyId: string
@@ -65,6 +92,7 @@ export class StatusController {
   }
 
   @Post(':id/react')
+  @UseGuards(JwtAuthGuard)
   reactToStatus(
     @CurrentUser('userId') userId: string,
     @Param('id') storyId: string,
@@ -74,6 +102,7 @@ export class StatusController {
   }
 
   @Delete(':id')
+  @UseGuards(JwtAuthGuard)
   deleteStatus(
     @CurrentUser('userId') userId: string,
     @Param('id') storyId: string

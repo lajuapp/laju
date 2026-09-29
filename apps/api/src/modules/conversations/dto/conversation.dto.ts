@@ -26,6 +26,10 @@ export class CreateConversationDto {
   @IsOptional()
   killPin?: string;
 
+  @IsString()
+  @IsOptional()
+  avatarUrl?: string;
+
   @IsArray()
   @IsString({ each: true })
   @IsOptional()
@@ -63,6 +67,10 @@ export class UpdateConversationDto {
   @IsString()
   @IsOptional()
   killPin?: string;
+
+  @IsString()
+  @IsOptional()
+  avatarUrl?: string;
 
   @IsArray()
   @IsString({ each: true })

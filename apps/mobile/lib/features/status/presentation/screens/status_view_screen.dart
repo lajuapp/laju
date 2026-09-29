@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../../../core/core.dart';
+import '../../../../core/widgets/native_video_player_widget.dart';
 import '../../domain/status_service.dart';
 import '../../../conversations/domain/conversation_service.dart';
 import '../../../messaging/domain/models/message_model.dart';
@@ -51,6 +52,8 @@ class StatusStoryItem {
   final Color backgroundColor;
   final String? imageAsset;
   final bool isPhoto;
+  final bool isVideo;
+  final String? videoUrl;
   final List<StatusViewerItem> viewers;
   final DateTime? createdAt;
   final DateTime? expiresAt;
@@ -65,6 +68,8 @@ class StatusStoryItem {
     this.backgroundColor = const Color(0xFF0F3E37),
     this.imageAsset,
     this.isPhoto = false,
+    this.isVideo = false,
+    this.videoUrl,
     this.viewers = const [],
     this.createdAt,
     this.expiresAt,
@@ -115,6 +120,9 @@ class _StatusViewScreenState extends State<StatusViewScreen>
   int _currentIndex = 0;
   bool _isPopping = false;
 
+  final NativeVideoPlayerController _videoPlayerController = NativeVideoPlayerController();
+  bool _isVideoMuted = false;
+
   @override
   void initState() {
     super.initState();
@@ -136,7 +144,46 @@ class _StatusViewScreenState extends State<StatusViewScreen>
       WidgetsBinding.instance.addPostFrameCallback((_) => _safeClose());
     } else {
       _markCurrentViewed();
-      _animController.forward();
+      _startStoryPlayback();
+    }
+  }
+
+  void _startStoryPlayback() {
+    if (_stories.isEmpty || _currentIndex >= _stories.length) return;
+    final story = _stories[_currentIndex];
+    _animController.reset();
+    if (story.isVideo) {
+      _animController.duration = const Duration(seconds: 15);
+    } else {
+      _animController.duration = const Duration(seconds: 5);
+    }
+    _animController.forward();
+    _preloadUpcomingStories();
+  }
+
+  void _preloadUpcomingStories() {
+    if (_currentIndex + 1 < _stories.length) {
+      final next = _stories[_currentIndex + 1];
+      if (next.isPhoto && next.imageAsset != null && next.imageAsset!.isNotEmpty) {
+        LajuMediaCacheManager.instance.preload(next.imageAsset!);
+      }
+    }
+  }
+
+  void _onVideoPrepared(int durationMs) {
+    if (!mounted || _stories.isEmpty || _currentIndex >= _stories.length) return;
+    final story = _stories[_currentIndex];
+    if (story.isVideo && durationMs > 0) {
+      final safeMs = durationMs.clamp(1000, 60000);
+      final currentProgress = _animController.value;
+      _animController.duration = Duration(milliseconds: safeMs);
+      _animController.forward(from: currentProgress);
+    }
+  }
+
+  void _onVideoCompleted() {
+    if (!_isPopping && mounted) {
+      _nextStory();
     }
   }
 
@@ -155,6 +202,7 @@ class _StatusViewScreenState extends State<StatusViewScreen>
 
   void _openActionUrl(String url) async {
     _animController.stop();
+    _videoPlayerController.pause();
     try {
       await const MethodChannel('com.laju/device').invokeMethod('openUrl', {'url': url});
     } catch (e) {
@@ -162,6 +210,7 @@ class _StatusViewScreenState extends State<StatusViewScreen>
     }
     if (!_isPopping && mounted) {
       _animController.forward();
+      _videoPlayerController.play();
     }
   }
 
@@ -177,6 +226,7 @@ class _StatusViewScreenState extends State<StatusViewScreen>
     if (_isPopping) return;
     _isPopping = true;
     _animController.stop();
+    _videoPlayerController.pause();
     if (mounted && Navigator.canPop(context)) {
       Navigator.pop(context);
     }
@@ -189,8 +239,7 @@ class _StatusViewScreenState extends State<StatusViewScreen>
         _currentIndex++;
       });
       _markCurrentViewed();
-      _animController.reset();
-      _animController.forward();
+      _startStoryPlayback();
     } else {
       _safeClose();
     }
@@ -203,11 +252,9 @@ class _StatusViewScreenState extends State<StatusViewScreen>
         _currentIndex--;
       });
       _markCurrentViewed();
-      _animController.reset();
-      _animController.forward();
+      _startStoryPlayback();
     } else {
-      _animController.reset();
-      _animController.forward();
+      _startStoryPlayback();
     }
   }
 
@@ -1155,51 +1202,55 @@ class _StatusViewScreenState extends State<StatusViewScreen>
   }
 
   Widget _buildStoryThumbnail(String path) {
-    if (path.startsWith('data:image')) {
-      try {
-        final b64 = path.contains(',') ? path.split(',').last : path;
-        return Image.memory(base64Decode(b64), fit: BoxFit.cover, errorBuilder: (c, e, s) => const Icon(Icons.image, size: 20, color: Colors.white54));
-      } catch (_) {}
-    }
-    if (path.startsWith('http://') || path.startsWith('https://')) {
-      return Image.network(path, fit: BoxFit.cover, errorBuilder: (c, e, s) => const Icon(Icons.image, size: 20, color: Colors.white54));
-    }
-    if (File(path).existsSync()) {
-      return Image.file(File(path), fit: BoxFit.cover, errorBuilder: (c, e, s) => const Icon(Icons.image, size: 20, color: Colors.white54));
-    }
-    if (path.startsWith('assets/')) {
-      return Image.asset(path, fit: BoxFit.cover, errorBuilder: (c, e, s) => const Icon(Icons.image, size: 20, color: Colors.white54));
-    }
-    return Container(color: Colors.black26, child: const Icon(Icons.image, size: 20, color: Colors.white54));
+    return LajuCachedImage(
+      imageUrlOrPath: path,
+      fit: BoxFit.cover,
+      cacheWidth: 100,
+      cacheHeight: 100,
+      errorWidget: const Icon(Icons.image, size: 20, color: Colors.white54),
+    );
   }
 
   Widget _buildStoryImage(StatusStoryItem story) {
     final asset = story.imageAsset;
-    if (asset != null && asset.startsWith('data:image')) {
-      try {
-        final b64 = asset.contains(',') ? asset.split(',').last : asset;
-        return Image.memory(
-          base64Decode(b64),
-          fit: BoxFit.cover,
-        );
-      } catch (_) {}
-    }
-    if (asset != null && (asset.startsWith('http://') || asset.startsWith('https://'))) {
-      return Image.network(
-        asset,
+    if (asset != null && asset.isNotEmpty) {
+      return LajuCachedImage(
+        imageUrlOrPath: asset,
         fit: BoxFit.cover,
-      );
-    }
-    if (asset != null && File(asset).existsSync()) {
-      return Image.file(
-        File(asset),
-        fit: BoxFit.cover,
-      );
-    }
-    if (asset != null && asset.startsWith('assets/')) {
-      return Image.asset(
-        asset,
-        fit: BoxFit.cover,
+        placeholder: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                story.backgroundColor ?? const Color(0xFF1E293B),
+                story.backgroundColor?.withValues(alpha: 0.8) ?? const Color(0xFF0F172A),
+              ],
+            ),
+          ),
+          child: const Center(
+            child: SizedBox(
+              width: 28,
+              height: 28,
+              child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white70),
+            ),
+          ),
+        ),
+        errorWidget: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                story.backgroundColor ?? const Color(0xFF1E293B),
+                story.backgroundColor?.withValues(alpha: 0.8) ?? const Color(0xFF0F172A),
+              ],
+            ),
+          ),
+          child: const Center(
+            child: Icon(Icons.broken_image_rounded, size: 48, color: Colors.white38),
+          ),
+        ),
       );
     }
     return Container(
@@ -1208,42 +1259,29 @@ class _StatusViewScreenState extends State<StatusViewScreen>
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            story.backgroundColor,
-            const Color(0xFF0F172A),
-          ],
-        ),
-      ),
-      child: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 120,
-              height: 120,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: AppColors.primary.withValues(alpha: 0.15),
-                border: Border.all(color: AppColors.primary, width: 2),
-              ),
-              child: const Icon(
-                Icons.camera_alt_rounded,
-                size: 56,
-                color: AppColors.primary,
-              ),
-            ),
-            const SizedBox(height: 16),
-            const Text(
-              'Tangkapan Kamera Terenkripsi',
-              style: TextStyle(
-                color: Colors.white70,
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
+            story.backgroundColor ?? const Color(0xFF1E293B),
+            story.backgroundColor?.withValues(alpha: 0.8) ?? const Color(0xFF0F172A),
           ],
         ),
       ),
     );
+  }
+
+  Widget _buildStoryContent(StatusStoryItem story) {
+    if (story.isVideo) {
+      final videoSrc = story.videoUrl ?? story.imageAsset ?? '';
+      return NativeVideoPlayerWidget(
+        key: ValueKey('video_${story.id ?? story.time}_${story.hashCode}'),
+        videoUrl: videoSrc,
+        autoPlay: true,
+        loop: false,
+        muted: _isVideoMuted,
+        controller: _videoPlayerController,
+        onPrepared: _onVideoPrepared,
+        onCompleted: _onVideoCompleted,
+      );
+    }
+    return _buildStoryImage(story);
   }
 
   @override
@@ -1262,6 +1300,7 @@ class _StatusViewScreenState extends State<StatusViewScreen>
       onPopInvokedWithResult: (didPop, _) {
         _isPopping = true;
         _animController.stop();
+        _videoPlayerController.pause();
       },
       child: Scaffold(
         backgroundColor: story.backgroundColor,
@@ -1275,9 +1314,15 @@ class _StatusViewScreenState extends State<StatusViewScreen>
               _nextStory();
             }
           },
-          onLongPressStart: (_) => _animController.stop(),
+          onLongPressStart: (_) {
+            _animController.stop();
+            _videoPlayerController.pause();
+          },
           onLongPressEnd: (_) {
-            if (!_isPopping) _animController.forward();
+            if (!_isPopping) {
+              _animController.forward();
+              _videoPlayerController.play();
+            }
           },
           onVerticalDragEnd: (details) {
             if (_isPopping) return;
@@ -1292,10 +1337,10 @@ class _StatusViewScreenState extends State<StatusViewScreen>
           },
           child: Stack(
             children: [
-              // Photo Story Visual
-              if (story.isPhoto)
+              // Media Story Visual (Photo or Video)
+              if (story.isPhoto || story.isVideo)
                 Positioned.fill(
-                  child: _buildStoryImage(story),
+                  child: _buildStoryContent(story),
                 ),
 
               // Top dark gradient scrim for top controls
@@ -1321,8 +1366,8 @@ class _StatusViewScreenState extends State<StatusViewScreen>
                 ),
               ),
 
-              // Bottom smooth gradient scrim for photo caption & reply bar
-              if (story.isPhoto)
+              // Bottom smooth gradient scrim for photo/video caption & reply bar
+              if (story.isPhoto || story.isVideo)
                 Positioned(
                   left: 0,
                   right: 0,
@@ -1346,7 +1391,7 @@ class _StatusViewScreenState extends State<StatusViewScreen>
                 ),
 
               // Text Story Content (Centered with large font)
-              if (!story.isPhoto)
+              if (!story.isPhoto && !story.isVideo)
                 Center(
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 28),
@@ -1502,6 +1547,22 @@ class _StatusViewScreenState extends State<StatusViewScreen>
                               ],
                             ),
                           ),
+                          if (story.isVideo)
+                            IconButton(
+                              icon: Icon(
+                                _isVideoMuted ? Icons.volume_off_rounded : Icons.volume_up_rounded,
+                                color: Colors.white,
+                                size: 22,
+                              ),
+                              tooltip: _isVideoMuted ? 'Nyalakan Suara' : 'Bisukan Suara',
+                              onPressed: () {
+                                HapticFeedback.selectionClick();
+                                setState(() {
+                                  _isVideoMuted = !_isVideoMuted;
+                                });
+                                _videoPlayerController.setMuted(_isVideoMuted);
+                              },
+                            ),
                           IconButton(
                             icon: const Icon(Icons.more_vert_rounded, color: Colors.white, size: 22),
                             onPressed: _showMoreOptions,
@@ -1525,8 +1586,8 @@ class _StatusViewScreenState extends State<StatusViewScreen>
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        // Photo Caption (WhatsApp style - placed cleanly above Balas/Status button, never overlapping)
-                        if (story.isPhoto && story.text.isNotEmpty) ...[
+                        // Media Caption (WhatsApp style - placed cleanly above Balas/Status button, never overlapping)
+                        if ((story.isPhoto || story.isVideo) && story.text.isNotEmpty) ...[
                           Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 10),
                             child: Text(

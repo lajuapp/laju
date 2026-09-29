@@ -2,12 +2,15 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import '../theme/app_colors.dart';
+import '../network/media_url_resolver.dart';
+import '../services/laju_media_cache_manager.dart';
 
 class ModernAvatar extends StatelessWidget {
   final String name;
   final double radius;
   final double? size;
   final bool isOnline;
+  final bool showOfflineDot;
   final bool isVerified;
   final List<Color>? customGradient;
   final String? imagePath;
@@ -18,6 +21,7 @@ class ModernAvatar extends StatelessWidget {
     this.radius = 26,
     this.size,
     this.isOnline = false,
+    this.showOfflineDot = false,
     this.isVerified = true,
     this.customGradient,
     this.imagePath,
@@ -73,7 +77,14 @@ class ModernAvatar extends StatelessWidget {
 
     ImageProvider? provider;
     if (isNetwork) {
-      provider = NetworkImage(normalizedPath);
+      final resolved = resolveMediaUrl(normalizedPath);
+      final cached = LajuMediaCacheManager.instance.getCachedFileIfPresentSync(resolved);
+      if (cached != null) {
+        provider = FileImage(cached);
+      } else {
+        provider = NetworkImage(resolved);
+        LajuMediaCacheManager.instance.preload(resolved);
+      }
     } else if (isBase64) {
       try {
         final b64 = normalizedPath.split(',').last;
@@ -186,7 +197,7 @@ class ModernAvatar extends StatelessWidget {
             ),
           ),
         ),
-        if (isOnline)
+        if (isOnline || showOfflineDot)
           Positioned(
             right: 0,
             bottom: 0,
@@ -194,19 +205,21 @@ class ModernAvatar extends StatelessWidget {
               width: effectiveRadius > 22 ? 14 : 11,
               height: effectiveRadius > 22 ? 14 : 11,
               decoration: BoxDecoration(
-                color: const Color(0xFF10B981),
+                color: isOnline ? const Color(0xFF10B981) : const Color(0xFF94A3B8),
                 shape: BoxShape.circle,
                 border: Border.all(color: Colors.white, width: 2),
                 boxShadow: [
                   BoxShadow(
-                    color: const Color(0xFF10B981).withValues(alpha: 0.5),
-                    blurRadius: 4,
+                    color: isOnline
+                        ? const Color(0xFF10B981).withValues(alpha: 0.5)
+                        : Colors.black.withValues(alpha: 0.15),
+                    blurRadius: 3,
                   ),
                 ],
               ),
             ),
           ),
-        if (isVerified && !isOnline)
+        if (isVerified && !isOnline && !showOfflineDot)
           Positioned(
             right: -2,
             bottom: -2,

@@ -167,10 +167,17 @@ export class UsersService {
     ]);
 
     const usersWithAvatar = await Promise.all(
-      users.map(async (u) => ({
-        ...u,
-        avatarUrl: await this.redis.get(`user:${u.id}:avatar`)
-      }))
+      users.map(async (u) => {
+        const [avatarUrl, onlineRaw] = await Promise.all([
+          this.redis.get(`user:${u.id}:avatar`),
+          this.redis.get(`user:${u.id}:online`),
+        ]);
+        return {
+          ...u,
+          avatarUrl,
+          isOnline: onlineRaw === '1'
+        };
+      })
     );
 
     return {
@@ -214,11 +221,12 @@ export class UsersService {
       throw new NotFoundException('User not found');
     }
 
-    const [avatarUrl, about] = await Promise.all([
+    const [avatarUrl, about, onlineRaw] = await Promise.all([
       this.redis.get(`user:${user.id}:avatar`),
-      this.redis.get(`user:${user.id}:about`)
+      this.redis.get(`user:${user.id}:about`),
+      this.redis.get(`user:${user.id}:online`),
     ]);
-    return { ...user, avatarUrl, about: about ?? 'Available' };
+    return { ...user, avatarUrl, about: about ?? 'Available', isOnline: onlineRaw === '1' };
   }
 
   async createUserReport(reporterId: string, dto: CreateUserReportDto) {

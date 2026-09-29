@@ -10,6 +10,7 @@ import 'status_view_screen.dart';
 import 'status_privacy_contact_picker_screen.dart';
 import 'text_status_composer_screen.dart';
 import 'camera_status_screen.dart';
+import 'video_status_composer_screen.dart';
 import '../../../conversations/domain/conversation_service.dart';
 
 
@@ -259,6 +260,113 @@ class StatusScreenState extends State<StatusScreen> with AutomaticKeepAliveClien
     }
   }
 
+  Future<void> _recordVideoStatus() async {
+    final res = await DeviceMediaService.openVideoCamera();
+    if (res == null || !mounted) return;
+
+    if (res['error'] == 'DURATION_EXCEEDED') {
+      final sec = (res['durationSeconds'] as num?)?.toInt() ?? 60;
+      _showVideoDurationExceededDialog(sec);
+      return;
+    }
+
+    final path = res['path'] as String?;
+    final durationMs = (res['durationMs'] as num?)?.toInt() ?? 0;
+
+    if (path != null && File(path).existsSync()) {
+      final result = await Navigator.push<StatusStoryItem>(
+        context,
+        MaterialPageRoute(
+          builder: (_) => VideoStatusComposerScreen(
+            videoPath: path,
+            durationMs: durationMs,
+          ),
+        ),
+      );
+      if (result != null && mounted) {
+        setState(() {
+          _myStories.insert(0, result);
+        });
+        LajuToast.success(context, 'Status video berhasil dibagikan');
+        _loadStatuses();
+      }
+    }
+  }
+
+  Future<void> _openVideoGalleryStatus() async {
+    final res = await DeviceMediaService.openVideoGallery();
+    if (res == null || !mounted) return;
+
+    if (res['error'] == 'DURATION_EXCEEDED') {
+      final sec = (res['durationSeconds'] as num?)?.toInt() ?? 60;
+      _showVideoDurationExceededDialog(sec);
+      return;
+    }
+
+    final path = res['path'] as String?;
+    final durationMs = (res['durationMs'] as num?)?.toInt() ?? 0;
+
+    if (path != null && File(path).existsSync()) {
+      final result = await Navigator.push<StatusStoryItem>(
+        context,
+        MaterialPageRoute(
+          builder: (_) => VideoStatusComposerScreen(
+            videoPath: path,
+            durationMs: durationMs,
+          ),
+        ),
+      );
+      if (result != null && mounted) {
+        setState(() {
+          _myStories.insert(0, result);
+        });
+        LajuToast.success(context, 'Status video berhasil dibagikan');
+        _loadStatuses();
+      }
+    }
+  }
+
+  void _showVideoDurationExceededDialog(int durationSeconds) {
+    final isDark = ThemeModeController.instance.isDarkMode(context);
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: isDark ? AppColors.darkSurface : Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            const Icon(Icons.timer_off_rounded, color: Colors.amber, size: 28),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'Durasi Terlalu Panjang',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: isDark ? Colors.white : const Color(0xFF111827),
+                ),
+              ),
+            ),
+          ],
+        ),
+        content: Text(
+          'Batas durasi video status maksimal adalah 1 menit (60 detik).\n\nVideo yang Anda pilih berdurasi $durationSeconds detik. Silakan potong atau pilih video lain dengan durasi ≤ 60 detik.',
+          style: TextStyle(
+            fontSize: 14,
+            height: 1.5,
+            color: isDark ? Colors.white70 : const Color(0xFF4B5563),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Mengerti', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.primary)),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _showMediaPickerSheet() {
     final isDark = ThemeModeController.instance.isDarkMode(context);
 
@@ -309,7 +417,7 @@ class StatusScreenState extends State<StatusScreen> with AutomaticKeepAliveClien
               ),
               const SizedBox(height: 4),
               Text(
-                'Ambil foto baru atau pilih dari galeri untuk status Anda',
+                'Unggah foto, video (maks 1 menit), atau buat status teks',
                 style: TextStyle(
                   fontSize: 13,
                   color: isDark ? Colors.white60 : const Color(0xFF6B7280),
@@ -322,7 +430,7 @@ class StatusScreenState extends State<StatusScreen> with AutomaticKeepAliveClien
                     child: _buildMediaPickerOption(
                       icon: Icons.camera_alt_rounded,
                       iconBg: AppColors.primary,
-                      title: 'Kamera',
+                      title: 'Foto Kamera',
                       subtitle: 'Ambil foto langsung',
                       isDark: isDark,
                       onTap: () {
@@ -336,12 +444,44 @@ class StatusScreenState extends State<StatusScreen> with AutomaticKeepAliveClien
                     child: _buildMediaPickerOption(
                       icon: Icons.photo_library_rounded,
                       iconBg: const Color(0xFFEC4899),
-                      title: 'Galeri',
-                      subtitle: 'Pilih dari galeri HP',
+                      title: 'Foto Galeri',
+                      subtitle: 'Pilih foto galeri',
                       isDark: isDark,
                       onTap: () {
                         Navigator.pop(ctx);
                         _openGalleryStatus();
+                      },
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: _buildMediaPickerOption(
+                      icon: Icons.videocam_rounded,
+                      iconBg: const Color(0xFF8B5CF6),
+                      title: 'Rekam Video',
+                      subtitle: 'Maksimal 1 menit',
+                      isDark: isDark,
+                      onTap: () {
+                        Navigator.pop(ctx);
+                        _recordVideoStatus();
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: _buildMediaPickerOption(
+                      icon: Icons.video_library_rounded,
+                      iconBg: const Color(0xFF06B6D4),
+                      title: 'Video Galeri',
+                      subtitle: 'Maksimal 1 menit',
+                      isDark: isDark,
+                      onTap: () {
+                        Navigator.pop(ctx);
+                        _openVideoGalleryStatus();
                       },
                     ),
                   ),
@@ -500,13 +640,35 @@ class StatusScreenState extends State<StatusScreen> with AutomaticKeepAliveClien
               },
             ),
             ListTile(
+              leading: const Icon(Icons.video_library_outlined, color: Color(0xFF06B6D4)),
+              title: Text('Buka Galeri Video HP (Maks 1m)', style: TextStyle(color: isDark ? Colors.white : const Color(0xFF111827))),
+              onTap: () async {
+                Navigator.pop(ctx);
+                await Future.delayed(const Duration(milliseconds: 100));
+                if (mounted) {
+                  _openVideoGalleryStatus();
+                }
+              },
+            ),
+            ListTile(
               leading: const Icon(Icons.camera_alt_outlined, color: Colors.green),
-              title: Text('Tambah Status Kamera', style: TextStyle(color: isDark ? Colors.white : const Color(0xFF111827))),
+              title: Text('Tambah Status Kamera Foto', style: TextStyle(color: isDark ? Colors.white : const Color(0xFF111827))),
               onTap: () async {
                 Navigator.pop(ctx);
                 await Future.delayed(const Duration(milliseconds: 100));
                 if (mounted) {
                   _openCameraStatus();
+                }
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.videocam_outlined, color: Color(0xFF8B5CF6)),
+              title: Text('Rekam Video Status (Maks 1m)', style: TextStyle(color: isDark ? Colors.white : const Color(0xFF111827))),
+              onTap: () async {
+                Navigator.pop(ctx);
+                await Future.delayed(const Duration(milliseconds: 100));
+                if (mounted) {
+                  _recordVideoStatus();
                 }
               },
             ),

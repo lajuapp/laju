@@ -73,6 +73,7 @@ flutter:
     - assets/images/onboarding/
     - assets/images/stickers/
     - assets/stickers/
+    - assets/i18n/
     - .env
 
 

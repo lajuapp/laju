@@ -460,10 +460,12 @@ class _StickerPickerSheetState extends State<StickerPickerSheet> {
     Widget thumbWidget;
     if (thumb != null && thumb.isNotEmpty) {
       if (thumb.startsWith('http://') || thumb.startsWith('https://') || thumb.startsWith('/')) {
-        thumbWidget = Image.network(
-          resolveMediaUrl(thumb),
+        thumbWidget = LajuCachedImage(
+          imageUrlOrPath: thumb,
           fit: BoxFit.contain,
-          errorBuilder: (_, __, ___) => const Icon(Icons.sticky_note_2_rounded, size: 20, color: AppColors.primary),
+          cacheWidth: 64,
+          cacheHeight: 64,
+          errorWidget: const Icon(Icons.sticky_note_2_rounded, size: 20, color: AppColors.primary),
         );
       } else {
         thumbWidget = Image.asset(thumb, fit: BoxFit.contain);

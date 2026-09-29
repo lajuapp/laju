@@ -43,7 +43,7 @@ export function DashboardPage() {
       subValue: `${stats?.overview.totalGroups ?? 0} grup • ${stats?.overview.totalMessages ?? 0} pesan`,
       icon: MessageSquare,
       color: 'text-violet-600 bg-violet-50',
-      link: '/conversations',
+      link: '/devices',
     },
     {
       title: 'Konten Wallpaper & Stiker',
@@ -76,8 +76,9 @@ export function DashboardPage() {
         </div>
       </div>
 
-      {/* Realtime Statistics: Online & Communicating Users */}
+      {/* Realtime Statistics: Device Online & Offline */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Online Devices Card (Green) */}
         <div className="bg-gradient-to-r from-emerald-500/10 via-emerald-500/5 to-transparent bg-white rounded-2xl border border-emerald-200/80 p-5 shadow-xs flex items-center justify-between">
           <div className="flex items-center gap-4">
             <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 border border-emerald-200/80 flex items-center justify-center flex-shrink-0">
@@ -85,16 +86,17 @@ export function DashboardPage() {
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-neutral-500 uppercase tracking-wider">
-                  Pengguna Online Saat Ini
+                <span className="text-xs font-bold text-emerald-800 uppercase tracking-wider">
+                  Perangkat Online
                 </span>
                 <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
               </div>
-              <div className="text-3xl font-black text-neutral-900 mt-0.5 tracking-tight">
-                {isLoading ? '...' : (stats?.overview.onlineUsers ?? 0)}
+              <div className="text-3xl font-black text-emerald-950 mt-0.5 tracking-tight flex items-baseline gap-2">
+                {isLoading ? '...' : (stats?.overview.onlineDevices ?? stats?.overview.onlineUsers ?? 0)}
+                <span className="text-xs font-semibold text-emerald-600">aktif sekarang</span>
               </div>
               <p className="text-[11px] text-neutral-500 mt-0.5">
-                Perangkat aktif terhubung dalam 5 menit terakhir
+                Perangkat terhubung aktif dalam 3-5 menit terakhir
               </p>
             </div>
           </div>
@@ -102,37 +104,38 @@ export function DashboardPage() {
             to="/devices"
             className="text-xs font-bold text-emerald-700 hover:text-emerald-800 bg-emerald-50 px-3 py-1.5 rounded-xl border border-emerald-200/70 hover:bg-emerald-100/60 transition-all flex items-center gap-1"
           >
-            Lihat Perangkat
+            Lihat Online
             <ArrowUpRight className="w-3.5 h-3.5" />
           </NavLink>
         </div>
 
-        <div className="bg-gradient-to-r from-indigo-500/10 via-indigo-500/5 to-transparent bg-white rounded-2xl border border-indigo-200/80 p-5 shadow-xs flex items-center justify-between">
+        {/* Offline Devices Card (Gray) */}
+        <div className="bg-gradient-to-r from-neutral-500/10 via-neutral-500/5 to-transparent bg-white rounded-2xl border border-neutral-200/80 p-5 shadow-xs flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 border border-indigo-200/80 flex items-center justify-center flex-shrink-0">
-              <PhoneCall className="w-6 h-6" />
+            <div className="w-12 h-12 rounded-2xl bg-neutral-100 text-neutral-500 border border-neutral-200/80 flex items-center justify-center flex-shrink-0">
+              <Smartphone className="w-6 h-6" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-neutral-500 uppercase tracking-wider">
-                  Sedang Berkomunikasi
+                <span className="text-xs font-bold text-neutral-600 uppercase tracking-wider">
+                  Perangkat Offline
                 </span>
-                <span className="w-2 h-2 rounded-full bg-indigo-500" />
+                <span className="w-2 h-2 rounded-full bg-neutral-400" />
               </div>
-              <div className="text-3xl font-black text-neutral-900 mt-0.5 tracking-tight">
-                {isLoading ? '...' : (stats?.overview.communicatingUsers ?? 0)}
+              <div className="text-3xl font-black text-neutral-800 mt-0.5 tracking-tight flex items-baseline gap-2">
+                {isLoading ? '...' : (stats?.overview.offlineDevices ?? Math.max(0, (stats?.overview.totalDevices ?? 0) - (stats?.overview.onlineDevices ?? stats?.overview.onlineUsers ?? 0)))}
+                <span className="text-xs font-semibold text-neutral-500">tidak aktif</span>
               </div>
               <p className="text-[11px] text-neutral-500 mt-0.5">
-                {stats?.overview.activeCalls ? `${stats.overview.activeCalls} panggilan aktif • ` : ''}
-                Sesi panggilan & interaksi pesan 15 menit terakhir
+                Perangkat terdaftar yang sedang tidak terhubung atau di luar jaringan
               </p>
             </div>
           </div>
           <NavLink
-            to="/conversations"
-            className="text-xs font-bold text-indigo-700 hover:text-indigo-800 bg-indigo-50 px-3 py-1.5 rounded-xl border border-indigo-200/70 hover:bg-indigo-100/60 transition-all flex items-center gap-1"
+            to="/devices"
+            className="text-xs font-bold text-neutral-700 hover:text-neutral-900 bg-neutral-100 px-3 py-1.5 rounded-xl border border-neutral-200/80 hover:bg-neutral-200/60 transition-all flex items-center gap-1"
           >
-            Audit Obrolan
+            Kelola Perangkat
             <ArrowUpRight className="w-3.5 h-3.5" />
           </NavLink>
         </div>

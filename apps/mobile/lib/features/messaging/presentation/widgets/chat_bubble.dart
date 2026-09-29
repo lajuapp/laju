@@ -15,6 +15,7 @@ class ChatBubble extends StatelessWidget {
   final ValueChanged<MessageModel>? onReply;
   final ValueChanged<MessageModel>? onEdit;
   final VoidCallback? onDelete;
+  final VoidCallback? onRecall;
   final bool isGroup;
   final double topMargin;
   final double bottomMargin;
@@ -26,6 +27,7 @@ class ChatBubble extends StatelessWidget {
     this.onReply,
     this.onEdit,
     this.onDelete,
+    this.onRecall,
     this.isGroup = false,
     this.topMargin = 1.0,
     this.bottomMargin = 1.0,
@@ -33,9 +35,66 @@ class ChatBubble extends StatelessWidget {
 
   static const List<String> kQuickReactions = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
 
+  void _confirmRecallMessage(BuildContext context) {
+    final isDark = ThemeModeController.instance.isDarkMode(context);
+
+    showDialog(
+      context: context,
+      builder: (dlgCtx) => AlertDialog(
+        backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            const Icon(Icons.undo_rounded, color: Color(0xFFF59E0B), size: 24),
+            const SizedBox(width: 8),
+            Text(
+              'Tarik Pesan?',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+                color: isDark ? Colors.white : const Color(0xFF111827),
+              ),
+            ),
+          ],
+        ),
+        content: Text(
+          'Pesan ini akan ditarik dan dihapus untuk semua orang di dalam percakapan. Aksi ini tidak dapat dibatalkan.',
+          style: TextStyle(
+            fontSize: 14,
+            color: isDark ? Colors.white70 : const Color(0xFF4B5563),
+            height: 1.4,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dlgCtx),
+            child: Text(
+              'Batal',
+              style: TextStyle(color: isDark ? Colors.white60 : Colors.grey),
+            ),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFF59E0B),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            onPressed: () {
+              Navigator.pop(dlgCtx);
+              onRecall?.call();
+            },
+            child: const Text('Tarik untuk Semua Orang'),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _showMessageOptions(BuildContext context) {
     HapticFeedback.mediumImpact();
     final isDark = ThemeModeController.instance.isDarkMode(context);
+    final messageAge = DateTime.now().difference(message.timestamp);
+    final canRecall = message.isOutgoing && messageAge.inMinutes <= 30 && !message.isRecalled;
 
     showModalBottomSheet(
       context: context,
@@ -48,50 +107,52 @@ class ChatBubble extends StatelessWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // Quick Emoji Reaction Bar
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                  decoration: BoxDecoration(
-                    color: isDark ? const Color(0xFF1E293B) : Colors.white,
-                    borderRadius: BorderRadius.circular(32),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.25),
-                        blurRadius: 16,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceAround,
-                    children: kQuickReactions.map((emoji) {
-                      final isSelected = message.reactions.contains(emoji);
-                      return GestureDetector(
-                        onTap: () {
-                          Navigator.pop(sheetContext);
-                          onReactionSelected?.call(emoji);
-                        },
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 150),
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: isSelected
-                                ? AppColors.primary.withValues(alpha: 0.2)
-                                : Colors.transparent,
-                            shape: BoxShape.circle,
-                          ),
-                          child: Text(
-                            emoji,
-                            style: TextStyle(
-                              fontSize: isSelected ? 30 : 26,
+                if (!message.isRecalled) ...[
+                  // Quick Emoji Reaction Bar
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: isDark ? const Color(0xFF1E293B) : Colors.white,
+                      borderRadius: BorderRadius.circular(32),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.25),
+                          blurRadius: 16,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceAround,
+                      children: kQuickReactions.map((emoji) {
+                        final isSelected = message.reactions.contains(emoji);
+                        return GestureDetector(
+                          onTap: () {
+                            Navigator.pop(sheetContext);
+                            onReactionSelected?.call(emoji);
+                          },
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 150),
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: isSelected
+                                  ? AppColors.primary.withValues(alpha: 0.2)
+                                  : Colors.transparent,
+                              shape: BoxShape.circle,
+                            ),
+                            child: Text(
+                              emoji,
+                              style: TextStyle(
+                                fontSize: isSelected ? 30 : 26,
+                              ),
                             ),
                           ),
-                        ),
-                      );
-                    }).toList(),
+                        );
+                      }).toList(),
+                    ),
                   ),
-                ),
-                const SizedBox(height: 12),
+                  const SizedBox(height: 12),
+                ],
 
                 // Context Action Menu Card
                 Material(
@@ -103,43 +164,27 @@ class ChatBubble extends StatelessWidget {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      ListTile(
-                        leading: const Icon(Icons.reply_rounded, color: AppColors.primary),
-                        title: Text(
-                          'Balas',
-                          style: TextStyle(
-                            color: isDark ? Colors.white : const Color(0xFF111827),
-                            fontWeight: FontWeight.w600,
+                      if (!message.isRecalled) ...[
+                        ListTile(
+                          leading: const Icon(Icons.reply_rounded, color: AppColors.primary),
+                          title: Text(
+                            'Balas',
+                            style: TextStyle(
+                              color: isDark ? Colors.white : const Color(0xFF111827),
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
+                          onTap: () {
+                            Navigator.pop(sheetContext);
+                            onReply?.call(message);
+                          },
                         ),
-                        onTap: () {
-                          Navigator.pop(sheetContext);
-                          onReply?.call(message);
-                        },
-                      ),
-                      Divider(height: 1, color: isDark ? Colors.white10 : Colors.black12),
-                      ListTile(
-                        leading: const Icon(Icons.copy_rounded, color: AppColors.cyan),
-                        title: Text(
-                          'Salin Teks',
-                          style: TextStyle(
-                            color: isDark ? Colors.white : const Color(0xFF111827),
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        onTap: () {
-                          Navigator.pop(sheetContext);
-                          Clipboard.setData(ClipboardData(text: message.content));
-                          LajuToast.info(context, 'Teks pesan disalin ke clipboard');
-                        },
-                      ),
-                      if (message.isOutgoing) ...[
-                        if (message.contentType == MessageContentType.text) ...[
+                        if (message.content.isNotEmpty && !message.content.startsWith('{')) ...[
                           Divider(height: 1, color: isDark ? Colors.white10 : Colors.black12),
                           ListTile(
-                            leading: const Icon(Icons.edit_rounded, color: AppColors.primary),
+                            leading: const Icon(Icons.copy_rounded, color: AppColors.cyan),
                             title: Text(
-                              'Edit Pesan',
+                              'Salin Teks',
                               style: TextStyle(
                                 color: isDark ? Colors.white : const Color(0xFF111827),
                                 fontWeight: FontWeight.w600,
@@ -147,27 +192,80 @@ class ChatBubble extends StatelessWidget {
                             ),
                             onTap: () {
                               Navigator.pop(sheetContext);
-                              onEdit?.call(message);
+                              Clipboard.setData(ClipboardData(text: message.content));
+                              LajuToast.info(context, 'Teks pesan disalin ke clipboard');
                             },
                           ),
                         ],
-                        Divider(height: 1, color: isDark ? Colors.white10 : Colors.black12),
-                        ListTile(
-                          leading: const Icon(Icons.delete_outline_rounded, color: AppColors.danger),
-                          title: const Text(
-                            'Hapus Pesan',
-                            style: TextStyle(
-                              color: AppColors.danger,
-                              fontWeight: FontWeight.w600,
+                        if (message.isOutgoing) ...[
+                          if (message.contentType == MessageContentType.text) ...[
+                            Divider(height: 1, color: isDark ? Colors.white10 : Colors.black12),
+                            ListTile(
+                              leading: const Icon(Icons.edit_rounded, color: AppColors.primary),
+                              title: Text(
+                                'Edit Pesan',
+                                style: TextStyle(
+                                  color: isDark ? Colors.white : const Color(0xFF111827),
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              onTap: () {
+                                Navigator.pop(sheetContext);
+                                onEdit?.call(message);
+                              },
                             ),
-                          ),
-                          onTap: () {
-                            Navigator.pop(sheetContext);
-                            onDelete?.call();
-                            LajuToast.info(context, 'Pesan dihapus');
-                          },
-                        ),
+                          ],
+                          if (canRecall) ...[
+                            Divider(height: 1, color: isDark ? Colors.white10 : Colors.black12),
+                            ListTile(
+                              leading: const Icon(Icons.undo_rounded, color: Color(0xFFF59E0B)),
+                              title: const Text(
+                                'Tarik Pesan',
+                                style: TextStyle(
+                                  color: Color(0xFFF59E0B),
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              subtitle: Text(
+                                'Tarik untuk semua orang (sisa ${30 - messageAge.inMinutes} mnt)',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: isDark ? Colors.white54 : Colors.black54,
+                                ),
+                              ),
+                              onTap: () {
+                                Navigator.pop(sheetContext);
+                                _confirmRecallMessage(context);
+                              },
+                            ),
+                          ],
+                        ],
                       ],
+                      Divider(height: 1, color: isDark ? Colors.white10 : Colors.black12),
+                      ListTile(
+                        leading: const Icon(Icons.delete_outline_rounded, color: AppColors.danger),
+                        title: Text(
+                          message.isOutgoing ? 'Hapus untuk Saya' : 'Hapus Pesan',
+                          style: const TextStyle(
+                            color: AppColors.danger,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        subtitle: (message.isOutgoing && !canRecall && !message.isRecalled)
+                            ? Text(
+                                'Tidak dapat ditarik (> 30 menit)',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: isDark ? Colors.white38 : Colors.black38,
+                                ),
+                              )
+                            : null,
+                        onTap: () {
+                          Navigator.pop(sheetContext);
+                          onDelete?.call();
+                          LajuToast.info(context, 'Pesan dihapus untuk Anda');
+                        },
+                      ),
                     ],
                   ),
                 ),
@@ -244,6 +342,10 @@ class ChatBubble extends StatelessWidget {
     final isOut = message.isOutgoing;
     final isDark = ThemeModeController.instance.isDarkMode(context);
     final timeStr = DateFormat('HH:mm').format(message.timestamp.toLocal());
+
+    if (message.isRecalled) {
+      return _buildRecalledBubble(context, isDark, isOut, timeStr);
+    }
 
     if (_isStickerMessage()) {
       return _buildStickerBubble(context, isDark, isOut, timeStr);
@@ -452,6 +554,70 @@ class ChatBubble extends StatelessWidget {
       isDark: isDark,
       onReply: onReply != null ? () => onReply!(message) : null,
       child: bubbleWidget,
+    );
+  }
+
+  Widget _buildRecalledBubble(BuildContext context, bool isDark, bool isOut, String timeStr) {
+    return Align(
+      alignment: isOut ? Alignment.centerRight : Alignment.centerLeft,
+      child: GestureDetector(
+        onLongPress: () => _showMessageOptions(context),
+        child: Container(
+          margin: EdgeInsets.only(
+            top: topMargin,
+            bottom: bottomMargin,
+          ),
+          padding: EdgeInsets.only(
+            left: isOut ? 48 : 6,
+            right: isOut ? 6 : 48,
+          ),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: isDark
+                  ? (isOut ? const Color(0xFF1B2B28) : const Color(0xFF1E293B))
+                  : (isOut ? const Color(0xFFE8F5E9) : const Color(0xFFF1F5F9)),
+              borderRadius: BorderRadius.only(
+                topLeft: const Radius.circular(10),
+                topRight: const Radius.circular(10),
+                bottomLeft: Radius.circular(isOut ? 10 : 2),
+                bottomRight: Radius.circular(isOut ? 2 : 10),
+              ),
+              border: Border.all(
+                color: isDark ? Colors.white10 : Colors.black12,
+                width: 0.8,
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.block_rounded,
+                  size: 13,
+                  color: isDark ? Colors.white38 : Colors.black38,
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  isOut ? 'Anda menarik pesan ini' : 'Pesan ini telah ditarik',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontStyle: FontStyle.italic,
+                    color: isDark ? Colors.white54 : Colors.black54,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  timeStr,
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: isDark ? Colors.white30 : Colors.black38,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 
@@ -1066,10 +1232,12 @@ class ChatBubble extends StatelessWidget {
         path.startsWith('https://') ||
         path.startsWith('/') ||
         path.startsWith('admin/media')) {
-      return Image.network(
-        resolveMediaUrl(path),
+      return LajuCachedImage(
+        imageUrlOrPath: path,
         fit: fit,
-        errorBuilder: (_, __, ___) => fallbackIcon,
+        cacheWidth: 512,
+        cacheHeight: 512,
+        errorWidget: fallbackIcon,
       );
     }
     if (File(path).existsSync()) {
@@ -1091,10 +1259,12 @@ class ChatBubble extends StatelessWidget {
       final found = StickerService.instance.findSticker(path);
       if (found != null) {
         if (found.isRemote) {
-          return Image.network(
-            resolveMediaUrl(found.effectivePathOrUrl),
+          return LajuAnimatedSticker(
+            pathOrUrl: found.effectivePathOrUrl,
+            width: 140,
+            height: 140,
             fit: BoxFit.contain,
-            errorBuilder: (_, __, ___) => fallbackIcon,
+            fallback: fallbackIcon,
           );
         } else {
           return Image.asset(
@@ -1220,13 +1390,13 @@ class ChatBubble extends StatelessWidget {
                   child: Stack(
                     fit: StackFit.expand,
                     children: [
-                      Image.network(
-                        tileUrl,
+                      LajuCachedImage(
+                        imageUrlOrPath: tileUrl,
                         fit: BoxFit.cover,
-                        headers: const {
+                        httpHeaders: const {
                           'User-Agent': 'LajuMobileApp/1.0 (Privacy-First Secure Messenger)',
                         },
-                        errorBuilder: (context, error, stackTrace) => Container(
+                        errorWidget: Container(
                           color: isDark ? const Color(0xFF1E293B) : const Color(0xFFE2E8F0),
                           child: const Center(
                             child: Icon(Icons.map_rounded, color: Colors.grey, size: 36),

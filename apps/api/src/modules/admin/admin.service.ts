@@ -219,6 +219,7 @@ export class AdminService {
     ]);
 
     const onlineUsers = onlineDevicesCount;
+    const offlineDevicesCount = Math.max(0, totalDevices - onlineDevicesCount);
     const communicatingUsers = (activeCallsCount * 2) + Math.min(recentMessagesCount, activeUsers);
 
     return {
@@ -227,6 +228,8 @@ export class AdminService {
         activeUsers,
         suspendedUsers,
         totalDevices,
+        onlineDevices: onlineDevicesCount,
+        offlineDevices: offlineDevicesCount,
         totalConversations,
         totalGroups,
         totalMessages,
@@ -314,10 +317,20 @@ export class AdminService {
   }
 
   async listDevices() {
-    return this.prisma.device.findMany({
+    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+    const devices = await this.prisma.device.findMany({
       include: {
         user: { select: { id: true, username: true } }
-      }
+      },
+      orderBy: { lastSeenAt: 'desc' }
+    });
+
+    return devices.map((d) => {
+      const isOnline = d.status === 'ACTIVE' && d.lastSeenAt !== null && d.lastSeenAt >= fiveMinutesAgo;
+      return {
+        ...d,
+        isOnline
+      };
     });
   }
 

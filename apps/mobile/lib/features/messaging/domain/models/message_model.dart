@@ -36,6 +36,7 @@ class MessageModel {
   final MessageModel? replyTo;
   final List<String> reactions;
   final bool isEdited;
+  final bool isDeleted;
 
   const MessageModel({
     required this.id,
@@ -55,7 +56,10 @@ class MessageModel {
     this.replyTo,
     this.reactions = const [],
     this.isEdited = false,
+    this.isDeleted = false,
   });
+
+  bool get isRecalled => isDeleted || content == '__DELETED_FOR_EVERYONE__';
 
   MessageModel copyWith({
     String? id,
@@ -75,6 +79,7 @@ class MessageModel {
     MessageModel? replyTo,
     List<String>? reactions,
     bool? isEdited,
+    bool? isDeleted,
   }) {
     return MessageModel(
       id: id ?? this.id,
@@ -94,11 +99,15 @@ class MessageModel {
       replyTo: replyTo ?? this.replyTo,
       reactions: reactions ?? this.reactions,
       isEdited: isEdited ?? this.isEdited,
+      isDeleted: isDeleted ?? this.isDeleted,
     );
   }
 
   /// Clean, human-readable snippet for quotes, reply previews, and notifications
   String get displaySnippet {
+    if (isRecalled) {
+      return isOutgoing ? 'Anda menarik pesan ini' : 'Pesan ini telah ditarik';
+    }
     if (contentType == MessageContentType.sticker ||
         content.startsWith('sticker:') ||
         (attachmentName != null && (attachmentName!.startsWith('cat_') || attachmentName!.contains('sticker')))) {

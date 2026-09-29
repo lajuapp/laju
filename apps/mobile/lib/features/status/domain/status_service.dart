@@ -15,9 +15,9 @@ class StatusService {
   List<StatusContactGroup> cachedContactGroups = [];
   List<StatusStoryItem> cachedOfficialStatuses = [];
 
-  /// Create a new status story (text or image)
+  /// Create a new status story (text, image, or video)
   Future<StatusStoryItem?> postStatus({
-    required String type, // 'TEXT' or 'IMAGE'
+    required String type, // 'TEXT', 'IMAGE', or 'VIDEO'
     required String content,
     String? caption,
     Color? backgroundColor,
@@ -33,6 +33,30 @@ class StatusService {
           final bytes = await file.readAsBytes();
           final b64 = base64Encode(bytes);
           processedContent = 'data:image/jpeg;base64,$b64';
+        }
+      } else if (type == 'VIDEO' && !content.startsWith('http') && !content.startsWith('data:video')) {
+        final file = File(content);
+        if (await file.exists()) {
+          final bytes = await file.readAsBytes();
+          final b64 = base64Encode(bytes);
+          // Try uploading to server endpoint first for optimal streaming
+          try {
+            final uploadRes = await ApiClient.instance.post(
+              ApiEndpoints.statusUpload,
+              body: {
+                'filename': file.path.split('/').last,
+                'mimeType': 'video/mp4',
+                'base64Data': b64,
+              },
+            );
+            if (uploadRes.isSuccess && uploadRes.rawJson is Map && uploadRes.rawJson['url'] != null) {
+              processedContent = uploadRes.rawJson['url'].toString();
+            } else {
+              processedContent = 'data:video/mp4;base64,$b64';
+            }
+          } catch (_) {
+            processedContent = 'data:video/mp4;base64,$b64';
+          }
         }
       }
 
@@ -258,8 +282,9 @@ class StatusService {
       } catch (_) {}
     }
 
-    final isPhoto = mediaType == 'IMAGE' && mediaUrl != null && mediaUrl.isNotEmpty;
-    final resolvedUrl = isPhoto ? resolveMediaUrl(mediaUrl) : null;
+    final isVideo = mediaType == 'VIDEO' && mediaUrl != null && mediaUrl.isNotEmpty;
+    final isPhoto = (mediaType == 'IMAGE' || isVideo) && mediaUrl != null && mediaUrl.isNotEmpty;
+    final resolvedUrl = (isPhoto || isVideo) ? resolveMediaUrl(mediaUrl!) : null;
 
     final viewers = isViewed
         ? [
@@ -273,11 +298,13 @@ class StatusService {
 
     return StatusStoryItem(
       id: id,
-      text: isPhoto ? (content.isNotEmpty ? content : title) : '$title\n\n$content',
+      text: (isPhoto || isVideo) ? (content.isNotEmpty ? content : title) : '$title\n\n$content',
       time: timeStr,
       backgroundColor: bgColor,
       imageAsset: resolvedUrl,
       isPhoto: isPhoto,
+      isVideo: isVideo,
+      videoUrl: isVideo ? resolvedUrl : null,
       isOfficial: true,
       actionTitle: actionTitle,
       actionUrl: actionUrl,
@@ -351,15 +378,19 @@ class StatusService {
         .map((v) => StatusViewerItem.fromJson(v as Map<String, dynamic>))
         .toList();
 
-    final isPhoto = type == 'IMAGE' || type == 'VIDEO';
+    final isVideo = type == 'VIDEO';
+    final isPhoto = type == 'IMAGE' || isVideo;
+    final resolvedMedia = (isPhoto || isVideo) ? resolveMediaUrl(content) : null;
 
     return StatusStoryItem(
       id: id,
       text: isPhoto ? (caption ?? '') : content,
       time: timeStr,
       backgroundColor: bgColor,
-      imageAsset: isPhoto ? content : null,
+      imageAsset: resolvedMedia,
       isPhoto: isPhoto,
+      isVideo: isVideo,
+      videoUrl: isVideo ? resolvedMedia : null,
       viewers: viewers,
       createdAt: createdAtDt,
       expiresAt: expiresAtDt,

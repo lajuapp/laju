@@ -183,26 +183,25 @@ class _WallpaperSettingsScreenState extends State<WallpaperSettingsScreen> {
                               // Remote Wallpaper Image from Backoffice if present
                               if (activeWallpaper.hasRemoteImage)
                                 Positioned.fill(
-                                  child: Image.network(
-                                    resolveMediaUrl(activeWallpaper.remoteImageUrl),
+                                  child: LajuCachedImage(
+                                    imageUrlOrPath: activeWallpaper.remoteImageUrl,
                                     fit: BoxFit.cover,
-                                    loadingBuilder: (context, child, progress) {
-                                      if (progress == null) return child;
-                                      return Container(
-                                        color: activeWallpaper.backgroundColor,
-                                        child: const Center(
-                                          child: SizedBox(
-                                            width: 24,
-                                            height: 24,
-                                            child: CircularProgressIndicator(
-                                              strokeWidth: 2,
-                                              color: AppColors.primary,
-                                            ),
+                                    cacheWidth: 600,
+                                    cacheHeight: 1200,
+                                    placeholder: Container(
+                                      color: activeWallpaper.backgroundColor,
+                                      child: const Center(
+                                        child: SizedBox(
+                                          width: 24,
+                                          height: 24,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                            color: AppColors.primary,
                                           ),
                                         ),
-                                      );
-                                    },
-                                    errorBuilder: (_, _, _) => Container(
+                                      ),
+                                    ),
+                                    errorWidget: Container(
                                       color: activeWallpaper.backgroundColor,
                                     ),
                                   ),
@@ -421,10 +420,13 @@ class _WallpaperSettingsScreenState extends State<WallpaperSettingsScreen> {
                                   // Remote Image preview if present
                                   if (item.hasRemoteImage)
                                     Positioned.fill(
-                                      child: Image.network(
-                                        resolveMediaUrl(item.remoteImageUrl),
+                                      child: LajuCachedImage(
+                                        imageUrlOrPath: item.remoteImageUrl,
                                         fit: BoxFit.cover,
-                                        errorBuilder: (_, _, _) => const SizedBox(),
+                                        cacheWidth: 200,
+                                        cacheHeight: 350,
+                                        placeholder: const SizedBox(),
+                                        errorWidget: const SizedBox(),
                                       ),
                                     ),
                                 ],

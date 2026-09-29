@@ -39,6 +39,8 @@ export interface DashboardStats {
     activeUsers: number;
     suspendedUsers: number;
     totalDevices: number;
+    onlineDevices?: number;
+    offlineDevices?: number;
     totalConversations: number;
     totalGroups: number;
     totalMessages: number;
@@ -75,6 +77,7 @@ export interface DeviceItem {
   status: 'ACTIVE' | 'REVOKED' | 'CONTAINED';
   lastSeenAt: string;
   createdAt: string;
+  isOnline?: boolean;
 }
 
 export interface ChatWallpaperItem {
@@ -157,7 +160,7 @@ export interface SystemAnnouncement {
   targetUserIds?: string[];
   targetUserCount?: number;
   isActive: boolean;
-  mediaType?: 'TEXT' | 'IMAGE';
+  mediaType?: 'TEXT' | 'IMAGE' | 'VIDEO';
   mediaUrl?: string;
   backgroundColor?: string;
   actionUrl?: string;

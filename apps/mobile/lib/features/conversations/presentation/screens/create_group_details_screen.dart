@@ -74,10 +74,16 @@ class _CreateGroupDetailsScreenState extends State<CreateGroupDetailsScreen> {
                     color: isDark ? Colors.white : const Color(0xFF111827),
                   ),
                 ),
-                onTap: () {
+                onTap: () async {
                   Navigator.pop(bCtx);
-                  setState(() => _avatarPath = 'camera_photo_picked');
-                  LajuToast.info(context, context.tr('photoUpdated'));
+                  final path = await DeviceMediaService.openCamera();
+                  if (path != null && path.isNotEmpty) {
+                    final savedPath = await DeviceMediaService.savePermanentAvatar(path);
+                    if (mounted) {
+                      setState(() => _avatarPath = savedPath);
+                      LajuToast.success(context, context.tr('photoUpdated'));
+                    }
+                  }
                 },
               ),
               ListTile(
@@ -89,10 +95,16 @@ class _CreateGroupDetailsScreenState extends State<CreateGroupDetailsScreen> {
                     color: isDark ? Colors.white : const Color(0xFF111827),
                   ),
                 ),
-                onTap: () {
+                onTap: () async {
                   Navigator.pop(bCtx);
-                  setState(() => _avatarPath = 'gallery_photo_picked');
-                  LajuToast.info(context, context.tr('photoUpdated'));
+                  final path = await DeviceMediaService.openGallery();
+                  if (path != null && path.isNotEmpty) {
+                    final savedPath = await DeviceMediaService.savePermanentAvatar(path);
+                    if (mounted) {
+                      setState(() => _avatarPath = savedPath);
+                      LajuToast.success(context, context.tr('photoUpdated'));
+                    }
+                  }
                 },
               ),
               if (_avatarPath != null)
@@ -384,6 +396,7 @@ class _CreateGroupDetailsScreenState extends State<CreateGroupDetailsScreen> {
         isGroup: true,
         isOnline: true,
         isKeyVerified: true,
+        avatarUrl: newGroup.avatarPath,
       ),
     ]);
 
@@ -473,30 +486,41 @@ class _CreateGroupDetailsScreenState extends State<CreateGroupDetailsScreen> {
                   onTap: _pickAvatar,
                   child: Stack(
                     children: [
-                      Container(
-                        width: 60,
-                        height: 60,
-                        decoration: BoxDecoration(
-                          color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
-                          shape: BoxShape.circle,
+                      if (_avatarPath != null && _avatarPath!.isNotEmpty)
+                        ModernAvatar(
+                          name: _nameController.text.trim().isEmpty ? 'Grup' : _nameController.text.trim(),
+                          imagePath: _avatarPath,
+                          radius: 30,
+                        )
+                      else
+                        Container(
+                          width: 60,
+                          height: 60,
+                          decoration: BoxDecoration(
+                            color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
+                            shape: BoxShape.circle,
+                          ),
+                          alignment: Alignment.center,
+                          child: Icon(
+                            Icons.camera_alt_rounded,
+                            color: textSecondary,
+                            size: 26,
+                          ),
                         ),
-                        alignment: Alignment.center,
-                        child: Icon(
-                          _avatarPath != null ? Icons.image_rounded : Icons.camera_alt_rounded,
-                          color: _avatarPath != null ? AppColors.primary : textSecondary,
-                          size: 26,
-                        ),
-                      ),
                       Positioned(
                         right: 0,
                         bottom: 0,
                         child: Container(
-                          padding: const EdgeInsets.all(3),
-                          decoration: const BoxDecoration(
+                          padding: const EdgeInsets.all(4),
+                          decoration: BoxDecoration(
                             color: AppColors.primary,
                             shape: BoxShape.circle,
+                            border: Border.all(
+                              color: isDark ? AppColors.darkSurface : Colors.white,
+                              width: 1.5,
+                            ),
                           ),
-                          child: const Icon(Icons.edit, size: 11, color: Colors.white),
+                          child: const Icon(Icons.camera_alt_rounded, size: 12, color: Colors.white),
                         ),
                       ),
                     ],

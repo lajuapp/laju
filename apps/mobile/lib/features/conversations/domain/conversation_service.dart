@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../../../core/core.dart';
 import '../domain/models/conversation_model.dart';
+import 'group_controller.dart';
 import '../../messaging/domain/models/message_model.dart';
 import '../../messaging/presentation/screens/chat_screen.dart';
 import '../../settings/domain/privacy_controller.dart';
@@ -427,6 +428,11 @@ class ConversationService {
             }
           }
 
+          if (isGroup) {
+            avatarUrl = item['avatarUrl'] as String? ??
+                GroupController.instance.getGroup(item['id']?.toString() ?? '')?.avatarPath;
+          }
+
           if (title.isEmpty) {
             title = isGroup ? 'Group Chat' : 'Direct Chat';
           }
@@ -493,7 +499,7 @@ class ConversationService {
             lastMessageTime: DateHelper.parseUtc(item['updatedAt']),
             unreadCount: unreadCount,
             isGroup: isGroup,
-            isOnline: true,
+            isOnline: !isGroup && (item['isOnline'] == true),
             isKeyVerified: true,
             isPinned: isPinned,
             isLocked: isLocked,
@@ -593,6 +599,7 @@ class ConversationService {
     String? wallpaperId,
     String? killPin,
     List<String>? authorizedWipeUserIds,
+    String? avatarUrl,
   }) async {
     final validParticipants = participantUserIds
         .map((id) => id.trim())
@@ -611,6 +618,7 @@ class ConversationService {
           'type': 'GROUP',
           'title': title,
           if (description != null && description.isNotEmpty) 'description': description,
+          if (avatarUrl != null && avatarUrl.isNotEmpty) 'avatarUrl': avatarUrl,
           'participantUserIds': validParticipants,
           if (wallpaperId != null && wallpaperId.isNotEmpty) 'wallpaperId': wallpaperId,
           if (killPin != null && killPin.isNotEmpty) 'killPin': killPin,
@@ -669,6 +677,7 @@ class ConversationService {
     String? title,
     String? description,
     Map<String, dynamic>? permissions,
+    String? avatarUrl,
   }) async {
     try {
       final response = await ApiClient.instance.patch(
@@ -677,6 +686,7 @@ class ConversationService {
           if (title != null) 'title': title,
           if (description != null) 'description': description,
           if (permissions != null) 'permissions': permissions,
+          if (avatarUrl != null) 'avatarUrl': avatarUrl,
         },
       );
       return response.isSuccess;
@@ -973,21 +983,24 @@ class ConversationService {
               }
             }
 
+            final isDeletedState = m['state'] == 'DELETED' || rawCiphertext == '__DELETED_FOR_EVERYONE__';
+
             return MessageModel(
               id: m['id'],
               clientMessageId: m['clientMessageId'] as String?,
               conversationId: conversationId,
               senderName: isOutgoing ? 'You' : (m['senderUser']?['username'] ?? 'Contact'),
-              content: contentText,
-              attachmentPath: mediaData,
-              attachmentName: attName,
-              attachmentSize: attSize,
-              contentType: contentType,
+              content: isDeletedState ? '__DELETED_FOR_EVERYONE__' : contentText,
+              attachmentPath: isDeletedState ? null : mediaData,
+              attachmentName: isDeletedState ? null : attName,
+              attachmentSize: isDeletedState ? null : attSize,
+              contentType: isDeletedState ? MessageContentType.text : contentType,
               timestamp: DateHelper.parseUtc(m['createdAt']),
               isOutgoing: isOutgoing,
               status: MessageDeliveryStatus.delivered,
-              replyTo: parsedReplyTo,
-              reactions: reactionsList,
+              replyTo: isDeletedState ? null : parsedReplyTo,
+              reactions: isDeletedState ? const [] : reactionsList,
+              isDeleted: isDeletedState,
             );
           }).toList();
 
@@ -1002,12 +1015,16 @@ class ConversationService {
               finalMessages = deduplicated.where((m) => m.timestamp.isAfter(clearedAt)).toList();
             }
           }
+
+          final deletedForMe = await LocalDatabase.instance.getDeletedForMeIds();
+          final filtered = finalMessages.where((m) => !deletedForMe.contains(m.id)).toList();
+
           // Persist to local cache and memory cache
-          updateMemoryMessages(conversationId, finalMessages);
-          if (finalMessages.isNotEmpty) {
-            LocalDatabase.instance.upsertMessages(conversationId, finalMessages);
+          updateMemoryMessages(conversationId, filtered);
+          if (filtered.isNotEmpty) {
+            LocalDatabase.instance.upsertMessages(conversationId, filtered);
           }
-          return finalMessages;
+          return filtered;
         }
       }
     } catch (e) {
@@ -1320,19 +1337,51 @@ class ConversationService {
     }
   }
 
-  /// Delete a message for everyone
-  Future<bool> deleteMessage(String messageId) async {
+  /// Recall a message for everyone (only permitted if <= 30 minutes old)
+  Future<bool> recallMessage(String messageId, [String? conversationId]) async {
     try {
       final response = await ApiClient.instance.delete(
         ApiEndpoints.messageById(messageId),
       );
-      await LocalDatabase.instance.deleteMessage(messageId);
-      return response.isSuccess;
+      if (response.isSuccess) {
+        await LocalDatabase.instance.markMessageDeleted(messageId);
+        if (conversationId != null && _inMemoryMessages.containsKey(conversationId)) {
+          final list = _inMemoryMessages[conversationId]!;
+          final idx = list.indexWhere((m) => m.id == messageId);
+          if (idx != -1) {
+            list[idx] = list[idx].copyWith(
+              content: '__DELETED_FOR_EVERYONE__',
+              isDeleted: true,
+              attachmentName: null,
+              attachmentSize: null,
+              attachmentPath: null,
+            );
+          }
+        }
+        return true;
+      } else {
+        final err = response.errorMessage ?? 'Gagal menarik pesan';
+        debugPrint('[ConversationService] recallMessage failed: ${response.statusCode} $err');
+        return false;
+      }
     } catch (e) {
-      debugPrint('[ConversationService] deleteMessage error: $e');
-      await LocalDatabase.instance.deleteMessage(messageId);
+      debugPrint('[ConversationService] recallMessage error: $e');
       return false;
     }
+  }
+
+  /// Delete a message for current user only
+  Future<void> deleteMessageForMe(String messageId, [String? conversationId]) async {
+    await LocalDatabase.instance.deleteMessageForMe(messageId);
+    if (conversationId != null && _inMemoryMessages.containsKey(conversationId)) {
+      _inMemoryMessages[conversationId]!.removeWhere((m) => m.id == messageId);
+    }
+  }
+
+  /// Delete a message locally (delegates to deleteMessageForMe)
+  Future<bool> deleteMessage(String messageId, [String? conversationId]) async {
+    await deleteMessageForMe(messageId, conversationId);
+    return true;
   }
 
   /// Edit an existing message

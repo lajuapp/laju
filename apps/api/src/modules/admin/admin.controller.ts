@@ -16,7 +16,7 @@ import {
   BadRequestException,
   Query
 } from '@nestjs/common';
-import { Response } from 'express';
+import { Request, Response } from 'express';
 import { AdminService } from './admin.service';
 import { SeaweedFsService } from '../../infrastructure/seaweedfs/seaweedfs.service';
 import {
@@ -305,7 +305,11 @@ export class AdminController {
   }
 
   @Get('media/:blobId')
-  async getMedia(@Param('blobId') blobId: string, @Res() res: Response) {
+  async getMedia(
+    @Param('blobId') blobId: string,
+    @Req() req: Request,
+    @Res() res: Response
+  ) {
     const safeBlobId = path.basename(blobId);
     if (!safeBlobId || safeBlobId.includes('..')) {
       return res.status(HttpStatus.BAD_REQUEST).json({ error: 'Invalid blob ID' });
@@ -318,8 +322,12 @@ export class AdminController {
     else if (ext === 'gif') mime = 'image/gif';
     else if (ext === 'svg') mime = 'image/svg+xml';
     else if (ext === 'apng') mime = 'image/apng';
+    else if (ext === 'mp4') mime = 'video/mp4';
+    else if (ext === 'webm') mime = 'video/webm';
+    else if (ext === 'mov') mime = 'video/quicktime';
+    else if (ext === 'mkv') mime = 'video/x-matroska';
 
-    res.setHeader('Content-Type', mime);
+    res.setHeader('Accept-Ranges', 'bytes');
     res.setHeader('Cache-Control', 'public, max-age=86400');
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
@@ -328,6 +336,35 @@ export class AdminController {
     const localFilePath = path.join(MEDIA_DIR, safeBlobId);
     if (fs.existsSync(localFilePath)) {
       try {
+        const stat = fs.statSync(localFilePath);
+        const fileSize = stat.size;
+        const range = req.headers.range;
+
+        if (range) {
+          const parts = range.replace(/bytes=/, '').split('-');
+          const start = parseInt(parts[0], 10);
+          const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+
+          if (start >= fileSize || end >= fileSize || start > end) {
+            res.setHeader('Content-Range', `bytes */${fileSize}`);
+            return res.status(HttpStatus.REQUESTED_RANGE_NOT_SATISFIABLE).end();
+          }
+
+          const chunksize = end - start + 1;
+          const stream = fs.createReadStream(localFilePath, { start, end });
+          res.writeHead(HttpStatus.PARTIAL_CONTENT, {
+            'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+            'Accept-Ranges': 'bytes',
+            'Content-Length': chunksize,
+            'Content-Type': mime,
+            'Access-Control-Allow-Origin': '*',
+            'Cross-Origin-Resource-Policy': 'cross-origin',
+          });
+          return stream.pipe(res);
+        }
+
+        res.setHeader('Content-Type', mime);
+        res.setHeader('Content-Length', fileSize);
         const stream = fs.createReadStream(localFilePath);
         return stream.pipe(res);
       } catch (err: any) {
@@ -345,6 +382,8 @@ export class AdminController {
           try {
             await fs.promises.writeFile(localFilePath, buf);
           } catch (_) {}
+          res.setHeader('Content-Type', mime);
+          res.setHeader('Content-Length', buf.length);
           return res.status(HttpStatus.OK).send(buf);
         }
       } catch (swErr: any) {

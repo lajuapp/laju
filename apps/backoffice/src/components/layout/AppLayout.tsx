@@ -7,7 +7,6 @@ import {
   Image as ImageIcon,
   Smile,
   ShieldAlert,
-  MessageSquare,
   ShieldCheck,
   LogOut,
   Sparkles,
@@ -54,7 +53,6 @@ export function AppLayout() {
     {
       group: 'Kepatuhan & Keamanan',
       items: [
-        { label: 'Audit Obrolan', to: '/conversations', icon: MessageSquare },
         { label: 'Log Aktivitas', to: '/security', icon: ShieldAlert },
       ],
     },

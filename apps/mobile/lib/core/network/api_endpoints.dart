@@ -79,6 +79,8 @@ class ApiEndpoints {
 
   // Status (Stories)
   static const String status = '/status';
+  static const String statusUpload = '/status/upload';
+  static String statusMedia(String blobId) => '/status/media/$blobId';
   static const String statusMe = '/status/me';
   static const String statusContacts = '/status/contacts';
   static const String statusOfficial = '/status/official';

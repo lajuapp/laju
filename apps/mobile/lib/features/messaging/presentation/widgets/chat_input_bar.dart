@@ -7,7 +7,7 @@ import '../../../../core/network/media_url_resolver.dart';
 import '../../../../core/services/voice_note_service.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/theme_controller.dart';
-import '../../../../core/widgets/laju_toast.dart';
+import '../../../../core/core.dart';
 import '../../domain/models/message_model.dart';
 import '../../domain/services/sticker_service.dart';
 
@@ -719,10 +719,12 @@ class _ChatInputBarState extends State<ChatInputBar> with SingleTickerProviderSt
         path.startsWith('https://') ||
         path.startsWith('/') ||
         path.startsWith('admin/media')) {
-      return Image.network(
-        resolveMediaUrl(path),
+      return LajuCachedImage(
+        imageUrlOrPath: path,
         fit: fit,
-        errorBuilder: (_, __, ___) => fallbackIcon,
+        cacheWidth: 256,
+        cacheHeight: 256,
+        errorWidget: fallbackIcon,
       );
     }
     if (File(path).existsSync()) {
@@ -744,10 +746,12 @@ class _ChatInputBarState extends State<ChatInputBar> with SingleTickerProviderSt
       final found = StickerService.instance.findSticker(path);
       if (found != null) {
         if (found.isRemote) {
-          return Image.network(
-            resolveMediaUrl(found.effectivePathOrUrl),
+          return LajuAnimatedSticker(
+            pathOrUrl: found.effectivePathOrUrl,
+            width: 50,
+            height: 50,
             fit: BoxFit.contain,
-            errorBuilder: (_, __, ___) => fallbackIcon,
+            fallback: fallbackIcon,
           );
         } else {
           return Image.asset(

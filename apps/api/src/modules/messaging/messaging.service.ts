@@ -343,15 +343,25 @@ export class MessagingService {
       throw new ForbiddenException('Not authorized to delete this message');
     }
 
-    return this.prisma.$transaction(async (tx) => {
+    const MAX_RECALL_AGE_MS = 30 * 60 * 1000; // 30 minutes
+    const messageAgeMs = Date.now() - new Date(message.createdAt).getTime();
+    if (!isOwnerOrAdmin && messageAgeMs > MAX_RECALL_AGE_MS) {
+      throw new BadRequestException('Pesan hanya dapat ditarik dalam waktu 30 menit sejak dikirim');
+    }
+
+    const result = await this.prisma.$transaction(async (tx) => {
       const updated = await tx.message.update({
         where: { id: messageId },
         data: {
           state: 'DELETED',
-          ciphertext: '',
+          ciphertext: '__DELETED_FOR_EVERYONE__',
           deletedAt: new Date()
         }
       });
+
+      await tx.attachment.deleteMany({
+        where: { messageId }
+      }).catch(() => {});
 
       const convEvent = await tx.conversationEvent.create({
         data: {
@@ -378,6 +388,25 @@ export class MessagingService {
 
       return updated;
     });
+
+    try {
+      const activeMembers = message.conversation.members.filter((m) => !m.leftAt);
+      const publisher = this.redisService?.getClient();
+      if (publisher) {
+        const payload = JSON.stringify({
+          type: 'MESSAGE_DELETED',
+          conversationId: message.conversationId,
+          messageId,
+          deletedBy: userId,
+          deletedAt: new Date().toISOString()
+        });
+        for (const member of activeMembers) {
+          publisher.publish(`user:${member.userId}`, payload).catch(() => {});
+        }
+      }
+    } catch (_) {}
+
+    return result;
   }
 
   async editMessage(userId: string, messageId: string, ciphertext: string) {

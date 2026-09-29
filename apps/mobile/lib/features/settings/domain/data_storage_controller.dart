@@ -5,6 +5,7 @@ import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite/sqflite.dart';
 import '../../../core/services/local_database.dart';
+import '../../../core/services/laju_media_cache_manager.dart';
 import '../../conversations/domain/conversation_service.dart';
 
 class ChatStorageItem {
@@ -306,6 +307,7 @@ class DataStorageController extends ChangeNotifier {
           } catch (_) {}
         }
       }
+      await LajuMediaCacheManager.instance.clearCache();
     } catch (e) {
       debugPrint('[DataStorageController] clearCache error: $e');
     }

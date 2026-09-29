@@ -190,6 +190,11 @@ class GroupController extends ChangeNotifier {
     String? avatarPath,
   }) async {
     final group = _groups[groupId];
+    String? permanentAvatar = avatarPath;
+    if (avatarPath != null && avatarPath.isNotEmpty && !avatarPath.startsWith('http://') && !avatarPath.startsWith('https://')) {
+      permanentAvatar = await DeviceMediaService.savePermanentAvatar(avatarPath);
+    }
+
     if (group != null) {
       if (name != null && name.trim().isNotEmpty) {
         group.name = name.trim();
@@ -197,15 +202,36 @@ class GroupController extends ChangeNotifier {
       if (description != null) {
         group.description = description.trim();
       }
-      if (avatarPath != null) {
-        group.avatarPath = avatarPath;
+      if (permanentAvatar != null) {
+        group.avatarPath = permanentAvatar.isEmpty ? null : permanentAvatar;
       }
       notifyListeners();
     }
+
+    try {
+      final cachedConv = await LocalDatabase.instance.getConversation(groupId);
+      if (cachedConv != null) {
+        final updated = cachedConv.copyWith(
+          title: name?.trim().isNotEmpty == true ? name!.trim() : cachedConv.title,
+          avatarUrl: permanentAvatar != null ? (permanentAvatar.isEmpty ? null : permanentAvatar) : cachedConv.avatarUrl,
+        );
+        await LocalDatabase.instance.upsertConversations([updated]);
+        final inMem = ConversationService.instance.inMemoryConversations;
+        if (inMem != null) {
+          final idx = inMem.indexWhere((c) => c.id == groupId);
+          if (idx != -1) {
+            inMem[idx] = updated;
+            ConversationService.instance.conversationsNotifier.value = List.from(inMem);
+          }
+        }
+      }
+    } catch (_) {}
+
     await ConversationService.instance.updateGroup(
       conversationId: groupId,
       title: name,
       description: description,
+      avatarUrl: permanentAvatar,
     );
   }
 
@@ -316,6 +342,7 @@ class GroupController extends ChangeNotifier {
         }
 
         final wallpaperId = details['wallpaperId'] as String?;
+        final avatarUrl = details['avatarUrl'] as String?;
         final hasKillPin = details['hasKillPin'] == true;
         final rawAuth = details['authorizedWipeUserIds'];
         final List<String> authorizedWipeUserIds = rawAuth is List ? List<String>.from(rawAuth) : [];
@@ -328,6 +355,7 @@ class GroupController extends ChangeNotifier {
           id: groupId,
           name: details['title'] ?? 'Group Chat',
           description: details['description'] ?? '',
+          avatarPath: avatarUrl ?? _groups[groupId]?.avatarPath,
           creatorId: creatorId,
           createdAt: DateHelper.parseUtc(details['createdAt']),
           wallpaperId: wallpaperId,
@@ -366,6 +394,13 @@ class GroupController extends ChangeNotifier {
         .where((id) => id != 'm-you' && !id.startsWith('m-'))
         .toList();
 
+    String? permanentAvatar = avatarPath;
+    if (avatarPath != null && avatarPath.isNotEmpty && !avatarPath.startsWith('http://') && !avatarPath.startsWith('https://')) {
+      try {
+        permanentAvatar = await DeviceMediaService.savePermanentAvatar(avatarPath);
+      } catch (_) {}
+    }
+
     try {
       backendConvId = await ConversationService.instance.createGroupConversation(
         title: name,
@@ -374,6 +409,7 @@ class GroupController extends ChangeNotifier {
         wallpaperId: wallpaperId,
         killPin: killPin,
         authorizedWipeUserIds: authorizedWipeUserIds,
+        avatarUrl: permanentAvatar,
       );
     } catch (e) {
       debugPrint('[GroupController] createGroupConversation error: $e');
@@ -384,7 +420,7 @@ class GroupController extends ChangeNotifier {
       id: newId,
       name: name,
       description: description,
-      avatarPath: avatarPath,
+      avatarPath: permanentAvatar,
       members: members,
       disappearingSeconds: disappearingSeconds,
       wallpaperId: wallpaperId,

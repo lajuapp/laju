@@ -15,6 +15,8 @@ import {
   Upload,
   CheckCircle,
   Smartphone,
+  Video,
+  Play,
 } from 'lucide-react';
 import {
   useAnnouncementsList,
@@ -49,7 +51,7 @@ const announcementSchema = z.object({
   targetType: z.enum(['ALL', 'SPECIFIC', 'BULK']).default('ALL'),
   targetUserIds: z.string().optional(),
   isActive: z.boolean().default(true),
-  mediaType: z.enum(['TEXT', 'IMAGE']).default('TEXT'),
+  mediaType: z.enum(['TEXT', 'IMAGE', 'VIDEO']).default('TEXT'),
   mediaUrl: z.string().optional(),
   backgroundColor: z.string().default('#1E293B'),
   durationHours: z.number().default(24),
@@ -70,6 +72,7 @@ export function AnnouncementsPage() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [filePreview, setFilePreview] = useState<string | null>(null);
+  const [videoDuration, setVideoDuration] = useState<number | null>(null);
 
   const [deleteModal, setDeleteModal] = useState<{
     isOpen: boolean;
@@ -111,12 +114,43 @@ export function AnnouncementsPage() {
   const watchContent = watch('content');
   const watchActionTitle = watch('actionTitle');
   const watchActionUrl = watch('actionUrl');
+  const watchMediaUrl = watch('mediaUrl');
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
-      setSelectedFile(file);
-      setFilePreview(URL.createObjectURL(file));
+      setErrorMessage(null);
+
+      if (watchMediaType === 'VIDEO') {
+        const video = document.createElement('video');
+        video.preload = 'metadata';
+        const objectUrl = URL.createObjectURL(file);
+        video.onloadedmetadata = () => {
+          if (video.duration > 60.5) {
+            setErrorMessage(
+              `Durasi video melebihi batas maksimal 1 menit (${Math.round(video.duration)} detik). Silakan gunakan video dengan durasi maksimal 60 detik.`
+            );
+            setSelectedFile(null);
+            setFilePreview(null);
+            setVideoDuration(null);
+            return;
+          }
+          setSelectedFile(file);
+          setFilePreview(objectUrl);
+          setVideoDuration(Math.round(video.duration));
+        };
+        video.onerror = () => {
+          setErrorMessage('Gagal memuat metadata video. Pastikan format file adalah video valid (MP4/WebM).');
+          setSelectedFile(null);
+          setFilePreview(null);
+          setVideoDuration(null);
+        };
+        video.src = objectUrl;
+      } else {
+        setSelectedFile(file);
+        setFilePreview(URL.createObjectURL(file));
+        setVideoDuration(null);
+      }
     }
   };
 
@@ -125,7 +159,7 @@ export function AnnouncementsPage() {
       setErrorMessage(null);
       let finalMediaUrl = data.mediaUrl;
 
-      if (data.mediaType === 'IMAGE' && selectedFile) {
+      if ((data.mediaType === 'IMAGE' || data.mediaType === 'VIDEO') && selectedFile) {
         const uploadRes = await mediaUpload.mutateAsync(selectedFile);
         finalMediaUrl = uploadRes.url;
       }
@@ -244,6 +278,7 @@ export function AnnouncementsPage() {
             reset();
             setSelectedFile(null);
             setFilePreview(null);
+            setVideoDuration(null);
             setIsModalOpen(true);
           }}
         >
@@ -283,18 +318,32 @@ export function AnnouncementsPage() {
                         className="w-12 h-20 rounded-lg overflow-hidden border border-neutral-200 relative flex items-center justify-center shadow-xs bg-cover bg-center"
                         style={{
                           backgroundColor: item.backgroundColor || '#0F172A',
-                          backgroundImage: item.mediaUrl ? `url(${resolveMediaUrl(item.mediaUrl)})` : undefined,
+                          backgroundImage: item.mediaType === 'IMAGE' && item.mediaUrl ? `url(${resolveMediaUrl(item.mediaUrl)})` : undefined,
                         }}
                       >
-                        {!item.mediaUrl && (
+                        {item.mediaType === 'VIDEO' && item.mediaUrl ? (
+                          <div className="relative w-full h-full flex items-center justify-center bg-black">
+                            <video
+                              src={resolveMediaUrl(item.mediaUrl)}
+                              className="w-full h-full object-cover"
+                              muted
+                              playsInline
+                            />
+                            <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
+                              <div className="w-5 h-5 rounded-full bg-white/80 flex items-center justify-center shadow-xs">
+                                <Play className="w-2.5 h-2.5 text-neutral-900 fill-neutral-900 ml-0.5" />
+                              </div>
+                            </div>
+                          </div>
+                        ) : !item.mediaUrl ? (
                           <div className="p-1 text-center">
                             <span className="text-[7px] font-bold text-white line-clamp-3 leading-tight drop-shadow-xs">
                               {item.title}
                             </span>
                           </div>
-                        )}
-                        <span className="absolute bottom-1 right-1 bg-black/60 text-[8px] text-white px-1 rounded font-semibold">
-                          9:16
+                        ) : null}
+                        <span className="absolute bottom-1 right-1 bg-black/60 text-[8px] text-white px-1 rounded font-semibold z-10">
+                          {item.mediaType === 'VIDEO' ? '1m' : '9:16'}
                         </span>
                       </div>
                     </td>
@@ -302,7 +351,11 @@ export function AnnouncementsPage() {
                     <td className="px-5 py-3.5 max-w-xs">
                       <p className="font-bold text-neutral-900 flex items-center gap-1.5">
                         {item.title}
-                        {item.mediaType === 'IMAGE' ? (
+                        {item.mediaType === 'VIDEO' ? (
+                          <span className="text-[10px] text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded font-medium flex items-center gap-0.5">
+                            <Video className="w-2.5 h-2.5" /> Video (Maks 1m)
+                          </span>
+                        ) : item.mediaType === 'IMAGE' ? (
                           <span className="text-[10px] text-sky-600 bg-sky-50 px-1.5 py-0.5 rounded font-medium flex items-center gap-0.5">
                             <ImageIcon className="w-2.5 h-2.5" /> Flyer
                           </span>
@@ -430,31 +483,59 @@ export function AnnouncementsPage() {
                 <label className="block text-[11px] font-bold text-neutral-700 mb-1.5 uppercase tracking-wider">
                   Format Tampilan Story
                 </label>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-3 gap-2">
                   <button
                     type="button"
-                    onClick={() => setValue('mediaType', 'TEXT')}
-                    className={`flex items-center justify-center gap-2 p-3 rounded-xl border text-xs font-semibold transition-all ${
+                    onClick={() => {
+                      setValue('mediaType', 'TEXT');
+                      setSelectedFile(null);
+                      setFilePreview(null);
+                      setVideoDuration(null);
+                    }}
+                    className={`flex items-center justify-center gap-1.5 p-2.5 rounded-xl border text-xs font-semibold transition-all ${
                       watchMediaType === 'TEXT'
                         ? 'border-neutral-900 bg-neutral-900 text-white shadow-xs'
                         : 'border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-50'
                     }`}
                   >
                     <Type className="w-4 h-4" />
-                    Status Teks Gradien
+                    Teks Gradien
                   </button>
 
                   <button
                     type="button"
-                    onClick={() => setValue('mediaType', 'IMAGE')}
-                    className={`flex items-center justify-center gap-2 p-3 rounded-xl border text-xs font-semibold transition-all ${
+                    onClick={() => {
+                      setValue('mediaType', 'IMAGE');
+                      setSelectedFile(null);
+                      setFilePreview(null);
+                      setVideoDuration(null);
+                    }}
+                    className={`flex items-center justify-center gap-1.5 p-2.5 rounded-xl border text-xs font-semibold transition-all ${
                       watchMediaType === 'IMAGE'
                         ? 'border-neutral-900 bg-neutral-900 text-white shadow-xs'
                         : 'border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-50'
                     }`}
                   >
                     <ImageIcon className="w-4 h-4" />
-                    Flyer / Gambar (9:16)
+                    Flyer (9:16)
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setValue('mediaType', 'VIDEO');
+                      setSelectedFile(null);
+                      setFilePreview(null);
+                      setVideoDuration(null);
+                    }}
+                    className={`flex items-center justify-center gap-1.5 p-2.5 rounded-xl border text-xs font-semibold transition-all ${
+                      watchMediaType === 'VIDEO'
+                        ? 'border-neutral-900 bg-neutral-900 text-white shadow-xs'
+                        : 'border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-50'
+                    }`}
+                  >
+                    <Video className="w-4 h-4" />
+                    Video (Maks 1m)
                   </button>
                 </div>
               </div>
@@ -478,6 +559,43 @@ export function AnnouncementsPage() {
                     <input
                       type="file"
                       accept="image/*"
+                      onChange={handleFileChange}
+                      className="hidden"
+                    />
+                  </label>
+                </div>
+              )}
+
+              {/* Video File Upload if VIDEO */}
+              {watchMediaType === 'VIDEO' && (
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="block text-[11px] font-bold text-neutral-700 uppercase tracking-wider">
+                      Upload Video Status (Maksimal 1 Menit)
+                    </label>
+                    <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200">
+                      Batas 60 Detik
+                    </span>
+                  </div>
+                  <label className="border-2 border-dashed border-neutral-300 rounded-xl p-4 flex flex-col items-center justify-center gap-2 hover:bg-neutral-50 transition-colors cursor-pointer text-center block">
+                    <Video className="w-6 h-6 text-neutral-400" />
+                    <div>
+                      <span className="text-xs font-semibold text-neutral-800">
+                        {selectedFile ? selectedFile.name : 'Pilih file video dari perangkat'}
+                      </span>
+                      <p className="text-[11px] text-neutral-400 mt-0.5">
+                        Format MP4, WebM (Durasi maksimal 60 detik)
+                      </p>
+                    </div>
+                    {videoDuration !== null && (
+                      <div className="mt-1 inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-full text-[11px] font-semibold">
+                        <CheckCircle className="w-3.5 h-3.5" />
+                        <span>Durasi: {videoDuration} detik (Memenuhi syarat ≤ 60 detik)</span>
+                      </div>
+                    )}
+                    <input
+                      type="file"
+                      accept="video/mp4,video/webm,video/quicktime"
                       onChange={handleFileChange}
                       className="hidden"
                     />
@@ -651,11 +769,23 @@ export function AnnouncementsPage() {
                   className="w-full h-full rounded-[22px] overflow-hidden relative flex flex-col justify-between p-3.5 bg-cover bg-center transition-colors"
                   style={{
                     backgroundColor: watchBackgroundColor || '#1E293B',
-                    backgroundImage: filePreview ? `url(${filePreview})` : undefined,
+                    backgroundImage: filePreview && watchMediaType === 'IMAGE' ? `url(${filePreview})` : undefined,
                   }}
                 >
+                  {/* Video Background if VIDEO */}
+                  {watchMediaType === 'VIDEO' && (filePreview || watchMediaUrl) && (
+                    <video
+                      src={filePreview || watchMediaUrl}
+                      autoPlay
+                      loop
+                      muted
+                      playsInline
+                      className="absolute inset-0 w-full h-full object-cover z-0"
+                    />
+                  )}
+
                   {/* Subtle dark gradient overlay for text legibility */}
-                  <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-transparent to-black/80 pointer-events-none" />
+                  <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-transparent to-black/80 pointer-events-none z-0" />
 
                   {/* Top Bar: Progress & Official Header */}
                   <div className="relative z-10 space-y-2 pt-2">

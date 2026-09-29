@@ -132,6 +132,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
           contactPhone: contact.phoneNumber ?? '@${contact.username}',
           contactAbout: contact.about,
           contactTrustScore: contact.trustScore,
+          isOnline: contact.isOnline,
         ),
       ),
     );
@@ -202,6 +203,8 @@ class _ContactsScreenState extends State<ContactsScreen> {
                 name: contact.displayName,
                 radius: 40,
                 isVerified: contact.isVerified,
+                isOnline: contact.isOnline,
+                showOfflineDot: true,
                 imagePath: contact.avatarUrl,
               ),
               const SizedBox(height: 12),
@@ -221,6 +224,46 @@ class _ContactsScreenState extends State<ContactsScreen> {
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
                   color: AppColors.primary,
+                ),
+              ),
+              const SizedBox(height: 5),
+
+              // Online / Offline Chip
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+                decoration: BoxDecoration(
+                  color: contact.isOnline
+                      ? const Color(0xFF10B981).withValues(alpha: 0.12)
+                      : (isDark ? Colors.white10 : const Color(0xFFF1F5F9)),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: contact.isOnline
+                        ? const Color(0xFF10B981).withValues(alpha: 0.3)
+                        : (isDark ? Colors.white12 : const Color(0xFFE2E8F0)),
+                    width: 0.8,
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 6,
+                      height: 6,
+                      decoration: BoxDecoration(
+                        color: contact.isOnline ? const Color(0xFF10B981) : const Color(0xFF94A3B8),
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      contact.isOnline ? 'Online' : 'Offline',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: contact.isOnline ? const Color(0xFF10B981) : const Color(0xFF94A3B8),
+                      ),
+                    ),
+                  ],
                 ),
               ),
               const SizedBox(height: 6),
@@ -759,6 +802,8 @@ class _ContactsScreenState extends State<ContactsScreen> {
               name: contact.displayName,
               radius: 23,
               isVerified: contact.isVerified,
+              isOnline: contact.isOnline,
+              showOfflineDot: true,
               imagePath: contact.avatarUrl,
             ),
             const SizedBox(width: 13),
@@ -780,17 +825,15 @@ class _ContactsScreenState extends State<ContactsScreen> {
                           ),
                         ),
                       ),
-                      if (contact.isOnline) ...[
-                        const SizedBox(width: 6),
-                        Container(
-                          width: 7,
-                          height: 7,
-                          decoration: const BoxDecoration(
-                            color: Color(0xFF10B981),
-                            shape: BoxShape.circle,
-                          ),
+                      const SizedBox(width: 6),
+                      Container(
+                        width: 7,
+                        height: 7,
+                        decoration: BoxDecoration(
+                          color: contact.isOnline ? const Color(0xFF10B981) : const Color(0xFF94A3B8),
+                          shape: BoxShape.circle,
                         ),
-                      ],
+                      ),
                     ],
                   ),
                   const SizedBox(height: 2),

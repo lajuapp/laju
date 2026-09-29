@@ -289,10 +289,15 @@ class _GroupProfileScreenState extends State<GroupProfileScreen> {
                     color: isDark ? Colors.white : const Color(0xFF111827),
                   ),
                 ),
-                onTap: () {
+                onTap: () async {
                   Navigator.pop(bCtx);
-                  GroupController.instance.updateGroupInfo(widget.groupId, avatarPath: 'camera_photo_updated');
-                  LajuToast.success(context, context.tr('photoUpdated'));
+                  final path = await DeviceMediaService.openCamera();
+                  if (path != null && path.isNotEmpty) {
+                    await GroupController.instance.updateGroupInfo(widget.groupId, avatarPath: path);
+                    if (mounted) {
+                      LajuToast.success(context, context.tr('photoUpdated'));
+                    }
+                  }
                 },
               ),
               ListTile(
@@ -304,10 +309,15 @@ class _GroupProfileScreenState extends State<GroupProfileScreen> {
                     color: isDark ? Colors.white : const Color(0xFF111827),
                   ),
                 ),
-                onTap: () {
+                onTap: () async {
                   Navigator.pop(bCtx);
-                  GroupController.instance.updateGroupInfo(widget.groupId, avatarPath: 'gallery_photo_updated');
-                  LajuToast.success(context, context.tr('photoUpdated'));
+                  final path = await DeviceMediaService.openGallery();
+                  if (path != null && path.isNotEmpty) {
+                    await GroupController.instance.updateGroupInfo(widget.groupId, avatarPath: path);
+                    if (mounted) {
+                      LajuToast.success(context, context.tr('photoUpdated'));
+                    }
+                  }
                 },
               ),
               ListTile(
@@ -316,10 +326,12 @@ class _GroupProfileScreenState extends State<GroupProfileScreen> {
                   context.tr('removePhoto'),
                   style: const TextStyle(fontWeight: FontWeight.w600, color: AppColors.danger),
                 ),
-                onTap: () {
+                onTap: () async {
                   Navigator.pop(bCtx);
-                  GroupController.instance.updateGroupInfo(widget.groupId, avatarPath: '');
-                  LajuToast.info(context, context.tr('photoRemoved'));
+                  await GroupController.instance.updateGroupInfo(widget.groupId, avatarPath: '');
+                  if (mounted) {
+                    LajuToast.info(context, context.tr('photoRemoved'));
+                  }
                 },
               ),
             ],
@@ -812,30 +824,42 @@ class _GroupProfileScreenState extends State<GroupProfileScreen> {
                         onTap: isUserAdmin ? _editGroupAvatar : null,
                         child: Stack(
                           children: [
-                            Container(
-                              width: 92,
-                              height: 92,
-                              decoration: BoxDecoration(
-                                color: AppColors.primary.withValues(alpha: 0.15),
-                                shape: BoxShape.circle,
-                                border: Border.all(color: AppColors.primary, width: 2),
+                            if (group.avatarPath != null && group.avatarPath!.isNotEmpty)
+                              ModernAvatar(
+                                name: group.name,
+                                imagePath: group.avatarPath,
+                                radius: 46,
+                                isVerified: true,
+                              )
+                            else
+                              Container(
+                                width: 92,
+                                height: 92,
+                                decoration: BoxDecoration(
+                                  color: AppColors.primary.withValues(alpha: 0.15),
+                                  shape: BoxShape.circle,
+                                  border: Border.all(color: AppColors.primary, width: 2),
+                                ),
+                                alignment: Alignment.center,
+                                child: const Icon(
+                                  Icons.groups_rounded,
+                                  size: 48,
+                                  color: AppColors.primary,
+                                ),
                               ),
-                              alignment: Alignment.center,
-                              child: const Icon(
-                                Icons.groups_rounded,
-                                size: 48,
-                                color: AppColors.primary,
-                              ),
-                            ),
                             if (isUserAdmin)
                               Positioned(
                                 right: 0,
                                 bottom: 0,
                                 child: Container(
                                   padding: const EdgeInsets.all(6),
-                                  decoration: const BoxDecoration(
+                                  decoration: BoxDecoration(
                                     color: AppColors.primary,
                                     shape: BoxShape.circle,
+                                    border: Border.all(
+                                      color: isDark ? AppColors.darkSurface : Colors.white,
+                                      width: 2,
+                                    ),
                                   ),
                                   child: const Icon(Icons.camera_alt_rounded, size: 16, color: Colors.white),
                                 ),
