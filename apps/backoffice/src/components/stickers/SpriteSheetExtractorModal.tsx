@@ -107,9 +107,10 @@ export function SpriteSheetExtractorModal({
   const [bgColorHex, setBgColorHex] = useState('#FFFFFF');
   const [bgTolerance, setBgTolerance] = useState(25);
 
-  // Auto-Trim & Target Processing
+  // Auto-Trim, Target Resolution & Anti-Blur (Cegah Gambar Pecah)
   const [autoTrim, setAutoTrim] = useState(true);
-  const [targetSize] = useState(512);
+  const [outputResolutionMode, setOutputResolutionMode] = useState<'512' | 'native' | '1024'>('512');
+  const [preventUpscaleBlur, setPreventUpscaleBlur] = useState(true);
   const [namePrefix, setNamePrefix] = useState('Stiker');
 
   // Slices Gallery State
@@ -177,6 +178,8 @@ export function SpriteSheetExtractorModal({
       setNamePrefix(packName.replace(/\s+/g, '_'));
       setSpacingX(0);
       setSpacingY(0);
+      setOutputResolutionMode('512');
+      setPreventUpscaleBlur(true);
     }
   }, [isOpen, packName]);
 
@@ -302,35 +305,31 @@ export function SpriteSheetExtractorModal({
       setGridWidth(initialW);
       setGridHeight(initialH);
 
-      // Smart cols/rows auto-detection: assume sprite cells are roughly square.
-      // Most sticker sprite sheets use square cells (w ≈ h per cell).
-      // So: cols/rows ≈ imageWidth/imageHeight → try 3, 4, 5, 6 per axis.
-      // Pick the combo closest to square cells with a reasonable total count (9–25).
-      const ratio = w / h; // imageWidth / imageHeight
-      let bestCols = 4;
-      let bestRows = 3;
-      let bestScore = Infinity;
+      // Flexible initial grid: sensible defaults based on aspect ratio
+      const ratio = w / h;
+      let initCols = 4;
+      let initRows = 3;
 
-      for (let c = 2; c <= 8; c++) {
-        for (let r = 2; r <= 8; r++) {
-          const total = c * r;
-          if (total < 4 || total > 36) continue;
-          // Score: how "square" are the cells? (1.0 = perfect square)
-          const cellAspect = (w / c) / (h / r); // width/height of each cell
-          const squareness = Math.abs(Math.log(cellAspect)); // 0 = square
-          // Also prefer grids where col/row ratio ≈ image ratio
-          const layoutAspect = Math.abs(Math.log(c / r / ratio));
-          const score = squareness * 2 + layoutAspect;
-          if (score < bestScore) {
-            bestScore = score;
-            bestCols = c;
-            bestRows = r;
-          }
-        }
+      if (ratio >= 1.42) {
+        // Wide landscape format (e.g. 6x4 = 24 stiker, 1.5 ratio)
+        initCols = 6;
+        initRows = 4;
+      } else if (ratio >= 1.15) {
+        // Standard landscape (e.g. 4x3 = 12 stiker, 1.33 ratio)
+        initCols = 4;
+        initRows = 3;
+      } else if (ratio <= 0.75) {
+        // Portrait (e.g. 3x4 = 12 stiker)
+        initCols = 3;
+        initRows = 4;
+      } else {
+        // Square sprite sheet (e.g. 1:1 ratio, 4x4 = 16 stiker)
+        initCols = 4;
+        initRows = 4;
       }
 
-      setCols(bestCols);
-      setRows(bestRows);
+      setCols(initCols);
+      setRows(initRows);
       setSpacingX(0);
       setSpacingY(0);
 
@@ -340,13 +339,14 @@ export function SpriteSheetExtractorModal({
         initialMarginY,
         initialW,
         initialH,
-        bestCols,
-        bestRows,
+        initCols,
+        initRows,
         0,
         0
       );
       setBoxes(initialBoxes);
       setSelectedBoxId(null);
+
 
       // Fit zoom in viewport
       if (viewportContainerRef.current) {
@@ -431,10 +431,23 @@ export function SpriteSheetExtractorModal({
     }
   };
 
-  // Snap Master Grid to Full Image Bounds
+  // Snap Master Grid to Full 100% Image Bounds (Tanpa Batas/Margin)
   const handleFitMasterGridToFullImage = () => {
-    const padX = Math.round(sheetDimensions.width * 0.015);
-    const padY = Math.round(sheetDimensions.height * 0.015);
+    if (sheetDimensions.width <= 0 || sheetDimensions.height <= 0) return;
+    setGridX(0);
+    setGridY(0);
+    setGridWidth(sheetDimensions.width);
+    setGridHeight(sheetDimensions.height);
+
+    const newBoxes = generateUniformGridBoxes(0, 0, sheetDimensions.width, sheetDimensions.height, cols, rows, spacingX, spacingY);
+    setBoxes(newBoxes);
+  };
+
+  // Center Master Grid with Clean Margin (96% Coverage)
+  const handleFitMasterGridWithMargin = () => {
+    if (sheetDimensions.width <= 0 || sheetDimensions.height <= 0) return;
+    const padX = Math.round(sheetDimensions.width * 0.02);
+    const padY = Math.round(sheetDimensions.height * 0.02);
     const newW = sheetDimensions.width - padX * 2;
     const newH = sheetDimensions.height - padY * 2;
 
@@ -446,6 +459,7 @@ export function SpriteSheetExtractorModal({
     const newBoxes = generateUniformGridBoxes(padX, padY, newW, newH, cols, rows, spacingX, spacingY);
     setBoxes(newBoxes);
   };
+
 
   // Smart Flood-Fill Auto-Detect Frames (With 28px Proximity Merge)
   const handleAutoDetectFrames = () => {
@@ -1049,16 +1063,9 @@ export function SpriteSheetExtractorModal({
 
     requestAnimationFrame(() => {
       try {
-        const fullCanvas = document.createElement('canvas');
-        fullCanvas.width = sheetDimensions.width;
-        fullCanvas.height = sheetDimensions.height;
-        const fullCtx = fullCanvas.getContext('2d');
-        if (!fullCtx) throw new Error('Kanvas pemotong gagal dibuat');
-
-        fullCtx.drawImage(sheetImage, 0, 0);
-
         let bgR = 255, bgG = 255, bgB = 255;
         if (removeBgColor) {
+
           const hex = bgColorHex.replace('#', '');
           bgR = parseInt(hex.substring(0, 2), 16);
           bgG = parseInt(hex.substring(2, 4), 16);
@@ -1076,8 +1083,11 @@ export function SpriteSheetExtractorModal({
           const rawCtx = rawCropCanvas.getContext('2d', { willReadFrequently: true });
           if (!rawCtx) return;
 
+          // Draw directly from native sheetImage for 100% source fidelity and crispness
+          rawCtx.imageSmoothingEnabled = true;
+          rawCtx.imageSmoothingQuality = 'high';
           rawCtx.drawImage(
-            fullCanvas,
+            sheetImage,
             box.x,
             box.y,
             box.width,
@@ -1144,6 +1154,8 @@ export function SpriteSheetExtractorModal({
               trimmedCanvas.height = trimH;
               const trimCtx = trimmedCanvas.getContext('2d');
               if (trimCtx) {
+                trimCtx.imageSmoothingEnabled = true;
+                trimCtx.imageSmoothingQuality = 'high';
                 trimCtx.drawImage(rawCropCanvas, minX, minY, trimW, trimH, 0, 0, trimW, trimH);
                 cropCanvas = trimmedCanvas;
               }
@@ -1151,23 +1163,44 @@ export function SpriteSheetExtractorModal({
           }
 
           const targetCanvas = document.createElement('canvas');
-          targetCanvas.width = targetSize;
-          targetCanvas.height = targetSize;
-          const targetCtx = targetCanvas.getContext('2d');
-          if (targetCtx && !isEmpty) {
-            targetCtx.imageSmoothingEnabled = true;
-            targetCtx.imageSmoothingQuality = 'high';
+          if (outputResolutionMode === 'native') {
+            // Resolusi Asli 100%: Tajam maksimal, tanpa resample/upscale blur (anti-pecah)
+            targetCanvas.width = cropCanvas.width;
+            targetCanvas.height = cropCanvas.height;
+            const targetCtx = targetCanvas.getContext('2d');
+            if (targetCtx && !isEmpty) {
+              targetCtx.imageSmoothingEnabled = true;
+              targetCtx.imageSmoothingQuality = 'high';
+              targetCtx.drawImage(cropCanvas, 0, 0);
+            }
+          } else {
+            const targetDimension = outputResolutionMode === '1024' ? 1024 : 512;
+            targetCanvas.width = targetDimension;
+            targetCanvas.height = targetDimension;
+            const targetCtx = targetCanvas.getContext('2d');
+            if (targetCtx && !isEmpty) {
+              targetCtx.imageSmoothingEnabled = true;
+              targetCtx.imageSmoothingQuality = 'high';
 
-            const safeMargin = 24;
-            const availSize = targetSize - safeMargin * 2;
-            const scale = Math.min(availSize / cropCanvas.width, availSize / cropCanvas.height);
-            const drawW = Math.round(cropCanvas.width * scale);
-            const drawH = Math.round(cropCanvas.height * scale);
-            const drawX = Math.round((targetSize - drawW) / 2);
-            const drawY = Math.round((targetSize - drawH) / 2);
+              const safeMargin = 20;
+              const availSize = targetDimension - safeMargin * 2;
 
-            targetCtx.drawImage(cropCanvas, drawX, drawY, drawW, drawH);
+              let scale = Math.min(availSize / cropCanvas.width, availSize / cropCanvas.height);
+              // Cegah blur: Jika gambar lebih kecil dari target kanvas dan opsi anti-blur aktif,
+              // pertahankan ukuran 1:1 tajam tanpa dipaksa upscale pecah
+              if (preventUpscaleBlur && cropCanvas.width < availSize && cropCanvas.height < availSize) {
+                scale = 1.0;
+              }
+
+              const drawW = Math.round(cropCanvas.width * scale);
+              const drawH = Math.round(cropCanvas.height * scale);
+              const drawX = Math.round((targetDimension - drawW) / 2);
+              const drawY = Math.round((targetDimension - drawH) / 2);
+
+              targetCtx.drawImage(cropCanvas, drawX, drawY, drawW, drawH);
+            }
           }
+
 
           const padNum = (idx + 1).toString().padStart(2, '0');
           const stickerName = `${namePrefix}_${padNum}`;
@@ -1330,7 +1363,7 @@ export function SpriteSheetExtractorModal({
               <div className="flex items-center justify-between">
                 <span className="text-[11px] font-bold text-neutral-700 uppercase tracking-wider flex items-center gap-1">
                   <Grid className="w-3.5 h-3.5 text-brand-600" />
-                  Matriks Grid Master
+                  Matriks Grid Fleksibel
                 </span>
                 <button
                   type="button"
@@ -1343,6 +1376,40 @@ export function SpriteSheetExtractorModal({
                 </button>
               </div>
 
+              {/* Quick Presets Pills */}
+              <div className="space-y-1">
+                <span className="text-[10px] font-semibold text-neutral-500">Preset Grid Cepat:</span>
+                <div className="flex flex-wrap gap-1">
+                  {[
+                    { label: '6 × 4 (24)', c: 6, r: 4 },
+                    { label: '4 × 3 (12)', c: 4, r: 3 },
+                    { label: '4 × 4 (16)', c: 4, r: 4 },
+                    { label: '3 × 3 (9)',  c: 3, r: 3 },
+                    { label: '5 × 4 (20)', c: 5, r: 4 },
+                    { label: '6 × 5 (30)', c: 6, r: 5 },
+                    { label: '3 × 4 (12)', c: 3, r: 4 },
+                    { label: '2 × 2 (4)',  c: 2, r: 2 },
+                  ].map((preset) => {
+                    const isActive = cols === preset.c && rows === preset.r;
+                    return (
+                      <button
+                        key={preset.label}
+                        type="button"
+                        onClick={() => updateGridColsRows(preset.c, preset.r)}
+                        className={`text-[10px] px-2 py-0.5 rounded-md font-bold transition-all ${
+                          isActive
+                            ? 'bg-brand-500 text-white shadow-2xs'
+                            : 'bg-neutral-100 hover:bg-neutral-200 text-neutral-600'
+                        }`}
+                      >
+                        {preset.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Manual Columns & Rows Inputs */}
               <div className="grid grid-cols-2 gap-2 text-xs">
                 <div className="space-y-1">
                   <span className="text-[10px] font-semibold text-neutral-500 flex items-center gap-1">
@@ -1446,16 +1513,27 @@ export function SpriteSheetExtractorModal({
                 </div>
               </div>
 
-              {/* Full Image Fit Button */}
-              <button
-                type="button"
-                onClick={handleFitMasterGridToFullImage}
-                disabled={!sheetImage}
-                className="w-full py-1 text-xs font-semibold rounded-lg bg-neutral-100 hover:bg-neutral-200 text-neutral-700 transition-colors"
-              >
-                Ratakan Grid ke Batas Penuh Gambar
-              </button>
+              {/* Grid Snap / Fit Buttons */}
+              <div className="grid grid-cols-2 gap-1.5 pt-1 border-t border-neutral-100">
+                <button
+                  type="button"
+                  onClick={handleFitMasterGridToFullImage}
+                  disabled={!sheetImage}
+                  className="py-1 text-xs font-semibold rounded-lg bg-neutral-100 hover:bg-neutral-200 text-neutral-700 transition-colors"
+                >
+                  Penuh (100%)
+                </button>
+                <button
+                  type="button"
+                  onClick={handleFitMasterGridWithMargin}
+                  disabled={!sheetImage}
+                  className="py-1 text-xs font-semibold rounded-lg bg-neutral-100 hover:bg-neutral-200 text-neutral-700 transition-colors"
+                >
+                  Margin (96%)
+                </button>
+              </div>
             </div>
+
 
             {/* INDIVIDUAL FRAME INSPECTOR (Ubah Ukuran Stiker Tertentu / By-Frame) */}
             <div className="bg-white p-3 rounded-xl border border-neutral-200 shadow-2xs space-y-2.5">
@@ -1701,21 +1779,96 @@ export function SpriteSheetExtractorModal({
               )}
             </div>
 
-            {/* Smart Processing Toggle */}
-            <div className="bg-white p-3 rounded-xl border border-neutral-200 space-y-1">
-              <label className="flex items-center gap-2 cursor-pointer">
+            {/* Resolution & Quality Controls (Anti-Pecah) */}
+            <div className="bg-white p-3 rounded-xl border border-neutral-200 shadow-2xs space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold text-neutral-700 uppercase tracking-wider flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-brand-600" />
+                  Resolusi & Kualitas Stiker
+                </span>
+                <Badge variant="brand" size="sm">Anti-Pecah</Badge>
+              </div>
+
+              {/* Resolution Mode Selector */}
+              <div className="space-y-1">
+                <span className="text-[10px] font-semibold text-neutral-500">Ukuran Target Kanvas:</span>
+                <div className="grid grid-cols-3 gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setOutputResolutionMode('512')}
+                    className={`px-2 py-1.5 rounded-lg text-xs font-bold transition-all text-center border ${
+                      outputResolutionMode === '512'
+                        ? 'bg-brand-50 border-brand-500 text-brand-800 ring-1 ring-brand-400'
+                        : 'bg-neutral-50 border-neutral-200 text-neutral-600 hover:bg-neutral-100'
+                    }`}
+                  >
+                    512×512
+                    <span className="block text-[9px] font-normal text-neutral-400">Standar</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setOutputResolutionMode('native')}
+                    className={`px-2 py-1.5 rounded-lg text-xs font-bold transition-all text-center border ${
+                      outputResolutionMode === 'native'
+                        ? 'bg-brand-50 border-brand-500 text-brand-800 ring-1 ring-brand-400'
+                        : 'bg-neutral-50 border-neutral-200 text-neutral-600 hover:bg-neutral-100'
+                    }`}
+                  >
+                    Asli (HD)
+                    <span className="block text-[9px] font-normal text-brand-600">0% Pecah</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setOutputResolutionMode('1024')}
+                    className={`px-2 py-1.5 rounded-lg text-xs font-bold transition-all text-center border ${
+                      outputResolutionMode === '1024'
+                        ? 'bg-brand-50 border-brand-500 text-brand-800 ring-1 ring-brand-400'
+                        : 'bg-neutral-50 border-neutral-200 text-neutral-600 hover:bg-neutral-100'
+                    }`}
+                  >
+                    1024×1024
+                    <span className="block text-[9px] font-normal text-neutral-400">Super HD</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Anti-Blur Toggle */}
+              {outputResolutionMode !== 'native' && (
+                <label className="flex items-start gap-2 pt-1 border-t border-neutral-100 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={preventUpscaleBlur}
+                    onChange={(e) => setPreventUpscaleBlur(e.target.checked)}
+                    className="rounded text-brand-600 focus:ring-brand-500 w-3.5 h-3.5 mt-0.5"
+                  />
+                  <div className="space-y-0.5">
+                    <span className="text-[11px] font-bold text-neutral-800 block">Jaga Ketajaman (Cegah Blur)</span>
+                    <p className="text-[10px] text-neutral-400 leading-snug">
+                      Mencegah gambar kecil ditarik melebihi ukuran aslinya agar stiker tidak pecah atau kabur.
+                    </p>
+                  </div>
+                </label>
+              )}
+
+              {/* Auto-Trim Toggle */}
+              <label className="flex items-start gap-2 pt-1 border-t border-neutral-100 cursor-pointer">
                 <input
                   type="checkbox"
                   checked={autoTrim}
                   onChange={(e) => setAutoTrim(e.target.checked)}
-                  className="rounded text-brand-600 focus:ring-brand-500 w-4 h-4"
+                  className="rounded text-brand-600 focus:ring-brand-500 w-3.5 h-3.5 mt-0.5"
                 />
-                <span className="text-xs font-semibold text-neutral-800">Auto-Trim & Safe Margin 512x512</span>
+                <div className="space-y-0.5">
+                  <span className="text-[11px] font-bold text-neutral-800 block">Auto-Trim Area Transparan</span>
+                  <p className="text-[10px] text-neutral-400 leading-snug">
+                    Memangkas ruang kosong transparan di sekitar karakter stiker agar pas.
+                  </p>
+                </div>
               </label>
-              <p className="text-[10px] text-neutral-400 pl-6">
-                Memangkas area kosong transparan di sekitar stiker lalu memusatkannya proporsional ke kanvas standar 512x512 px.
-              </p>
             </div>
+
 
             {/* Extract Slices Button */}
             <Button
@@ -1850,8 +2003,10 @@ export function SpriteSheetExtractorModal({
                     style={{
                       width: sheetDimensions.width,
                       height: sheetDimensions.height,
+                      imageRendering: zoom > 1.2 ? 'pixelated' : 'auto',
                     }}
                   />
+
 
                   {/* SVG Overlay: Crisp, Thin, Zero-Drift Coordinate Interactive Layer */}
                   <svg
