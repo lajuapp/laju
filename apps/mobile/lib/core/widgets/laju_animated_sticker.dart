@@ -349,11 +349,15 @@ class _LajuAnimatedStickerState extends State<LajuAnimatedSticker> {
       width: widget.width,
       height: widget.height,
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9),
-        borderRadius: BorderRadius.circular(20),
+        color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.04),
+        borderRadius: BorderRadius.circular(16),
       ),
-      child: const Center(
-        child: Icon(Icons.emoji_emotions_rounded, size: 40, color: AppColors.primary),
+      child: Center(
+        child: Icon(
+          Icons.sticky_note_2_outlined,
+          size: (widget.width != null && widget.width! < 60) ? 20 : 32,
+          color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.2),
+        ),
       ),
     );
   }
@@ -363,6 +367,10 @@ class _LajuAnimatedStickerState extends State<LajuAnimatedSticker> {
     final src = widget.pathOrUrl;
 
     if (_hasError) {
+      return _buildFallback(context);
+    }
+
+    if (_isLoading && !_isNativeAnimated) {
       return _buildFallback(context);
     }
 

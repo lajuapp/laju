@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/network/api_endpoints.dart';
+import '../../../../core/core.dart';
 import '../models/sticker_model.dart';
 
 class StickerService extends ChangeNotifier {
@@ -185,6 +186,16 @@ class StickerService extends ChangeNotifier {
         _remotePacks.clear();
         _remotePacks.addAll(parsed);
         notifyListeners();
+
+        // Background preload pack covers and stickers
+        for (final pack in _remotePacks) {
+          if (pack.coverUrl != null && pack.coverUrl!.isNotEmpty) {
+            LajuMediaCacheManager.instance.preload(pack.coverUrl!);
+          }
+          for (final s in pack.stickers) {
+            LajuMediaCacheManager.instance.preload(s.effectivePathOrUrl);
+          }
+        }
 
         // Persist cache
         final prefs = await SharedPreferences.getInstance();

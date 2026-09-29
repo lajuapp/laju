@@ -25,6 +25,10 @@ class LajuMediaCacheManager {
   bool _isInitialized = false;
 
   /// Initializes the cache directory and populates the in-memory cache index
+  Future<void> init() async {
+    await getCacheDirectory();
+  }
+
   Future<Directory> getCacheDirectory() async {
     if (_cacheDir != null && _cacheDir!.existsSync()) {
       return _cacheDir!;

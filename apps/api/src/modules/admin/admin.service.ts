@@ -11,6 +11,7 @@ import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../../infrastructure/prisma/prisma.service';
 import { GotifyService } from '../../infrastructure/gotify/gotify.service';
 import { RedisService } from '../../infrastructure/redis/redis.service';
+import { SeaweedFsService } from '../../infrastructure/seaweedfs/seaweedfs.service';
 import {
   RequestConversationAccessDto,
   AdminPasswordLoginDto,
@@ -32,7 +33,8 @@ export class AdminService {
   constructor(
     private readonly prisma: PrismaService,
     @Optional() private readonly gotifyService?: GotifyService,
-    @Optional() private readonly redisService?: RedisService
+    @Optional() private readonly redisService?: RedisService,
+    @Optional() private readonly seaweedFs?: SeaweedFsService
   ) {}
 
   // Password-based authentication for Backoffice
@@ -686,7 +688,20 @@ export class AdminService {
     });
   }
 
+  private extractBlobId(urlOrPath?: string | null): string | null {
+    if (!urlOrPath) return null;
+    const match = urlOrPath.match(/(?:asset-|status-|enc-|laju-)[a-zA-Z0-9_.-]+/);
+    return match ? match[0] : null;
+  }
+
   async deleteWallpaper(id: string) {
+    const wp = await this.prisma.chatWallpaper.findUnique({ where: { id } });
+    if (wp && wp.imageUrl) {
+      const blobId = this.extractBlobId(wp.imageUrl);
+      if (blobId && this.seaweedFs) {
+        await this.seaweedFs.deleteBlob(blobId).catch(() => {});
+      }
+    }
     return this.prisma.chatWallpaper.delete({
       where: { id }
     });
@@ -737,6 +752,26 @@ export class AdminService {
   }
 
   async deleteStickerPack(id: string) {
+    const pack = await this.prisma.stickerPack.findUnique({
+      where: { id },
+      include: { stickers: true }
+    });
+    if (pack) {
+      if (pack.coverUrl) {
+        const coverBlob = this.extractBlobId(pack.coverUrl);
+        if (coverBlob && this.seaweedFs) {
+          await this.seaweedFs.deleteBlob(coverBlob).catch(() => {});
+        }
+      }
+      for (const stk of pack.stickers) {
+        if (stk.imageUrl) {
+          const stkWp = this.extractBlobId(stk.imageUrl);
+          if (stkWp && this.seaweedFs) {
+            await this.seaweedFs.deleteBlob(stkWp).catch(() => {});
+          }
+        }
+      }
+    }
     return this.prisma.stickerPack.delete({
       where: { id }
     });
@@ -777,6 +812,13 @@ export class AdminService {
   }
 
   async deleteStickerItem(id: string) {
+    const item = await this.prisma.stickerItem.findUnique({ where: { id } });
+    if (item && item.imageUrl) {
+      const blobId = this.extractBlobId(item.imageUrl);
+      if (blobId && this.seaweedFs) {
+        await this.seaweedFs.deleteBlob(blobId).catch(() => {});
+      }
+    }
     return this.prisma.stickerItem.delete({
       where: { id }
     });
@@ -1078,6 +1120,16 @@ export class AdminService {
   async deleteAnnouncement(id: string) {
     if (this.redisService) {
       try {
+        const metaStr = await this.redisService.get(`announcement:${id}:meta`);
+        if (metaStr) {
+          const meta = JSON.parse(metaStr);
+          if (meta.mediaUrl) {
+            const blobId = this.extractBlobId(meta.mediaUrl);
+            if (blobId && this.seaweedFs) {
+              await this.seaweedFs.deleteBlob(blobId).catch(() => {});
+            }
+          }
+        }
         await this.redisService.del(`announcement:${id}:meta`);
         await this.redisService.del(`announcement:${id}:target`);
         await this.redisService.del(`announcement:${id}:views`);

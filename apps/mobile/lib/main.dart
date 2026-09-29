@@ -16,6 +16,7 @@ void main() async {
   await LocalDatabase.instance.init();
   await ThemeModeController.instance.init();
   await LocaleController.instance.init();
+  await LajuMediaCacheManager.instance.init();
   await ChatAppearanceController.instance.init();
   await DataStorageController.instance.init();
   await AppLockController.instance.init();

@@ -2,11 +2,13 @@ import {
   Injectable,
   NotFoundException,
   ForbiddenException,
-  BadRequestException
+  BadRequestException,
+  Optional
 } from '@nestjs/common';
 import * as crypto from 'crypto';
 import { PrismaService } from '../../infrastructure/prisma/prisma.service';
 import { RedisService } from '../../infrastructure/redis/redis.service';
+import { SeaweedFsService } from '../../infrastructure/seaweedfs/seaweedfs.service';
 import { CreateConversationDto, AddMemberDto, ChangeMemberRoleDto, UpdateConversationDto } from './dto/conversation.dto';
 import { ConversationType, ConversationRole } from '@secure-messenger/shared-types';
 
@@ -14,7 +16,8 @@ import { ConversationType, ConversationRole } from '@secure-messenger/shared-typ
 export class ConversationsService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly redis: RedisService
+    private readonly redis: RedisService,
+    @Optional() private readonly seaweedFs?: SeaweedFsService
   ) {}
 
   /**
@@ -903,6 +906,21 @@ export class ConversationsService {
     if (inputHash !== killPinHash) {
       throw new ForbiddenException('PIN darurat salah');
     }
+
+    // Clean up all attachments from SeaweedFS before deleting messages
+    try {
+      const attachments = await this.prisma.attachment.findMany({
+        where: { message: { conversationId } },
+        select: { blobId: true }
+      });
+      if (this.seaweedFs && attachments.length > 0) {
+        for (const att of attachments) {
+          if (att.blobId) {
+            this.seaweedFs.deleteBlob(att.blobId).catch(() => {});
+          }
+        }
+      }
+    } catch (_) {}
 
     // Permanently delete all messages in this conversation
     const deleteResult = await this.prisma.message.deleteMany({

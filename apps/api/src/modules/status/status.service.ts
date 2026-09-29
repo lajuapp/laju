@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ForbiddenException, BadRequestException, Optional, Logger, HttpStatus } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, BadRequestException, Optional, Logger, HttpStatus, InternalServerErrorException, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { Request, Response } from 'express';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -11,14 +11,84 @@ import { CreateStatusDto, StatusTypeDto } from './dto/status.dto';
 const STATUS_MEDIA_DIR = process.env.STATUS_MEDIA_DIR || path.join(process.cwd(), 'uploads', 'status-media');
 
 @Injectable()
-export class StatusService {
+export class StatusService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(StatusService.name);
+  private cleanupInterval?: NodeJS.Timeout;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly redis: RedisService,
     @Optional() private readonly seaweedFs?: SeaweedFsService
   ) {}
+
+  onModuleInit() {
+    this.cleanupExpiredStatuses().catch((err) => {
+      this.logger.error(`Error in startup status cleanup: ${err.message}`);
+    });
+    this.cleanupInterval = setInterval(() => {
+      this.cleanupExpiredStatuses().catch((err) => {
+        this.logger.error(`Error in periodic status cleanup: ${err.message}`);
+      });
+    }, 15 * 60 * 1000); // Check every 15 minutes
+  }
+
+  onModuleDestroy() {
+    if (this.cleanupInterval) {
+      clearInterval(this.cleanupInterval);
+    }
+  }
+
+  private extractBlobId(urlOrPath?: string | null): string | null {
+    if (!urlOrPath) return null;
+    const match = urlOrPath.match(/(?:asset-|status-|enc-|laju-)[a-zA-Z0-9_.-]+/);
+    return match ? match[0] : null;
+  }
+
+  async cleanupExpiredStatuses(): Promise<number> {
+    const now = new Date();
+    const expired = await this.prisma.userStatusStory.findMany({
+      where: {
+        expiresAt: { lte: now }
+      },
+      select: {
+        id: true,
+        type: true,
+        content: true
+      }
+    });
+
+    if (expired.length === 0) return 0;
+
+    let mediaCleaned = 0;
+    for (const story of expired) {
+      const blobId = this.extractBlobId(story.content);
+      if (blobId) {
+        if (this.seaweedFs) {
+          try {
+            await this.seaweedFs.deleteBlob(blobId);
+            mediaCleaned++;
+          } catch (_) {}
+        }
+        try {
+          const localPath = path.join(STATUS_MEDIA_DIR, blobId);
+          if (fs.existsSync(localPath)) {
+            await fs.promises.unlink(localPath);
+          }
+        } catch (_) {}
+      }
+    }
+
+    const storyIds = expired.map((s) => s.id);
+    await this.prisma.statusStoryView.deleteMany({
+      where: { storyId: { in: storyIds } }
+    }).catch(() => {});
+    await this.prisma.userStatusStory.deleteMany({
+      where: { id: { in: storyIds } }
+    }).catch(() => {});
+
+    this.logger.log(`Pembersihan otomatis: menghapus ${expired.length} status kedaluwarsa & ${mediaCleaned} berkas media SeaweedFS.`);
+    return expired.length;
+  }
 
   async createStatus(userId: string, dto: CreateStatusDto) {
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours expiry
@@ -273,6 +343,25 @@ export class StatusService {
       throw new ForbiddenException('Cannot delete another user story');
     }
 
+    const blobId = this.extractBlobId(story.content);
+    if (blobId) {
+      if (this.seaweedFs) {
+        try {
+          await this.seaweedFs.deleteBlob(blobId);
+        } catch (_) {}
+      }
+      try {
+        const localPath = path.join(STATUS_MEDIA_DIR, blobId);
+        if (fs.existsSync(localPath)) {
+          await fs.promises.unlink(localPath);
+        }
+      } catch (_) {}
+    }
+
+    await this.prisma.statusStoryView.deleteMany({
+      where: { storyId }
+    }).catch(() => {});
+
     await this.prisma.userStatusStory.delete({
       where: { id: storyId }
     });
@@ -371,7 +460,18 @@ export class StatusService {
     const blobId = `status-${crypto.randomBytes(12).toString('hex')}.${cleanExt}`;
     const contentType = body.mimeType || (cleanExt === 'mp4' ? 'video/mp4' : 'image/jpeg');
 
-    // 1. Persist to local disk storage
+    // 1. Primary: Persist directly to SeaweedFS Object Storage
+    let seaweedUploaded = false;
+    if (this.seaweedFs) {
+      try {
+        await this.seaweedFs.uploadBlob(blobId, buffer, contentType);
+        seaweedUploaded = true;
+      } catch (swErr: any) {
+        this.logger.error(`Failed to upload status media to SeaweedFS: ${swErr.message}`);
+      }
+    }
+
+    // 2. Also keep local copy as cache/backup if directory is available
     try {
       if (!fs.existsSync(STATUS_MEDIA_DIR)) {
         fs.mkdirSync(STATUS_MEDIA_DIR, { recursive: true });
@@ -379,16 +479,11 @@ export class StatusService {
       const localFilePath = path.join(STATUS_MEDIA_DIR, blobId);
       await fs.promises.writeFile(localFilePath, buffer);
     } catch (fsErr: any) {
-      this.logger.error(`Error saving status media to local disk: ${fsErr.message}`);
+      this.logger.warn(`Notice: Local status disk backup skipped: ${fsErr.message}`);
     }
 
-    // 2. Also persist to SeaweedFS if available
-    if (this.seaweedFs) {
-      try {
-        await this.seaweedFs.uploadBlob(blobId, buffer, contentType);
-      } catch (swErr: any) {
-        this.logger.warn(`SeaweedFS upload skipped or failed: ${swErr.message}`);
-      }
+    if (!seaweedUploaded && !fs.existsSync(path.join(STATUS_MEDIA_DIR, blobId))) {
+      throw new InternalServerErrorException('Gagal menyimpan berkas media status');
     }
 
     return {
@@ -415,66 +510,70 @@ export class StatusService {
     else if (ext === 'webm') mime = 'video/webm';
     else if (ext === 'mov') mime = 'video/quicktime';
 
-    res.setHeader('Accept-Ranges', 'bytes');
-    res.setHeader('Cache-Control', 'public, max-age=86400');
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
-
-    // 1. Check local disk
-    const localFilePath = path.join(STATUS_MEDIA_DIR, safeBlobId);
-    if (fs.existsSync(localFilePath)) {
-      try {
-        const stat = fs.statSync(localFilePath);
-        const fileSize = stat.size;
-        const range = req.headers.range;
-
-        if (range) {
-          const parts = range.replace(/bytes=/, '').split('-');
-          const start = parseInt(parts[0], 10);
-          const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
-
-          if (start >= fileSize || end >= fileSize || start > end) {
-            res.setHeader('Content-Range', `bytes */${fileSize}`);
-            return res.status(HttpStatus.REQUESTED_RANGE_NOT_SATISFIABLE).end();
-          }
-
-          const chunksize = end - start + 1;
-          const stream = fs.createReadStream(localFilePath, { start, end });
-          res.writeHead(HttpStatus.PARTIAL_CONTENT, {
-            'Content-Range': `bytes ${start}-${end}/${fileSize}`,
-            'Accept-Ranges': 'bytes',
-            'Content-Length': chunksize,
-            'Content-Type': mime,
-            'Access-Control-Allow-Origin': '*',
-            'Cross-Origin-Resource-Policy': 'cross-origin',
-          });
-          return stream.pipe(res);
-        }
-
-        res.setHeader('Content-Type', mime);
-        res.setHeader('Content-Length', fileSize);
-        const stream = fs.createReadStream(localFilePath);
-        return stream.pipe(res);
-      } catch (err: any) {
-        this.logger.error(`Error reading local status file: ${err.message}`);
-      }
+    // 1. Primary: Stream directly from SeaweedFS Object Storage
+    if (this.seaweedFs) {
+      const streamed = await this.seaweedFs.streamBlob(safeBlobId, req, res, mime);
+      if (streamed) return;
     }
 
-    // 2. Fallback to SeaweedFS
-    if (this.seaweedFs) {
-      try {
-        const data = await this.seaweedFs.getBlob(safeBlobId);
-        if (data) {
-          const buf = Buffer.from(data);
-          try {
-            await fs.promises.writeFile(localFilePath, buf);
-          } catch (_) {}
+    // 2. Fallback: Check local disk directories (legacy migration support)
+    const candidateDirs = [
+      STATUS_MEDIA_DIR,
+      '/app/uploads/status-media',
+      '/app/apps/api/uploads/status-media',
+      path.join(process.cwd(), 'uploads', 'status-media'),
+    ].filter(Boolean) as string[];
+
+    for (const dir of candidateDirs) {
+      const localFilePath = path.join(dir, safeBlobId);
+      if (fs.existsSync(localFilePath)) {
+        try {
+          // Auto-migrate legacy file to SeaweedFS in background
+          if (this.seaweedFs) {
+            fs.promises.readFile(localFilePath)
+              .then(buf => this.seaweedFs?.uploadBlob(safeBlobId, buf, mime))
+              .catch(() => {});
+          }
+
+          const stat = fs.statSync(localFilePath);
+          const fileSize = stat.size;
+          const range = req.headers.range;
+
+          res.setHeader('Accept-Ranges', 'bytes');
+          res.setHeader('Cache-Control', 'public, max-age=86400');
+          res.setHeader('Access-Control-Allow-Origin', '*');
+          res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+
+          if (range) {
+            const parts = range.replace(/bytes=/, '').split('-');
+            const start = parseInt(parts[0], 10);
+            const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+
+            if (start >= fileSize || end >= fileSize || start > end) {
+              res.setHeader('Content-Range', `bytes */${fileSize}`);
+              return res.status(HttpStatus.REQUESTED_RANGE_NOT_SATISFIABLE).end();
+            }
+
+            const chunksize = end - start + 1;
+            const stream = fs.createReadStream(localFilePath, { start, end });
+            res.writeHead(HttpStatus.PARTIAL_CONTENT, {
+              'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+              'Accept-Ranges': 'bytes',
+              'Content-Length': chunksize,
+              'Content-Type': mime,
+              'Access-Control-Allow-Origin': '*',
+              'Cross-Origin-Resource-Policy': 'cross-origin',
+            });
+            return stream.pipe(res);
+          }
+
           res.setHeader('Content-Type', mime);
-          res.setHeader('Content-Length', buf.length);
-          return res.status(HttpStatus.OK).send(buf);
+          res.setHeader('Content-Length', fileSize);
+          const stream = fs.createReadStream(localFilePath);
+          return stream.pipe(res);
+        } catch (err: any) {
+          this.logger.error(`Error reading local status file: ${err.message}`);
         }
-      } catch (swErr: any) {
-        this.logger.error(`Error fetching from SeaweedFS: ${swErr.message}`);
       }
     }
 

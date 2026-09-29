@@ -65,6 +65,20 @@ class _LajuCachedImageState extends State<LajuCachedImage> with SingleTickerProv
       parent: _fadeController,
       curve: Curves.easeOut,
     );
+
+    // Instant synchronous cache resolution before first frame render
+    final raw = widget.imageUrlOrPath?.trim();
+    if (raw != null && raw.isNotEmpty && !raw.startsWith('data:image') && !raw.startsWith('assets/')) {
+      final resolved = resolveMediaUrl(raw);
+      final syncFile = LajuMediaCacheManager.instance.getCachedFileIfPresentSync(resolved);
+      if (syncFile != null) {
+        _cachedFile = syncFile;
+        _isLoading = false;
+        _fadeController.value = 1.0;
+        return;
+      }
+    }
+
     _loadImage();
   }
 
@@ -200,18 +214,9 @@ class _LajuCachedImageState extends State<LajuCachedImage> with SingleTickerProv
     return Container(
       width: widget.width,
       height: widget.height,
-      color: isDark ? const Color(0xFF1E293B) : const Color(0xFFE2E8F0),
-      child: Center(
-        child: SizedBox(
-          width: 20,
-          height: 20,
-          child: CircularProgressIndicator(
-            strokeWidth: 2,
-            valueColor: AlwaysStoppedAnimation<Color>(
-              isDark ? Colors.white30 : Colors.black26,
-            ),
-          ),
-        ),
+      decoration: BoxDecoration(
+        color: (isDark ? Colors.white : Colors.black).withValues(alpha: isDark ? 0.05 : 0.03),
+        borderRadius: widget.borderRadius,
       ),
     );
   }
@@ -223,11 +228,16 @@ class _LajuCachedImageState extends State<LajuCachedImage> with SingleTickerProv
     return Container(
       width: widget.width,
       height: widget.height,
-      color: isDark ? const Color(0xFF1E293B) : const Color(0xFFE2E8F0),
-      child: Icon(
-        Icons.broken_image_rounded,
-        size: (widget.width != null && widget.width! < 40) ? 16 : 24,
-        color: isDark ? Colors.white38 : Colors.black38,
+      decoration: BoxDecoration(
+        color: (isDark ? Colors.white : Colors.black).withValues(alpha: isDark ? 0.05 : 0.03),
+        borderRadius: widget.borderRadius,
+      ),
+      child: Center(
+        child: Icon(
+          Icons.sticky_note_2_outlined,
+          size: (widget.width != null && widget.width! < 60) ? 18 : 24,
+          color: isDark ? Colors.white24 : Colors.black26,
+        ),
       ),
     );
   }

@@ -808,11 +808,15 @@ class ChatBubble extends StatelessWidget {
       width: 120,
       height: 120,
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9),
+        color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.04),
         borderRadius: BorderRadius.circular(20),
       ),
-      child: const Center(
-        child: Icon(Icons.emoji_emotions_rounded, size: 48, color: AppColors.primary),
+      child: Center(
+        child: Icon(
+          Icons.sticky_note_2_outlined,
+          size: 40,
+          color: isDark ? Colors.white24 : Colors.black26,
+        ),
       ),
     );
   }

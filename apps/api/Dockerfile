@@ -46,6 +46,10 @@ COPY --chown=node:node --from=builder /app/node_modules ./node_modules
 
 WORKDIR /app/apps/api
 
+RUN mkdir -p /app/uploads/admin-media /app/uploads/status-media /app/uploads/releases \
+             /app/apps/api/uploads/admin-media /app/apps/api/uploads/status-media /app/apps/api/uploads/releases \
+    && chown -R node:node /app/uploads /app/apps/api/uploads
+
 USER node
 
 EXPOSE 3000

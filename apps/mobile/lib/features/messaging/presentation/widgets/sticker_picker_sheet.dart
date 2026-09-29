@@ -580,6 +580,8 @@ class _StickerPickerSheetState extends State<StickerPickerSheet> {
 
   // ── Sticker Grid Tile ─────────────────────────────────────────────────────
   Widget _buildStickerTile(StickerItem sticker, bool isDark) {
+    final pathOrUrl = sticker.isRemote ? sticker.effectivePathOrUrl : sticker.assetPath;
+
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -600,13 +602,18 @@ class _StickerPickerSheetState extends State<StickerPickerSheet> {
             ),
           ),
           padding: const EdgeInsets.all(6),
-          child: Hero(
-            tag: 'sticker_${sticker.id}',
-            child: LajuAnimatedSticker(
-              pathOrUrl: sticker.isRemote ? sticker.effectivePathOrUrl : sticker.assetPath,
-              width: 64,
-              height: 64,
-              fit: BoxFit.contain,
+          child: LajuCachedImage(
+            imageUrlOrPath: pathOrUrl,
+            width: 64,
+            height: 64,
+            fit: BoxFit.contain,
+            cacheWidth: 128,
+            cacheHeight: 128,
+            placeholder: const SizedBox(),
+            errorWidget: Icon(
+              Icons.sticky_note_2_outlined,
+              size: 24,
+              color: isDark ? Colors.white24 : Colors.black26,
             ),
           ),
         ),

@@ -14,7 +14,8 @@ services:
       PORT: "3000"
       SEAWEEDFS_FILER_URL: ${SEAWEEDFS_FILER_URL:-http://seaweedfs-filer:8888}
     volumes:
-      - admin_media_data:/app/uploads/admin-media
+      - admin_media_data:/app/uploads
+      - admin_media_data:/app/apps/api/uploads
     expose:
       - "3000"
     healthcheck:
@@ -181,9 +182,11 @@ services:
     container_name: laju-seaweedfs-filer
     image: chrislusf/seaweedfs:latest
     restart: unless-stopped
-    entrypoint: ["sh", "-c", "exec weed filer -port=8888 -ip=seaweedfs-filer -master=seaweedfs-master:9333"]
+    entrypoint: ["sh", "-c", "mkdir -p /data/fdata && chmod -R 777 /data && exec weed filer -port=8888 -ip=seaweedfs-filer -master=seaweedfs-master:9333 -defaultStoreDir=/data/fdata"]
     environment:
       PORT: ""
+    volumes:
+      - seaweedfs_fdata:/data
     depends_on: [seaweedfs-master]
     networks: [internal]
 
@@ -198,4 +201,5 @@ volumes:
   gotify_data:
   seaweedfs_mdata:
   seaweedfs_vdata:
+  seaweedfs_fdata:
   admin_media_data:

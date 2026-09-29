@@ -14,6 +14,7 @@ import {
   Optional,
   Logger,
   BadRequestException,
+  InternalServerErrorException,
   Query
 } from '@nestjs/common';
 import { Request, Response } from 'express';
@@ -275,7 +276,18 @@ export class AdminController {
     const blobId = `asset-${crypto.randomBytes(12).toString('hex')}.${cleanExt}`;
     const contentType = body.mimeType || 'image/png';
 
-    // 1. Always persist to local disk storage
+    // 1. Primary: Persist directly to SeaweedFS Object Storage
+    let seaweedUploaded = false;
+    if (this.seaweedFs) {
+      try {
+        await this.seaweedFs.uploadBlob(blobId, buffer, contentType);
+        seaweedUploaded = true;
+      } catch (swErr: any) {
+        this.logger.error(`Failed to upload media to SeaweedFS: ${swErr.message}`);
+      }
+    }
+
+    // 2. Also keep local copy as cache/fallback if configured
     try {
       if (!fs.existsSync(MEDIA_DIR)) {
         fs.mkdirSync(MEDIA_DIR, { recursive: true });
@@ -283,16 +295,11 @@ export class AdminController {
       const localFilePath = path.join(MEDIA_DIR, blobId);
       await fs.promises.writeFile(localFilePath, buffer);
     } catch (fsErr: any) {
-      this.logger.error(`Error saving media to local disk: ${fsErr.message}`);
+      this.logger.warn(`Notice: Local disk backup skipped: ${fsErr.message}`);
     }
 
-    // 2. Also persist to SeaweedFS if available
-    if (this.seaweedFs) {
-      try {
-        await this.seaweedFs.uploadBlob(blobId, buffer, contentType);
-      } catch (swErr: any) {
-        this.logger.warn(`SeaweedFS upload skipped or failed: ${swErr.message}`);
-      }
+    if (!seaweedUploaded && !fs.existsSync(path.join(MEDIA_DIR, blobId))) {
+      throw new InternalServerErrorException('Gagal menyimpan berkas ke media storage.');
     }
 
     // Return URL accessible via GET /admin/media/:blobId
@@ -327,67 +334,70 @@ export class AdminController {
     else if (ext === 'mov') mime = 'video/quicktime';
     else if (ext === 'mkv') mime = 'video/x-matroska';
 
-    res.setHeader('Accept-Ranges', 'bytes');
-    res.setHeader('Cache-Control', 'public, max-age=86400');
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
-
-    // 1. Check local disk first
-    const localFilePath = path.join(MEDIA_DIR, safeBlobId);
-    if (fs.existsSync(localFilePath)) {
-      try {
-        const stat = fs.statSync(localFilePath);
-        const fileSize = stat.size;
-        const range = req.headers.range;
-
-        if (range) {
-          const parts = range.replace(/bytes=/, '').split('-');
-          const start = parseInt(parts[0], 10);
-          const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
-
-          if (start >= fileSize || end >= fileSize || start > end) {
-            res.setHeader('Content-Range', `bytes */${fileSize}`);
-            return res.status(HttpStatus.REQUESTED_RANGE_NOT_SATISFIABLE).end();
-          }
-
-          const chunksize = end - start + 1;
-          const stream = fs.createReadStream(localFilePath, { start, end });
-          res.writeHead(HttpStatus.PARTIAL_CONTENT, {
-            'Content-Range': `bytes ${start}-${end}/${fileSize}`,
-            'Accept-Ranges': 'bytes',
-            'Content-Length': chunksize,
-            'Content-Type': mime,
-            'Access-Control-Allow-Origin': '*',
-            'Cross-Origin-Resource-Policy': 'cross-origin',
-          });
-          return stream.pipe(res);
-        }
-
-        res.setHeader('Content-Type', mime);
-        res.setHeader('Content-Length', fileSize);
-        const stream = fs.createReadStream(localFilePath);
-        return stream.pipe(res);
-      } catch (err: any) {
-        this.logger.error(`Error reading local file: ${err.message}`);
-      }
+    // 1. Primary: Stream directly from SeaweedFS Object Storage
+    if (this.seaweedFs) {
+      const streamed = await this.seaweedFs.streamBlob(safeBlobId, req, res, mime);
+      if (streamed) return;
     }
 
-    // 2. Fallback to SeaweedFS
-    if (this.seaweedFs) {
-      try {
-        const data = await this.seaweedFs.getBlob(safeBlobId);
-        if (data) {
-          const buf = Buffer.from(data);
-          // Cache to local disk for fast subsequent access
-          try {
-            await fs.promises.writeFile(localFilePath, buf);
-          } catch (_) {}
+    // 2. Fallback: Check local disk directories (legacy migration support)
+    const candidateDirs = [
+      MEDIA_DIR,
+      '/app/uploads/admin-media',
+      '/app/apps/api/uploads/admin-media',
+      path.join(process.cwd(), 'uploads', 'admin-media'),
+    ].filter(Boolean) as string[];
+
+    for (const dir of candidateDirs) {
+      const localFilePath = path.join(dir, safeBlobId);
+      if (fs.existsSync(localFilePath)) {
+        try {
+          // Auto-migrate legacy file to SeaweedFS in background
+          if (this.seaweedFs) {
+            fs.promises.readFile(localFilePath)
+              .then(buf => this.seaweedFs?.uploadBlob(safeBlobId, buf, mime))
+              .catch(() => {});
+          }
+
+          const stat = fs.statSync(localFilePath);
+          const fileSize = stat.size;
+          const range = req.headers.range;
+
+          res.setHeader('Accept-Ranges', 'bytes');
+          res.setHeader('Cache-Control', 'public, max-age=86400');
+          res.setHeader('Access-Control-Allow-Origin', '*');
+          res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+
+          if (range) {
+            const parts = range.replace(/bytes=/, '').split('-');
+            const start = parseInt(parts[0], 10);
+            const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+
+            if (start >= fileSize || end >= fileSize || start > end) {
+              res.setHeader('Content-Range', `bytes */${fileSize}`);
+              return res.status(HttpStatus.REQUESTED_RANGE_NOT_SATISFIABLE).end();
+            }
+
+            const chunksize = end - start + 1;
+            const stream = fs.createReadStream(localFilePath, { start, end });
+            res.writeHead(HttpStatus.PARTIAL_CONTENT, {
+              'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+              'Accept-Ranges': 'bytes',
+              'Content-Length': chunksize,
+              'Content-Type': mime,
+              'Access-Control-Allow-Origin': '*',
+              'Cross-Origin-Resource-Policy': 'cross-origin',
+            });
+            return stream.pipe(res);
+          }
+
           res.setHeader('Content-Type', mime);
-          res.setHeader('Content-Length', buf.length);
-          return res.status(HttpStatus.OK).send(buf);
+          res.setHeader('Content-Length', fileSize);
+          const stream = fs.createReadStream(localFilePath);
+          return stream.pipe(res);
+        } catch (err: any) {
+          this.logger.error(`Error reading local file: ${err.message}`);
         }
-      } catch (swErr: any) {
-        this.logger.error(`Error fetching from SeaweedFS: ${swErr.message}`);
       }
     }
 
@@ -542,7 +552,19 @@ export class AdminController {
     const cleanVersion = version.replace(/[^a-zA-Z0-9.-]/g, '') || '1.0.0';
     const versionedFilename = `laju-v${cleanVersion}.apk`;
 
-    // 1. Simpan ke disk lokal releases
+    // 1. Primary: Simpan langsung ke SeaweedFS Object Storage
+    let seaweedApkUploaded = false;
+    if (this.seaweedFs) {
+      try {
+        await this.seaweedFs.uploadBlob(versionedFilename, buffer, 'application/vnd.android.package-archive');
+        await this.seaweedFs.uploadBlob('laju-latest.apk', buffer, 'application/vnd.android.package-archive');
+        seaweedApkUploaded = true;
+      } catch (swErr: any) {
+        this.logger.error(`SeaweedFS upload APK failed: ${swErr.message}`);
+      }
+    }
+
+    // 2. Simpan backup lokal jika direktori tersedia
     try {
       if (!fs.existsSync(RELEASES_DIR)) {
         fs.mkdirSync(RELEASES_DIR, { recursive: true });
@@ -552,17 +574,11 @@ export class AdminController {
       await fs.promises.writeFile(versionedPath, buffer);
       await fs.promises.writeFile(latestPath, buffer);
     } catch (fsErr: any) {
-      this.logger.error(`Error saving APK to releases disk: ${fsErr.message}`);
+      this.logger.warn(`Notice: Local disk APK backup skipped: ${fsErr.message}`);
     }
 
-    // 2. Simpan ke SeaweedFS jika aktif
-    if (this.seaweedFs) {
-      try {
-        await this.seaweedFs.uploadBlob(versionedFilename, buffer, 'application/vnd.android.package-archive');
-        await this.seaweedFs.uploadBlob('laju-latest.apk', buffer, 'application/vnd.android.package-archive');
-      } catch (swErr: any) {
-        this.logger.warn(`SeaweedFS upload APK skipped: ${swErr.message}`);
-      }
+    if (!seaweedApkUploaded && !fs.existsSync(path.join(RELEASES_DIR, versionedFilename))) {
+      throw new InternalServerErrorException('Gagal menyimpan berkas APK ke storage');
     }
 
     // 3. Update database AppSystemConfig
@@ -588,36 +604,42 @@ export class AdminController {
   }
 
   @Get('app-config/download-apk')
-  async downloadApk(@Res() res: Response) {
+  async downloadApk(@Req() req: Request, @Res() res: Response) {
     const config = await this.adminService.getAppConfig();
     const filename = config.apkFilename || 'laju-latest.apk';
-    const latestPath = path.join(RELEASES_DIR, 'laju-latest.apk');
-    const versionedPath = path.join(RELEASES_DIR, filename);
 
-    const targetPath = fs.existsSync(latestPath)
-      ? latestPath
-      : fs.existsSync(versionedPath)
-      ? versionedPath
-      : null;
-
-    if (targetPath) {
-      res.setHeader('Content-Type', 'application/vnd.android.package-archive');
+    // 1. Primary: Stream langsung dari SeaweedFS
+    if (this.seaweedFs) {
       res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-      res.setHeader('Cache-Control', 'no-cache');
-      const stream = fs.createReadStream(targetPath);
-      return stream.pipe(res);
+      const streamed = await this.seaweedFs.streamBlob(filename, req, res, 'application/vnd.android.package-archive');
+      if (streamed) return;
+      const streamedLatest = await this.seaweedFs.streamBlob('laju-latest.apk', req, res, 'application/vnd.android.package-archive');
+      if (streamedLatest) return;
     }
 
-    // Fallback to SeaweedFS if exists
-    if (this.seaweedFs) {
-      try {
-        const data = (await this.seaweedFs.getBlob(filename)) || (await this.seaweedFs.getBlob('laju-latest.apk'));
-        if (data) {
-          res.setHeader('Content-Type', 'application/vnd.android.package-archive');
-          res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-          return res.send(data);
-        }
-      } catch (_) {}
+    // 2. Fallback: Cari di disk lokal releases
+    const candidateDirs = [
+      RELEASES_DIR,
+      '/app/uploads/releases',
+      '/app/apps/api/uploads/releases',
+      path.join(process.cwd(), 'uploads', 'releases'),
+    ].filter(Boolean) as string[];
+
+    for (const dir of candidateDirs) {
+      const latestPath = path.join(dir, 'laju-latest.apk');
+      const versionedPath = path.join(dir, filename);
+      const targetPath = fs.existsSync(latestPath)
+        ? latestPath
+        : fs.existsSync(versionedPath)
+        ? versionedPath
+        : null;
+
+      if (targetPath) {
+        res.setHeader('Content-Type', 'application/vnd.android.package-archive');
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+        res.setHeader('Cache-Control', 'no-cache');
+        return fs.createReadStream(targetPath).pipe(res);
+      }
     }
 
     return res.status(HttpStatus.NOT_FOUND).json({

@@ -9,6 +9,7 @@ import {
 import { PrismaService } from '../../infrastructure/prisma/prisma.service';
 import { RedisService } from '../../infrastructure/redis/redis.service';
 import { GotifyService } from '../../infrastructure/gotify/gotify.service';
+import { SeaweedFsService } from '../../infrastructure/seaweedfs/seaweedfs.service';
 import { SendMessageDto } from './dto/message.dto';
 
 @Injectable()
@@ -18,7 +19,8 @@ export class MessagingService {
   constructor(
     private readonly prisma: PrismaService,
     @Optional() private readonly redisService?: RedisService,
-    @Optional() private readonly gotifyService?: GotifyService
+    @Optional() private readonly gotifyService?: GotifyService,
+    @Optional() private readonly seaweedFs?: SeaweedFsService
   ) {}
 
   private async getValidDeviceId(userId: string, requestedDeviceId?: string): Promise<string> {
@@ -358,6 +360,21 @@ export class MessagingService {
           deletedAt: new Date()
         }
       });
+
+      // Delete attachments from SeaweedFS before deleting database records
+      try {
+        const attachments = await tx.attachment.findMany({
+          where: { messageId },
+          select: { blobId: true }
+        });
+        if (this.seaweedFs && attachments.length > 0) {
+          for (const att of attachments) {
+            if (att.blobId) {
+              this.seaweedFs.deleteBlob(att.blobId).catch(() => {});
+            }
+          }
+        }
+      } catch (_) {}
 
       await tx.attachment.deleteMany({
         where: { messageId }
