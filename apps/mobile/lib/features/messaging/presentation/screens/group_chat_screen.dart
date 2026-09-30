@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
@@ -563,7 +564,49 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
           _syncMessages();
         }
       } else if (result.type == AttachmentType.contact) {
-        _sendMessage(result.title);
+        final contact = result.data is LajuContactData ? result.data as LajuContactData : null;
+        if (contact != null) {
+          final conId = 'con-${DateTime.now().millisecondsSinceEpoch}';
+          final conJson = jsonEncode(contact.toJson());
+          final conMsg = MessageModel(
+            id: conId,
+            clientMessageId: conId,
+            conversationId: widget.groupId,
+            senderName: 'You',
+            content: conJson,
+            attachmentName: contact.name,
+            attachmentSize: contact.username,
+            timestamp: DateTime.now(),
+            isOutgoing: true,
+            contentType: MessageContentType.contact,
+            status: MessageDeliveryStatus.sending,
+          );
+          setState(() {
+            _messages.add(conMsg);
+          });
+          await LocalDatabase.instance.insertSentMessage(conMsg);
+          _scrollToBottom(immediate: false);
+
+          final sent = await ConversationService.instance.sendMessage(
+            conversationId: widget.groupId,
+            text: conJson,
+            clientMessageId: conId,
+            messageType: 'CONTACT',
+            attachmentName: contact.name,
+            attachmentSize: contact.username,
+          );
+          if (mounted && sent != null) {
+            setState(() {
+              final idx = _messages.indexWhere((m) => m.id == conId || m.clientMessageId == conId);
+              if (idx != -1) {
+                _messages[idx] = sent;
+              }
+            });
+            _syncMessages();
+          }
+        } else {
+          _sendMessage(result.title);
+        }
       } else if (result.type == AttachmentType.location) {
         final loc = result.data is LocationData ? result.data as LocationData : null;
         if (loc != null) {

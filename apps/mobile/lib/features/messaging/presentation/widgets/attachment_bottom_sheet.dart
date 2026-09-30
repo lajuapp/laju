@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import '../../../../core/core.dart';
 import '../../../location/presentation/screens/share_location_screen.dart';
+import 'laju_contact_picker_bottom_sheet.dart';
 
 enum AttachmentType {
   document,
@@ -352,16 +353,15 @@ class AttachmentBottomSheet extends StatelessWidget {
   }
 
   Future<void> _handleContactPick(BuildContext context) async {
-    final contact = await DeviceMediaService.openContact();
+    final contact = await LajuContactPickerBottomSheet.show(context);
     if (contact != null && context.mounted) {
-      final phone = contact.phoneNumber.isNotEmpty ? ' (${contact.phoneNumber})' : '';
       Navigator.pop(
         context,
         AttachmentResult(
           type: AttachmentType.contact,
-          title: 'Kontak: ${contact.name}$phone',
-          subtitle: 'Kontak Perangkat HP',
-          data: contact.phoneNumber,
+          title: contact.name,
+          subtitle: '@${contact.username}',
+          data: contact,
         ),
       );
     }

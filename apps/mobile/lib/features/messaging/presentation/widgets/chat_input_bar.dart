@@ -655,6 +655,9 @@ class _ChatInputBarState extends State<ChatInputBar> with SingleTickerProviderSt
                     ] else if (reply.contentType == MessageContentType.attachment) ...[
                       Icon(Icons.photo_camera_rounded, size: 13, color: hintCol),
                       const SizedBox(width: 3),
+                    ] else if (reply.contentType == MessageContentType.contact) ...[
+                      Icon(Icons.person_rounded, size: 13, color: hintCol),
+                      const SizedBox(width: 3),
                     ],
                     Expanded(
                       child: Text(

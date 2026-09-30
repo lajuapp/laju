@@ -957,9 +957,32 @@ class ConversationService {
               } else if (msgType == 'LOCATION' || rawCiphertext.contains('"type":"location"') || rawCiphertext.contains('"type": "location"')) {
                 contentType = MessageContentType.location;
                 contentText = rawCiphertext;
-              } else if (msgType == 'ATTACHMENT') {
-                contentType = MessageContentType.attachment;
+              } else if (msgType == 'CONTACT' || rawCiphertext.contains('"type":"contact"') || rawCiphertext.contains('"type": "contact"')) {
+                contentType = MessageContentType.contact;
+                contentText = rawCiphertext;
                 if (rawCiphertext.startsWith('{')) {
+                  try {
+                    final parsed = jsonDecode(rawCiphertext);
+                    if (parsed is Map) {
+                      attName = (parsed['name'] ?? 'Kontak LAJU') as String;
+                      attSize = (parsed['username'] ?? '') as String;
+                    }
+                  } catch (_) {}
+                }
+              } else if (msgType == 'ATTACHMENT') {
+                if (rawCiphertext.contains('"type":"contact"') || rawCiphertext.contains('"type": "contact"')) {
+                  contentType = MessageContentType.contact;
+                  contentText = rawCiphertext;
+                  if (rawCiphertext.startsWith('{')) {
+                    try {
+                      final parsed = jsonDecode(rawCiphertext);
+                      if (parsed is Map) {
+                        attName = (parsed['name'] ?? 'Kontak LAJU') as String;
+                        attSize = (parsed['username'] ?? '') as String;
+                      }
+                    } catch (_) {}
+                  }
+                } else if (rawCiphertext.startsWith('{')) {
                   try {
                     final parsed = jsonDecode(rawCiphertext);
                     if (parsed is Map) {
@@ -1143,7 +1166,7 @@ class ConversationService {
     }
 
     try {
-      final backendMessageType = (type == 'IMAGE' || type == 'AUDIO' || type == 'DOCUMENT' || type == 'ATTACHMENT' || type == 'STICKER')
+      final backendMessageType = (type == 'IMAGE' || type == 'AUDIO' || type == 'DOCUMENT' || type == 'ATTACHMENT' || type == 'STICKER' || type == 'CONTACT')
           ? 'ATTACHMENT'
           : (type == 'LOCATION' ? 'LOCATION' : 'TEXT');
 
@@ -1253,7 +1276,9 @@ class ConversationService {
               ? MessageContentType.voiceNote
               : (type == 'IMAGE' || type == 'DOCUMENT'
                   ? MessageContentType.attachment
-                  : (type == 'LOCATION' ? MessageContentType.location : MessageContentType.text))),
+                  : (type == 'LOCATION'
+                      ? MessageContentType.location
+                      : (type == 'CONTACT' ? MessageContentType.contact : MessageContentType.text)))),
       timestamp: DateTime.now(),
       isOutgoing: true,
       status: MessageDeliveryStatus.failed,

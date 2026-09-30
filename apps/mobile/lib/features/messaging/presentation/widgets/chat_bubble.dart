@@ -7,6 +7,9 @@ import '../../../../core/core.dart';
 import '../../domain/models/message_model.dart';
 import '../../domain/services/sticker_service.dart';
 import '../../../settings/domain/privacy_controller.dart';
+import '../../../conversations/domain/conversation_service.dart';
+import '../../../conversations/presentation/screens/user_profile_screen.dart';
+import '../screens/chat_screen.dart';
 import 'voice_note_player.dart';
 
 class ChatBubble extends StatelessWidget {
@@ -374,7 +377,8 @@ class ChatBubble extends StatelessWidget {
                     ? (_hasImageCaption()
                         ? const EdgeInsets.fromLTRB(4, 4, 4, 5)
                         : const EdgeInsets.all(3))
-                    : (message.contentType == MessageContentType.location
+                    : (message.contentType == MessageContentType.location ||
+                            message.contentType == MessageContentType.contact
                         ? const EdgeInsets.all(4)
                         : const EdgeInsets.fromLTRB(8, 4, 8, 4)),
                 decoration: BoxDecoration(
@@ -431,7 +435,13 @@ class ChatBubble extends StatelessWidget {
                     if (message.contentType == MessageContentType.location)
                       _buildLocationContent(context, isDark, isOut, timeStr),
 
-                    if (!isImage && message.contentType != MessageContentType.location) ...[
+                    // Contact Card Message Content (LAJU contact card)
+                    if (message.contentType == MessageContentType.contact)
+                      _buildContactCardContent(context, isDark, isOut, timeStr),
+
+                    if (!isImage &&
+                        message.contentType != MessageContentType.location &&
+                        message.contentType != MessageContentType.contact) ...[
                       // Attachment Preview
                       if (message.contentType == MessageContentType.attachment)
                         _buildAttachmentPreview(context, isDark, isOut),
@@ -1087,6 +1097,8 @@ class ChatBubble extends StatelessWidget {
       snippetIcon = Icons.mic_rounded;
     } else if (reply.contentType == MessageContentType.location) {
       snippetIcon = Icons.location_on_rounded;
+    } else if (reply.contentType == MessageContentType.contact) {
+      snippetIcon = Icons.person_rounded;
     } else if (reply.contentType == MessageContentType.attachment) {
       final name = (reply.attachmentName ?? '').toLowerCase();
       snippetIcon = (name.endsWith('.pdf') ||
@@ -1512,8 +1524,220 @@ class ChatBubble extends StatelessWidget {
     );
   }
 
+  Widget _buildContactCardContent(BuildContext context, bool isDark, bool isOut, String timeStr) {
+    LajuContactData contact;
+    try {
+      final parsed = jsonDecode(message.content);
+      if (parsed is Map<String, dynamic>) {
+        contact = LajuContactData.fromJson(parsed);
+      } else if (parsed is Map) {
+        contact = LajuContactData.fromJson(Map<String, dynamic>.from(parsed));
+      } else {
+        throw Exception();
+      }
+    } catch (_) {
+      contact = LajuContactData(
+        userId: '',
+        name: message.attachmentName ?? 'Kontak LAJU',
+        username: message.attachmentSize ?? '',
+        status: 'Pengguna Terverifikasi LAJU',
+      );
+    }
+
+    final timeColor = isOut
+        ? (isDark ? Colors.white.withValues(alpha: 0.7) : const Color(0xFF667781))
+        : (isDark ? const Color(0xFF8696A0) : const Color(0xFF667781));
+
+    return SizedBox(
+      width: 245,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Contact Info Card Header
+          InkWell(
+            borderRadius: BorderRadius.circular(8),
+            onTap: () => _openContactProfile(context, contact),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+              child: Row(
+                children: [
+                  ModernAvatar(
+                    name: contact.name,
+                    imagePath: contact.avatarUrl,
+                    radius: 22,
+                    isOnline: true,
+                    isVerified: true,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          contact.name,
+                          style: TextStyle(
+                            fontSize: 14.5,
+                            fontWeight: FontWeight.bold,
+                            color: isOut
+                                ? (isDark ? Colors.white : const Color(0xFF111827))
+                                : (isDark ? Colors.white : const Color(0xFF111827)),
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          '@${contact.username}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: isOut
+                                ? (isDark ? Colors.white70 : const Color(0xFF4B5563))
+                                : (isDark ? Colors.white60 : const Color(0xFF6B7280)),
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          Divider(
+            height: 1,
+            color: isDark
+                ? Colors.white.withValues(alpha: 0.12)
+                : Colors.black.withValues(alpha: 0.08),
+          ),
+
+          // Action Buttons: Kirim Pesan & Lihat Profil
+          Row(
+            children: [
+              Expanded(
+                child: InkWell(
+                  borderRadius: const BorderRadius.only(bottomLeft: Radius.circular(8)),
+                  onTap: () => _openContactChat(context, contact),
+                  child: const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 8),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.chat_bubble_outline_rounded,
+                          size: 15,
+                          color: AppColors.primary,
+                        ),
+                        SizedBox(width: 5),
+                        Text(
+                          'Kirim Pesan',
+                          style: TextStyle(
+                            color: AppColors.primary,
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              Container(
+                width: 1,
+                height: 20,
+                color: isDark
+                    ? Colors.white.withValues(alpha: 0.12)
+                    : Colors.black.withValues(alpha: 0.08),
+              ),
+              IconButton(
+                icon: const Icon(Icons.person_outline_rounded, size: 18),
+                tooltip: 'Lihat Profil',
+                color: isOut
+                    ? (isDark ? Colors.white70 : Colors.black54)
+                    : (isDark ? Colors.white70 : Colors.black54),
+                onPressed: () => _openContactProfile(context, contact),
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                constraints: const BoxConstraints(),
+              ),
+            ],
+          ),
+
+          // Timestamp & Status (Bottom right)
+          Align(
+            alignment: Alignment.bottomRight,
+            child: Padding(
+              padding: const EdgeInsets.only(top: 2, right: 4, bottom: 2),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    timeStr,
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: timeColor,
+                      fontWeight: FontWeight.w400,
+                    ),
+                  ),
+                  if (isOut) ...[
+                    const SizedBox(width: 3.5),
+                    _buildStatusIcon(message.status, isOut: true, isDark: isDark),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _openContactChat(BuildContext context, LajuContactData contact) async {
+    if (contact.userId.isEmpty) return;
+    String convId = 'conv-${contact.userId}';
+    try {
+      final backendId = await ConversationService.instance.createPersonalConversation(contact.userId);
+      if (backendId != null && backendId.isNotEmpty) {
+        convId = backendId;
+      }
+    } catch (_) {}
+
+    if (context.mounted) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ChatScreen(
+            conversationId: convId,
+            title: contact.name,
+            avatarUrl: contact.avatarUrl,
+            contactUserId: contact.userId,
+            contactPhone: contact.phoneNumber ?? '@${contact.username}',
+            contactAbout: contact.status,
+          ),
+        ),
+      );
+    }
+  }
+
+  void _openContactProfile(BuildContext context, LajuContactData contact) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => UserProfileScreen(
+          contactName: contact.name,
+          userId: contact.userId.isNotEmpty ? contact.userId : null,
+          phone: contact.phoneNumber ?? '@${contact.username}',
+          status: contact.status,
+          avatarUrl: contact.avatarUrl,
+        ),
+      ),
+    );
+  }
+
   bool _shouldShowMessageContent() {
-    if (message.contentType == MessageContentType.location) {
+    if (message.contentType == MessageContentType.location ||
+        message.contentType == MessageContentType.contact) {
       return false;
     }
     if (message.contentType == MessageContentType.voiceNote && message.attachmentPath != null) {

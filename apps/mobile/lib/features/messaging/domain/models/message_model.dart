@@ -15,6 +15,44 @@ enum MessageContentType {
   systemNotice,
   location,
   sticker,
+  contact,
+}
+
+class LajuContactData {
+  final String userId;
+  final String name;
+  final String username;
+  final String? phoneNumber;
+  final String? avatarUrl;
+  final String? status;
+
+  const LajuContactData({
+    required this.userId,
+    required this.name,
+    required this.username,
+    this.phoneNumber,
+    this.avatarUrl,
+    this.status,
+  });
+
+  Map<String, dynamic> toJson() => {
+    'type': 'contact',
+    'userId': userId,
+    'name': name,
+    'username': username,
+    if (phoneNumber != null) 'phoneNumber': phoneNumber,
+    if (avatarUrl != null) 'avatarUrl': avatarUrl,
+    if (status != null) 'status': status,
+  };
+
+  factory LajuContactData.fromJson(Map<String, dynamic> json) => LajuContactData(
+    userId: json['userId']?.toString() ?? '',
+    name: json['name']?.toString() ?? 'Kontak LAJU',
+    username: json['username']?.toString() ?? '',
+    phoneNumber: json['phoneNumber']?.toString(),
+    avatarUrl: json['avatarUrl']?.toString(),
+    status: json['status']?.toString(),
+  );
 }
 
 class MessageModel {
@@ -128,6 +166,19 @@ class MessageModel {
         }
       } catch (_) {}
       return 'Lokasi';
+    }
+    if (contentType == MessageContentType.contact ||
+        content.contains('"type":"contact"') ||
+        content.contains('"type": "contact"')) {
+      try {
+        final parsed = jsonDecode(content);
+        if (parsed is Map && parsed['name'] != null && (parsed['name'] as String).isNotEmpty) {
+          return 'Kontak: ${parsed['name']}';
+        }
+      } catch (_) {}
+      return attachmentName != null && attachmentName!.isNotEmpty
+          ? 'Kontak: $attachmentName'
+          : 'Kontak';
     }
     if (contentType == MessageContentType.attachment) {
       if (attachmentName != null &&
