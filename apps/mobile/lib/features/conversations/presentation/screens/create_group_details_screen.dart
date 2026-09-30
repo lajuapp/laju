@@ -205,6 +205,71 @@ class _CreateGroupDetailsScreenState extends State<CreateGroupDetailsScreen> {
     );
   }
 
+  Widget _buildWallpaperMiniPreview(String? wallpaperId, bool isDark) {
+    final wp = ChatAppearanceController.instance.findWallpaper(wallpaperId);
+    if (wp == null || wallpaperId == null || wallpaperId == 'none') {
+      return Container(
+        width: 32,
+        height: 32,
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF1E293B) : const Color(0xFFE2E8F0),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: isDark ? Colors.white24 : Colors.black12,
+            width: 1,
+          ),
+        ),
+        child: Icon(
+          Icons.format_color_reset_rounded,
+          size: 16,
+          color: isDark ? Colors.white54 : Colors.black45,
+        ),
+      );
+    }
+
+    return Container(
+      width: 32,
+      height: 32,
+      decoration: BoxDecoration(
+        color: wp.backgroundColor,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: AppColors.primary.withValues(alpha: 0.6),
+          width: 1.5,
+        ),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          if (wp.category == 'GRADIENT')
+            Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    wp.backgroundColor,
+                    wp.backgroundColor.withValues(alpha: 0.75),
+                    const Color(0xFF0F172A),
+                  ],
+                ),
+              ),
+            ),
+          if (wp.hasRemoteImage)
+            LajuCachedImage(
+              imageUrlOrPath: wp.remoteImageUrl,
+              fit: BoxFit.cover,
+              cacheWidth: 64,
+              cacheHeight: 64,
+              placeholder: const SizedBox(),
+              errorWidget: const SizedBox(),
+            ),
+        ],
+      ),
+    );
+  }
+
   void _showWallpaperPicker() {
     final isDark = ThemeModeController.instance.isDarkMode(context);
     final langCode = LocaleController.instance.value.languageCode;
@@ -217,131 +282,487 @@ class _CreateGroupDetailsScreenState extends State<CreateGroupDetailsScreen> {
       isDefault: true,
       isRemote: false,
     );
-    final allWallpapers = [plainOption, ...ChatAppearanceController.instance.allWallpapers];
+
+    // Refresh remote wallpapers from backoffice
+    ChatAppearanceController.instance.fetchRemoteWallpapers();
+
+    String activePreviewId = _selectedWallpaperId ?? 'none';
 
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: isDark ? AppColors.darkSurface : Colors.white,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
       ),
       builder: (bCtx) {
         return StatefulBuilder(
           builder: (context, setSheetState) {
-            return SafeArea(
-              child: Container(
-                constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * 0.7),
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            return ListenableBuilder(
+              listenable: ChatAppearanceController.instance,
+              builder: (context, _) {
+                final allWallpapers = [plainOption, ...ChatAppearanceController.instance.allWallpapers];
+                final activeWallpaper = allWallpapers.firstWhere(
+                  (w) => w.id == activePreviewId,
+                  orElse: () => plainOption,
+                );
+
+                return SafeArea(
+                  child: Container(
+                    constraints: BoxConstraints(
+                      maxHeight: MediaQuery.sizeOf(context).height * 0.88,
+                    ),
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          langCode == 'id' ? 'Pilih Wallpaper Obrolan Grup' : 'Select Group Chat Wallpaper',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            color: isDark ? Colors.white : const Color(0xFF111827),
+                        // Drag Handle
+                        Center(
+                          child: Container(
+                            width: 36,
+                            height: 4,
+                            margin: const EdgeInsets.only(bottom: 12),
+                            decoration: BoxDecoration(
+                              color: isDark ? Colors.white24 : Colors.black12,
+                              borderRadius: BorderRadius.circular(2),
+                            ),
                           ),
                         ),
-                        IconButton(
-                          icon: const Icon(Icons.close_rounded),
-                          onPressed: () => Navigator.pop(bCtx),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    Expanded(
-                      child: GridView.builder(
-                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 2,
-                          crossAxisSpacing: 12,
-                          mainAxisSpacing: 12,
-                          childAspectRatio: 1.35,
-                        ),
-                        itemCount: allWallpapers.length,
-                        itemBuilder: (context, index) {
-                          final item = allWallpapers[index];
-                          final isSelected = (_selectedWallpaperId ?? 'none') == item.id;
 
-                          return InkWell(
-                            borderRadius: BorderRadius.circular(14),
-                            onTap: () {
-                              setState(() {
-                                _selectedWallpaperId = item.id == 'none' ? null : item.id;
-                              });
-                              Navigator.pop(bCtx);
-                            },
-                            child: Container(
-                              decoration: BoxDecoration(
-                                color: item.backgroundColor,
-                                borderRadius: BorderRadius.circular(14),
-                                border: Border.all(
-                                  color: isSelected
-                                      ? AppColors.primary
-                                      : (isDark ? const Color(0xFF334155) : const Color(0xFFCBD5E1)),
-                                  width: isSelected ? 2.5 : 1,
-                                ),
+                        // Header
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              langCode == 'id' ? 'Pilih Wallpaper Obrolan Grup' : 'Select Group Chat Wallpaper',
+                              style: TextStyle(
+                                fontSize: 16.5,
+                                fontWeight: FontWeight.bold,
+                                color: isDark ? Colors.white : const Color(0xFF111827),
                               ),
-                              clipBehavior: Clip.antiAlias,
-                              child: Stack(
-                                children: [
-                                  if (item.remoteImageUrl != null && item.remoteImageUrl!.isNotEmpty)
-                                    Positioned.fill(
-                                      child: Image.network(
-                                        item.remoteImageUrl!,
-                                        fit: BoxFit.cover,
-                                        errorBuilder: (_, _, _) => Container(color: item.backgroundColor),
-                                      ),
-                                    ),
-                                  Positioned(
-                                    bottom: 0,
-                                    left: 0,
-                                    right: 0,
-                                    child: Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                      color: Colors.black.withValues(alpha: 0.6),
-                                      child: Text(
-                                        item.id == 'none'
-                                            ? (langCode == 'id' ? 'Default Polos' : 'Default Plain')
-                                            : item.getName(langCode),
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.close_rounded, size: 22),
+                              visualDensity: VisualDensity.compact,
+                              onPressed: () => Navigator.pop(bCtx),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+
+                        // Live Preview Mockup Card with Group Chat Bubbles
+                        Container(
+                          height: 180,
+                          width: double.infinity,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: isDark ? Colors.white12 : Colors.black12,
+                              width: 1,
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: isDark ? 0.25 : 0.08),
+                                blurRadius: 10,
+                                offset: const Offset(0, 3),
+                              ),
+                            ],
+                          ),
+                          clipBehavior: Clip.antiAlias,
+                          child: Stack(
+                            children: [
+                              // Background
+                              if (activeWallpaper.id == 'none')
+                                Positioned.fill(
+                                  child: Container(
+                                    color: isDark ? const Color(0xFF0B141A) : const Color(0xFFF1F5F9),
+                                    child: Center(
+                                      child: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(
+                                            Icons.format_color_reset_rounded,
+                                            size: 28,
+                                            color: isDark ? Colors.white24 : Colors.black26,
+                                          ),
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            langCode == 'id' ? 'Default Polos' : 'Default Plain',
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              color: isDark ? Colors.white38 : Colors.black38,
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                          ),
+                                        ],
                                       ),
                                     ),
                                   ),
-                                  if (isSelected)
-                                    Positioned(
-                                      top: 6,
-                                      right: 6,
-                                      child: Container(
-                                        padding: const EdgeInsets.all(3),
-                                        decoration: const BoxDecoration(
-                                          color: AppColors.primary,
-                                          shape: BoxShape.circle,
+                                )
+                              else ...[
+                                Positioned.fill(
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      color: activeWallpaper.backgroundColor,
+                                      gradient: activeWallpaper.category == 'GRADIENT'
+                                          ? LinearGradient(
+                                              begin: Alignment.topLeft,
+                                              end: Alignment.bottomRight,
+                                              colors: [
+                                                activeWallpaper.backgroundColor,
+                                                activeWallpaper.backgroundColor.withValues(alpha: 0.75),
+                                                const Color(0xFF0F172A),
+                                              ],
+                                            )
+                                          : null,
+                                    ),
+                                  ),
+                                ),
+                                if (activeWallpaper.hasRemoteImage)
+                                  Positioned.fill(
+                                    child: LajuCachedImage(
+                                      imageUrlOrPath: activeWallpaper.remoteImageUrl,
+                                      fit: BoxFit.cover,
+                                      cacheWidth: 600,
+                                      cacheHeight: 400,
+                                      placeholder: Container(
+                                        color: activeWallpaper.backgroundColor,
+                                        child: const Center(
+                                          child: SizedBox(
+                                            width: 20,
+                                            height: 20,
+                                            child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary),
+                                          ),
                                         ),
-                                        child: const Icon(Icons.check, size: 14, color: Colors.white),
+                                      ),
+                                      errorWidget: Container(color: activeWallpaper.backgroundColor),
+                                    ),
+                                  ),
+                              ],
+
+                              // Sample Group Chat Bubbles Overlay
+                              Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Align(
+                                      alignment: Alignment.centerLeft,
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                        decoration: BoxDecoration(
+                                          color: isDark ? const Color(0xFF1E293B) : Colors.white,
+                                          borderRadius: const BorderRadius.only(
+                                            topLeft: Radius.circular(12),
+                                            topRight: Radius.circular(12),
+                                            bottomRight: Radius.circular(12),
+                                          ),
+                                          boxShadow: [
+                                            BoxShadow(
+                                              color: Colors.black.withValues(alpha: 0.1),
+                                              blurRadius: 4,
+                                              offset: const Offset(0, 2),
+                                            ),
+                                          ],
+                                        ),
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              'Budi Santoso',
+                                              style: TextStyle(
+                                                fontSize: 10,
+                                                fontWeight: FontWeight.w700,
+                                                color: isDark ? AppColors.primaryLight : AppColors.primaryDark,
+                                              ),
+                                            ),
+                                            const SizedBox(height: 1),
+                                            Text(
+                                              langCode == 'id'
+                                                  ? 'Halo semua! Selamat datang di grup baru 👋'
+                                                  : 'Hello everyone! Welcome to the new group 👋',
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.w500,
+                                                color: isDark ? Colors.white : Colors.black87,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
                                       ),
                                     ),
-                                ],
+                                    const SizedBox(height: 8),
+                                    Align(
+                                      alignment: Alignment.centerRight,
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                        decoration: BoxDecoration(
+                                          color: isDark ? const Color(0xFF065F46) : const Color(0xFFD6F8EC),
+                                          borderRadius: const BorderRadius.only(
+                                            topLeft: Radius.circular(12),
+                                            topRight: Radius.circular(12),
+                                            bottomLeft: Radius.circular(12),
+                                          ),
+                                          boxShadow: [
+                                            BoxShadow(
+                                              color: Colors.black.withValues(alpha: 0.1),
+                                              blurRadius: 4,
+                                              offset: const Offset(0, 2),
+                                            ),
+                                          ],
+                                        ),
+                                        child: Text(
+                                          langCode == 'id'
+                                              ? 'Wallpaper obrolan grup siap digunakan! ✨'
+                                              : 'Group wallpaper preview ready! ✨',
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w600,
+                                            color: isDark ? Colors.white : const Color(0xFF064E3B),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+
+                              // Active Wallpaper Name Pill (top-left)
+                              Positioned(
+                                top: 8,
+                                left: 8,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                  decoration: BoxDecoration(
+                                    color: Colors.black.withValues(alpha: 0.60),
+                                    borderRadius: BorderRadius.circular(20),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const Icon(Icons.remove_red_eye_rounded, size: 12, color: Colors.white70),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        activeWallpaper.id == 'none'
+                                            ? (langCode == 'id' ? 'Default Polos' : 'Default Plain')
+                                            : activeWallpaper.getName(langCode),
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 10.5,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+
+                        // Section Title
+                        Text(
+                          langCode == 'id' ? 'Pilih Tema Wallpaper' : 'Select Wallpaper Theme',
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w700,
+                            color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF6B7280),
+                            letterSpacing: 0.3,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+
+                        // Grid Picker
+                        Expanded(
+                          child: GridView.builder(
+                            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                              crossAxisCount: 2,
+                              crossAxisSpacing: 10,
+                              mainAxisSpacing: 10,
+                              childAspectRatio: 1.45,
+                            ),
+                            itemCount: allWallpapers.length,
+                            itemBuilder: (context, index) {
+                              final item = allWallpapers[index];
+                              final isSelected = activePreviewId == item.id;
+
+                              return InkWell(
+                                borderRadius: BorderRadius.circular(14),
+                                onTap: () {
+                                  setSheetState(() {
+                                    activePreviewId = item.id;
+                                  });
+                                },
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    color: item.backgroundColor,
+                                    borderRadius: BorderRadius.circular(14),
+                                    border: Border.all(
+                                      color: isSelected
+                                          ? AppColors.primary
+                                          : (isDark ? const Color(0xFF334155) : const Color(0xFFCBD5E1)),
+                                      width: isSelected ? 2.5 : 1,
+                                    ),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.black.withValues(alpha: 0.06),
+                                        blurRadius: 4,
+                                        offset: const Offset(0, 1),
+                                      ),
+                                    ],
+                                  ),
+                                  clipBehavior: Clip.antiAlias,
+                                  child: Stack(
+                                    children: [
+                                      if (item.id == 'none')
+                                        Positioned.fill(
+                                          child: Container(
+                                            color: isDark ? const Color(0xFF1E293B) : const Color(0xFFE2E8F0),
+                                            child: Center(
+                                              child: Column(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  Icon(
+                                                    Icons.block_rounded,
+                                                    size: 22,
+                                                    color: isDark ? Colors.white54 : Colors.black45,
+                                                  ),
+                                                  const SizedBox(height: 2),
+                                                  Text(
+                                                    'Polos',
+                                                    style: TextStyle(
+                                                      fontSize: 10,
+                                                      fontWeight: FontWeight.w700,
+                                                      color: isDark ? Colors.white70 : Colors.black54,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ),
+                                        )
+                                      else ...[
+                                        Positioned.fill(
+                                          child: Container(
+                                            decoration: BoxDecoration(
+                                              color: item.backgroundColor,
+                                              gradient: item.category == 'GRADIENT'
+                                                  ? LinearGradient(
+                                                      begin: Alignment.topLeft,
+                                                      end: Alignment.bottomRight,
+                                                      colors: [
+                                                        item.backgroundColor,
+                                                        item.backgroundColor.withValues(alpha: 0.75),
+                                                        const Color(0xFF0F172A),
+                                                      ],
+                                                    )
+                                                  : null,
+                                            ),
+                                          ),
+                                        ),
+                                        if (item.hasRemoteImage)
+                                          Positioned.fill(
+                                            child: LajuCachedImage(
+                                              imageUrlOrPath: item.remoteImageUrl,
+                                              fit: BoxFit.cover,
+                                              cacheWidth: 200,
+                                              cacheHeight: 300,
+                                              placeholder: const SizedBox(),
+                                              errorWidget: const SizedBox(),
+                                            ),
+                                          ),
+                                      ],
+
+                                      // Label pill at bottom
+                                      Positioned(
+                                        bottom: 0,
+                                        left: 0,
+                                        right: 0,
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                          decoration: BoxDecoration(
+                                            gradient: LinearGradient(
+                                              begin: Alignment.topCenter,
+                                              end: Alignment.bottomCenter,
+                                              colors: [
+                                                Colors.transparent,
+                                                Colors.black.withValues(alpha: 0.75),
+                                              ],
+                                            ),
+                                          ),
+                                          child: Text(
+                                            item.id == 'none'
+                                                ? (langCode == 'id' ? 'Default Polos' : 'Default Plain')
+                                                : item.getName(langCode),
+                                            style: const TextStyle(
+                                              color: Colors.white,
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                      ),
+
+                                      // Selected Check Indicator
+                                      if (isSelected)
+                                        Positioned(
+                                          top: 6,
+                                          right: 6,
+                                          child: Container(
+                                            padding: const EdgeInsets.all(3),
+                                            decoration: const BoxDecoration(
+                                              color: AppColors.primary,
+                                              shape: BoxShape.circle,
+                                            ),
+                                            child: const Icon(Icons.check, size: 14, color: Colors.white),
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+
+                        // Apply Button
+                        SizedBox(
+                          width: double.infinity,
+                          height: 46,
+                          child: ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.primary,
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              elevation: 0,
+                            ),
+                            onPressed: () {
+                              setState(() {
+                                _selectedWallpaperId = activePreviewId == 'none' ? null : activePreviewId;
+                              });
+                              Navigator.pop(bCtx);
+                            },
+                            child: Text(
+                              langCode == 'id' ? 'Gunakan Wallpaper Ini' : 'Use This Wallpaper',
+                              style: const TextStyle(
+                                fontSize: 14.5,
+                                fontWeight: FontWeight.bold,
                               ),
                             ),
-                          );
-                        },
-                      ),
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-              ),
+                  ),
+                );
+              },
             );
           },
         );
@@ -626,7 +1047,14 @@ class _CreateGroupDetailsScreenState extends State<CreateGroupDetailsScreen> {
                         : (ChatAppearanceController.instance.findWallpaper(_selectedWallpaperId)?.getName(LocaleController.instance.value.languageCode) ?? _selectedWallpaperId!),
                     style: TextStyle(fontSize: 12.5, color: textSecondary),
                   ),
-                  trailing: const Icon(Icons.chevron_right_rounded, size: 20, color: AppColors.textSecondary),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _buildWallpaperMiniPreview(_selectedWallpaperId, isDark),
+                      const SizedBox(width: 8),
+                      const Icon(Icons.chevron_right_rounded, size: 20, color: AppColors.textSecondary),
+                    ],
+                  ),
                   onTap: _showWallpaperPicker,
                 ),
                 Divider(height: 1, color: isDark ? AppColors.darkSurfaceBorder : const Color(0xFFF3F4F6)),
