@@ -9,6 +9,8 @@ import {
   CheckCircle,
   XCircle,
   AlertTriangle,
+  Eye,
+  ShieldCheck,
 } from 'lucide-react';
 import { useUsersList, useSuspendUser, useRestoreUser } from '../hooks/useUsers';
 import { usePagination } from '../hooks/usePagination';
@@ -16,6 +18,7 @@ import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { Pagination } from '../components/ui/Pagination';
 import { ConfirmModal } from '../components/ui/ConfirmModal';
+import { UserDetailModal } from '../components/users/UserDetailModal';
 
 export function UsersPage() {
   const { data: users, isLoading } = useUsersList();
@@ -24,6 +27,7 @@ export function UsersPage() {
 
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'ACTIVE' | 'SUSPENDED'>('ALL');
+  const [inspectUserId, setInspectUserId] = useState<string | null>(null);
 
   const [suspendModal, setSuspendModal] = useState<{
     isOpen: boolean;
@@ -130,6 +134,7 @@ export function UsersPage() {
                 <th className="px-5 py-3.5">Pengguna</th>
                 <th className="px-5 py-3.5">User ID</th>
                 <th className="px-5 py-3.5">Status</th>
+                <th className="px-5 py-3.5">Skor Trust</th>
                 <th className="px-5 py-3.5">Perangkat</th>
                 <th className="px-5 py-3.5">Total Pesan</th>
                 <th className="px-5 py-3.5">Terdaftar</th>
@@ -139,87 +144,121 @@ export function UsersPage() {
             <tbody className="divide-y divide-neutral-100">
               {isLoading ? (
                 <tr>
-                  <td colSpan={7} className="px-5 py-8 text-center text-neutral-400">
+                  <td colSpan={8} className="px-5 py-8 text-center text-neutral-400">
                     Memuat daftar pengguna...
                   </td>
                 </tr>
               ) : pagination.paginatedItems && pagination.paginatedItems.length > 0 ? (
-                pagination.paginatedItems.map((user) => (
-                  <tr key={user.id} className="hover:bg-neutral-50/50 transition-colors">
-                    <td className="px-5 py-3.5">
-                      <div className="flex items-center gap-2.5">
-                        <div className="w-8 h-8 rounded-full bg-neutral-900 text-white flex items-center justify-center font-bold text-xs uppercase">
-                          {user.username.substring(0, 2)}
-                        </div>
-                        <span className="font-bold text-neutral-900">@{user.username}</span>
-                      </div>
-                    </td>
-                    <td className="px-5 py-3.5 font-mono text-[11px] text-neutral-400">
-                      {user.id.substring(0, 12)}...
-                    </td>
-                    <td className="px-5 py-3.5">
-                      {user.status === 'ACTIVE' ? (
-                        <Badge variant="success">Aktif</Badge>
-                      ) : user.status === 'SUSPENDED' ? (
-                        <div className="flex flex-col items-start gap-1">
-                          <Badge variant="error">Terkunci</Badge>
-                          {user.suspendedReason && (
-                            <span className="text-[10px] text-neutral-400 max-w-[130px] truncate" title={user.suspendedReason}>
-                              {user.suspendedReason}
-                            </span>
+                pagination.paginatedItems.map((user) => {
+                  const trust = user.trustScore ?? 100;
+                  return (
+                    <tr key={user.id} className="hover:bg-neutral-50/50 transition-colors">
+                      <td className="px-5 py-3.5">
+                        <button
+                          type="button"
+                          onClick={() => setInspectUserId(user.id)}
+                          className="flex items-center gap-2.5 text-left group"
+                        >
+                          <div className="w-8 h-8 rounded-full bg-neutral-900 text-white flex items-center justify-center font-bold text-xs uppercase group-hover:ring-2 group-hover:ring-brand-500 transition-all">
+                            {user.username.substring(0, 2)}
+                          </div>
+                          <span className="font-bold text-neutral-900 group-hover:text-brand-600 group-hover:underline">
+                            @{user.username}
+                          </span>
+                        </button>
+                      </td>
+                      <td className="px-5 py-3.5 font-mono text-[11px] text-neutral-400">
+                        {user.id.substring(0, 12)}...
+                      </td>
+                      <td className="px-5 py-3.5">
+                        {user.status === 'ACTIVE' ? (
+                          <Badge variant="success">Aktif</Badge>
+                        ) : user.status === 'SUSPENDED' ? (
+                          <div className="flex flex-col items-start gap-1">
+                            <Badge variant="error">Terkunci</Badge>
+                            {user.suspendedReason && (
+                              <span className="text-[10px] text-neutral-400 max-w-[130px] truncate" title={user.suspendedReason}>
+                                {user.suspendedReason}
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <Badge variant="neutral">Deaktif</Badge>
+                        )}
+                      </td>
+                      <td className="px-5 py-3.5">
+                        <span
+                          className={`inline-flex items-center gap-1 font-mono text-[11px] font-bold px-2 py-0.5 rounded-md ${
+                            trust >= 80
+                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/80'
+                              : trust >= 50
+                              ? 'bg-amber-50 text-amber-700 border border-amber-200/80'
+                              : 'bg-rose-50 text-rose-700 border border-rose-200/80'
+                          }`}
+                        >
+                          {trust}/100
+                        </span>
+                      </td>
+                      <td className="px-5 py-3.5">
+                        <span className="inline-flex items-center gap-1.5 text-neutral-600 font-medium">
+                          <Smartphone className="w-3.5 h-3.5 text-neutral-400" />
+                          {user._count.devices}
+                        </span>
+                      </td>
+                      <td className="px-5 py-3.5">
+                        <span className="inline-flex items-center gap-1.5 text-neutral-600 font-medium">
+                          <MessageSquare className="w-3.5 h-3.5 text-neutral-400" />
+                          {user._count.messages}
+                        </span>
+                      </td>
+                      <td className="px-5 py-3.5 text-neutral-500 text-[11px]">
+                        {new Date(user.createdAt).toLocaleDateString('id-ID', {
+                          day: 'numeric',
+                          month: 'short',
+                          year: 'numeric',
+                        })}
+                      </td>
+                      <td className="px-5 py-3.5 text-right">
+                        <div className="flex items-center justify-end gap-1.5">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="text-neutral-700 hover:bg-neutral-100"
+                            icon={<Eye className="w-3 h-3" />}
+                            onClick={() => setInspectUserId(user.id)}
+                            title="Inspeksi Detail Akun"
+                          >
+                            Detail
+                          </Button>
+                          {user.status === 'ACTIVE' ? (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="text-rose-600 hover:text-rose-700 hover:bg-rose-50"
+                              icon={<Lock className="w-3 h-3" />}
+                              onClick={() => handleOpenSuspend(user.id, user.username)}
+                            >
+                              Suspend
+                            </Button>
+                          ) : (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="text-emerald-700 hover:bg-emerald-50"
+                              icon={<Unlock className="w-3 h-3" />}
+                              onClick={() => handleOpenRestore(user.id, user.username)}
+                            >
+                              Pulihkan
+                            </Button>
                           )}
                         </div>
-                      ) : (
-                        <Badge variant="neutral">Deaktif</Badge>
-                      )}
-                    </td>
-                    <td className="px-5 py-3.5">
-                      <span className="inline-flex items-center gap-1.5 text-neutral-600 font-medium">
-                        <Smartphone className="w-3.5 h-3.5 text-neutral-400" />
-                        {user._count.devices}
-                      </span>
-                    </td>
-                    <td className="px-5 py-3.5">
-                      <span className="inline-flex items-center gap-1.5 text-neutral-600 font-medium">
-                        <MessageSquare className="w-3.5 h-3.5 text-neutral-400" />
-                        {user._count.messages}
-                      </span>
-                    </td>
-                    <td className="px-5 py-3.5 text-neutral-500 text-[11px]">
-                      {new Date(user.createdAt).toLocaleDateString('id-ID', {
-                        day: 'numeric',
-                        month: 'short',
-                        year: 'numeric',
-                      })}
-                    </td>
-                    <td className="px-5 py-3.5 text-right">
-                      {user.status === 'ACTIVE' ? (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="text-rose-600 hover:text-rose-700 hover:bg-rose-50"
-                          icon={<Lock className="w-3 h-3" />}
-                          onClick={() => handleOpenSuspend(user.id, user.username)}
-                        >
-                          Suspend
-                        </Button>
-                      ) : (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="text-emerald-700 hover:bg-emerald-50"
-                          icon={<Unlock className="w-3 h-3" />}
-                          onClick={() => handleOpenRestore(user.id, user.username)}
-                        >
-                          Pulihkan
-                        </Button>
-                      )}
-                    </td>
-                  </tr>
-                ))
+                      </td>
+                    </tr>
+                  );
+                })
               ) : (
                 <tr>
-                  <td colSpan={7} className="px-5 py-8 text-center text-neutral-400">
+                  <td colSpan={8} className="px-5 py-8 text-center text-neutral-400">
                     Tidak ditemukan pengguna yang sesuai
                   </td>
                 </tr>
@@ -269,6 +308,15 @@ export function UsersPage() {
         cancelText="Batal"
         variant="primary"
         isLoading={restoreUser.isPending}
+      />
+
+      {/* Modal Detail Profil Pengguna 360° */}
+      <UserDetailModal
+        userId={inspectUserId}
+        isOpen={!!inspectUserId}
+        onClose={() => setInspectUserId(null)}
+        onOpenSuspend={(id, username) => handleOpenSuspend(id, username)}
+        onOpenRestore={(id, username) => handleOpenRestore(id, username)}
       />
     </div>
   );

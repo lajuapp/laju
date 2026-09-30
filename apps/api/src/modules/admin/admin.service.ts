@@ -25,7 +25,8 @@ import {
   SuspendUserDto,
   CreateAnnouncementDto,
   UpdateAnnouncementDto,
-  UpdateAppConfigDto
+  UpdateAppConfigDto,
+  ReviewReportDto
 } from './dto/admin.dto';
 
 @Injectable()
@@ -169,8 +170,15 @@ export class AdminService {
     return { success: true };
   }
 
-  // Dashboard Aggregation Stats
+  // Dashboard Aggregation Stats with Complete Analytics & Growth Metrics
   async getDashboardStats() {
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const yesterdayStart = new Date(todayStart.getTime() - 24 * 60 * 60 * 1000);
+    const sevenDaysAgo = new Date(todayStart.getTime() - 6 * 24 * 60 * 60 * 1000);
+    const fourteenDaysAgo = new Date(todayStart.getTime() - 13 * 24 * 60 * 60 * 1000);
+    const thirtyDaysAgo = new Date(todayStart.getTime() - 29 * 24 * 60 * 60 * 1000);
+    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
     const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
     const fifteenMinutesAgo = new Date(Date.now() - 15 * 60 * 1000);
 
@@ -187,7 +195,33 @@ export class AdminService {
       recentAuditLogs,
       onlineDevicesCount,
       activeCallsCount,
-      recentMessagesCount
+      recentMessagesCount,
+      // New Users Metrics
+      newUsersToday,
+      newUsersYesterday,
+      newUsersThisWeek,
+      newUsersPrevWeek,
+      newUsersThisMonth,
+      // Messages Today
+      messagesToday,
+      // Active users (DAU/WAU/MAU)
+      dauDevices,
+      wauDevices,
+      mauDevices,
+      // Trust & Safety
+      pendingReportsCount,
+      totalReportsCount,
+      atRiskUsersCount,
+      healthyUsersCount,
+      // Calls
+      totalCallsToday,
+      totalCalls,
+      // Raw recent records for time-series aggregation
+      recentUsers14d,
+      recentMessages7d,
+      platformsRaw,
+      appVersionsRaw,
+      messagesByTypeRaw
     ] = await Promise.all([
       this.prisma.user.count(),
       this.prisma.user.count({ where: { status: 'ACTIVE' } }),
@@ -217,8 +251,111 @@ export class AdminService {
         where: {
           createdAt: { gte: fifteenMinutesAgo }
         }
+      }),
+      // New Users
+      this.prisma.user.count({ where: { createdAt: { gte: todayStart } } }),
+      this.prisma.user.count({ where: { createdAt: { gte: yesterdayStart, lt: todayStart } } }),
+      this.prisma.user.count({ where: { createdAt: { gte: sevenDaysAgo } } }),
+      this.prisma.user.count({ where: { createdAt: { gte: fourteenDaysAgo, lt: sevenDaysAgo } } }),
+      this.prisma.user.count({ where: { createdAt: { gte: thirtyDaysAgo } } }),
+      // Messages Today
+      this.prisma.message.count({ where: { createdAt: { gte: todayStart } } }),
+      // Distinct active users
+      this.prisma.device.findMany({
+        where: { lastSeenAt: { gte: twentyFourHoursAgo } },
+        select: { userId: true },
+        distinct: ['userId']
+      }),
+      this.prisma.device.findMany({
+        where: { lastSeenAt: { gte: sevenDaysAgo } },
+        select: { userId: true },
+        distinct: ['userId']
+      }),
+      this.prisma.device.findMany({
+        where: { lastSeenAt: { gte: thirtyDaysAgo } },
+        select: { userId: true },
+        distinct: ['userId']
+      }),
+      // Trust and Safety
+      (this.prisma as any).userReport.count({ where: { status: 'PENDING' } }),
+      (this.prisma as any).userReport.count(),
+      this.prisma.user.count({ where: { trustScore: { lt: 60 } } }),
+      this.prisma.user.count({ where: { trustScore: { gte: 80 } } }),
+      // Calls
+      this.prisma.call.count({ where: { startedAt: { gte: todayStart } } }),
+      this.prisma.call.count(),
+      // Time series data
+      this.prisma.user.findMany({
+        where: { createdAt: { gte: fourteenDaysAgo } },
+        select: { createdAt: true }
+      }),
+      this.prisma.message.findMany({
+        where: { createdAt: { gte: sevenDaysAgo } },
+        select: { createdAt: true }
+      }),
+      // Distributions
+      (this.prisma.device as any).groupBy({
+        by: ['platform'],
+        _count: { id: true }
+      }),
+      (this.prisma.device as any).groupBy({
+        by: ['appVersion'],
+        _count: { id: true },
+        orderBy: { _count: { id: 'desc' } },
+        take: 5
+      }),
+      (this.prisma.message as any).groupBy({
+        by: ['type'],
+        _count: { id: true }
       })
     ]);
+
+    const dau = Math.max(dauDevices.length, onlineDevicesCount);
+    const wau = Math.max(wauDevices.length, dau);
+    const mau = Math.max(mauDevices.length, wau);
+    const stickinessRatio = mau > 0 ? Math.round((dau / mau) * 100) : (totalUsers > 0 ? Math.round((dau / totalUsers) * 100) : 0);
+
+    let userGrowthRatePercent = 0;
+    if (newUsersPrevWeek === 0) {
+      userGrowthRatePercent = newUsersThisWeek > 0 ? 100 : 0;
+    } else {
+      userGrowthRatePercent = Math.round(((newUsersThisWeek - newUsersPrevWeek) / newUsersPrevWeek) * 100);
+    }
+
+    let dailyGrowthPercent = 0;
+    if (newUsersYesterday === 0) {
+      dailyGrowthPercent = newUsersToday > 0 ? 100 : 0;
+    } else {
+      dailyGrowthPercent = Math.round(((newUsersToday - newUsersYesterday) / newUsersYesterday) * 100);
+    }
+
+    // Build 14-day daily registrations time series
+    const dailyRegistrations: { date: string; label: string; count: number }[] = [];
+    for (let i = 13; i >= 0; i--) {
+      const d = new Date(todayStart.getTime() - i * 24 * 60 * 60 * 1000);
+      const nextD = new Date(d.getTime() + 24 * 60 * 60 * 1000);
+      const dateStr = d.toISOString().split('T')[0];
+      const count = recentUsers14d.filter(u => u.createdAt >= d && u.createdAt < nextD).length;
+      dailyRegistrations.push({
+        date: dateStr,
+        label: d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' }),
+        count
+      });
+    }
+
+    // Build 7-day daily messages time series
+    const dailyMessages: { date: string; label: string; count: number }[] = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(todayStart.getTime() - i * 24 * 60 * 60 * 1000);
+      const nextD = new Date(d.getTime() + 24 * 60 * 60 * 1000);
+      const dateStr = d.toISOString().split('T')[0];
+      const count = recentMessages7d.filter(m => m.createdAt >= d && m.createdAt < nextD).length;
+      dailyMessages.push({
+        date: dateStr,
+        label: d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' }),
+        count
+      });
+    }
 
     const onlineUsers = onlineDevicesCount;
     const offlineDevicesCount = Math.max(0, totalDevices - onlineDevicesCount);
@@ -235,11 +372,51 @@ export class AdminService {
         totalConversations,
         totalGroups,
         totalMessages,
+        messagesToday,
         totalWallpapers,
         totalStickerPacks,
         onlineUsers,
         communicatingUsers,
-        activeCalls: activeCallsCount
+        activeCalls: activeCallsCount,
+        totalCallsToday,
+        totalCalls
+      },
+      growth: {
+        newUsersToday,
+        newUsersYesterday,
+        newUsersThisWeek,
+        newUsersPrevWeek,
+        newUsersThisMonth,
+        userGrowthRatePercent,
+        dailyGrowthPercent,
+        dau,
+        wau,
+        mau,
+        stickinessRatio
+      },
+      timeSeries: {
+        dailyRegistrations,
+        dailyMessages
+      },
+      distributions: {
+        platforms: platformsRaw.map(p => ({
+          platform: p.platform || 'UNKNOWN',
+          count: p._count.id
+        })),
+        appVersions: appVersionsRaw.map(v => ({
+          version: v.appVersion || 'v1.0.0',
+          count: v._count.id
+        })),
+        messageTypes: messagesByTypeRaw.map(m => ({
+          type: m.type,
+          count: m._count.id
+        }))
+      },
+      trustAndSafety: {
+        pendingReportsCount,
+        totalReportsCount,
+        atRiskUsersCount,
+        healthyUsersCount
       },
       recentAuditLogs
     };
@@ -284,6 +461,7 @@ export class AdminService {
         status: true,
         suspendedReason: true,
         suspendedAt: true,
+        trustScore: true,
         createdAt: true,
         updatedAt: true,
         _count: { select: { devices: true, messages: true } }
@@ -1166,6 +1344,174 @@ export class AdminService {
       where: { id: 'global' },
       data: dto
     });
+  }
+
+  // ─── USER REPORTS & MODERATION ────────────────────────────────────
+  async listReports(status?: string, page: number = 1, limit: number = 20) {
+    const where: any = {};
+    if (status && status !== 'ALL') {
+      where.status = status;
+    }
+
+    const skip = (page - 1) * limit;
+
+    const [reports, total] = await Promise.all([
+      (this.prisma as any).userReport.findMany({
+        where,
+        include: {
+          reporter: { select: { id: true, username: true } },
+          reportedUser: { select: { id: true, username: true, trustScore: true, status: true } }
+        },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit
+      }),
+      (this.prisma as any).userReport.count({ where })
+    ]);
+
+    return {
+      data: reports,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit)
+    };
+  }
+
+  async reviewReport(reportId: string, adminId: string, dto: ReviewReportDto) {
+    const report = await (this.prisma as any).userReport.findUnique({
+      where: { id: reportId },
+      include: { reportedUser: true }
+    });
+
+    if (!report) {
+      throw new NotFoundException('Laporan tidak ditemukan');
+    }
+
+    if (report.status !== 'PENDING') {
+      throw new BadRequestException(`Laporan sudah pernah ditinjau (Status: ${report.status})`);
+    }
+
+    if (dto.action === 'APPROVE') {
+      const deduction = dto.scoreDeduction ?? report.scoreDeduction ?? 10;
+      const currentScore = report.reportedUser?.trustScore ?? 100;
+      const newScore = Math.max(0, currentScore - deduction);
+
+      const updateData: any = {
+        trustScore: newScore
+      };
+
+      if (dto.suspendUser || newScore <= 20) {
+        updateData.status = 'SUSPENDED';
+        updateData.suspendedReason = dto.reviewNotes || `Sanksi laporan pelanggaran (${report.category})`;
+        updateData.suspendedAt = new Date();
+      }
+
+      await this.prisma.user.update({
+        where: { id: report.reportedUserId },
+        data: updateData
+      });
+
+      if (updateData.status === 'SUSPENDED') {
+        await this.prisma.session.deleteMany({
+          where: { userId: report.reportedUserId }
+        });
+      }
+
+      const updatedReport = await (this.prisma as any).userReport.update({
+        where: { id: reportId },
+        data: {
+          status: 'APPROVED',
+          scoreDeduction: deduction,
+          reviewNotes: dto.reviewNotes,
+          reviewedAt: new Date(),
+          reviewedBy: adminId
+        },
+        include: {
+          reporter: { select: { id: true, username: true } },
+          reportedUser: { select: { id: true, username: true, trustScore: true, status: true } }
+        }
+      });
+
+      return {
+        success: true,
+        message: `Laporan disetujui. Skor kepercayaan dipotong ${deduction} poin (Skor baru: ${newScore}).`,
+        report: updatedReport
+      };
+    } else {
+      const updatedReport = await (this.prisma as any).userReport.update({
+        where: { id: reportId },
+        data: {
+          status: 'REJECTED',
+          reviewNotes: dto.reviewNotes,
+          reviewedAt: new Date(),
+          reviewedBy: adminId
+        },
+        include: {
+          reporter: { select: { id: true, username: true } },
+          reportedUser: { select: { id: true, username: true, trustScore: true, status: true } }
+        }
+      });
+
+      return {
+        success: true,
+        message: 'Laporan ditolak / diabaikan.',
+        report: updatedReport
+      };
+    }
+  }
+
+  // ─── USER DETAILS INSPECTOR ──────────────────────────────────────
+  async getUserDetails(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        devices: {
+          orderBy: { lastSeenAt: 'desc' }
+        },
+        _count: {
+          select: {
+            devices: true,
+            messages: true,
+            conversationMembers: true,
+            reportsReceived: true,
+            reportsMade: true,
+            sessions: true
+          }
+        }
+      }
+    });
+
+    if (!user) {
+      throw new NotFoundException('Pengguna tidak ditemukan');
+    }
+
+    return {
+      id: user.id,
+      username: user.username,
+      phoneNumber: user.phoneNumber ? `${user.phoneNumber.substring(0, 4)}****${user.phoneNumber.slice(-4)}` : null,
+      email: user.email ? `${user.email.substring(0, 3)}***@${user.email.split('@')[1] || ''}` : null,
+      status: user.status,
+      suspendedReason: user.suspendedReason,
+      suspendedAt: user.suspendedAt,
+      trustScore: user.trustScore,
+      twoFactorEnabled: user.twoFactorEnabled,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
+      devices: user.devices.map(d => ({
+        id: d.id,
+        name: d.name,
+        deviceModel: d.deviceModel,
+        platform: d.platform,
+        osVersion: d.osVersion,
+        appVersion: d.appVersion,
+        registrationIp: d.registrationIp,
+        status: d.status,
+        createdAt: d.createdAt,
+        lastSeenAt: d.lastSeenAt
+      })),
+      counts: user._count
+    };
   }
 }
 

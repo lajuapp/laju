@@ -14,12 +14,14 @@ import {
   Settings2,
 } from 'lucide-react';
 import { useAdminMe, useLogout } from '../../hooks/useAdminAuth';
+import { useDashboardStats } from '../../hooks/useDashboardStats';
 import { Badge } from '../ui/Badge';
 import { clsx } from 'clsx';
 
 export function AppLayout() {
   const navigate = useNavigate();
   const { data: admin, isLoading } = useAdminMe();
+  const { data: stats } = useDashboardStats();
   const logout = useLogout();
 
   React.useEffect(() => {
@@ -54,6 +56,7 @@ export function AppLayout() {
       group: 'Kepatuhan & Keamanan',
       items: [
         { label: 'Log Aktivitas', to: '/security', icon: ShieldAlert },
+        { label: 'Laporan Pengguna', to: '/reports', icon: ShieldCheck },
       ],
     },
     {
@@ -126,7 +129,12 @@ export function AppLayout() {
                             isActive ? 'text-brand-600' : 'text-neutral-400 group-hover:text-neutral-700'
                           )}
                         />
-                        <span>{item.label}</span>
+                        <span className="flex-1 text-left">{item.label}</span>
+                        {item.to === '/reports' && (stats?.trustAndSafety?.pendingReportsCount ?? 0) > 0 && (
+                          <span className="ml-auto px-1.5 py-0.2 rounded-full text-[10px] font-extrabold bg-rose-600 text-white">
+                            {stats?.trustAndSafety?.pendingReportsCount}
+                          </span>
+                        )}
                       </>
                     )}
                   </NavLink>

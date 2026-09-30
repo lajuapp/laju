@@ -36,7 +36,8 @@ import {
   SuspendUserDto,
   CreateAnnouncementDto,
   UpdateAnnouncementDto,
-  UpdateAppConfigDto
+  UpdateAppConfigDto,
+  ReviewReportDto
 } from './dto/admin.dto';
 import { AdminAuthGuard } from '../../common/guards/admin-auth.guard';
 import { RequirePermissions } from '../../common/decorators/permissions.decorator';
@@ -156,6 +157,39 @@ export class AdminController {
   @RequirePermissions(AdminPermission.USER_SUSPEND)
   restoreUser(@Param('id') userId: string) {
     return this.adminService.restoreUser(userId);
+  }
+
+  @Get('users/:id/details')
+  @UseGuards(AdminAuthGuard)
+  @RequirePermissions(AdminPermission.USER_SUSPEND)
+  getUserDetails(@Param('id') userId: string) {
+    return this.adminService.getUserDetails(userId);
+  }
+
+  // ─── USER REPORTS & MODERATION ──────────────────────────────────
+  @Get('reports')
+  @UseGuards(AdminAuthGuard)
+  listReports(
+    @Query('status') status?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string
+  ) {
+    return this.adminService.listReports(
+      status,
+      page ? parseInt(page, 10) : 1,
+      limit ? parseInt(limit, 10) : 20
+    );
+  }
+
+  @Post('reports/:id/review')
+  @UseGuards(AdminAuthGuard)
+  @RequirePermissions(AdminPermission.USER_SUSPEND)
+  reviewReport(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Body() dto: ReviewReportDto
+  ) {
+    return this.adminService.reviewReport(id, req.admin.adminId, dto);
   }
 
   // ─── DEVICES MANAGEMENT ─────────────────────────────────────────

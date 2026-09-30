@@ -44,11 +44,42 @@ export interface DashboardStats {
     totalConversations: number;
     totalGroups: number;
     totalMessages: number;
+    messagesToday?: number;
     totalWallpapers: number;
     totalStickerPacks: number;
     onlineUsers?: number;
     communicatingUsers?: number;
     activeCalls?: number;
+    totalCallsToday?: number;
+    totalCalls?: number;
+  };
+  growth?: {
+    newUsersToday: number;
+    newUsersYesterday: number;
+    newUsersThisWeek: number;
+    newUsersPrevWeek: number;
+    newUsersThisMonth: number;
+    userGrowthRatePercent: number;
+    dailyGrowthPercent: number;
+    dau: number;
+    wau: number;
+    mau: number;
+    stickinessRatio: number;
+  };
+  timeSeries?: {
+    dailyRegistrations: { date: string; label: string; count: number }[];
+    dailyMessages: { date: string; label: string; count: number }[];
+  };
+  distributions?: {
+    platforms: { platform: string; count: number }[];
+    appVersions: { version: string; count: number }[];
+    messageTypes: { type: string; count: number }[];
+  };
+  trustAndSafety?: {
+    pendingReportsCount: number;
+    totalReportsCount: number;
+    atRiskUsersCount: number;
+    healthyUsersCount: number;
   };
   recentAuditLogs: AdminAuditEvent[];
 }
@@ -59,11 +90,71 @@ export interface UserItem {
   status: 'ACTIVE' | 'SUSPENDED' | 'DEACTIVATED';
   suspendedReason?: string | null;
   suspendedAt?: string | null;
+  trustScore?: number;
   createdAt: string;
   updatedAt: string;
   _count: {
     devices: number;
     messages: number;
+  };
+}
+
+export interface UserDetails {
+  id: string;
+  username: string;
+  phoneNumber?: string | null;
+  email?: string | null;
+  status: 'ACTIVE' | 'SUSPENDED' | 'DEACTIVATED';
+  suspendedReason?: string | null;
+  suspendedAt?: string | null;
+  trustScore: number;
+  twoFactorEnabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+  devices: {
+    id: string;
+    name?: string | null;
+    deviceModel?: string | null;
+    platform?: string | null;
+    osVersion?: string | null;
+    appVersion?: string | null;
+    registrationIp?: string | null;
+    status: string;
+    createdAt: string;
+    lastSeenAt?: string | null;
+  }[];
+  counts: {
+    devices: number;
+    messages: number;
+    conversationMembers: number;
+    reportsReceived: number;
+    reportsMade: number;
+    sessions: number;
+  };
+}
+
+export interface UserReportItem {
+  id: string;
+  reporterId: string;
+  reportedUserId: string;
+  category: 'SPAM' | 'SCAM' | 'HARASSMENT' | 'IMPERSONATION' | 'INAPPROPRIATE_CONTENT' | 'OTHER';
+  reason: string;
+  scoreDeduction: number;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  reviewNotes?: string | null;
+  reviewedAt?: string | null;
+  reviewedBy?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  reporter?: {
+    id: string;
+    username: string;
+  };
+  reportedUser?: {
+    id: string;
+    username: string;
+    trustScore: number;
+    status: string;
   };
 }
 

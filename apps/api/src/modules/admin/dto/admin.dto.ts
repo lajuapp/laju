@@ -376,4 +376,22 @@ export class UpdateAppConfigDto {
   releaseNotes?: string;
 }
 
+export class ReviewReportDto {
+  @IsString()
+  @IsNotEmpty()
+  action: 'APPROVE' | 'REJECT';
+
+  @IsInt()
+  @IsOptional()
+  scoreDeduction?: number;
+
+  @IsString()
+  @IsOptional()
+  reviewNotes?: string;
+
+  @IsBoolean()
+  @IsOptional()
+  suspendUser?: boolean;
+}
+
 
