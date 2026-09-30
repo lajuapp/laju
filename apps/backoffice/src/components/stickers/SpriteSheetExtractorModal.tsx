@@ -377,12 +377,13 @@ export function SpriteSheetExtractorModal({
       const rawY = (clientY - rect.top) * scaleY;
 
       return {
-        x: Math.round(Math.max(0, Math.min(sheetDimensions.width, rawX))),
-        y: Math.round(Math.max(0, Math.min(sheetDimensions.height, rawY))),
+        x: Math.round(rawX),
+        y: Math.round(rawY),
       };
     },
     [sheetDimensions]
   );
+
 
   // Eyedropper Color Picker
   const handlePickColor = (coords: { x: number; y: number }) => {
@@ -402,13 +403,38 @@ export function SpriteSheetExtractorModal({
   };
 
   // Change Columns / Rows and rebuild un-customized boxes
-  const updateGridColsRows = (newCols: number, newRows: number) => {
+  const updateGridColsRows = (newCols: number, newRows: number, fitImage = false) => {
     const c = Math.max(1, Math.min(24, newCols));
     const r = Math.max(1, Math.min(24, newRows));
     setCols(c);
     setRows(r);
 
-    const newBoxes = generateUniformGridBoxes(gridX, gridY, gridWidth, gridHeight, c, r, spacingX, spacingY);
+    let gx = gridX;
+    let gy = gridY;
+    let gw = gridWidth;
+    let gh = gridHeight;
+
+    // Automatically expand and center if requested or if current bounds are squashed/zero
+    if (
+      fitImage ||
+      gw <= 0 ||
+      gh <= 0 ||
+      (sheetDimensions.width > 0 && gw < sheetDimensions.width * 0.5) ||
+      (sheetDimensions.height > 0 && gh < sheetDimensions.height * 0.5)
+    ) {
+      const padX = Math.round(sheetDimensions.width * 0.02);
+      const padY = Math.round(sheetDimensions.height * 0.02);
+      gx = padX;
+      gy = padY;
+      gw = Math.max(32, sheetDimensions.width - padX * 2);
+      gh = Math.max(32, sheetDimensions.height - padY * 2);
+      setGridX(gx);
+      setGridY(gy);
+      setGridWidth(gw);
+      setGridHeight(gh);
+    }
+
+    const newBoxes = generateUniformGridBoxes(gx, gy, gw, gh, c, r, spacingX, spacingY);
     setBoxes(newBoxes);
     setSelectedBoxId(null);
   };
@@ -418,6 +444,35 @@ export function SpriteSheetExtractorModal({
     const newBoxes = generateUniformGridBoxes(gridX, gridY, gridWidth, gridHeight, cols, rows, spacingX, spacingY);
     setBoxes(newBoxes);
     setSelectedBoxId(null);
+  };
+
+  // Snap Master Grid Top to Y=0 (Penuh ke Atas)
+  const handleSnapMasterGridToTop = () => {
+    if (sheetDimensions.height <= 0) return;
+    const newH = Math.min(sheetDimensions.height, gridY + gridHeight);
+    setGridY(0);
+    setGridHeight(newH);
+    setBoxes(generateUniformGridBoxes(gridX, 0, gridWidth, newH, cols, rows, spacingX, spacingY));
+  };
+
+  // Snap Master Grid Bottom to Y=sheetDimensions.height (Penuh ke Bawah)
+  const handleSnapMasterGridToBottom = () => {
+    if (sheetDimensions.height <= 0) return;
+    const newH = Math.max(rows * 16, sheetDimensions.height - gridY);
+    setGridHeight(newH);
+    setBoxes(generateUniformGridBoxes(gridX, gridY, gridWidth, newH, cols, rows, spacingX, spacingY));
+  };
+
+  // Nudge Master Grid Position
+  const handleNudgeMasterGrid = (dx: number, dy: number) => {
+    if (sheetDimensions.width <= 0 || sheetDimensions.height <= 0) return;
+    const maxAllowedX = Math.max(0, sheetDimensions.width - gridWidth);
+    const maxAllowedY = Math.max(0, sheetDimensions.height - gridHeight);
+    const newX = Math.max(0, Math.min(maxAllowedX, gridX + dx));
+    const newY = Math.max(0, Math.min(maxAllowedY, gridY + dy));
+    setGridX(newX);
+    setGridY(newY);
+    setBoxes(generateUniformGridBoxes(newX, newY, gridWidth, gridHeight, cols, rows, spacingX, spacingY));
   };
 
   // Reset a specific customized box back to its theoretical grid cell
@@ -442,6 +497,7 @@ export function SpriteSheetExtractorModal({
     const newBoxes = generateUniformGridBoxes(0, 0, sheetDimensions.width, sheetDimensions.height, cols, rows, spacingX, spacingY);
     setBoxes(newBoxes);
   };
+
 
   // Center Master Grid with Clean Margin (96% Coverage)
   const handleFitMasterGridWithMargin = () => {
@@ -807,76 +863,83 @@ export function SpriteSheetExtractorModal({
     const dx = coords.x - action.startX;
     const dy = coords.y - action.startY;
 
-    // 1. MASTER GRID MOVE: Shift ALL boxes by delta (preserves custom sizes), uses snapshotted params
+    // 1. MASTER GRID MOVE: Shift ALL boxes by delta
     if (action.type === 'master_move') {
       const init = action.initialGrid!;
-      const newX = Math.round(Math.max(0, Math.min(sheetDimensions.width - init.width, init.x + dx)));
-      const newY = Math.round(Math.max(0, Math.min(sheetDimensions.height - init.height, init.y + dy)));
+      const maxAllowedX = Math.max(0, sheetDimensions.width - init.width);
+      const maxAllowedY = Math.max(0, sheetDimensions.height - init.height);
+      const newX = Math.round(Math.max(0, Math.min(maxAllowedX, init.x + dx)));
+      const newY = Math.round(Math.max(0, Math.min(maxAllowedY, init.y + dy)));
       const deltaX = newX - init.x;
       const deltaY = newY - init.y;
 
       setGridX(newX);
       setGridY(newY);
 
-      // Shift ALL snapshotted boxes by delta — preserves custom-sized frames and does NOT use stale closure
+      // Shift ALL snapshotted boxes by delta
       const initBoxes = action.snapBoxes || [];
       setBoxes(initBoxes.map((b) => ({
         ...b,
-        x: Math.round(Math.max(0, Math.min(sheetDimensions.width - b.width, b.x + deltaX))),
-        y: Math.round(Math.max(0, Math.min(sheetDimensions.height - b.height, b.y + deltaY))),
+        x: Math.round(b.x + deltaX),
+        y: Math.round(b.y + deltaY),
       })));
       return;
     }
 
-    // 2. MASTER GRID RESIZE: Pull handles to stretch all rows & columns simultaneously!
-    // Uses snapshotted cols/rows/spacing from ref to avoid stale closure values.
+    // 2. MASTER GRID RESIZE: Pull handles to stretch all rows & columns simultaneously
     if (action.type === 'master_resize') {
       const init = action.initialGrid!;
       const handle = action.handle!;
-      // Use snapshotted values — NOT the closure-captured cols/rows/spacingX/spacingY
       const snapC = action.snapCols ?? cols;
       const snapR = action.snapRows ?? rows;
       const snapSX = action.snapSpacingX ?? spacingX;
       const snapSY = action.snapSpacingY ?? spacingY;
+
+      const minW = snapC * 12;
+      const minH = snapR * 12;
 
       let newX = init.x;
       let newY = init.y;
       let newW = init.width;
       let newH = init.height;
 
+      // Handle West (Left edge)
       if (handle.includes('w')) {
-        const clampedW = Math.max(snapC * 16, init.width - dx);
-        newX = init.x + (init.width - clampedW);
-        newW = clampedW;
+        const targetX = Math.max(0, Math.min(init.x + init.width - minW, init.x + dx));
+        newX = targetX;
+        newW = init.x + init.width - targetX;
       }
+      // Handle East (Right edge)
       if (handle.includes('e')) {
-        newW = Math.max(snapC * 16, Math.min(sheetDimensions.width - init.x, init.width + dx));
+        const targetRight = Math.min(sheetDimensions.width, Math.max(init.x + minW, init.x + init.width + dx));
+        newW = targetRight - init.x;
       }
+      // Handle North (Top edge)
       if (handle.includes('n')) {
-        const clampedH = Math.max(snapR * 16, init.height - dy);
-        newY = init.y + (init.height - clampedH);
-        newH = clampedH;
+        const targetY = Math.max(0, Math.min(init.y + init.height - minH, init.y + dy));
+        newY = targetY;
+        newH = init.y + init.height - targetY;
       }
+      // Handle South (Bottom edge)
       if (handle.includes('s')) {
-        newH = Math.max(snapR * 16, Math.min(sheetDimensions.height - init.y, init.height + dy));
+        const targetBottom = Math.min(sheetDimensions.height, Math.max(init.y + minH, init.y + init.height + dy));
+        newH = targetBottom - init.y;
       }
 
-      newX = Math.round(Math.max(0, newX));
-      newY = Math.round(Math.max(0, newY));
-      newW = Math.round(Math.min(sheetDimensions.width - newX, newW));
-      newH = Math.round(Math.min(sheetDimensions.height - newY, newH));
+      newX = Math.round(newX);
+      newY = Math.round(newY);
+      newW = Math.round(newW);
+      newH = Math.round(newH);
 
       setGridX(newX);
       setGridY(newY);
       setGridWidth(newW);
       setGridHeight(newH);
 
-      // Use snapshotted cols/rows/spacing — NOT stale closure values
       const resizedBoxes = generateUniformGridBoxes(newX, newY, newW, newH, snapC, snapR, snapSX, snapSY);
       setBoxes(resizedBoxes);
       return;
     }
-
 
     // 3. INDIVIDUAL BOX MOVE
     if (action.type === 'box_move') {
@@ -904,20 +967,22 @@ export function SpriteSheetExtractorModal({
       let newH = init.height;
 
       if (handle.includes('w')) {
-        const clampedW = Math.max(12, init.width - dx);
-        newX = init.x + (init.width - clampedW);
-        newW = clampedW;
+        const targetX = Math.max(0, Math.min(init.x + init.width - 12, init.x + dx));
+        newX = targetX;
+        newW = init.x + init.width - targetX;
       }
       if (handle.includes('e')) {
-        newW = Math.max(12, Math.min(sheetDimensions.width - init.x, init.width + dx));
+        const targetRight = Math.min(sheetDimensions.width, Math.max(init.x + 12, init.x + init.width + dx));
+        newW = targetRight - init.x;
       }
       if (handle.includes('n')) {
-        const clampedH = Math.max(12, init.height - dy);
-        newY = init.y + (init.height - clampedH);
-        newH = clampedH;
+        const targetY = Math.max(0, Math.min(init.y + init.height - 12, init.y + dy));
+        newY = targetY;
+        newH = init.y + init.height - targetY;
       }
       if (handle.includes('s')) {
-        newH = Math.max(12, Math.min(sheetDimensions.height - init.y, init.height + dy));
+        const targetBottom = Math.min(sheetDimensions.height, Math.max(init.y + 12, init.y + init.height + dy));
+        newH = targetBottom - init.y;
       }
 
       if (lockAspectRatio) {
@@ -931,10 +996,10 @@ export function SpriteSheetExtractorModal({
           b.id === boxId
             ? {
                 ...b,
-                x: Math.round(Math.max(0, newX)),
-                y: Math.round(Math.max(0, newY)),
-                width: Math.round(Math.min(sheetDimensions.width - newX, newW)),
-                height: Math.round(Math.min(sheetDimensions.height - newY, newH)),
+                x: Math.round(newX),
+                y: Math.round(newY),
+                width: Math.round(newW),
+                height: Math.round(newH),
                 customized: true,
               }
             : b
@@ -942,6 +1007,7 @@ export function SpriteSheetExtractorModal({
       );
       return;
     }
+
 
     // 5. DRAW NEW BOX
     if (action.type === 'draw_new') {
@@ -1299,8 +1365,9 @@ export function SpriteSheetExtractorModal({
   };
 
   const selectedCount = slices.filter((s) => s.selected).length;
-  const masterHandleSize = Math.max(9, Math.min(16, 12 / zoom));
-  const boxHandleSize = Math.max(8, Math.min(14, 10 / zoom));
+  const masterHandleSize = Math.max(13, Math.min(24, 18 / zoom));
+  const boxHandleSize = Math.max(10, Math.min(18, 14 / zoom));
+
 
   return (
     <Modal
@@ -1395,7 +1462,7 @@ export function SpriteSheetExtractorModal({
                       <button
                         key={preset.label}
                         type="button"
-                        onClick={() => updateGridColsRows(preset.c, preset.r)}
+                        onClick={() => updateGridColsRows(preset.c, preset.r, true)}
                         className={`text-[10px] px-2 py-0.5 rounded-md font-bold transition-all ${
                           isActive
                             ? 'bg-brand-500 text-white shadow-2xs'
@@ -1513,26 +1580,98 @@ export function SpriteSheetExtractorModal({
                 </div>
               </div>
 
-              {/* Grid Snap / Fit Buttons */}
-              <div className="grid grid-cols-2 gap-1.5 pt-1 border-t border-neutral-100">
-                <button
-                  type="button"
-                  onClick={handleFitMasterGridToFullImage}
-                  disabled={!sheetImage}
-                  className="py-1 text-xs font-semibold rounded-lg bg-neutral-100 hover:bg-neutral-200 text-neutral-700 transition-colors"
-                >
-                  Penuh (100%)
-                </button>
-                <button
-                  type="button"
-                  onClick={handleFitMasterGridWithMargin}
-                  disabled={!sheetImage}
-                  className="py-1 text-xs font-semibold rounded-lg bg-neutral-100 hover:bg-neutral-200 text-neutral-700 transition-colors"
-                >
-                  Margin (96%)
-                </button>
+              {/* Grid Snap & Alignment Tools */}
+              <div className="space-y-1.5 pt-1.5 border-t border-neutral-100">
+                <span className="text-[10px] font-semibold text-neutral-500">Paskan Grid ke Gambar:</span>
+                <div className="grid grid-cols-2 gap-1.5">
+                  <button
+                    type="button"
+                    onClick={handleFitMasterGridToFullImage}
+                    disabled={!sheetImage}
+                    className="py-1 text-xs font-bold rounded-lg bg-brand-50 hover:bg-brand-100 text-brand-800 border border-brand-300 transition-colors text-center"
+                    title="Ratakan seluruh kotak grid dari ujung atas (Y=0) sampai ujung bawah gambar"
+                  >
+                    Penuh (100%)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleFitMasterGridWithMargin}
+                    disabled={!sheetImage}
+                    className="py-1 text-xs font-semibold rounded-lg bg-neutral-100 hover:bg-neutral-200 text-neutral-700 transition-colors text-center"
+                    title="Pusatkan grid dengan margin 2% di tiap sisi"
+                  >
+                    Margin (96%)
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-2 gap-1.5 pt-0.5">
+                  <button
+                    type="button"
+                    onClick={handleSnapMasterGridToTop}
+                    disabled={!sheetImage}
+                    className="py-1 text-[11px] font-medium rounded-lg bg-neutral-100 hover:bg-neutral-200 text-neutral-700 transition-colors text-center flex items-center justify-center gap-1"
+                    title="Tarik sisi atas grid langsung ke ujung paling atas gambar (Y=0)"
+                  >
+                    <ArrowUp className="w-3 h-3 text-brand-600" />
+                    Paling Atas (Y=0)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSnapMasterGridToBottom}
+                    disabled={!sheetImage}
+                    className="py-1 text-[11px] font-medium rounded-lg bg-neutral-100 hover:bg-neutral-200 text-neutral-700 transition-colors text-center flex items-center justify-center gap-1"
+                    title="Tarik sisi bawah grid langsung ke ujung paling bawah gambar"
+                  >
+                    <ArrowDown className="w-3 h-3 text-brand-600" />
+                    Paling Bawah
+                  </button>
+                </div>
+
+                {/* Geser Grid Manual (Nudge) */}
+                <div className="flex items-center justify-between pt-1">
+                  <span className="text-[10px] text-neutral-500 font-semibold">Geser Posisi Grid:</span>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => handleNudgeMasterGrid(-16, 0)}
+                      disabled={!sheetImage}
+                      className="p-1 rounded bg-neutral-100 hover:bg-neutral-200 text-neutral-700"
+                      title="Geser Grid ke Kiri (16px)"
+                    >
+                      <ArrowLeft className="w-3 h-3" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleNudgeMasterGrid(0, -16)}
+                      disabled={!sheetImage}
+                      className="p-1 rounded bg-neutral-100 hover:bg-neutral-200 text-neutral-700"
+                      title="Geser Grid ke Atas (16px)"
+                    >
+                      <ArrowUp className="w-3 h-3" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleNudgeMasterGrid(0, 16)}
+                      disabled={!sheetImage}
+                      className="p-1 rounded bg-neutral-100 hover:bg-neutral-200 text-neutral-700"
+                      title="Geser Grid ke Bawah (16px)"
+                    >
+                      <ArrowDown className="w-3 h-3" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleNudgeMasterGrid(16, 0)}
+                      disabled={!sheetImage}
+                      className="p-1 rounded bg-neutral-100 hover:bg-neutral-200 text-neutral-700"
+                      title="Geser Grid ke Kanan (16px)"
+                    >
+                      <ArrowRight className="w-3 h-3" />
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
+
 
 
             {/* INDIVIDUAL FRAME INSPECTOR (Ubah Ukuran Stiker Tertentu / By-Frame) */}
@@ -2021,7 +2160,15 @@ export function SpriteSheetExtractorModal({
                     {boxes.map((box, idx) => {
                       const isSelected = box.id === selectedBoxId;
                       return (
-                        <g key={box.id} className="cursor-pointer" onClick={(e) => handleBoxMouseDown(e, box)}>
+                        <g
+                          key={box.id}
+                          className="cursor-pointer"
+                          onMouseDown={(e) => handleBoxMouseDown(e, box)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedBoxId(box.id);
+                          }}
+                        >
                           {/* Cell Body & Stroke */}
                           <rect
                             x={box.x}
@@ -2166,15 +2313,43 @@ export function SpriteSheetExtractorModal({
                     {/* Layer 2: Master Boundary Box (Outer Boundary with 8 Master Handles to Stretch All Grid) */}
                     {gridWidth > 0 && gridHeight > 0 && (
                       <g className="master-outer-boundary">
-                        {/* Outer Master Border (Drag to move entire grid) */}
+                        {/* Master Drag Header Badge */}
+                        <g
+                          className="cursor-move"
+                          onMouseDown={handleMasterGridMouseDown}
+                          style={{ pointerEvents: 'all' }}
+                        >
+                          <rect
+                            x={gridX}
+                            y={Math.max(2, gridY - Math.max(22, 26 / zoom))}
+                            width={Math.max(120, 140 / zoom)}
+                            height={Math.max(18, 22 / zoom)}
+                            rx={4 / zoom}
+                            fill="#00C896"
+                          />
+                          <text
+                            x={gridX + Math.max(60, 70 / zoom)}
+                            y={Math.max(2, gridY - Math.max(22, 26 / zoom)) + Math.max(12, 15 / zoom)}
+                            textAnchor="middle"
+                            fill="#FFFFFF"
+                            fontSize={Math.max(9, 11 / zoom)}
+                            fontWeight="bold"
+                            className="select-none pointer-events-none"
+                          >
+                            ✢ Geser Grid ({cols}×{rows})
+                          </text>
+                        </g>
+
+                        {/* Outer Master Border (Drag to move entire grid by clicking border stroke) */}
                         <rect
                           x={gridX}
                           y={gridY}
                           width={gridWidth}
                           height={gridHeight}
-                          fill="transparent"
+                          fill="none"
                           stroke="#00C896"
-                          strokeWidth={Math.max(1.8, 2.2 / zoom)}
+                          strokeWidth={Math.max(2, 3 / zoom)}
+                          pointerEvents="stroke"
                           className="cursor-move"
                           onMouseDown={handleMasterGridMouseDown}
                         />
