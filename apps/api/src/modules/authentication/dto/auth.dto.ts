@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsOptional, IsString, MinLength, IsArray, ValidateNested } from 'class-validator';
+import { IsNotEmpty, IsOptional, IsString, MinLength, IsArray, ValidateNested, IsBoolean } from 'class-validator';
 import { Type } from 'class-transformer';
 import { SignedPreKeyDto, OneTimePreKeyDto } from '../../devices/dto/devices.dto';
 
@@ -199,4 +199,18 @@ export class RestoreIdentityDto {
   @IsString()
   @IsOptional()
   pin?: string;
+
+  @IsBoolean()
+  @IsOptional()
+  emergencyOverride?: boolean;
+}
+
+export class TransferResponseDto {
+  @IsString()
+  @IsNotEmpty()
+  requestId: string;
+
+  @IsString()
+  @IsNotEmpty()
+  action: 'APPROVE' | 'REJECT';
 }

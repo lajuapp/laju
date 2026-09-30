@@ -40,6 +40,24 @@ class AuthUser {
   }
 }
 
+class RestoreIdentityResult {
+  final bool success;
+  final bool requiresApproval;
+  final String? requestId;
+  final String? activeDeviceName;
+  final DateTime? expiresAt;
+  final String? errorMessage;
+
+  const RestoreIdentityResult({
+    required this.success,
+    this.requiresApproval = false,
+    this.requestId,
+    this.activeDeviceName,
+    this.expiresAt,
+    this.errorMessage,
+  });
+}
+
 class AuthController extends ChangeNotifier {
   AuthController._();
   static final AuthController instance = AuthController._();
@@ -603,7 +621,7 @@ class AuthController extends ChangeNotifier {
       final savedSecret = prefs.getString('laju_identity_secret');
       if (savedSecret != null && savedSecret.isNotEmpty) {
         final restored = await restoreWithIdentitySecretAsync(savedSecret);
-        if (restored) return true;
+        if (restored.success) return true;
       }
     } catch (e) {
       _lastAuthError = e.toString();
@@ -779,7 +797,12 @@ class AuthController extends ChangeNotifier {
   }
 
   /// Restore identity using portable 32-byte identity secret or seed
-  Future<bool> restoreWithIdentitySecretAsync(String secretOrSeed, {String? username, String? pin}) async {
+  Future<RestoreIdentityResult> restoreWithIdentitySecretAsync(
+    String secretOrSeed, {
+    String? username,
+    String? pin,
+    bool emergencyOverride = false,
+  }) async {
     _isLoading = true;
     notifyListeners();
 
@@ -795,14 +818,30 @@ class AuthController extends ChangeNotifier {
           'identityPublicKey': identityPub,
           'deviceUuid': deviceUuid,
           'devicePublicKey': deviceKey,
-          'deviceName': 'Restored Device',
+          'deviceName': Platform.isIOS ? 'iPhone' : 'Android Device',
           'platform': Platform.isIOS ? 'ios' : 'android',
           if (pin != null && pin.trim().isNotEmpty) 'pin': pin.trim(),
+          if (emergencyOverride) 'emergencyOverride': true,
         },
       );
 
       if (response.isSuccess && response.rawJson is Map) {
         final data = response.rawJson;
+
+        // Check if server requires approval from active device
+        if (data['requiresApproval'] == true) {
+          _lastAuthError = null;
+          return RestoreIdentityResult(
+            success: false,
+            requiresApproval: true,
+            requestId: data['requestId']?.toString(),
+            activeDeviceName: data['activeDeviceName']?.toString(),
+            expiresAt: data['expiresAt'] != null
+                ? DateTime.tryParse(data['expiresAt'].toString())
+                : null,
+          );
+        }
+
         final token = data['accessToken'] ?? data['token'];
         if (token != null) {
           ApiClient.instance.setAuth(
@@ -825,18 +864,98 @@ class AuthController extends ChangeNotifier {
         _isAuthenticated = true;
         _requiresTwoFactor = false;
         await _saveSessionToPrefs();
-        return true;
+        return const RestoreIdentityResult(success: true);
       } else {
         _lastAuthError = response.errorMessage;
+        return RestoreIdentityResult(
+          success: false,
+          errorMessage: response.errorMessage,
+        );
       }
     } catch (e) {
       _lastAuthError = e.toString();
+      return RestoreIdentityResult(
+        success: false,
+        errorMessage: e.toString(),
+      );
     } finally {
       _isLoading = false;
       notifyListeners();
     }
+  }
 
-    return false;
+  /// Poll or check status of a pending device transfer request
+  Future<Map<String, dynamic>?> checkTransferStatusAsync(String requestId) async {
+    try {
+      final response = await ApiClient.instance.get(
+        ApiEndpoints.identityTransferStatus(requestId),
+      );
+      if (response.isSuccess && response.rawJson is Map) {
+        final data = Map<String, dynamic>.from(response.rawJson);
+        final status = data['status'];
+        if (status == 'APPROVED') {
+          final token = data['accessToken'] ?? data['token'];
+          if (token != null) {
+            ApiClient.instance.setAuth(
+              token: token,
+              deviceId: data['device']?['id'],
+              userId: data['user']?['id'],
+            );
+          }
+          if (data['user'] is Map<String, dynamic>) {
+            _currentUser = AuthUser.fromJson(data['user']);
+            if (_currentUser?.username != null) {
+              AccountController.instance.updateProfile(name: _currentUser!.username);
+            }
+          }
+          _lastAuthError = null;
+          _isAuthenticated = true;
+          _requiresTwoFactor = false;
+          await _saveSessionToPrefs();
+          notifyListeners();
+        }
+        return data;
+      }
+    } catch (e) {
+      debugPrint('[AuthController] checkTransferStatus error: $e');
+    }
+    return null;
+  }
+
+  /// Respond to incoming transfer request ('APPROVE' | 'REJECT')
+  Future<bool> respondToTransferRequestAsync({
+    required String requestId,
+    required String action,
+  }) async {
+    try {
+      final response = await ApiClient.instance.post(
+        ApiEndpoints.identityTransferResponse,
+        body: {
+          'requestId': requestId,
+          'action': action,
+        },
+      );
+      return response.isSuccess;
+    } catch (e) {
+      debugPrint('[AuthController] respondToTransferRequest error: $e');
+      return false;
+    }
+  }
+
+  /// Check if the server has revoked this device or has a pending transfer authorization
+  Future<Map<String, dynamic>?> checkPendingTransferAsync() async {
+    if (!_isAuthenticated || ApiClient.instance.authToken == null) return null;
+    try {
+      final response = await ApiClient.instance.get(
+        ApiEndpoints.identityPendingTransfer,
+      );
+      if (response.isSuccess && response.rawJson is Map) {
+        return Map<String, dynamic>.from(response.rawJson);
+      }
+    } catch (e) {
+      debugPrint('[AuthController] checkPendingTransfer error: $e');
+    }
+    return null;
   }
 
   /// Retrieve or generate a 32-byte CSPRNG hex string as portable identity secret

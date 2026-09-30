@@ -1,6 +1,6 @@
-import { Controller, Post, Get, Body, UseGuards, Req } from '@nestjs/common';
+import { Controller, Post, Get, Body, Param, UseGuards, Req } from '@nestjs/common';
 import { AuthenticationService } from './authentication.service';
-import { RegisterIdentityDto, RestoreIdentityDto } from './dto/auth.dto';
+import { RegisterIdentityDto, RestoreIdentityDto, TransferResponseDto } from './dto/auth.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 
@@ -19,6 +19,30 @@ export class IdentityController {
   @Post('restore')
   restore(@Body() dto: RestoreIdentityDto) {
     return this.authService.restoreIdentity(dto);
+  }
+
+  @Get('transfer-status/:requestId')
+  getTransferStatus(@Param('requestId') requestId: string) {
+    return this.authService.getTransferStatus(requestId);
+  }
+
+  @Post('transfer-response')
+  @UseGuards(JwtAuthGuard)
+  respondToTransfer(
+    @CurrentUser('userId') userId: string,
+    @CurrentUser('deviceId') deviceId: string,
+    @Body() dto: TransferResponseDto
+  ) {
+    return this.authService.respondToTransfer(userId, deviceId, dto);
+  }
+
+  @Get('pending-transfer')
+  @UseGuards(JwtAuthGuard)
+  getPendingTransfer(
+    @CurrentUser('userId') userId: string,
+    @CurrentUser('deviceId') deviceId: string
+  ) {
+    return this.authService.getPendingTransferForUser(userId, deviceId);
   }
 
   @Get('me')

@@ -132,6 +132,7 @@ model User {
   statusStories        UserStatusStory[]
   statusStoryViews     StatusStoryView[]
   messageReactions     MessageReaction[]
+  transferRequests     DeviceTransferRequest[] @relation("UserTransferRequests")
 
   @@map("users")
 }
@@ -176,8 +177,9 @@ model Device {
   messageDeliveries MessageDelivery[]
   pushDevices       PushDevice[]
   securityEvents    SecurityEvent[]
-  sourceMigrations  DeviceMigration[]  @relation("SourceMigrations")
-  targetMigrations  DeviceMigration[]  @relation("TargetMigrations")
+  sourceMigrations       DeviceMigration[]       @relation("SourceMigrations")
+  targetMigrations       DeviceMigration[]       @relation("TargetMigrations")
+  sourceTransferRequests DeviceTransferRequest[] @relation("SourceTransferRequests")
 
   @@map("devices")
 }
@@ -202,6 +204,37 @@ model DeviceMigration {
   targetDevice       Device?         @relation("TargetMigrations", fields: [targetDeviceId], references: [id], onDelete: SetNull)
 
   @@map("device_migrations")
+}
+
+enum TransferRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  EXPIRED
+  CANCELLED
+}
+
+model DeviceTransferRequest {
+  id               String                @id @default(uuid())
+  userId           String                @map("user_id")
+  targetDeviceUuid String                @map("target_device_uuid")
+  targetDeviceName String?               @map("target_device_name")
+  targetPlatform   String?               @map("target_platform")
+  targetPublicKey  String?               @map("target_public_key")
+  sourceDeviceId   String?               @map("source_device_id")
+  status           TransferRequestStatus @default(PENDING)
+  expiresAt        DateTime              @map("expires_at")
+  approvedAt       DateTime?             @map("approved_at")
+  rejectedAt       DateTime?             @map("rejected_at")
+  ipAddress        String?               @map("ip_address")
+  createdAt        DateTime              @default(now()) @map("created_at")
+  updatedAt        DateTime              @updatedAt @map("updated_at")
+
+  user             User                  @relation("UserTransferRequests", fields: [userId], references: [id], onDelete: Cascade)
+  sourceDevice     Device?               @relation("SourceTransferRequests", fields: [sourceDeviceId], references: [id], onDelete: SetNull)
+
+  @@index([userId, status])
+  @@map("device_transfer_requests")
 }
 
 

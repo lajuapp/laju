@@ -13,6 +13,7 @@ import * as bcrypt from 'bcryptjs';
 import * as crypto from 'crypto';
 import { PrismaService } from '../../infrastructure/prisma/prisma.service';
 import { GotifyService } from '../../infrastructure/gotify/gotify.service';
+import { RedisService } from '../../infrastructure/redis/redis.service';
 import {
   RegisterDto,
   LoginDto,
@@ -20,7 +21,8 @@ import {
   VerifyOtpDto,
   Verify2FaDto,
   RegisterIdentityDto,
-  RestoreIdentityDto
+  RestoreIdentityDto,
+  TransferResponseDto
 } from './dto/auth.dto';
 
 @Injectable()
@@ -29,7 +31,8 @@ export class AuthenticationService {
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
-    @Optional() private readonly gotifyService?: GotifyService
+    @Optional() private readonly gotifyService?: GotifyService,
+    @Optional() private readonly redisService?: RedisService
   ) {}
 
   async sendOtp(dto: SendOtpDto) {
@@ -644,6 +647,111 @@ export class AuthenticationService {
       });
     }
 
+    // Check if user currently has an ACTIVE device other than the one requesting
+    const activeDevice = await this.prisma.device.findFirst({
+      where: {
+        userId: user.id,
+        status: 'ACTIVE',
+        deviceUuid: { not: dto.deviceUuid }
+      },
+      include: { pushDevices: true },
+      orderBy: { lastSeenAt: 'desc' }
+    });
+
+    // Skenario 1: Ada perangkat aktif dan BUKAN fallback darurat
+    if (activeDevice && !dto.emergencyOverride) {
+      const expiresAt = new Date(Date.now() + 3 * 60 * 1000); // 3 menit
+      const transferRequest = await (this.prisma as any).deviceTransferRequest.create({
+        data: {
+          userId: user.id,
+          targetDeviceUuid: dto.deviceUuid,
+          targetDeviceName: dto.deviceName || 'Perangkat Baru',
+          targetPlatform: dto.platform || 'android',
+          targetPublicKey: dto.devicePublicKey,
+          sourceDeviceId: activeDevice.id,
+          status: 'PENDING',
+          expiresAt
+        }
+      });
+
+      const transferPayload = {
+        type: 'DEVICE_TRANSFER_REQUESTED',
+        requestId: transferRequest.id,
+        deviceName: dto.deviceName || 'Perangkat Baru',
+        platform: dto.platform || 'android',
+        expiresAt: expiresAt.toISOString(),
+        timestamp: Date.now()
+      };
+
+      if (this.redisService) {
+        try {
+          await this.redisService.publish(`user:${user.id}`, JSON.stringify(transferPayload));
+        } catch (_) {}
+      }
+
+      if (this.gotifyService) {
+        const tokens: string[] = [];
+        if (activeDevice.pushToken) tokens.push(activeDevice.pushToken);
+        if (activeDevice.pushDevices) {
+          for (const pd of activeDevice.pushDevices) {
+            if (pd.clientToken && !tokens.includes(pd.clientToken)) tokens.push(pd.clientToken);
+          }
+        }
+        for (const t of tokens) {
+          this.gotifyService.sendPushNotification({
+            title: '⚠️ Permintaan Pemulihan Akun',
+            message: `Perangkat ${dto.deviceName || 'baru'} mencoba memulihkan akun Anda. Buka aplikasi untuk menyetujui atau menolak.`,
+            priority: 8,
+            targetToken: t
+          }).catch(() => {});
+        }
+      }
+
+      return {
+        requiresApproval: true,
+        requestId: transferRequest.id,
+        activeDeviceName: activeDevice.name || activeDevice.deviceModel || 'Perangkat Utama',
+        expiresAt: expiresAt.toISOString(),
+        message: `Permintaan persetujuan telah dikirimkan ke perangkat aktif (${activeDevice.name || activeDevice.deviceModel || 'HP Utama'}).`
+      };
+    }
+
+    // Skenario 2: Tidak ada perangkat aktif ATAU user memilih Fallback Darurat
+    if (activeDevice && dto.emergencyOverride) {
+      const now = new Date();
+      await this.prisma.device.update({
+        where: { id: activeDevice.id },
+        data: { status: 'REVOKED', revokedAt: now }
+      });
+      await this.prisma.session.deleteMany({
+        where: { deviceId: activeDevice.id }
+      });
+
+      if (this.redisService) {
+        try {
+          await this.redisService.publish(`user:${user.id}`, JSON.stringify({
+            type: 'DEVICE_REVOKED',
+            reason: 'Akun dipulihkan di perangkat baru via otentikasi darurat.',
+            timestamp: Date.now()
+          }));
+        } catch (_) {}
+      }
+
+      await this.prisma.securityEvent.create({
+        data: {
+          userId: user.id,
+          deviceId: activeDevice.id,
+          eventType: 'EMERGENCY_RESTORE_OVERRIDE',
+          severity: 'HIGH',
+          details: JSON.stringify({
+            displacedDeviceId: activeDevice.id,
+            targetDeviceUuid: dto.deviceUuid,
+            deviceName: dto.deviceName
+          })
+        }
+      });
+    }
+
     // Upsert or register the device for this user
     let device = await this.prisma.device.findUnique({
       where: { deviceUuid: dto.deviceUuid }
@@ -678,6 +786,7 @@ export class AuthenticationService {
     const tokens = await this.generateTokens(user.id, device.id);
 
     return {
+      requiresApproval: false,
       user: {
         id: user.id,
         username: user.username,
@@ -691,6 +800,287 @@ export class AuthenticationService {
         status: device.status
       },
       ...tokens
+    };
+  }
+
+  async getTransferStatus(requestId: string) {
+    const request = await (this.prisma as any).deviceTransferRequest.findUnique({
+      where: { id: requestId },
+      include: {
+        user: true,
+        sourceDevice: true
+      }
+    });
+
+    if (!request) {
+      throw new NotFoundException('Tiket permintaan pemindahan tidak ditemukan');
+    }
+
+    if (request.status === 'PENDING' && new Date() > request.expiresAt) {
+      await (this.prisma as any).deviceTransferRequest.update({
+        where: { id: requestId },
+        data: { status: 'EXPIRED' }
+      });
+      return {
+        status: 'EXPIRED',
+        message: 'Waktu persetujuan dari perangkat utama telah kedaluwarsa.'
+      };
+    }
+
+    if (request.status === 'PENDING') {
+      return {
+        status: 'PENDING',
+        expiresAt: request.expiresAt,
+        activeDeviceName: request.sourceDevice?.name || request.sourceDevice?.deviceModel || 'Perangkat Utama'
+      };
+    }
+
+    if (request.status === 'REJECTED') {
+      return {
+        status: 'REJECTED',
+        message: 'Permintaan pemindahan akun ditolak oleh pemilik perangkat utama.'
+      };
+    }
+
+    if (request.status === 'APPROVED') {
+      let targetDevice = await this.prisma.device.findUnique({
+        where: { deviceUuid: request.targetDeviceUuid }
+      });
+
+      if (!targetDevice) {
+        targetDevice = await this.prisma.device.create({
+          data: {
+            userId: request.userId,
+            deviceUuid: request.targetDeviceUuid,
+            name: request.targetDeviceName || 'Restored Device',
+            platform: request.targetPlatform || 'android',
+            devicePublicKey: request.targetPublicKey || `dev_pub_${Date.now()}`,
+            status: 'ACTIVE',
+            lastSeenAt: new Date()
+          }
+        });
+      } else {
+        targetDevice = await this.prisma.device.update({
+          where: { id: targetDevice.id },
+          data: {
+            userId: request.userId,
+            status: 'ACTIVE',
+            lastSeenAt: new Date()
+          }
+        });
+      }
+
+      const tokens = await this.generateTokens(request.userId, targetDevice.id);
+
+      return {
+        status: 'APPROVED',
+        user: {
+          id: request.user.id,
+          username: request.user.username,
+          identityPublicKey: request.user.identityPublicKey,
+          status: request.user.status
+        },
+        device: {
+          id: targetDevice.id,
+          deviceUuid: targetDevice.deviceUuid,
+          name: targetDevice.name,
+          status: targetDevice.status
+        },
+        ...tokens
+      };
+    }
+
+    return {
+      status: request.status
+    };
+  }
+
+  async respondToTransfer(userId: string, currentDeviceId: string, dto: TransferResponseDto) {
+    const request = await (this.prisma as any).deviceTransferRequest.findUnique({
+      where: { id: dto.requestId }
+    });
+
+    if (!request || request.userId !== userId) {
+      throw new NotFoundException('Permintaan pemindahan tidak ditemukan');
+    }
+
+    if (request.status !== 'PENDING') {
+      throw new BadRequestException(`Permintaan sudah tidak aktif (Status: ${request.status})`);
+    }
+
+    if (new Date() > request.expiresAt) {
+      await (this.prisma as any).deviceTransferRequest.update({
+        where: { id: dto.requestId },
+        data: { status: 'EXPIRED' }
+      });
+      throw new BadRequestException('Permintaan pemindahan telah kedaluwarsa');
+    }
+
+    if (dto.action === 'APPROVE') {
+      const now = new Date();
+
+      await (this.prisma as any).deviceTransferRequest.update({
+        where: { id: dto.requestId },
+        data: {
+          status: 'APPROVED',
+          approvedAt: now
+        }
+      });
+
+      if (currentDeviceId) {
+        await this.prisma.device.update({
+          where: { id: currentDeviceId },
+          data: {
+            status: 'REVOKED',
+            revokedAt: now
+          }
+        });
+        await this.prisma.session.deleteMany({
+          where: { deviceId: currentDeviceId }
+        });
+      }
+
+      let targetDevice = await this.prisma.device.findUnique({
+        where: { deviceUuid: request.targetDeviceUuid }
+      });
+
+      if (!targetDevice) {
+        await this.prisma.device.create({
+          data: {
+            userId,
+            deviceUuid: request.targetDeviceUuid,
+            name: request.targetDeviceName || 'Restored Device',
+            platform: request.targetPlatform || 'android',
+            devicePublicKey: request.targetPublicKey || `dev_pub_${Date.now()}`,
+            status: 'ACTIVE',
+            lastSeenAt: now
+          }
+        });
+      } else {
+        await this.prisma.device.update({
+          where: { id: targetDevice.id },
+          data: {
+            userId,
+            status: 'ACTIVE',
+            lastSeenAt: now
+          }
+        });
+      }
+
+      await this.prisma.securityEvent.create({
+        data: {
+          userId,
+          deviceId: currentDeviceId,
+          eventType: 'DEVICE_TRANSFER_APPROVED',
+          severity: 'MEDIUM',
+          details: JSON.stringify({
+            requestId: dto.requestId,
+            displacedDeviceId: currentDeviceId,
+            targetDeviceUuid: request.targetDeviceUuid
+          })
+        }
+      });
+
+      if (this.redisService) {
+        try {
+          await this.redisService.publish(`user:${userId}`, JSON.stringify({
+            type: 'DEVICE_REVOKED',
+            reason: 'Akun berhasil dipindahkan ke perangkat baru.',
+            timestamp: Date.now()
+          }));
+          await this.redisService.publish(`transfer:${dto.requestId}`, JSON.stringify({
+            status: 'APPROVED',
+            timestamp: Date.now()
+          }));
+        } catch (_) {}
+      }
+
+      return {
+        success: true,
+        status: 'APPROVED',
+        message: 'Pemindahan akun berhasil disetujui. Sesi perangkat ini dinonaktifkan.'
+      };
+    } else {
+      const now = new Date();
+      await (this.prisma as any).deviceTransferRequest.update({
+        where: { id: dto.requestId },
+        data: {
+          status: 'REJECTED',
+          rejectedAt: now
+        }
+      });
+
+      await this.prisma.securityEvent.create({
+        data: {
+          userId,
+          deviceId: currentDeviceId,
+          eventType: 'TRANSFER_REJECTED_POTENTIAL_BREACH',
+          severity: 'HIGH',
+          details: JSON.stringify({
+            requestId: dto.requestId,
+            targetDeviceUuid: request.targetDeviceUuid,
+            targetDeviceName: request.targetDeviceName
+          })
+        }
+      });
+
+      if (this.redisService) {
+        try {
+          await this.redisService.publish(`transfer:${dto.requestId}`, JSON.stringify({
+            status: 'REJECTED',
+            timestamp: Date.now()
+          }));
+        } catch (_) {}
+      }
+
+      return {
+        success: true,
+        status: 'REJECTED',
+        message: 'Permintaan ditolak. Amankan akun Anda dengan memperbarui PIN Keamanan atau Kunci Cadangan.'
+      };
+    }
+  }
+
+  async getPendingTransferForUser(userId: string, deviceId?: string) {
+    if (deviceId) {
+      const dev = await this.prisma.device.findUnique({
+        where: { id: deviceId },
+        select: { status: true }
+      });
+      if (dev && dev.status === 'REVOKED') {
+        return {
+          isRevoked: true,
+          hasPendingTransfer: false,
+          reason: 'Perangkat ini telah dinonaktifkan karena akun dipindahkan ke perangkat lain.'
+        };
+      }
+    }
+
+    const pending = await (this.prisma as any).deviceTransferRequest.findFirst({
+      where: {
+        userId,
+        status: 'PENDING',
+        expiresAt: { gt: new Date() }
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    if (pending) {
+      return {
+        isRevoked: false,
+        hasPendingTransfer: true,
+        request: {
+          id: pending.id,
+          targetDeviceName: pending.targetDeviceName,
+          targetPlatform: pending.targetPlatform,
+          expiresAt: pending.expiresAt
+        }
+      };
+    }
+
+    return {
+      isRevoked: false,
+      hasPendingTransfer: false
     };
   }
 

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../../../core/core.dart';
@@ -467,31 +468,24 @@ class _LoginScreenState extends State<LoginScreen>
     setState(() => _isLoading = true);
 
     try {
-      final success = await AuthController.instance
+      final result = await AuthController.instance
           .restoreWithIdentitySecretAsync(secret, pin: pin);
 
       if (!mounted) return;
       setState(() => _isLoading = false);
 
-      if (success) {
-        await AppLockController.instance.setPinCode(pin);
-        await AppLockController.instance.setAppLockEnabled(true);
-
-        final bioAvailability = await BiometricService.instance.checkAvailability();
-        if (bioAvailability.isAvailable) {
-          await AppLockController.instance.setBiometricEnabled(true);
-        }
-
-        if (mounted) {
-          LajuToast.success(context, context.tr('deviceAuthSuccess'));
-          Navigator.pushAndRemoveUntil(
-            context,
-            MaterialPageRoute(builder: (context) => const HomeScreen()),
-            (route) => false,
-          );
-        }
+      if (result.success) {
+        await _onRestoreSuccess(pin);
+      } else if (result.requiresApproval && result.requestId != null) {
+        _showWaitingForApprovalSheet(
+          requestId: result.requestId!,
+          activeDeviceName: result.activeDeviceName ?? 'Perangkat Utama',
+          expiresAt: result.expiresAt,
+          secret: secret,
+          pin: pin,
+        );
       } else {
-        final errorMsg = AuthController.instance.lastAuthError;
+        final errorMsg = result.errorMessage ?? AuthController.instance.lastAuthError;
         LajuToast.error(
           context,
           (errorMsg != null && errorMsg.isNotEmpty)
@@ -503,6 +497,305 @@ class _LoginScreenState extends State<LoginScreen>
       if (mounted) {
         setState(() => _isLoading = false);
         LajuToast.error(context, '${context.tr('authFailed')}: $e');
+      }
+    }
+  }
+
+  Future<void> _onRestoreSuccess(String pin) async {
+    await AppLockController.instance.setPinCode(pin);
+    await AppLockController.instance.setAppLockEnabled(true);
+
+    final bioAvailability = await BiometricService.instance.checkAvailability();
+    if (bioAvailability.isAvailable) {
+      await AppLockController.instance.setBiometricEnabled(true);
+    }
+
+    if (mounted) {
+      LajuToast.success(context, context.tr('deviceAuthSuccess'));
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (context) => const HomeScreen()),
+        (route) => false,
+      );
+    }
+  }
+
+  Future<void> _showWaitingForApprovalSheet({
+    required String requestId,
+    required String activeDeviceName,
+    DateTime? expiresAt,
+    required String secret,
+    required String pin,
+  }) async {
+    Timer? pollTimer;
+    Timer? countdownTimer;
+    int secondsLeft = 180;
+    if (expiresAt != null) {
+      final diff = expiresAt.difference(DateTime.now()).inSeconds;
+      secondsLeft = diff > 0 ? diff : 0;
+    }
+
+    bool isDone = false;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isDismissible: false,
+      enableDrag: false,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
+        final theme = Theme.of(sheetContext);
+        final isDark = theme.brightness == Brightness.dark;
+
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            if (countdownTimer == null) {
+              countdownTimer = Timer.periodic(const Duration(seconds: 1), (t) {
+                if (secondsLeft <= 1) {
+                  t.cancel();
+                  pollTimer?.cancel();
+                  if (!isDone && mounted) {
+                    Navigator.of(sheetContext).pop();
+                    LajuToast.warning(
+                      sheetContext,
+                      'Waktu otorisasi telah habis. Silakan coba lagi atau gunakan pemulihan darurat.',
+                    );
+                  }
+                } else {
+                  setSheetState(() => secondsLeft--);
+                }
+              });
+
+              pollTimer = Timer.periodic(const Duration(seconds: 2), (t) async {
+                if (isDone) return;
+                final statusRes =
+                    await AuthController.instance.checkTransferStatusAsync(requestId);
+                if (statusRes != null && mounted) {
+                  final status = statusRes['status'];
+                  if (status == 'APPROVED') {
+                    isDone = true;
+                    t.cancel();
+                    countdownTimer?.cancel();
+                    if (sheetContext.mounted) {
+                      Navigator.of(sheetContext).pop();
+                    }
+                    await _onRestoreSuccess(pin);
+                  } else if (status == 'REJECTED') {
+                    isDone = true;
+                    t.cancel();
+                    countdownTimer?.cancel();
+                    if (sheetContext.mounted) {
+                      Navigator.of(sheetContext).pop();
+                      LajuToast.error(
+                        context,
+                        'Permintaan transfer ditolak oleh perangkat utama Anda demi keamanan akun.',
+                      );
+                    }
+                  } else if (status == 'EXPIRED') {
+                    isDone = true;
+                    t.cancel();
+                    countdownTimer?.cancel();
+                    if (sheetContext.mounted) {
+                      Navigator.of(sheetContext).pop();
+                      LajuToast.warning(
+                        context,
+                        'Waktu otorisasi telah berakhir.',
+                      );
+                    }
+                  }
+                }
+              });
+            }
+
+            return SafeArea(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+                decoration: BoxDecoration(
+                  color: isDark ? AppColors.darkSurface : Colors.white,
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.2),
+                      blurRadius: 20,
+                      offset: const Offset(0, -4),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Center(
+                      child: Container(
+                        width: 40,
+                        height: 4,
+                        margin: const EdgeInsets.only(bottom: 20),
+                        decoration: BoxDecoration(
+                          color: isDark ? Colors.white24 : Colors.black12,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ),
+                    Center(
+                      child: Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          SizedBox(
+                            width: 64,
+                            height: 64,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 3,
+                              valueColor: const AlwaysStoppedAnimation<Color>(
+                                AppColors.primary,
+                              ),
+                              backgroundColor: AppColors.primary.withOpacity(0.15),
+                            ),
+                          ),
+                          const Icon(
+                            Icons.phonelink_ring_rounded,
+                            size: 28,
+                            color: AppColors.primary,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    Text(
+                      'Menunggu Otorisasi Perangkat',
+                      textAlign: TextAlign.center,
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Permintaan transfer telah dikirim ke perangkat utama Anda ($activeDeviceName).\nSilakan buka aplikasi LAJU di HP tersebut dan ketuk "Izinkan & Pindah".',
+                      textAlign: TextAlign.center,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: isDark ? Colors.white70 : Colors.black87,
+                        height: 1.4,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.timer_outlined, size: 18, color: AppColors.warning),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Sisa waktu: ${secondsLeft ~/ 60}:${(secondsLeft % 60).toString().padLeft(2, '0')}',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.warning,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    OutlinedButton.icon(
+                      onPressed: () async {
+                        final confirm = await showDialog<bool>(
+                          context: sheetContext,
+                          builder: (dialogCtx) => AlertDialog(
+                            title: const Text('HP Lama Tidak Dapat Diakses?'),
+                            content: const Text(
+                              'Gunakan opsi darurat ini jika HP lama Anda hilang, rusak, atau tidak bisa diakses.\n\nAkun akan segera dipindahkan ke perangkat ini menggunakan PIN Keamanan Anda, dan sesi di HP lama akan langsung dinonaktifkan.',
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.of(dialogCtx).pop(false),
+                                child: const Text('Batal'),
+                              ),
+                              ElevatedButton(
+                                onPressed: () => Navigator.of(dialogCtx).pop(true),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: AppColors.error,
+                                  foregroundColor: Colors.white,
+                                ),
+                                child: const Text('Aktifkan Darurat'),
+                              ),
+                            ],
+                          ),
+                        );
+
+                        if (confirm == true && mounted && sheetContext.mounted) {
+                          isDone = true;
+                          countdownTimer?.cancel();
+                          pollTimer?.cancel();
+                          Navigator.of(sheetContext).pop();
+                          _handleEmergencyOverride(secret: secret, pin: pin);
+                        }
+                      },
+                      icon: const Icon(Icons.phonelink_erase_rounded, size: 18),
+                      label: const Text('HP lama hilang atau tidak dapat diakses?'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AppColors.primary,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    TextButton(
+                      onPressed: () {
+                        isDone = true;
+                        countdownTimer?.cancel();
+                        pollTimer?.cancel();
+                        Navigator.of(sheetContext).pop();
+                      },
+                      child: const Text('Batalkan'),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+
+    isDone = true;
+    countdownTimer?.cancel();
+    pollTimer?.cancel();
+  }
+
+  Future<void> _handleEmergencyOverride({
+    required String secret,
+    required String pin,
+  }) async {
+    setState(() => _isLoading = true);
+    try {
+      final res = await AuthController.instance.restoreWithIdentitySecretAsync(
+        secret,
+        pin: pin,
+        emergencyOverride: true,
+      );
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+
+      if (res.success) {
+        await _onRestoreSuccess(pin);
+      } else {
+        final errorMsg = AuthController.instance.lastAuthError;
+        LajuToast.error(
+          context,
+          (errorMsg != null && errorMsg.isNotEmpty)
+              ? errorMsg
+              : 'Gagal memulihkan akun secara darurat',
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoading = false);
+        LajuToast.error(context, 'Terjadi kesalahan: $e');
       }
     }
   }

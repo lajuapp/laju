@@ -67,6 +67,9 @@ class ApiEndpoints {
   static String deviceRevoke(String id) => '/devices/$id/revoke';
   static const String identityRegister = '/identity/register';
   static const String identityRestore = '/identity/restore';
+  static String identityTransferStatus(String id) => '/identity/transfer-status/$id';
+  static const String identityTransferResponse = '/identity/transfer-response';
+  static const String identityPendingTransfer = '/identity/pending-transfer';
   static const String identityMe = '/identity/me';
 
   // Migration
