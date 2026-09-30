@@ -11,63 +11,17 @@ class TwoStepVerificationScreen extends StatefulWidget {
 }
 
 class _TwoStepVerificationScreenState extends State<TwoStepVerificationScreen> {
-  void _confirmTurnOff(BuildContext context) {
+  void _showChangePinSheet(BuildContext context) {
     final isDark = ThemeModeController.instance.isDarkMode(context);
+    final currentExpectedPin = AccountController.instance.twoStepPin.isNotEmpty
+        ? AccountController.instance.twoStepPin
+        : (AppLockController.instance.hasSetPin ? AppLockController.instance.pinCode : '');
 
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: isDark ? AppColors.darkSurfaceElevated : Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-        title: Text(
-          context.tr('turnOffConfirmTitle'),
-          style: TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.w700,
-            color: isDark ? Colors.white : const Color(0xFF111827),
-          ),
-        ),
-        content: Text(
-          context.tr('turnOffConfirmDesc'),
-          style: TextStyle(
-            fontSize: 14,
-            color: isDark ? AppColors.darkTextSecondary : const Color(0xFF4B5563),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text(
-              context.tr('cancel'),
-              style: TextStyle(
-                color: isDark ? AppColors.darkTextSecondary : const Color(0xFF6B7280),
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFDC2626),
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-            ),
-            onPressed: () {
-              Navigator.pop(ctx);
-              AccountController.instance.setTwoStepVerification(false);
-              LajuToast.info(context, context.tr('twoStepStatusOff'));
-            },
-            child: Text(context.tr('turnOff'), style: const TextStyle(fontWeight: FontWeight.w700)),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showPinSetupSheet(BuildContext context, {required bool isChange}) {
-    final isDark = ThemeModeController.instance.isDarkMode(context);
-    String firstPin = '';
-    String confirmPin = '';
-    int step = 1; // 1 = enter pin, 2 = confirm pin
+    // If an existing PIN is present, require verification first (step 0); otherwise directly step 1.
+    int step = currentExpectedPin.isNotEmpty ? 0 : 1; // 0 = verify old, 1 = enter new, 2 = confirm new
+    String oldPinInput = '';
+    String newPinInput = '';
+    String confirmPinInput = '';
 
     showModalBottomSheet(
       context: context,
@@ -79,7 +33,22 @@ class _TwoStepVerificationScreenState extends State<TwoStepVerificationScreen> {
       builder: (sheetCtx) {
         return StatefulBuilder(
           builder: (ctx, setSheetState) {
-            final activePin = step == 1 ? firstPin : confirmPin;
+            final activePin = step == 0
+                ? oldPinInput
+                : (step == 1 ? newPinInput : confirmPinInput);
+
+            String title;
+            String subtitle;
+            if (step == 0) {
+              title = 'Masukkan PIN Saat Ini';
+              subtitle = 'Masukkan PIN 6-digit keamanan Anda saat ini untuk verifikasi.';
+            } else if (step == 1) {
+              title = context.tr('enterNewPin');
+              subtitle = context.tr('pinHelperEnter');
+            } else {
+              title = context.tr('confirmNewPin');
+              subtitle = context.tr('pinHelperConfirm');
+            }
 
             return SafeArea(
               child: Padding(
@@ -97,9 +66,7 @@ class _TwoStepVerificationScreenState extends State<TwoStepVerificationScreen> {
                     ),
                     const SizedBox(height: 16),
                     Text(
-                      step == 1
-                          ? (isChange ? context.tr('changePin') : context.tr('enterNewPin'))
-                          : context.tr('confirmNewPin'),
+                      title,
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         fontSize: 18,
@@ -109,18 +76,46 @@ class _TwoStepVerificationScreenState extends State<TwoStepVerificationScreen> {
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      step == 1
-                          ? context.tr('pinHelperEnter')
-                          : context.tr('pinHelperConfirm'),
+                      subtitle,
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         fontSize: 13,
                         color: isDark ? Colors.white60 : const Color(0xFF6B7280),
                       ),
                     ),
-                    const SizedBox(height: 24),
 
-                    // PIN dots indicator (exact same design as Privacy App Lock)
+                    // Biometric Shortcut Option on Step 0 if available
+                    if (step == 0) ...[
+                      const SizedBox(height: 10),
+                      TextButton.icon(
+                        style: TextButton.styleFrom(
+                          foregroundColor: AppColors.primary,
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                        ),
+                        icon: const Icon(Icons.fingerprint_rounded, size: 20),
+                        label: const Text(
+                          'Verifikasi dengan Biometrik',
+                          style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                        ),
+                        onPressed: () async {
+                          final authenticated = await BiometricService.instance.authenticate(
+                            title: 'Verifikasi Keamanan',
+                            subtitle: 'Gunakan biometrik untuk melanjutkan perubahan PIN',
+                          );
+                          if (authenticated) {
+                            HapticFeedback.mediumImpact();
+                            setSheetState(() {
+                              step = 1;
+                              oldPinInput = '';
+                            });
+                          }
+                        },
+                      ),
+                    ],
+
+                    const SizedBox(height: 20),
+
+                    // PIN dots indicator
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: List.generate(6, (index) {
@@ -144,16 +139,39 @@ class _TwoStepVerificationScreenState extends State<TwoStepVerificationScreen> {
                     ),
                     const SizedBox(height: 24),
 
-                    // Numeric Dialpad Grid (exact same design as Privacy App Lock)
+                    // Numeric Dialpad Grid
                     _buildMiniDialpad(
                       isDark: isDark,
                       onDigitTap: (digit) {
-                        if (step == 1) {
-                          if (firstPin.length < 6) {
+                        if (step == 0) {
+                          if (oldPinInput.length < 6) {
                             HapticFeedback.lightImpact();
-                            setSheetState(() => firstPin += digit);
-                            if (firstPin.length == 6) {
-                              Future.delayed(const Duration(milliseconds: 250), () {
+                            setSheetState(() => oldPinInput += digit);
+                            if (oldPinInput.length == 6) {
+                              if (oldPinInput == currentExpectedPin) {
+                                HapticFeedback.mediumImpact();
+                                Future.delayed(const Duration(milliseconds: 200), () {
+                                  setSheetState(() {
+                                    step = 1;
+                                  });
+                                });
+                              } else {
+                                HapticFeedback.heavyImpact();
+                                LajuToast.error(context, context.tr('incorrectPin'));
+                                Future.delayed(const Duration(milliseconds: 350), () {
+                                  setSheetState(() {
+                                    oldPinInput = '';
+                                  });
+                                });
+                              }
+                            }
+                          }
+                        } else if (step == 1) {
+                          if (newPinInput.length < 6) {
+                            HapticFeedback.lightImpact();
+                            setSheetState(() => newPinInput += digit);
+                            if (newPinInput.length == 6) {
+                              Future.delayed(const Duration(milliseconds: 200), () {
                                 setSheetState(() {
                                   step = 2;
                                 });
@@ -161,32 +179,28 @@ class _TwoStepVerificationScreenState extends State<TwoStepVerificationScreen> {
                             }
                           }
                         } else {
-                          if (confirmPin.length < 6) {
+                          if (confirmPinInput.length < 6) {
                             HapticFeedback.lightImpact();
-                            setSheetState(() => confirmPin += digit);
-                            if (confirmPin.length == 6) {
-                              if (confirmPin == firstPin) {
-                                Future.delayed(const Duration(milliseconds: 250), () {
-                                  AccountController.instance.setTwoStepVerification(
+                            setSheetState(() => confirmPinInput += digit);
+                            if (confirmPinInput.length == 6) {
+                              if (confirmPinInput == newPinInput) {
+                                Future.delayed(const Duration(milliseconds: 200), () async {
+                                  await AccountController.instance.setTwoStepVerification(
                                     true,
-                                    pin: confirmPin,
+                                    pin: confirmPinInput,
                                   );
+                                  await AppLockController.instance.setPinCode(confirmPinInput);
                                   if (mounted && sheetCtx.mounted && context.mounted) {
                                     Navigator.pop(sheetCtx);
-                                    LajuToast.success(
-                                      context,
-                                      isChange
-                                          ? context.tr('pinUpdated')
-                                          : context.tr('twoStepActivated'),
-                                    );
+                                    LajuToast.success(context, context.tr('pinUpdated'));
                                   }
                                 });
                               } else {
                                 HapticFeedback.heavyImpact();
                                 LajuToast.error(context, context.tr('pinMismatch'));
-                                Future.delayed(const Duration(milliseconds: 400), () {
+                                Future.delayed(const Duration(milliseconds: 350), () {
                                   setSheetState(() {
-                                    confirmPin = '';
+                                    confirmPinInput = '';
                                   });
                                 });
                               }
@@ -196,20 +210,26 @@ class _TwoStepVerificationScreenState extends State<TwoStepVerificationScreen> {
                       },
                       onBackspaceTap: () {
                         HapticFeedback.lightImpact();
-                        if (step == 1) {
-                          if (firstPin.isNotEmpty) {
-                            setSheetState(() => firstPin = firstPin.substring(0, firstPin.length - 1));
+                        if (step == 0) {
+                          if (oldPinInput.isNotEmpty) {
+                            setSheetState(() => oldPinInput = oldPinInput.substring(0, oldPinInput.length - 1));
+                          }
+                        } else if (step == 1) {
+                          if (newPinInput.isNotEmpty) {
+                            setSheetState(() => newPinInput = newPinInput.substring(0, newPinInput.length - 1));
+                          } else if (currentExpectedPin.isNotEmpty) {
+                            setSheetState(() {
+                              step = 0;
+                              oldPinInput = '';
+                            });
                           }
                         } else {
-                          if (confirmPin.isNotEmpty) {
-                            setSheetState(
-                              () => confirmPin = confirmPin.substring(0, confirmPin.length - 1),
-                            );
+                          if (confirmPinInput.isNotEmpty) {
+                            setSheetState(() => confirmPinInput = confirmPinInput.substring(0, confirmPinInput.length - 1));
                           } else {
-                            // Go back to step 1
                             setSheetState(() {
                               step = 1;
-                              firstPin = '';
+                              newPinInput = '';
                             });
                           }
                         }
@@ -291,125 +311,6 @@ class _TwoStepVerificationScreenState extends State<TwoStepVerificationScreen> {
     );
   }
 
-  void _showChangeRecoveryEmailSheet(BuildContext context) {
-    final isDark = ThemeModeController.instance.isDarkMode(context);
-    final emailController = TextEditingController(
-      text: AccountController.instance.twoStepRecoveryEmail,
-    );
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: isDark ? AppColors.darkSurfaceElevated : Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (ctx) {
-        return Padding(
-          padding: EdgeInsets.only(
-            left: 24,
-            right: 24,
-            top: 16,
-            bottom: MediaQuery.of(ctx).viewInsets.bottom + 28,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 40,
-                height: 4,
-                margin: const EdgeInsets.only(bottom: 20),
-                decoration: BoxDecoration(
-                  color: isDark ? Colors.white24 : Colors.grey.shade300,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              Container(
-                width: 56,
-                height: 56,
-                decoration: BoxDecoration(
-                  color: AppColors.primary.withValues(alpha: 0.12),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(Icons.email_outlined, color: AppColors.primary, size: 28),
-              ),
-              const SizedBox(height: 16),
-              Text(
-                context.tr('recoveryEmail'),
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w800,
-                  color: isDark ? Colors.white : const Color(0xFF111827),
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                context.tr('recoveryEmailSub'),
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 13,
-                  color: isDark ? AppColors.darkTextSecondary : const Color(0xFF4B5563),
-                ),
-              ),
-              const SizedBox(height: 20),
-              TextField(
-                controller: emailController,
-                keyboardType: TextInputType.emailAddress,
-                autofocus: true,
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: isDark ? Colors.white : const Color(0xFF111827),
-                ),
-                decoration: InputDecoration(
-                  hintText: 'email@domain.com',
-                  hintStyle: TextStyle(
-                    color: isDark ? Colors.white24 : Colors.grey.shade400,
-                  ),
-                  filled: true,
-                  fillColor: isDark ? AppColors.darkBackground : const Color(0xFFF3F4F6),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(14),
-                    borderSide: BorderSide.none,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 24),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primary,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                  ),
-                  onPressed: () {
-                    final email = emailController.text.trim();
-                    if (email.isNotEmpty && (!email.contains('@') || !email.contains('.'))) {
-                      LajuToast.error(context, 'Please enter a valid email address');
-                      return;
-                    }
-                    Navigator.pop(ctx);
-                    AccountController.instance.setTwoStepVerification(
-                      true,
-                      email: email,
-                    );
-                    LajuToast.success(context, context.tr('recoveryEmailUpdated'));
-                  },
-                  child: Text(
-                    context.tr('saveEmail'),
-                    style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final isDark = ThemeModeController.instance.isDarkMode(context);
@@ -436,38 +337,34 @@ class _TwoStepVerificationScreenState extends State<TwoStepVerificationScreen> {
           child: ListenableBuilder(
             listenable: AccountController.instance,
             builder: (context, _) {
-              final isEnabled = AccountController.instance.twoStepVerificationEnabled;
-              final recoveryEmail = AccountController.instance.twoStepRecoveryEmail;
-
               return ListView(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
                 children: [
-                  // Hero Status Glass Card
+                  // Hero Status Glass Card (Always Active)
                   LajuGlassCard(
                     padding: const EdgeInsets.all(22),
                     child: Column(
                       children: [
                         Container(
-                          width: 60,
-                          height: 60,
+                          width: 64,
+                          height: 64,
                           decoration: BoxDecoration(
-                            color: (isEnabled ? const Color(0xFF10B981) : Colors.grey)
-                                .withValues(alpha: 0.15),
+                            color: const Color(0xFF10B981).withValues(alpha: 0.15),
                             shape: BoxShape.circle,
                             border: Border.all(
-                              color: (isEnabled ? const Color(0xFF10B981) : Colors.grey).withValues(alpha: 0.35),
+                              color: const Color(0xFF10B981).withValues(alpha: 0.35),
                               width: 2,
                             ),
                           ),
-                          child: Icon(
-                            isEnabled ? Icons.lock_outline_rounded : Icons.lock_open_rounded,
-                            color: isEnabled ? const Color(0xFF10B981) : Colors.grey,
-                            size: 30,
+                          child: const Icon(
+                            Icons.verified_user_rounded,
+                            color: Color(0xFF10B981),
+                            size: 32,
                           ),
                         ),
                         const SizedBox(height: 14),
                         Text(
-                          isEnabled ? context.tr('twoStepStatusOn') : context.tr('twoStepStatusOff'),
+                          context.tr('twoStepStatusOn'),
                           style: TextStyle(
                             fontSize: 17,
                             fontWeight: FontWeight.w800,
@@ -476,11 +373,11 @@ class _TwoStepVerificationScreenState extends State<TwoStepVerificationScreen> {
                         ),
                         const SizedBox(height: 6),
                         Text(
-                          context.tr('twoStepDesc'),
+                          'Akun LAJU Anda dilindungi secara kriptografis dengan PIN Keamanan 6-digit. PIN ini wajib digunakan saat login di perangkat baru, otorisasi transfer akun, dan pemulihan cadangan data.',
                           textAlign: TextAlign.center,
                           style: TextStyle(
                             fontSize: 13,
-                            height: 1.4,
+                            height: 1.45,
                             color: isDark ? AppColors.darkTextSecondary : const Color(0xFF4B5563),
                           ),
                         ),
@@ -490,71 +387,46 @@ class _TwoStepVerificationScreenState extends State<TwoStepVerificationScreen> {
 
                   const SizedBox(height: 20),
 
-                  if (isEnabled) ...[
-                    LajuGlassCard(
-                      padding: const EdgeInsets.symmetric(vertical: 4),
-                      child: Column(
-                        children: [
-                          // Turn Off Option
-                          _buildActionTile(
-                            context,
-                            icon: Icons.cancel_outlined,
-                            iconColor: const Color(0xFFDC2626),
-                            title: context.tr('turnOff'),
-                            subtitle: context.tr('turnOffSub'),
-                            onTap: () => _confirmTurnOff(context),
-                          ),
-                          Divider(
-                            height: 1,
-                            indent: 64,
-                            color: isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.06),
-                          ),
-                          // Change PIN Option
-                          _buildActionTile(
-                            context,
-                            icon: Icons.pin_outlined,
-                            iconColor: AppColors.primary,
-                            title: context.tr('changePin'),
-                            subtitle: context.tr('changePinSub'),
-                            onTap: () => _showPinSetupSheet(context, isChange: true),
-                          ),
-                          Divider(
-                            height: 1,
-                            indent: 64,
-                            color: isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.06),
-                          ),
-                          // Change Email Option
-                          _buildActionTile(
-                            context,
-                            icon: Icons.alternate_email_rounded,
-                            iconColor: AppColors.primary,
-                            title: context.tr('changeEmail'),
-                            subtitle: recoveryEmail.isNotEmpty ? recoveryEmail : context.tr('recoveryEmailSub'),
-                            onTap: () => _showChangeRecoveryEmailSheet(context),
-                          ),
-                        ],
-                      ),
+                  // Action Menu: Only Change PIN
+                  LajuGlassCard(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: _buildActionTile(
+                      context,
+                      icon: Icons.pin_outlined,
+                      iconColor: AppColors.primary,
+                      title: context.tr('changePin'),
+                      subtitle: 'Perbarui 6-digit PIN keamanan akun Anda',
+                      onTap: () => _showChangePinSheet(context),
                     ),
-                  ] else ...[
-                    const SizedBox(height: 12),
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton.icon(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.primary,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  // Privacy Information Notice
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(
+                          Icons.security_rounded,
+                          size: 16,
+                          color: isDark ? Colors.white38 : Colors.black38,
                         ),
-                        icon: const Icon(Icons.shield_outlined, size: 20),
-                        label: Text(
-                          context.tr('turnOnTwoStep'),
-                          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Perlindungan Bebas Email: LAJU tidak memerlukan atau menyimpan email pemulihan demi privasi absolut. Pastikan Anda selalu mengingat PIN Keamanan 6-digit Anda.',
+                            style: TextStyle(
+                              fontSize: 12,
+                              height: 1.4,
+                              color: isDark ? Colors.white38 : Colors.black45,
+                            ),
+                          ),
                         ),
-                        onPressed: () => _showPinSetupSheet(context, isChange: false),
-                      ),
+                      ],
                     ),
-                  ],
+                  ),
                 ],
               );
             },

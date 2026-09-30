@@ -84,8 +84,7 @@ class AccountController extends ChangeNotifier {
   String _email = '';
   bool _isEmailVerified = false;
   bool _securityNotificationsEnabled = true;
-
-  bool _twoStepVerificationEnabled = false;
+  bool _twoStepVerificationEnabled = true;
   String _twoStepPin = '';
   String _twoStepRecoveryEmail = '';
 
@@ -144,8 +143,15 @@ class AccountController extends ChangeNotifier {
       _email = prefs.getString('laju_email') ?? _email;
       _isEmailVerified = prefs.getBool('laju_email_verified') ?? _isEmailVerified;
       _securityNotificationsEnabled = prefs.getBool('laju_security_notifications') ?? _securityNotificationsEnabled;
-      _twoStepVerificationEnabled = prefs.getBool('laju_2fa') ?? _twoStepVerificationEnabled;
+      _twoStepVerificationEnabled = prefs.getBool('laju_2fa') ?? true;
       _twoStepPin = prefs.getString('laju_2fa_pin') ?? _twoStepPin;
+      if (_twoStepPin.isEmpty) {
+        final appLockPin = prefs.getString('app_lock_pin');
+        if (appLockPin != null && appLockPin.length == 6) {
+          _twoStepPin = appLockPin;
+          _twoStepVerificationEnabled = true;
+        }
+      }
       _twoStepRecoveryEmail = prefs.getString('laju_2fa_recovery_email') ?? _twoStepRecoveryEmail;
       final blocked = prefs.getStringList('laju_blocked_contacts');
       if (blocked != null) {
@@ -239,14 +245,20 @@ class AccountController extends ChangeNotifier {
 
   Future<void> setTwoStepVerification(bool enabled, {String? pin, String? email}) async {
     _twoStepVerificationEnabled = enabled;
-    if (pin != null) _twoStepPin = pin;
+    if (pin != null && pin.isNotEmpty) {
+      _twoStepPin = pin;
+      AppLockController.instance.setPinCode(pin);
+    }
     if (email != null) _twoStepRecoveryEmail = email;
     notifyListeners();
     _syncWithBackend();
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool('laju_2fa', enabled);
-      if (pin != null) await prefs.setString('laju_2fa_pin', pin);
+      if (pin != null && pin.isNotEmpty) {
+        await prefs.setString('laju_2fa_pin', pin);
+        await prefs.setString('app_lock_pin', pin);
+      }
       if (email != null) await prefs.setString('laju_2fa_recovery_email', email);
     } catch (_) {}
   }

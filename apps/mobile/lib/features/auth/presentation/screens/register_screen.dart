@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import '../../../../core/core.dart';
 import '../../../home/presentation/screens/home_screen.dart';
 import '../../domain/auth_controller.dart';
+import '../../../settings/domain/account_controller.dart';
 import 'login_screen.dart';
 
 class RegisterScreen extends StatefulWidget {
@@ -89,9 +90,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
       setState(() => _configuredPin = pin);
     }
 
-    // Save PIN locally in AppLockController and arm App Lock
+    // Save PIN locally in AppLockController and AccountController (Two-Step Verification)
     await AppLockController.instance.setPinCode(pin);
     await AppLockController.instance.setAppLockEnabled(true);
+    await AccountController.instance.setTwoStepVerification(true, pin: pin);
 
     // Auto-enable biometric if hardware supports it (prioritizing biometric over PIN)
     final bioAvailability = await BiometricService.instance.checkAvailability();
@@ -454,6 +456,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           if (pin != null && pin.length == 6) {
                             setState(() => _configuredPin = pin);
                             await AppLockController.instance.setPinCode(pin);
+                            await AccountController.instance.setTwoStepVerification(true, pin: pin);
                             if (mounted) {
                               LajuToast.success(context, 'PIN 6-digit berhasil dibuat');
                             }

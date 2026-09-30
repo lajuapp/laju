@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../../../../core/core.dart';
 import '../../../home/presentation/screens/home_screen.dart';
 import '../../domain/auth_controller.dart';
+import '../../../settings/domain/account_controller.dart';
 import 'onboarding_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -156,6 +157,7 @@ class _LoginScreenState extends State<LoginScreen>
           if (pinSuccess) {
             await AppLockController.instance.setPinCode(pin);
             await AppLockController.instance.setAppLockEnabled(true);
+            await AccountController.instance.setTwoStepVerification(true, pin: pin);
             if (availability.isAvailable) {
               await AppLockController.instance.setBiometricEnabled(true);
             }
@@ -504,6 +506,7 @@ class _LoginScreenState extends State<LoginScreen>
   Future<void> _onRestoreSuccess(String pin) async {
     await AppLockController.instance.setPinCode(pin);
     await AppLockController.instance.setAppLockEnabled(true);
+    await AccountController.instance.setTwoStepVerification(true, pin: pin);
 
     final bioAvailability = await BiometricService.instance.checkAvailability();
     if (bioAvailability.isAvailable) {
