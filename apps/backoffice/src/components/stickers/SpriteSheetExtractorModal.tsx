@@ -293,15 +293,14 @@ export function SpriteSheetExtractorModal({
       const h = img.naturalHeight;
       setSheetDimensions({ width: w, height: h });
 
-      // Init Master Unified Grid to cover 96% of the sheet (2% margin each side)
-      // The margin gives clear visual context that the grid can be moved/resized.
-      const initialMarginX = Math.round(w * 0.02);
-      const initialMarginY = Math.round(h * 0.02);
+      // Init Master Unified Grid to cover full height (Y=0 to bottom) with small X-margin for visual context
+      const initialMarginX = Math.round(w * 0.01);
+      const initialMarginY = 0; // Always start from Y=0 so top sprites are never cut off
       const initialW = w - initialMarginX * 2;
-      const initialH = h - initialMarginY * 2;
+      const initialH = h; // Full image height
 
       setGridX(initialMarginX);
-      setGridY(initialMarginY);
+      setGridY(0);
       setGridWidth(initialW);
       setGridHeight(initialH);
 
@@ -360,28 +359,36 @@ export function SpriteSheetExtractorModal({
   };
 
   // Deterministik & Drift-Free Coordinate Transformation
+  // Uses the viewport container rect + zoom/pan to convert screen coords → image coords.
+  // This avoids SVG getBoundingClientRect issues when the SVG is inside a CSS-transformed div.
   const getSvgCoordinates = useCallback(
     (e: React.MouseEvent | MouseEvent): { x: number; y: number } => {
-      const svg = svgOverlayRef.current;
-      if (!svg || sheetDimensions.width <= 0 || sheetDimensions.height <= 0) return { x: 0, y: 0 };
-      const rect = svg.getBoundingClientRect();
-      if (rect.width <= 0 || rect.height <= 0) return { x: 0, y: 0 };
+      const container = viewportContainerRef.current;
+      if (!container || sheetDimensions.width <= 0 || sheetDimensions.height <= 0) return { x: 0, y: 0 };
+      const rect = container.getBoundingClientRect();
 
-      const scaleX = sheetDimensions.width / rect.width;
-      const scaleY = sheetDimensions.height / rect.height;
+      // Center of the viewport container (where origin-center anchor is)
+      const vpCX = rect.width / 2;
+      const vpCY = rect.height / 2;
 
-      const clientX = e.clientX;
-      const clientY = e.clientY;
+      // Mouse position relative to viewport top-left
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
 
-      const rawX = (clientX - rect.left) * scaleX;
-      const rawY = (clientY - rect.top) * scaleY;
+      // Undo pan and zoom:
+      // Screen coord relative to center → undo pan → undo scale → image coord from image center
+      const imgCX = sheetDimensions.width / 2;
+      const imgCY = sheetDimensions.height / 2;
+
+      const rawX = imgCX + (mouseX - vpCX - pan.x) / zoom;
+      const rawY = imgCY + (mouseY - vpCY - pan.y) / zoom;
 
       return {
         x: Math.round(rawX),
         y: Math.round(rawY),
       };
     },
-    [sheetDimensions]
+    [sheetDimensions, zoom, pan]
   );
 
 
@@ -422,14 +429,13 @@ export function SpriteSheetExtractorModal({
       (sheetDimensions.width > 0 && gw < sheetDimensions.width * 0.5) ||
       (sheetDimensions.height > 0 && gh < sheetDimensions.height * 0.5)
     ) {
-      const padX = Math.round(sheetDimensions.width * 0.02);
-      const padY = Math.round(sheetDimensions.height * 0.02);
+      const padX = Math.round(sheetDimensions.width * 0.01);
       gx = padX;
-      gy = padY;
+      gy = 0; // Always start from top
       gw = Math.max(32, sheetDimensions.width - padX * 2);
-      gh = Math.max(32, sheetDimensions.height - padY * 2);
+      gh = sheetDimensions.height; // Full height
       setGridX(gx);
-      setGridY(gy);
+      setGridY(0);
       setGridWidth(gw);
       setGridHeight(gh);
     }
@@ -466,10 +472,12 @@ export function SpriteSheetExtractorModal({
   // Nudge Master Grid Position
   const handleNudgeMasterGrid = (dx: number, dy: number) => {
     if (sheetDimensions.width <= 0 || sheetDimensions.height <= 0) return;
-    const maxAllowedX = Math.max(0, sheetDimensions.width - gridWidth);
-    const maxAllowedY = Math.max(0, sheetDimensions.height - gridHeight);
-    const newX = Math.max(0, Math.min(maxAllowedX, gridX + dx));
-    const newY = Math.max(0, Math.min(maxAllowedY, gridY + dy));
+    const minY = -(gridHeight * 0.8);
+    const maxY = sheetDimensions.height - gridHeight * 0.2;
+    const minX = -(gridWidth * 0.8);
+    const maxX = sheetDimensions.width - gridWidth * 0.2;
+    const newX = Math.max(minX, Math.min(maxX, gridX + dx));
+    const newY = Math.max(minY, Math.min(maxY, gridY + dy));
     setGridX(newX);
     setGridY(newY);
     setBoxes(generateUniformGridBoxes(newX, newY, gridWidth, gridHeight, cols, rows, spacingX, spacingY));
@@ -866,10 +874,15 @@ export function SpriteSheetExtractorModal({
     // 1. MASTER GRID MOVE: Shift ALL boxes by delta
     if (action.type === 'master_move') {
       const init = action.initialGrid!;
-      const maxAllowedX = Math.max(0, sheetDimensions.width - init.width);
-      const maxAllowedY = Math.max(0, sheetDimensions.height - init.height);
-      const newX = Math.round(Math.max(0, Math.min(maxAllowedX, init.x + dx)));
-      const newY = Math.round(Math.max(0, Math.min(maxAllowedY, init.y + dy)));
+      // Allow flexible positioning: grid can go from -(gridH * 0.8) to (sheetH - gridH * 0.2)
+      // so user can always reach the top/bottom of the image even if grid is large
+      const minY = -(init.height * 0.8);
+      const maxY = sheetDimensions.height - init.height * 0.2;
+      const minX = -(init.width * 0.8);
+      const maxX = sheetDimensions.width - init.width * 0.2;
+
+      const newX = Math.round(Math.max(minX, Math.min(maxX, init.x + dx)));
+      const newY = Math.round(Math.max(minY, Math.min(maxY, init.y + dy)));
       const deltaX = newX - init.x;
       const deltaY = newY - init.y;
 
