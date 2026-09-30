@@ -243,13 +243,15 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _isLoadingConversations = false;
 
   List<ConversationModel> get _filteredConversations {
-    final blocked = AccountController.instance.blockedContacts;
+    final accountCtrl = AccountController.instance;
     var list = _conversations
         .where((c) =>
             (c.isLocked != true) &&
             (c.isArchived != true) &&
-            !blocked.contains(c.title) &&
-            !blocked.contains(c.id))
+            !accountCtrl.isContactBlocked(c.title) &&
+            !accountCtrl.isContactBlocked(c.id) &&
+            !accountCtrl.isContactBlocked(c.participantUserId ?? '') &&
+            !accountCtrl.isContactBlocked(c.participantPhone ?? ''))
         .toList();
     switch (_selectedFilter) {
       case 'Unread':

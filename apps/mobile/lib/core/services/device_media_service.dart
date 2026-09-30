@@ -236,4 +236,27 @@ class DeviceMediaService {
       AppLockController.instance.markExternalIntentFinished();
     }
   }
+
+  /// Exports the JSON account archive physically and opens native share chooser
+  static Future<String?> exportAccountReport({
+    required String fileName,
+    required String content,
+  }) async {
+    try {
+      AppLockController.instance.markExternalIntentStarted();
+      const deviceChannel = MethodChannel('com.laju/device');
+      final String? path = await deviceChannel.invokeMethod<String>(
+        'exportAccountReport',
+        {
+          'fileName': fileName,
+          'content': content,
+        },
+      );
+      return path;
+    } catch (e) {
+      return null;
+    } finally {
+      AppLockController.instance.markExternalIntentFinished();
+    }
+  }
 }

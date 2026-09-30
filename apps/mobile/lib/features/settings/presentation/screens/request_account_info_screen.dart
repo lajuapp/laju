@@ -131,9 +131,21 @@ class _RequestAccountInfoScreenState extends State<RequestAccountInfoScreen> {
                       ),
                       icon: const Icon(Icons.download_rounded, size: 20),
                       label: const Text('Export JSON Archive', style: TextStyle(fontWeight: FontWeight.w700)),
-                      onPressed: () {
+                      onPressed: () async {
                         Navigator.pop(ctx);
-                        LajuToast.success(context, 'Report saved to local storage downloads!');
+                        final dateStamp = DateTime.now().millisecondsSinceEpoch;
+                        final fileName = 'laju_account_report_$dateStamp.json';
+                        final savedPath = await DeviceMediaService.exportAccountReport(
+                          fileName: fileName,
+                          content: accountReportJson,
+                        );
+                        if (context.mounted) {
+                          if (savedPath != null && savedPath.isNotEmpty) {
+                            LajuToast.success(context, 'Laporan tersimpan: $savedPath');
+                          } else {
+                            LajuToast.success(context, 'Laporan akun berhasil diekspor!');
+                          }
+                        }
                       },
                     ),
                   ),
@@ -350,6 +362,25 @@ class _RequestAccountInfoScreenState extends State<RequestAccountInfoScreen> {
                                       color: isDark ? Colors.white70 : const Color(0xFF374151),
                                       fontWeight: FontWeight.w600,
                                     ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: ElevatedButton(
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: AppColors.primary,
+                                    foregroundColor: Colors.white,
+                                    padding: const EdgeInsets.symmetric(vertical: 12),
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                  ),
+                                  onPressed: () {
+                                    AccountController.instance.setAccountReportReady();
+                                    LajuToast.success(context, 'Laporan siap diunduh!');
+                                  },
+                                  child: const Text(
+                                    'Siapkan Sekarang',
+                                    style: TextStyle(fontWeight: FontWeight.w700),
                                   ),
                                 ),
                               ),

@@ -1327,6 +1327,35 @@ class MainActivity : FlutterFragmentActivity() {
                         result.error("OPEN_URL_ERROR", e.message, null)
                     }
                 }
+                "exportAccountReport" -> {
+                    try {
+                        val fileName = call.argument<String>("fileName") ?: "laju_account_report.json"
+                        val content = call.argument<String>("content") ?: "{}"
+                        val exportDir = File(filesDir, "exports")
+                        if (!exportDir.exists()) exportDir.mkdirs()
+                        val reportFile = File(exportDir, fileName)
+                        reportFile.writeText(content, Charsets.UTF_8)
+
+                        val uri = FileProvider.getUriForFile(
+                            this@MainActivity,
+                            "${applicationContext.packageName}.fileprovider",
+                            reportFile
+                        )
+                        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                            type = "application/json"
+                            putExtra(Intent.EXTRA_STREAM, uri)
+                            putExtra(Intent.EXTRA_SUBJECT, "Laporan Akun LAJU")
+                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        }
+                        val chooser = Intent.createChooser(shareIntent, "Ekspor Laporan Akun LAJU").apply {
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                        startActivity(chooser)
+                        result.success(reportFile.absolutePath)
+                    } catch (e: Exception) {
+                        result.error("EXPORT_ERROR", e.message, null)
+                    }
+                }
                 else -> result.notImplemented()
             }
         }

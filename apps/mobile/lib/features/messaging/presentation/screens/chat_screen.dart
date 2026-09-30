@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import '../../../../core/core.dart';
 import '../../domain/models/message_model.dart';
 import '../widgets/chat_bubble.dart';
@@ -15,6 +14,7 @@ import 'disappearing_messages_screen.dart';
 import '../../../conversations/presentation/screens/user_profile_screen.dart';
 import '../../../settings/presentation/screens/wallpaper_settings_screen.dart';
 import '../../../settings/domain/privacy_controller.dart';
+import '../../../settings/domain/account_controller.dart';
 import '../../../../core/services/voice_note_service.dart';
 import 'image_preview_send_screen.dart';
 import 'document_preview_send_screen.dart';
@@ -256,6 +256,17 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _sendMessage(String text) async {
+    final accountCtrl = AccountController.instance;
+    final isBlocked = accountCtrl.isContactBlocked(widget.title) ||
+        (widget.contactUserId != null && accountCtrl.isContactBlocked(widget.contactUserId!)) ||
+        (widget.contactPhone != null && accountCtrl.isContactBlocked(widget.contactPhone!));
+    if (isBlocked) {
+      if (mounted) {
+        LajuToast.info(context, 'Kontak ini telah diblokir. Buka blokir untuk mengirim pesan.');
+      }
+      return;
+    }
+
     ConversationService.instance.sendTypingStatus(_conversationId, false);
     LajuSoundService.playOutgoingTone();
 
@@ -1424,19 +1435,75 @@ class _ChatScreenState extends State<ChatScreen> {
                           ),
                   ),
 
-                  // Custom Input Bar matching design board (NO emoji keyboard button)
-                  ChatInputBar(
-                    onSend: _sendMessage,
-                    onAttach: _openAttachmentMenu,
-                    onStickerTap: _openStickerPicker,
-                    onSendVoiceNote: _handleSendVoiceNote,
-                    replyingTo: _replyingTo,
-                    onCancelReply: _cancelReply,
-                    editingMessage: _editingMessage,
-                    onCancelEdit: _cancelEdit,
-                    onConfirmEdit: _confirmEditMessage,
-                    onTypingChanged: (isTyping) {
-                      ConversationService.instance.sendTypingStatus(_conversationId, isTyping);
+                  // Custom Input Bar or Blocked Contact Banner
+                  ListenableBuilder(
+                    listenable: AccountController.instance,
+                    builder: (context, _) {
+                      final accountCtrl = AccountController.instance;
+                      final isBlocked = accountCtrl.isContactBlocked(widget.title) ||
+                          (widget.contactUserId != null && accountCtrl.isContactBlocked(widget.contactUserId!)) ||
+                          (widget.contactPhone != null && accountCtrl.isContactBlocked(widget.contactPhone!));
+                      if (isBlocked) {
+                        return Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                          decoration: BoxDecoration(
+                            color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9),
+                            border: Border(
+                              top: BorderSide(
+                                color: isDark ? Colors.white10 : Colors.black12,
+                              ),
+                            ),
+                          ),
+                          child: SafeArea(
+                            top: false,
+                            child: Row(
+                              children: [
+                                const Icon(Icons.block_rounded, color: Color(0xFFDC2626), size: 20),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Text(
+                                    'Kontak ini telah diblokir.',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600,
+                                      color: isDark ? Colors.white70 : const Color(0xFF4B5563),
+                                    ),
+                                  ),
+                                ),
+                                TextButton(
+                                  style: TextButton.styleFrom(
+                                    foregroundColor: AppColors.primary,
+                                    visualDensity: VisualDensity.compact,
+                                  ),
+                                  onPressed: () {
+                                    if (widget.contactUserId != null) {
+                                      accountCtrl.removeBlockedContact(widget.contactUserId!);
+                                    }
+                                    accountCtrl.removeBlockedContact(widget.title);
+                                    LajuToast.info(context, 'Blokir telah dibuka');
+                                  },
+                                  child: const Text('Buka Blokir', style: TextStyle(fontWeight: FontWeight.w700)),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      }
+                      return ChatInputBar(
+                        onSend: _sendMessage,
+                        onAttach: _openAttachmentMenu,
+                        onStickerTap: _openStickerPicker,
+                        onSendVoiceNote: _handleSendVoiceNote,
+                        replyingTo: _replyingTo,
+                        onCancelReply: _cancelReply,
+                        editingMessage: _editingMessage,
+                        onCancelEdit: _cancelEdit,
+                        onConfirmEdit: _confirmEditMessage,
+                        onTypingChanged: (isTyping) {
+                          ConversationService.instance.sendTypingStatus(_conversationId, isTyping);
+                        },
+                      );
                     },
                   ),
                 ],

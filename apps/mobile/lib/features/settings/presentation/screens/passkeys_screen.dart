@@ -68,10 +68,12 @@ class _PasskeysScreenState extends State<PasskeysScreen> {
               foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
             ),
-            onPressed: () {
+            onPressed: () async {
               Navigator.pop(ctx);
-              AccountController.instance.removePasskey(passkey.id);
-              LajuToast.info(context, context.tr('passkeyRemoved'));
+              await AccountController.instance.removePasskey(passkey.id);
+              if (context.mounted) {
+                LajuToast.info(context, context.tr('passkeyRemoved'));
+              }
             },
             child: const Text('Delete', style: TextStyle(fontWeight: FontWeight.w700)),
           ),
@@ -190,7 +192,7 @@ class _PasskeysScreenState extends State<PasskeysScreen> {
 
                     if (authOk) {
                       HapticFeedback.heavyImpact();
-                      AccountController.instance.addPasskey(
+                      await AccountController.instance.addPasskey(
                         'Kunci Pas $bioLabel',
                         '$deviceModel (Hardware TEE / FIDO2)',
                       );

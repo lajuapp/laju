@@ -28,7 +28,6 @@ class _BlockedContactsScreenState extends State<BlockedContactsScreen> {
       builder: (ctx) {
         return StatefulBuilder(
           builder: (modalCtx, setModalState) {
-            final candidates = users.map((u) => '${u.username} (${u.phoneNumber ?? u.email ?? u.id})').toList();
             return Padding(
               padding: EdgeInsets.only(
                 bottom: MediaQuery.of(ctx).viewInsets.bottom + 20,
@@ -96,7 +95,7 @@ class _BlockedContactsScreenState extends State<BlockedContactsScreen> {
                       ],
                     ),
                     const SizedBox(height: 12),
-                    if (candidates.isNotEmpty) ...[
+                    if (users.isNotEmpty) ...[
                       const Text(
                         'Pilih dari kontak terdaftar:',
                         style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey),
@@ -106,14 +105,16 @@ class _BlockedContactsScreenState extends State<BlockedContactsScreen> {
                         constraints: const BoxConstraints(maxHeight: 220),
                         child: ListView(
                           shrinkWrap: true,
-                          children: candidates.map((contact) {
-                            final isAlreadyBlocked = AccountController.instance.blockedContacts.contains(contact);
+                          children: users.map((user) {
+                            final isAlreadyBlocked = AccountController.instance.isContactBlocked(user.username) ||
+                                AccountController.instance.isContactBlocked(user.id);
+                            final subtitle = user.phoneNumber ?? user.email ?? user.id;
                             return ListTile(
                               contentPadding: EdgeInsets.zero,
                               leading: CircleAvatar(
                                 backgroundColor: isDark ? Colors.white12 : const Color(0xFFE5E7EB),
                                 child: Text(
-                                  contact[0].toUpperCase(),
+                                  user.username.isNotEmpty ? user.username[0].toUpperCase() : '?',
                                   style: TextStyle(
                                     fontWeight: FontWeight.w700,
                                     color: isDark ? Colors.white : const Color(0xFF374151),
@@ -121,11 +122,18 @@ class _BlockedContactsScreenState extends State<BlockedContactsScreen> {
                                 ),
                               ),
                               title: Text(
-                                contact,
+                                user.username,
                                 style: TextStyle(
                                   fontSize: 14,
                                   fontWeight: FontWeight.w600,
                                   color: isDark ? Colors.white : const Color(0xFF111827),
+                                ),
+                              ),
+                              subtitle: Text(
+                                subtitle,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: isDark ? AppColors.darkTextSecondary : const Color(0xFF6B7280),
                                 ),
                               ),
                               trailing: isAlreadyBlocked
@@ -138,8 +146,11 @@ class _BlockedContactsScreenState extends State<BlockedContactsScreen> {
                                   ? null
                                   : () {
                                       Navigator.pop(ctx);
-                                      AccountController.instance.addBlockedContact(contact);
-                                      LajuToast.info(context, '$contact ${context.tr('addToBlocked')}');
+                                      AccountController.instance.addBlockedContact(user.username);
+                                      if (user.id.isNotEmpty) {
+                                        AccountController.instance.addBlockedContact(user.id);
+                                      }
+                                      LajuToast.info(context, '${user.username} ${context.tr('addToBlocked')}');
                                     },
                             );
                           }).toList(),

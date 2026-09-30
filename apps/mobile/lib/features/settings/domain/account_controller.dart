@@ -17,6 +17,22 @@ class PasskeyItem {
     required this.device,
     required this.createdAt,
   });
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'device': device,
+        'createdAt': createdAt.toIso8601String(),
+      };
+
+  factory PasskeyItem.fromJson(Map<String, dynamic> json) => PasskeyItem(
+        id: json['id'] ?? '',
+        name: json['name'] ?? '',
+        device: json['device'] ?? '',
+        createdAt: json['createdAt'] != null
+            ? DateTime.tryParse(json['createdAt']) ?? DateTime.now()
+            : DateTime.now(),
+      );
 }
 
 class LajuContactItem {
@@ -165,6 +181,27 @@ class AccountController extends ChangeNotifier {
           try {
             _savedContacts.add(LajuContactItem.fromJson(jsonDecode(item) as Map<String, dynamic>));
           } catch (_) {}
+        }
+      }
+      final passkeysRaw = prefs.getStringList('laju_passkeys_list');
+      if (passkeysRaw != null) {
+        _passkeys.clear();
+        for (final item in passkeysRaw) {
+          try {
+            _passkeys.add(PasskeyItem.fromJson(jsonDecode(item) as Map<String, dynamic>));
+          } catch (_) {}
+        }
+      }
+      _accountReportStatus = prefs.getString('laju_account_report_status') ?? 'none';
+      final reqDateStr = prefs.getString('laju_account_report_requested_date');
+      if (reqDateStr != null) {
+        _accountReportRequestedDate = DateTime.tryParse(reqDateStr);
+        if (_accountReportStatus == 'requested' && _accountReportRequestedDate != null) {
+          final diff = DateTime.now().difference(_accountReportRequestedDate!);
+          if (diff.inDays >= 3) {
+            _accountReportStatus = 'ready';
+            await prefs.setString('laju_account_report_status', 'ready');
+          }
         }
       }
       notifyListeners();
@@ -333,7 +370,7 @@ class AccountController extends ChangeNotifier {
     }
   }
 
-  void addPasskey(String name, String device) {
+  Future<void> addPasskey(String name, String device) async {
     _passkeys.add(
       PasskeyItem(
         id: 'passkey-${DateTime.now().millisecondsSinceEpoch}',
@@ -343,33 +380,75 @@ class AccountController extends ChangeNotifier {
       ),
     );
     notifyListeners();
+    await _persistPasskeys();
+    // Synchronize with AppLockController
+    await AppLockController.instance.setBiometricEnabled(true);
+    await AppLockController.instance.setAppLockEnabled(true);
   }
 
-  void removePasskey(String id) {
+  Future<void> removePasskey(String id) async {
     _passkeys.removeWhere((p) => p.id == id);
     notifyListeners();
+    await _persistPasskeys();
+    if (_passkeys.isEmpty) {
+      await AppLockController.instance.setBiometricEnabled(false);
+    }
   }
 
-  void requestAccountReport() {
+  Future<void> _persistPasskeys() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final list = _passkeys.map((p) => jsonEncode(p.toJson())).toList();
+      await prefs.setStringList('laju_passkeys_list', list);
+    } catch (_) {}
+  }
+
+  Future<void> requestAccountReport() async {
     _accountReportStatus = 'requested';
     _accountReportRequestedDate = DateTime.now();
     notifyListeners();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('laju_account_report_status', _accountReportStatus);
+      await prefs.setString('laju_account_report_requested_date', _accountReportRequestedDate!.toIso8601String());
+    } catch (_) {}
   }
 
-  void cancelAccountReport() {
+  Future<void> cancelAccountReport() async {
     _accountReportStatus = 'none';
     _accountReportRequestedDate = null;
     notifyListeners();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('laju_account_report_status');
+      await prefs.remove('laju_account_report_requested_date');
+    } catch (_) {}
   }
 
-  void setAccountReportReady() {
+  Future<void> setAccountReportReady() async {
     _accountReportStatus = 'ready';
     notifyListeners();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('laju_account_report_status', 'ready');
+    } catch (_) {}
+  }
+
+  bool isContactBlocked(String identifier) {
+    final clean = identifier.trim().toLowerCase().replaceFirst('@', '');
+    if (clean.isEmpty) return false;
+    for (final b in _blockedContacts) {
+      final cleanB = b.trim().toLowerCase().replaceFirst('@', '');
+      if (cleanB == clean) return true;
+      if (cleanB.contains(clean) || clean.contains(cleanB)) return true;
+    }
+    return false;
   }
 
   Future<void> addBlockedContact(String name) async {
-    if (!_blockedContacts.contains(name)) {
-      _blockedContacts.add(name);
+    final clean = name.trim();
+    if (clean.isNotEmpty && !_blockedContacts.contains(clean)) {
+      _blockedContacts.add(clean);
       notifyListeners();
       try {
         final prefs = await SharedPreferences.getInstance();
@@ -379,7 +458,11 @@ class AccountController extends ChangeNotifier {
   }
 
   Future<void> removeBlockedContact(String name) async {
-    _blockedContacts.remove(name);
+    final clean = name.trim().toLowerCase();
+    _blockedContacts.removeWhere((item) {
+      final itemClean = item.trim().toLowerCase();
+      return itemClean == clean || itemClean.contains(clean) || clean.contains(itemClean);
+    });
     notifyListeners();
     try {
       final prefs = await SharedPreferences.getInstance();
