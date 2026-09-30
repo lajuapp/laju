@@ -29,6 +29,7 @@ import {
   Rows,
   AlertCircle,
   RotateCcw,
+  Target,
 } from 'lucide-react';
 import { Modal } from '../ui/Modal';
 import { Button } from '../ui/Button';
@@ -89,6 +90,8 @@ export function SpriteSheetExtractorModal({
   const [rows, setRows] = useState(3);
   const [spacingX, setSpacingX] = useState(0);
   const [spacingY, setSpacingY] = useState(0);
+  // Detected tight bounding box around all characters/stickers
+  const [contentBounds, setContentBounds] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
 
   // Boxes State (Array of individual frames)
   const [boxes, setBoxes] = useState<CropBox[]>([]);
@@ -275,51 +278,108 @@ export function SpriteSheetExtractorModal({
     setGridHeight(maxY - minY);
   };
 
-  // ─── Projection-Based Auto Grid Detector ────────────────────────────────────
-  // Analyses horizontal & vertical pixel projections to find row/column count.
-  // Works for PNG (alpha) and JPEG/solid-bg (using brightness threshold).
-  const detectGridLayout = (
+  // ─── Content Bounding Box & Projection Detector ─────────────────────────────
+  // Detects the tight bounding box around all characters/stickers,
+  // and performs projection analysis within that bounding box to find rows & cols.
+  const detectContentBoundsAndGrid = (
     data: Uint8ClampedArray,
     w: number,
     h: number
-  ): { cols: number; rows: number } => {
-    const step = 3; // Sample every 3rd pixel for speed
-    const rowCount = Math.ceil(h / step);
-    const colCount = Math.ceil(w / step);
+  ): {
+    bounds: { x: number; y: number; width: number; height: number };
+    cols: number;
+    rows: number;
+  } => {
+    // 1. Detect background type: Sample 4 corners
+    const cTL = 0;
+    const cTR = (w - 1) * 4;
+    const cBL = ((h - 1) * w) * 4;
+    const cBR = ((h - 1) * w + (w - 1)) * 4;
 
-    const projY = new Float32Array(rowCount); // solid-pixel count per Y-strip
-    const projX = new Float32Array(colCount); // solid-pixel count per X-strip
+    const cornersHaveAlpha =
+      data[cTL + 3] < 50 || data[cTR + 3] < 50 || data[cBL + 3] < 50 || data[cBR + 3] < 50;
 
-    for (let sy = 0; sy < rowCount; sy++) {
-      const py = sy * step;
-      for (let sx = 0; sx < colCount; sx++) {
-        const px = sx * step;
-        const idx = (py * w + px) * 4;
-        const alpha = data[idx + 3];
-        let solid = false;
+    let bgR = 255, bgG = 255, bgB = 255;
+    let isSolidBg = false;
 
-        if (alpha > 20) {
-          // Has real alpha channel — trust it
-          solid = true;
-        } else if (alpha === 255 || alpha === 0) {
-          // Fully opaque or fully transparent — check if not white/near-white
-          const r = data[idx];
-          const g = data[idx + 1];
-          const b = data[idx + 2];
-          const brightness = (r + g + b) / 3;
-          if (brightness < 240) {
-            solid = true; // Dark/colored pixel → sprite content
-          }
+    if (!cornersHaveAlpha) {
+      // Solid background (e.g. JPG or flat color PNG)
+      isSolidBg = true;
+      bgR = (data[cTL] + data[cTR] + data[cBL] + data[cBR]) / 4;
+      bgG = (data[cTL + 1] + data[cTR + 1] + data[cBL + 1] + data[cBR + 1]) / 4;
+      bgB = (data[cTL + 2] + data[cTR + 2] + data[cBL + 2] + data[cBR + 2]) / 4;
+    }
+
+    const isContentPixel = (px: number, py: number): boolean => {
+      const idx = (py * w + px) * 4;
+      const alpha = data[idx + 3];
+      if (alpha < 25) return false;
+
+      if (isSolidBg) {
+        const r = data[idx];
+        const g = data[idx + 1];
+        const b = data[idx + 2];
+        const dist = Math.sqrt((r - bgR) ** 2 + (g - bgG) ** 2 + (b - bgB) ** 2);
+        return dist > 28;
+      }
+      return true;
+    };
+
+    // 2. Scan image with 2px step to find exact content bounding box
+    const stepScan = 2;
+    let minX = w, minY = h, maxX = 0, maxY = 0;
+    let foundAny = false;
+
+    for (let py = 0; py < h; py += stepScan) {
+      for (let px = 0; px < w; px += stepScan) {
+        if (isContentPixel(px, py)) {
+          if (px < minX) minX = px;
+          if (px > maxX) maxX = px;
+          if (py < minY) minY = py;
+          if (py > maxY) maxY = py;
+          foundAny = true;
         }
+      }
+    }
 
-        if (solid) {
+    // Fallback if no content found
+    if (!foundAny || maxX <= minX || maxY <= minY) {
+      return {
+        bounds: { x: 0, y: 0, width: w, height: h },
+        cols: 4,
+        rows: 4,
+      };
+    }
+
+    // Add safe 6px padding around detected content bounds
+    const pad = 6;
+    const boundX = Math.max(0, minX - pad);
+    const boundY = Math.max(0, minY - pad);
+    const boundW = Math.min(w - boundX, (maxX - minX) + pad * 2);
+    const boundH = Math.min(h - boundY, (maxY - minY) + pad * 2);
+
+    // 3. Horizontal and vertical projection INSIDE the content bounds
+    const stepProj = 3;
+    const projRows = Math.ceil(boundH / stepProj);
+    const projCols = Math.ceil(boundW / stepProj);
+
+    const projY = new Float32Array(projRows);
+    const projX = new Float32Array(projCols);
+
+    for (let sy = 0; sy < projRows; sy++) {
+      const py = boundY + sy * stepProj;
+      if (py >= h) continue;
+      for (let sx = 0; sx < projCols; sx++) {
+        const px = boundX + sx * stepProj;
+        if (px >= w) continue;
+        if (isContentPixel(px, py)) {
           projY[sy]++;
           projX[sx]++;
         }
       }
     }
 
-    // Smooth with a 3-sample moving average to remove thin noise
+    // 3-sample moving average smoothing
     const smooth = (arr: Float32Array): Float32Array => {
       const out = new Float32Array(arr.length);
       for (let i = 0; i < arr.length; i++) {
@@ -333,14 +393,14 @@ export function SpriteSheetExtractorModal({
     const smoothY = smooth(projY);
     const smoothX = smooth(projX);
 
-    // Count "active regions" separated by valleys (< 5% of peak value)
+    // Count distinct sprite regions separated by valleys (< 8% of peak)
     const countRegions = (proj: Float32Array): number => {
       let peak = 0;
       for (let i = 0; i < proj.length; i++) {
         if (proj[i] > peak) peak = proj[i];
       }
       if (peak === 0) return 1;
-      const threshold = peak * 0.05; // 5% of peak = valley
+      const threshold = peak * 0.08;
 
       let count = 0;
       let inRegion = false;
@@ -354,13 +414,13 @@ export function SpriteSheetExtractorModal({
       return Math.max(1, count);
     };
 
-    const detectedRows = countRegions(smoothY);
-    const detectedCols = countRegions(smoothX);
+    const detectedRows = Math.max(1, Math.min(12, countRegions(smoothY)));
+    const detectedCols = Math.max(1, Math.min(12, countRegions(smoothX)));
 
-    // Clamp to sensible range
     return {
-      rows: Math.max(1, Math.min(12, detectedRows)),
-      cols: Math.max(1, Math.min(12, detectedCols)),
+      bounds: { x: boundX, y: boundY, width: boundW, height: boundH },
+      cols: detectedCols,
+      rows: detectedRows,
     };
   };
   // ────────────────────────────────────────────────────────────────────────────
@@ -382,20 +442,13 @@ export function SpriteSheetExtractorModal({
       const w = img.naturalWidth;
       const h = img.naturalHeight;
       setSheetDimensions({ width: w, height: h });
-
-      // Grid always covers 100% of the image — no margin on Y, tiny 1% margin on X
-      // so the master boundary rect border is always visible at all zoom levels.
-      setGridX(0);
-      setGridY(0);
-      setGridWidth(w);
-      setGridHeight(h);
       setSpacingX(0);
       setSpacingY(0);
 
-      // ── Projection-based auto-detection of rows × cols ──────────────────────
-      // Draw into an offscreen canvas, read pixel data, then run projection analysis.
+      let targetBounds = { x: 0, y: 0, width: w, height: h };
       let initCols = 4;
       let initRows = 4;
+
       try {
         const offCanvas = document.createElement('canvas');
         offCanvas.width = w;
@@ -404,25 +457,38 @@ export function SpriteSheetExtractorModal({
         if (offCtx) {
           offCtx.drawImage(img, 0, 0);
           const imgData = offCtx.getImageData(0, 0, w, h);
-          const detected = detectGridLayout(imgData.data, w, h);
+          const detected = detectContentBoundsAndGrid(imgData.data, w, h);
+          targetBounds = detected.bounds;
           initCols = detected.cols;
           initRows = detected.rows;
         }
       } catch (_e) {
-        // Fallback to aspect-ratio guess if canvas fails (e.g. cross-origin)
         const ratio = w / h;
         if (ratio >= 1.42) { initCols = 6; initRows = 4; }
         else if (ratio >= 1.15) { initCols = 4; initRows = 3; }
         else if (ratio <= 0.75) { initCols = 3; initRows = 4; }
         else { initCols = 4; initRows = 4; }
       }
-      // ────────────────────────────────────────────────────────────────────────
 
+      setContentBounds(targetBounds);
+      setGridX(targetBounds.x);
+      setGridY(targetBounds.y);
+      setGridWidth(targetBounds.width);
+      setGridHeight(targetBounds.height);
       setCols(initCols);
       setRows(initRows);
 
-      // Generate full-coverage uniform grid from (0,0) to (w,h)
-      const initialBoxes = generateUniformGridBoxes(0, 0, w, h, initCols, initRows, 0, 0);
+      // Generate uniform grid matching the detected character bounds
+      const initialBoxes = generateUniformGridBoxes(
+        targetBounds.x,
+        targetBounds.y,
+        targetBounds.width,
+        targetBounds.height,
+        initCols,
+        initRows,
+        0,
+        0
+      );
       setBoxes(initialBoxes);
       setSelectedBoxId(null);
 
@@ -573,7 +639,7 @@ export function SpriteSheetExtractorModal({
     }
   };
 
-  // Snap Master Grid to Full 100% Image Bounds (Tanpa Batas/Margin)
+  // Snap Master Grid to Full 100% Image Bounds (Seluruh Kanvas Gambar)
   const handleFitMasterGridToFullImage = () => {
     if (sheetDimensions.width <= 0 || sheetDimensions.height <= 0) return;
     setGridX(0);
@@ -583,6 +649,46 @@ export function SpriteSheetExtractorModal({
 
     const newBoxes = generateUniformGridBoxes(0, 0, sheetDimensions.width, sheetDimensions.height, cols, rows, spacingX, spacingY);
     setBoxes(newBoxes);
+  };
+
+  // Snap Master Grid tightly around detected sticker characters (with 6px safe padding)
+  const handleFitToCharacterBounds = () => {
+    if (!sheetImage || sheetDimensions.width <= 0 || sheetDimensions.height <= 0) return;
+    let target = contentBounds;
+
+    if (!target) {
+      try {
+        const offCanvas = document.createElement('canvas');
+        offCanvas.width = sheetDimensions.width;
+        offCanvas.height = sheetDimensions.height;
+        const offCtx = offCanvas.getContext('2d');
+        if (offCtx) {
+          offCtx.drawImage(sheetImage, 0, 0);
+          const imgData = offCtx.getImageData(0, 0, sheetDimensions.width, sheetDimensions.height);
+          const detected = detectContentBoundsAndGrid(imgData.data, sheetDimensions.width, sheetDimensions.height);
+          target = detected.bounds;
+          setContentBounds(detected.bounds);
+        }
+      } catch (_e) {}
+    }
+
+    if (target) {
+      setGridX(target.x);
+      setGridY(target.y);
+      setGridWidth(target.width);
+      setGridHeight(target.height);
+      const newBoxes = generateUniformGridBoxes(
+        target.x,
+        target.y,
+        target.width,
+        target.height,
+        cols,
+        rows,
+        spacingX,
+        spacingY
+      );
+      setBoxes(newBoxes);
+    }
   };
 
   // Re-run projection-based auto-detection on the currently loaded image
@@ -596,20 +702,27 @@ export function SpriteSheetExtractorModal({
       if (!offCtx) return;
       offCtx.drawImage(sheetImage, 0, 0);
       const imgData = offCtx.getImageData(0, 0, sheetDimensions.width, sheetDimensions.height);
-      const detected = detectGridLayout(imgData.data, sheetDimensions.width, sheetDimensions.height);
+      const detected = detectContentBoundsAndGrid(imgData.data, sheetDimensions.width, sheetDimensions.height);
 
+      setContentBounds(detected.bounds);
       setCols(detected.cols);
       setRows(detected.rows);
-      setGridX(0);
-      setGridY(0);
-      setGridWidth(sheetDimensions.width);
-      setGridHeight(sheetDimensions.height);
+      setGridX(detected.bounds.x);
+      setGridY(detected.bounds.y);
+      setGridWidth(detected.bounds.width);
+      setGridHeight(detected.bounds.height);
       setSpacingX(0);
       setSpacingY(0);
 
       const newBoxes = generateUniformGridBoxes(
-        0, 0, sheetDimensions.width, sheetDimensions.height,
-        detected.cols, detected.rows, 0, 0
+        detected.bounds.x,
+        detected.bounds.y,
+        detected.bounds.width,
+        detected.bounds.height,
+        detected.cols,
+        detected.rows,
+        0,
+        0
       );
       setBoxes(newBoxes);
       setSelectedBoxId(null);
@@ -1724,21 +1837,22 @@ export function SpriteSheetExtractorModal({
                 <div className="grid grid-cols-2 gap-1.5">
                   <button
                     type="button"
-                    onClick={handleFitMasterGridToFullImage}
+                    onClick={handleFitToCharacterBounds}
                     disabled={!sheetImage}
-                    className="py-1 text-xs font-bold rounded-lg bg-brand-50 hover:bg-brand-100 text-brand-800 border border-brand-300 transition-colors text-center"
-                    title="Ratakan seluruh kotak grid dari ujung atas (Y=0) sampai ujung bawah gambar"
+                    className="py-1 text-xs font-bold rounded-lg bg-brand-50 hover:bg-brand-100 text-brand-800 border border-brand-300 transition-colors text-center flex items-center justify-center gap-1 shadow-2xs"
+                    title="Posisikan grid membungkus persis seluruh kumpulan karakter stiker (dengan padding aman)"
                   >
-                    Penuh (100%)
+                    <Target className="w-3 h-3 text-brand-600" />
+                    Bungkus Karakter
                   </button>
                   <button
                     type="button"
-                    onClick={handleFitMasterGridWithMargin}
+                    onClick={handleFitMasterGridToFullImage}
                     disabled={!sheetImage}
                     className="py-1 text-xs font-semibold rounded-lg bg-neutral-100 hover:bg-neutral-200 text-neutral-700 transition-colors text-center"
-                    title="Pusatkan grid dengan margin 2% di tiap sisi"
+                    title="Ratakan seluruh kotak grid mencakup 100% kanvas file gambar"
                   >
-                    Margin (96%)
+                    Penuh Kanvas (100%)
                   </button>
                 </div>
 
