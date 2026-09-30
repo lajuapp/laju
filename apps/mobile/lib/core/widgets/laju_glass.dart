@@ -178,8 +178,8 @@ class LajuGlassCard extends StatelessWidget {
           ),
         ];
 
+    final innerRadius = borderRadius > borderWidth ? borderRadius - borderWidth : borderRadius;
     final innerCard = Container(
-      padding: padding,
       decoration: BoxDecoration(
         gradient: effectiveGradient,
         borderRadius: BorderRadius.circular(borderRadius),
@@ -188,7 +188,14 @@ class LajuGlassCard extends StatelessWidget {
           width: borderWidth,
         ),
       ),
-      child: child,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(innerRadius),
+        clipBehavior: Clip.antiAlias,
+        child: Padding(
+          padding: padding ?? EdgeInsets.zero,
+          child: child,
+        ),
+      ),
     );
 
     Widget content;

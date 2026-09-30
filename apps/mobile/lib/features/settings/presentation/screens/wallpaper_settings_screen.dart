@@ -1,7 +1,7 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../../../core/core.dart';
 import '../../../conversations/domain/conversation_service.dart';
+import '../../../conversations/domain/group_controller.dart';
 
 class WallpaperSettingsScreen extends StatefulWidget {
   final String? chatId;
@@ -19,7 +19,6 @@ class WallpaperSettingsScreen extends StatefulWidget {
 
 class _WallpaperSettingsScreenState extends State<WallpaperSettingsScreen> {
   String? _previewWallpaperId;
-  Timer? _syncTimer;
 
   static const WallpaperOption kPlainWallpaperOption = WallpaperOption(
     id: 'none',
@@ -39,20 +38,6 @@ class _WallpaperSettingsScreenState extends State<WallpaperSettingsScreen> {
         ChatAppearanceController.instance.fetchRemoteWallpapers();
       }
     });
-
-    if (widget.chatId != null) {
-      _syncTimer = Timer.periodic(const Duration(milliseconds: 1000), (_) {
-        if (mounted) {
-          ConversationService.instance.fetchMessages(widget.chatId!);
-        }
-      });
-    }
-  }
-
-  @override
-  void dispose() {
-    _syncTimer?.cancel();
-    super.dispose();
   }
 
   @override
@@ -65,7 +50,8 @@ class _WallpaperSettingsScreenState extends State<WallpaperSettingsScreen> {
       builder: (context, _) {
         final currentWallpaperId = _previewWallpaperId ??
             (widget.chatId != null
-                ? (ChatAppearanceController.instance.getChatWallpaper(widget.chatId!) ?? 'none')
+                ? (ChatAppearanceController.instance.getChatWallpaper(widget.chatId!) ??
+                    ChatAppearanceController.instance.selectedWallpaper)
                 : ChatAppearanceController.instance.selectedWallpaper);
 
         final rawWallpapers = ChatAppearanceController.instance.allWallpapers;
@@ -120,16 +106,11 @@ class _WallpaperSettingsScreenState extends State<WallpaperSettingsScreen> {
                   // Mockup Phone Frame with Live Wallpaper
                   LajuGlassCard(
                     padding: EdgeInsets.zero,
-                    child: Container(
+                    borderRadius: 20,
+                    child: SizedBox(
                       height: 220,
                       width: double.infinity,
-                      decoration: BoxDecoration(
-                        color: activeWallpaper.backgroundColor,
-                        borderRadius: BorderRadius.circular(18),
-                      ),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(18),
-                        child: Stack(
+                      child: Stack(
                           children: [
                             // Plain default background if 'none'
                             if (activeWallpaper.id == 'none')
@@ -291,7 +272,6 @@ class _WallpaperSettingsScreenState extends State<WallpaperSettingsScreen> {
                         ),
                       ),
                     ),
-                  ),
 
                   const SizedBox(height: 24),
 
@@ -333,6 +313,7 @@ class _WallpaperSettingsScreenState extends State<WallpaperSettingsScreen> {
 
                           if (widget.chatId != null) {
                             ChatAppearanceController.instance.setChatWallpaper(widget.chatId!, item.id);
+                            GroupController.instance.updateGroupWallpaper(widget.chatId!, item.id);
                             ConversationService.instance.sendWallpaperChange(
                               conversationId: widget.chatId!,
                               wallpaperId: item.id,
@@ -366,7 +347,8 @@ class _WallpaperSettingsScreenState extends State<WallpaperSettingsScreen> {
                             ],
                           ),
                           child: ClipRRect(
-                            borderRadius: BorderRadius.circular(14),
+                            borderRadius: BorderRadius.circular(isSelected ? 13.5 : 15.0),
+                            clipBehavior: Clip.antiAlias,
                             child: Stack(
                               children: [
                                 if (item.id == 'none')

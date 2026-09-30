@@ -1308,7 +1308,8 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
             listenable: ChatAppearanceController.instance,
             builder: (context, _) {
               final isDark = ThemeModeController.instance.isDarkMode(context);
-              final groupWallpaperId = ChatAppearanceController.instance.getChatWallpaper(widget.groupId);
+              final groupWallpaperId = ChatAppearanceController.instance.getChatWallpaper(widget.groupId) ??
+                  ChatAppearanceController.instance.selectedWallpaper;
               final activeWallpaper = ChatAppearanceController.instance.findWallpaper(groupWallpaperId);
               final screenSize = MediaQuery.sizeOf(context);
 

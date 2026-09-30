@@ -434,5 +434,13 @@ class GroupController extends ChangeNotifier {
 
     return group;
   }
+
+  /// Updates the wallpaperId for a group locally and notifies listeners
+  void updateGroupWallpaper(String groupId, String? wallpaperId) {
+    if (_groups.containsKey(groupId)) {
+      _groups[groupId]!.wallpaperId = wallpaperId;
+      notifyListeners();
+    }
+  }
 }
 

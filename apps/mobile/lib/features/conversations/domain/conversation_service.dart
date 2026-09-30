@@ -911,6 +911,11 @@ class ConversationService {
                     attName = (parsed['name'] ?? 'Lokasi') as String;
                     attSize = (parsed['address'] ?? '') as String;
                     contentText = rawCiphertext;
+                  } else if (parsed['type'] == 'contact') {
+                    contentType = MessageContentType.contact;
+                    attName = (parsed['name'] ?? 'Kontak LAJU') as String;
+                    attSize = (parsed['username'] ?? '') as String;
+                    contentText = rawCiphertext;
                   } else if (parsed['type'] == 'sticker') {
                     contentType = MessageContentType.sticker;
                     attName = (parsed['stickerId'] ?? 'cat_thumbs_up') as String;
@@ -1220,7 +1225,9 @@ class ConversationService {
                   ? MessageContentType.voiceNote
                   : (type == 'IMAGE' || type == 'DOCUMENT'
                       ? MessageContentType.attachment
-                      : (type == 'LOCATION' ? MessageContentType.location : MessageContentType.text))),
+                      : (type == 'LOCATION'
+                          ? MessageContentType.location
+                          : (type == 'CONTACT' ? MessageContentType.contact : MessageContentType.text)))),
           timestamp: DateTime.now(),
           isOutgoing: true,
           status: MessageDeliveryStatus.sent,

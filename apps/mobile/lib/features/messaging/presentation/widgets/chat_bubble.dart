@@ -373,12 +373,13 @@ class ChatBubble extends StatelessWidget {
             clipBehavior: Clip.none,
             children: [
               Container(
+                clipBehavior: Clip.antiAlias,
                 padding: isImage
                     ? (_hasImageCaption()
                         ? const EdgeInsets.fromLTRB(4, 4, 4, 5)
                         : const EdgeInsets.all(3))
                     : (message.contentType == MessageContentType.location ||
-                            message.contentType == MessageContentType.contact
+                            _isContactMessage()
                         ? const EdgeInsets.all(4)
                         : const EdgeInsets.fromLTRB(8, 4, 8, 4)),
                 decoration: BoxDecoration(
@@ -436,12 +437,12 @@ class ChatBubble extends StatelessWidget {
                       _buildLocationContent(context, isDark, isOut, timeStr),
 
                     // Contact Card Message Content (LAJU contact card)
-                    if (message.contentType == MessageContentType.contact)
+                    if (_isContactMessage())
                       _buildContactCardContent(context, isDark, isOut, timeStr),
 
                     if (!isImage &&
                         message.contentType != MessageContentType.location &&
-                        message.contentType != MessageContentType.contact) ...[
+                        !_isContactMessage()) ...[
                       // Attachment Preview
                       if (message.contentType == MessageContentType.attachment)
                         _buildAttachmentPreview(context, isDark, isOut),
@@ -1536,10 +1537,20 @@ class ChatBubble extends StatelessWidget {
         throw Exception();
       }
     } catch (_) {
+      String name = message.attachmentName ?? 'Kontak LAJU';
+      String username = message.attachmentSize ?? '';
+      final contentStr = message.content.trim();
+      if (contentStr.startsWith('Kontak:')) {
+        final match = RegExp(r'Kontak:\s*([^\(@\n]+)(?:\s*\(@?([^\)\n]+)\))?').firstMatch(contentStr);
+        if (match != null) {
+          name = match.group(1)?.trim() ?? name;
+          username = match.group(2)?.trim() ?? username;
+        }
+      }
       contact = LajuContactData(
         userId: '',
-        name: message.attachmentName ?? 'Kontak LAJU',
-        username: message.attachmentSize ?? '',
+        name: name,
+        username: username,
         status: 'Pengguna Terverifikasi LAJU',
       );
     }
@@ -1548,18 +1559,30 @@ class ChatBubble extends StatelessWidget {
         ? (isDark ? Colors.white.withValues(alpha: 0.7) : const Color(0xFF667781))
         : (isDark ? const Color(0xFF8696A0) : const Color(0xFF667781));
 
-    return SizedBox(
-      width: 245,
+    final cardInnerBg = isDark
+        ? Colors.black.withValues(alpha: 0.25)
+        : (isOut ? Colors.black.withValues(alpha: 0.04) : const Color(0xFFF1F5F9));
+
+    final dividerColor = isDark
+        ? Colors.white.withValues(alpha: 0.12)
+        : Colors.black.withValues(alpha: 0.08);
+
+    return Container(
+      width: 250,
+      decoration: BoxDecoration(
+        color: cardInnerBg,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      clipBehavior: Clip.antiAlias,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
         children: [
           // Contact Info Card Header
           InkWell(
-            borderRadius: BorderRadius.circular(8),
             onTap: () => _openContactProfile(context, contact),
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
               child: Row(
                 children: [
                   ModernAvatar(
@@ -1574,21 +1597,37 @@ class ChatBubble extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          contact.name,
-                          style: TextStyle(
-                            fontSize: 14.5,
-                            fontWeight: FontWeight.bold,
-                            color: isOut
-                                ? (isDark ? Colors.white : const Color(0xFF111827))
-                                : (isDark ? Colors.white : const Color(0xFF111827)),
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+                        Row(
+                          children: [
+                            Flexible(
+                              child: Text(
+                                contact.name,
+                                style: TextStyle(
+                                  fontSize: 14.5,
+                                  fontWeight: FontWeight.bold,
+                                  color: isOut
+                                      ? (isDark ? Colors.white : const Color(0xFF111827))
+                                      : (isDark ? Colors.white : const Color(0xFF111827)),
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            const Icon(
+                              Icons.verified_rounded,
+                              size: 14,
+                              color: AppColors.primary,
+                            ),
+                          ],
                         ),
                         const SizedBox(height: 2),
                         Text(
-                          '@${contact.username}',
+                          contact.username.isNotEmpty
+                              ? '@${contact.username}'
+                              : (contact.phoneNumber != null && contact.phoneNumber!.isNotEmpty
+                                  ? contact.phoneNumber!
+                                  : 'Kontak LAJU'),
                           style: TextStyle(
                             fontSize: 12,
                             color: isOut
@@ -1606,22 +1645,16 @@ class ChatBubble extends StatelessWidget {
             ),
           ),
 
-          Divider(
-            height: 1,
-            color: isDark
-                ? Colors.white.withValues(alpha: 0.12)
-                : Colors.black.withValues(alpha: 0.08),
-          ),
+          Divider(height: 1, color: dividerColor),
 
           // Action Buttons: Kirim Pesan & Lihat Profil
           Row(
             children: [
               Expanded(
                 child: InkWell(
-                  borderRadius: const BorderRadius.only(bottomLeft: Radius.circular(8)),
                   onTap: () => _openContactChat(context, contact),
                   child: const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 8),
+                    padding: EdgeInsets.symmetric(vertical: 9),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
@@ -1630,12 +1663,12 @@ class ChatBubble extends StatelessWidget {
                           size: 15,
                           color: AppColors.primary,
                         ),
-                        SizedBox(width: 5),
+                        SizedBox(width: 6),
                         Text(
                           'Kirim Pesan',
                           style: TextStyle(
                             color: AppColors.primary,
-                            fontSize: 12,
+                            fontSize: 12.5,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
@@ -1646,46 +1679,45 @@ class ChatBubble extends StatelessWidget {
               ),
               Container(
                 width: 1,
-                height: 20,
-                color: isDark
-                    ? Colors.white.withValues(alpha: 0.12)
-                    : Colors.black.withValues(alpha: 0.08),
+                height: 22,
+                color: dividerColor,
               ),
-              IconButton(
-                icon: const Icon(Icons.person_outline_rounded, size: 18),
-                tooltip: 'Lihat Profil',
-                color: isOut
-                    ? (isDark ? Colors.white70 : Colors.black54)
-                    : (isDark ? Colors.white70 : Colors.black54),
-                onPressed: () => _openContactProfile(context, contact),
-                padding: const EdgeInsets.symmetric(horizontal: 10),
-                constraints: const BoxConstraints(),
+              InkWell(
+                onTap: () => _openContactProfile(context, contact),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+                  child: Icon(
+                    Icons.person_outline_rounded,
+                    size: 18,
+                    color: isOut
+                        ? (isDark ? Colors.white70 : Colors.black54)
+                        : (isDark ? Colors.white70 : Colors.black54),
+                  ),
+                ),
               ),
             ],
           ),
 
           // Timestamp & Status (Bottom right)
-          Align(
+          Container(
+            padding: const EdgeInsets.only(top: 2, right: 8, bottom: 4),
             alignment: Alignment.bottomRight,
-            child: Padding(
-              padding: const EdgeInsets.only(top: 2, right: 4, bottom: 2),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    timeStr,
-                    style: TextStyle(
-                      fontSize: 10,
-                      color: timeColor,
-                      fontWeight: FontWeight.w400,
-                    ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  timeStr,
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: timeColor,
+                    fontWeight: FontWeight.w400,
                   ),
-                  if (isOut) ...[
-                    const SizedBox(width: 3.5),
-                    _buildStatusIcon(message.status, isOut: true, isDark: isDark),
-                  ],
+                ),
+                if (isOut) ...[
+                  const SizedBox(width: 3.5),
+                  _buildStatusIcon(message.status, isOut: true, isDark: isDark),
                 ],
-              ),
+              ],
             ),
           ),
         ],
@@ -1694,7 +1726,10 @@ class ChatBubble extends StatelessWidget {
   }
 
   void _openContactChat(BuildContext context, LajuContactData contact) async {
-    if (contact.userId.isEmpty) return;
+    if (contact.userId.isEmpty) {
+      _openContactProfile(context, contact);
+      return;
+    }
     String convId = 'conv-${contact.userId}';
     try {
       final backendId = await ConversationService.instance.createPersonalConversation(contact.userId);
@@ -1727,7 +1762,7 @@ class ChatBubble extends StatelessWidget {
         builder: (_) => UserProfileScreen(
           contactName: contact.name,
           userId: contact.userId.isNotEmpty ? contact.userId : null,
-          phone: contact.phoneNumber ?? '@${contact.username}',
+          phone: contact.phoneNumber ?? (contact.username.isNotEmpty ? '@${contact.username}' : null),
           status: contact.status,
           avatarUrl: contact.avatarUrl,
         ),
@@ -1735,9 +1770,20 @@ class ChatBubble extends StatelessWidget {
     );
   }
 
+  bool _isContactMessage() {
+    if (message.contentType == MessageContentType.contact) return true;
+    final content = message.content.trim();
+    if ((content.startsWith('{') && (content.contains('"type":"contact"') || content.contains('"type": "contact"'))) ||
+        content.startsWith('Kontak:')) {
+      return true;
+    }
+    return false;
+  }
+
   bool _shouldShowMessageContent() {
     if (message.contentType == MessageContentType.location ||
-        message.contentType == MessageContentType.contact) {
+        message.contentType == MessageContentType.contact ||
+        _isContactMessage()) {
       return false;
     }
     if (message.contentType == MessageContentType.voiceNote && message.attachmentPath != null) {
