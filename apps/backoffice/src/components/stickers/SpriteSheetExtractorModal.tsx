@@ -275,6 +275,96 @@ export function SpriteSheetExtractorModal({
     setGridHeight(maxY - minY);
   };
 
+  // ─── Projection-Based Auto Grid Detector ────────────────────────────────────
+  // Analyses horizontal & vertical pixel projections to find row/column count.
+  // Works for PNG (alpha) and JPEG/solid-bg (using brightness threshold).
+  const detectGridLayout = (
+    data: Uint8ClampedArray,
+    w: number,
+    h: number
+  ): { cols: number; rows: number } => {
+    const step = 3; // Sample every 3rd pixel for speed
+    const rowCount = Math.ceil(h / step);
+    const colCount = Math.ceil(w / step);
+
+    const projY = new Float32Array(rowCount); // solid-pixel count per Y-strip
+    const projX = new Float32Array(colCount); // solid-pixel count per X-strip
+
+    for (let sy = 0; sy < rowCount; sy++) {
+      const py = sy * step;
+      for (let sx = 0; sx < colCount; sx++) {
+        const px = sx * step;
+        const idx = (py * w + px) * 4;
+        const alpha = data[idx + 3];
+        let solid = false;
+
+        if (alpha > 20) {
+          // Has real alpha channel — trust it
+          solid = true;
+        } else if (alpha === 255 || alpha === 0) {
+          // Fully opaque or fully transparent — check if not white/near-white
+          const r = data[idx];
+          const g = data[idx + 1];
+          const b = data[idx + 2];
+          const brightness = (r + g + b) / 3;
+          if (brightness < 240) {
+            solid = true; // Dark/colored pixel → sprite content
+          }
+        }
+
+        if (solid) {
+          projY[sy]++;
+          projX[sx]++;
+        }
+      }
+    }
+
+    // Smooth with a 3-sample moving average to remove thin noise
+    const smooth = (arr: Float32Array): Float32Array => {
+      const out = new Float32Array(arr.length);
+      for (let i = 0; i < arr.length; i++) {
+        const prev = arr[Math.max(0, i - 1)];
+        const next = arr[Math.min(arr.length - 1, i + 1)];
+        out[i] = (prev + arr[i] + next) / 3;
+      }
+      return out;
+    };
+
+    const smoothY = smooth(projY);
+    const smoothX = smooth(projX);
+
+    // Count "active regions" separated by valleys (< 5% of peak value)
+    const countRegions = (proj: Float32Array): number => {
+      let peak = 0;
+      for (let i = 0; i < proj.length; i++) {
+        if (proj[i] > peak) peak = proj[i];
+      }
+      if (peak === 0) return 1;
+      const threshold = peak * 0.05; // 5% of peak = valley
+
+      let count = 0;
+      let inRegion = false;
+      for (let i = 0; i < proj.length; i++) {
+        if (proj[i] >= threshold) {
+          if (!inRegion) { count++; inRegion = true; }
+        } else {
+          inRegion = false;
+        }
+      }
+      return Math.max(1, count);
+    };
+
+    const detectedRows = countRegions(smoothY);
+    const detectedCols = countRegions(smoothX);
+
+    // Clamp to sensible range
+    return {
+      rows: Math.max(1, Math.min(12, detectedRows)),
+      cols: Math.max(1, Math.min(12, detectedCols)),
+    };
+  };
+  // ────────────────────────────────────────────────────────────────────────────
+
   // Handle Sprite Sheet File Upload
   const handleSheetUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || !e.target.files[0]) return;
@@ -293,61 +383,50 @@ export function SpriteSheetExtractorModal({
       const h = img.naturalHeight;
       setSheetDimensions({ width: w, height: h });
 
-      // Init Master Unified Grid to cover full height (Y=0 to bottom) with small X-margin for visual context
-      const initialMarginX = Math.round(w * 0.01);
-      const initialMarginY = 0; // Always start from Y=0 so top sprites are never cut off
-      const initialW = w - initialMarginX * 2;
-      const initialH = h; // Full image height
-
-      setGridX(initialMarginX);
+      // Grid always covers 100% of the image — no margin on Y, tiny 1% margin on X
+      // so the master boundary rect border is always visible at all zoom levels.
+      setGridX(0);
       setGridY(0);
-      setGridWidth(initialW);
-      setGridHeight(initialH);
-
-      // Flexible initial grid: sensible defaults based on aspect ratio
-      const ratio = w / h;
-      let initCols = 4;
-      let initRows = 3;
-
-      if (ratio >= 1.42) {
-        // Wide landscape format (e.g. 6x4 = 24 stiker, 1.5 ratio)
-        initCols = 6;
-        initRows = 4;
-      } else if (ratio >= 1.15) {
-        // Standard landscape (e.g. 4x3 = 12 stiker, 1.33 ratio)
-        initCols = 4;
-        initRows = 3;
-      } else if (ratio <= 0.75) {
-        // Portrait (e.g. 3x4 = 12 stiker)
-        initCols = 3;
-        initRows = 4;
-      } else {
-        // Square sprite sheet (e.g. 1:1 ratio, 4x4 = 16 stiker)
-        initCols = 4;
-        initRows = 4;
-      }
-
-      setCols(initCols);
-      setRows(initRows);
+      setGridWidth(w);
+      setGridHeight(h);
       setSpacingX(0);
       setSpacingY(0);
 
-      // Generate default uniform boxes — snapping algorithm ensures last cell hits exactly gx+gw
-      const initialBoxes = generateUniformGridBoxes(
-        initialMarginX,
-        initialMarginY,
-        initialW,
-        initialH,
-        initCols,
-        initRows,
-        0,
-        0
-      );
+      // ── Projection-based auto-detection of rows × cols ──────────────────────
+      // Draw into an offscreen canvas, read pixel data, then run projection analysis.
+      let initCols = 4;
+      let initRows = 4;
+      try {
+        const offCanvas = document.createElement('canvas');
+        offCanvas.width = w;
+        offCanvas.height = h;
+        const offCtx = offCanvas.getContext('2d');
+        if (offCtx) {
+          offCtx.drawImage(img, 0, 0);
+          const imgData = offCtx.getImageData(0, 0, w, h);
+          const detected = detectGridLayout(imgData.data, w, h);
+          initCols = detected.cols;
+          initRows = detected.rows;
+        }
+      } catch (_e) {
+        // Fallback to aspect-ratio guess if canvas fails (e.g. cross-origin)
+        const ratio = w / h;
+        if (ratio >= 1.42) { initCols = 6; initRows = 4; }
+        else if (ratio >= 1.15) { initCols = 4; initRows = 3; }
+        else if (ratio <= 0.75) { initCols = 3; initRows = 4; }
+        else { initCols = 4; initRows = 4; }
+      }
+      // ────────────────────────────────────────────────────────────────────────
+
+      setCols(initCols);
+      setRows(initRows);
+
+      // Generate full-coverage uniform grid from (0,0) to (w,h)
+      const initialBoxes = generateUniformGridBoxes(0, 0, w, h, initCols, initRows, 0, 0);
       setBoxes(initialBoxes);
       setSelectedBoxId(null);
 
-
-      // Fit zoom in viewport
+      // Fit zoom so entire image is visible in the viewport
       if (viewportContainerRef.current) {
         const vpW = viewportContainerRef.current.clientWidth - 48;
         const vpH = viewportContainerRef.current.clientHeight - 48;
@@ -357,6 +436,7 @@ export function SpriteSheetExtractorModal({
       }
     };
   };
+
 
   // Deterministik & Drift-Free Coordinate Transformation
   // Uses the viewport container rect + zoom/pan to convert screen coords → image coords.
@@ -421,7 +501,7 @@ export function SpriteSheetExtractorModal({
     let gw = gridWidth;
     let gh = gridHeight;
 
-    // Automatically expand and center if requested or if current bounds are squashed/zero
+    // Automatically expand to full image if requested or if current bounds are squashed/zero
     if (
       fitImage ||
       gw <= 0 ||
@@ -429,12 +509,11 @@ export function SpriteSheetExtractorModal({
       (sheetDimensions.width > 0 && gw < sheetDimensions.width * 0.5) ||
       (sheetDimensions.height > 0 && gh < sheetDimensions.height * 0.5)
     ) {
-      const padX = Math.round(sheetDimensions.width * 0.01);
-      gx = padX;
-      gy = 0; // Always start from top
-      gw = Math.max(32, sheetDimensions.width - padX * 2);
-      gh = sheetDimensions.height; // Full height
-      setGridX(gx);
+      gx = 0;
+      gy = 0;
+      gw = sheetDimensions.width;
+      gh = sheetDimensions.height;
+      setGridX(0);
       setGridY(0);
       setGridWidth(gw);
       setGridHeight(gh);
@@ -505,6 +584,40 @@ export function SpriteSheetExtractorModal({
     const newBoxes = generateUniformGridBoxes(0, 0, sheetDimensions.width, sheetDimensions.height, cols, rows, spacingX, spacingY);
     setBoxes(newBoxes);
   };
+
+  // Re-run projection-based auto-detection on the currently loaded image
+  const handleRedetectGrid = () => {
+    if (!sheetImage || sheetDimensions.width <= 0 || sheetDimensions.height <= 0) return;
+    try {
+      const offCanvas = document.createElement('canvas');
+      offCanvas.width = sheetDimensions.width;
+      offCanvas.height = sheetDimensions.height;
+      const offCtx = offCanvas.getContext('2d');
+      if (!offCtx) return;
+      offCtx.drawImage(sheetImage, 0, 0);
+      const imgData = offCtx.getImageData(0, 0, sheetDimensions.width, sheetDimensions.height);
+      const detected = detectGridLayout(imgData.data, sheetDimensions.width, sheetDimensions.height);
+
+      setCols(detected.cols);
+      setRows(detected.rows);
+      setGridX(0);
+      setGridY(0);
+      setGridWidth(sheetDimensions.width);
+      setGridHeight(sheetDimensions.height);
+      setSpacingX(0);
+      setSpacingY(0);
+
+      const newBoxes = generateUniformGridBoxes(
+        0, 0, sheetDimensions.width, sheetDimensions.height,
+        detected.cols, detected.rows, 0, 0
+      );
+      setBoxes(newBoxes);
+      setSelectedBoxId(null);
+    } catch (_e) {
+      setErrorMessage('Gagal mendeteksi grid secara otomatis.');
+    }
+  };
+
 
 
   // Center Master Grid with Clean Margin (96% Coverage)
@@ -1455,6 +1568,18 @@ export function SpriteSheetExtractorModal({
                   Ratakan Grid
                 </button>
               </div>
+
+              {/* Auto-Detect Button */}
+              <button
+                type="button"
+                onClick={handleRedetectGrid}
+                disabled={!sheetImage}
+                className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg bg-brand-500 hover:bg-brand-600 text-white text-[11px] font-bold transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-sm"
+                title="Deteksi otomatis jumlah baris × kolom berdasarkan analisis pixel gambar"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                Deteksi Baris × Kolom Otomatis
+              </button>
 
               {/* Quick Presets Pills */}
               <div className="space-y-1">
