@@ -437,11 +437,17 @@ class ConversationService {
             title = isGroup ? 'Group Chat' : 'Direct Chat';
           }
 
-          final lastMsgRaw = (item['messages'] is List && (item['messages'] as List).isNotEmpty)
-              ? item['messages'][0]['ciphertext'] ?? 'Encrypted Message'
+          final firstMsgMap = (item['messages'] is List && (item['messages'] as List).isNotEmpty)
+              ? item['messages'][0] as Map?
+              : null;
+          final isMsgRecalled = firstMsgMap != null &&
+              (firstMsgMap['state'] == 'DELETED' || firstMsgMap['ciphertext'] == '__DELETED_FOR_EVERYONE__');
+
+          final lastMsgRaw = firstMsgMap != null
+              ? (isMsgRecalled ? 'Pesan ini telah ditarik' : (firstMsgMap['ciphertext'] ?? 'Encrypted Message'))
               : 'No messages yet';
           String lastMsg = lastMsgRaw;
-          if (lastMsg.startsWith('{') && (lastMsg.contains('"media"') || lastMsg.contains('"type"'))) {
+          if (!isMsgRecalled && lastMsg.startsWith('{') && (lastMsg.contains('"media"') || lastMsg.contains('"type"'))) {
             try {
               final parsed = jsonDecode(lastMsg);
               final msgType = parsed['type'] as String?;

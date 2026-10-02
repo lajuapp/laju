@@ -219,6 +219,30 @@ class MessageModel {
     return content;
   }
 
+  /// Returns a copy of this message with recalled/deleted state applied and attachments cleared
+  MessageModel asRecalled() {
+    return MessageModel(
+      id: id,
+      clientMessageId: clientMessageId,
+      conversationId: conversationId,
+      senderName: senderName,
+      content: '__DELETED_FOR_EVERYONE__',
+      timestamp: timestamp,
+      isOutgoing: isOutgoing,
+      status: status,
+      contentType: MessageContentType.text,
+      isDisappearing: isDisappearing,
+      remainingSeconds: remainingSeconds,
+      attachmentName: null,
+      attachmentSize: null,
+      attachmentPath: null,
+      replyTo: null,
+      reactions: const [],
+      isEdited: false,
+      isDeleted: true,
+    );
+  }
+
   /// Deduplicates a list of messages, collapsing optimistic temporary IDs
   /// with confirmed server messages, and removing redundant duplicates.
   static List<MessageModel> deduplicate(List<MessageModel> list) {
@@ -256,6 +280,8 @@ class MessageModel {
 
       if (idx != -1) {
         final existing = result[idx];
+        final isRecalledNow = existing.isRecalled || inc.isRecalled;
+
         final isExistingTemp = existing.id.startsWith('msg-') ||
             existing.id.startsWith('img-') ||
             existing.id.startsWith('doc-') ||
@@ -271,7 +297,13 @@ class MessageModel {
             inc.id.startsWith('loc-') ||
             inc.id.startsWith('stk-');
 
-        if (isExistingTemp && !isIncTemp) {
+        if (isRecalledNow) {
+          final base = (isExistingTemp && !isIncTemp) ? inc : existing;
+          result[idx] = base.asRecalled().copyWith(
+            clientMessageId: inc.clientMessageId ?? existing.clientMessageId,
+            status: inc.status != MessageDeliveryStatus.sending ? inc.status : existing.status,
+          );
+        } else if (isExistingTemp && !isIncTemp) {
           result[idx] = inc.copyWith(
             clientMessageId: inc.clientMessageId ?? existing.clientMessageId ?? existing.id,
             attachmentPath: existing.attachmentPath ?? inc.attachmentPath,
@@ -282,6 +314,8 @@ class MessageModel {
         } else {
           result[idx] = existing.copyWith(
             clientMessageId: existing.clientMessageId ?? inc.clientMessageId,
+            content: (inc.content.isNotEmpty && inc.content != existing.content) ? inc.content : existing.content,
+            isEdited: inc.isEdited || existing.isEdited,
             status: inc.status != MessageDeliveryStatus.sending ? inc.status : existing.status,
             reactions: inc.reactions.isNotEmpty ? inc.reactions : existing.reactions,
             attachmentPath: existing.attachmentPath ?? inc.attachmentPath,
@@ -291,7 +325,7 @@ class MessageModel {
           );
         }
       } else {
-        result.add(inc);
+        result.add(inc.isRecalled ? inc.asRecalled() : inc);
       }
     }
 

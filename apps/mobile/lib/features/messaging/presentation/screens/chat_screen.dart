@@ -179,7 +179,9 @@ class _ChatScreenState extends State<ChatScreen> {
         if (merged[i].id != _messages[i].id ||
             merged[i].status != _messages[i].status ||
             merged[i].reactions.length != _messages[i].reactions.length ||
-            merged[i].content != _messages[i].content) {
+            merged[i].content != _messages[i].content ||
+            merged[i].isDeleted != _messages[i].isDeleted ||
+            merged[i].isRecalled != _messages[i].isRecalled) {
           hasChanged = true;
           break;
         }
