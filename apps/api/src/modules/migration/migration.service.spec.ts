@@ -146,7 +146,7 @@ describe('MigrationService', () => {
       expect(prisma.device.update).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { id: 'dev-old' },
-          data: expect.objectContaining({ status: 'REVOKED' })
+          data: expect.objectContaining({ status: 'INACTIVE' })
         })
       );
       expect(prisma.session.deleteMany).toHaveBeenCalledWith({

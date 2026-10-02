@@ -151,6 +151,7 @@ export class AuthenticationService {
     const salt = await bcrypt.genSalt(10);
     const password = dto.password || 'SecureDefaultPass123!';
     const passwordHash = await bcrypt.hash(password, salt);
+    const defaultPinHash = await bcrypt.hash('123456', salt);
 
     const user = await this.prisma.user.create({
       data: {
@@ -159,7 +160,7 @@ export class AuthenticationService {
         phoneNumber,
         passwordHash,
         twoFactorEnabled: false,
-        twoFactorPin: '123456',
+        twoFactorPin: defaultPinHash,
         status: 'ACTIVE'
       }
     });
@@ -347,9 +348,32 @@ export class AuthenticationService {
       throw new UnauthorizedException('Akun tidak aktif');
     }
 
-    // Check PIN: compare with user's stored PIN or default 123456
-    const expectedPin = user.twoFactorPin || '123456';
-    if (dto.pin !== expectedPin) {
+    // Check PIN: verify with bcrypt or plaintext fallback with auto-migration
+    const storedPin = (user.twoFactorPin || '123456').trim();
+    const inputPin = dto.pin.trim();
+    let isPinMatch = false;
+
+    if (storedPin.startsWith('$2a$') || storedPin.startsWith('$2b$')) {
+      try {
+        isPinMatch = await bcrypt.compare(inputPin, storedPin);
+      } catch {
+        isPinMatch = false;
+      }
+    } else {
+      isPinMatch = (inputPin === storedPin);
+      if (isPinMatch) {
+        try {
+          const salt = await bcrypt.genSalt(10);
+          const hashedPin = await bcrypt.hash(inputPin, salt);
+          await this.prisma.user.update({
+            where: { id: user.id },
+            data: { twoFactorPin: hashedPin }
+          });
+        } catch (_) {}
+      }
+    }
+
+    if (!isPinMatch) {
       throw new UnauthorizedException('Invalid security PIN');
     }
 
@@ -370,7 +394,10 @@ export class AuthenticationService {
     } else {
       await this.prisma.device.update({
         where: { id: device.id },
-        data: { lastSeenAt: new Date() }
+        data: {
+          lastSeenAt: new Date(),
+          ...(device.status === 'INACTIVE' ? { status: 'ACTIVE' } : {})
+        }
       });
     }
 
@@ -390,9 +417,15 @@ export class AuthenticationService {
   }
 
   async logout(userId: string, deviceId: string) {
-    await this.prisma.session.deleteMany({
-      where: { userId, deviceId }
-    });
+    await this.prisma.$transaction([
+      this.prisma.session.deleteMany({
+        where: { userId, deviceId }
+      }),
+      this.prisma.device.updateMany({
+        where: { id: deviceId, userId },
+        data: { status: 'INACTIVE' }
+      })
+    ]);
     return { success: true };
   }
 
@@ -633,7 +666,30 @@ export class AuthenticationService {
       if (!dto.pin || dto.pin.trim().length === 0) {
         throw new BadRequestException('PIN Keamanan 6-digit diperlukan untuk memulihkan akun');
       }
-      const isPinMatch = await bcrypt.compare(dto.pin.trim(), user.twoFactorPin);
+      let isPinMatch = false;
+      const storedPin = user.twoFactorPin.trim();
+      const trimmedPin = dto.pin.trim();
+
+      if (storedPin.startsWith('$2a$') || storedPin.startsWith('$2b$')) {
+        try {
+          isPinMatch = await bcrypt.compare(trimmedPin, storedPin);
+        } catch {
+          isPinMatch = false;
+        }
+      } else {
+        isPinMatch = (trimmedPin === storedPin);
+        if (isPinMatch) {
+          try {
+            const salt = await bcrypt.genSalt(10);
+            const hashedPin = await bcrypt.hash(trimmedPin, salt);
+            await this.prisma.user.update({
+              where: { id: user.id },
+              data: { twoFactorPin: hashedPin }
+            });
+          } catch (_) {}
+        }
+      }
+
       if (!isPinMatch) {
         throw new UnauthorizedException('PIN Keamanan salah');
       }
@@ -721,7 +777,7 @@ export class AuthenticationService {
       const now = new Date();
       await this.prisma.device.update({
         where: { id: activeDevice.id },
-        data: { status: 'REVOKED', revokedAt: now }
+        data: { status: 'INACTIVE', revokedAt: now }
       });
       await this.prisma.session.deleteMany({
         where: { deviceId: activeDevice.id }
@@ -931,7 +987,7 @@ export class AuthenticationService {
         await this.prisma.device.update({
           where: { id: currentDeviceId },
           data: {
-            status: 'REVOKED',
+            status: 'INACTIVE',
             revokedAt: now
           }
         });
@@ -1047,7 +1103,7 @@ export class AuthenticationService {
         where: { id: deviceId },
         select: { status: true }
       });
-      if (dev && dev.status === 'REVOKED') {
+      if (dev && (dev.status === 'REVOKED' || dev.status === 'INACTIVE')) {
         return {
           isRevoked: true,
           hasPendingTransfer: false,

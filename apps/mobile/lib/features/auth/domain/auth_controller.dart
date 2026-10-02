@@ -1426,6 +1426,9 @@ class AuthController extends ChangeNotifier {
   void logout() {
     _isDeviceReplaced = false; // Clear replaced flag on explicit logout
     ForegroundSyncService.instance.stop();
+    try {
+      ApiClient.instance.post(ApiEndpoints.logout);
+    } catch (_) {}
     ApiClient.instance.clearAuth();
     _isAuthenticated = false;
     _isSuspended = false;

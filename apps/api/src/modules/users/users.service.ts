@@ -4,6 +4,7 @@ import {
   ConflictException,
   BadRequestException
 } from '@nestjs/common';
+import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../../infrastructure/prisma/prisma.service';
 import { RedisService } from '../../infrastructure/redis/redis.service';
 import { UpdateUserProfileDto } from './dto/users.dto';
@@ -102,6 +103,19 @@ export class UsersService {
       }
     }
 
+    let hashedPin: string | undefined = undefined;
+    if (dto.twoFactorPin !== undefined) {
+      const pinStr = dto.twoFactorPin?.trim();
+      if (pinStr && pinStr.length > 0) {
+        if (pinStr.startsWith('$2a$') || pinStr.startsWith('$2b$')) {
+          hashedPin = pinStr;
+        } else {
+          const salt = await bcrypt.genSalt(10);
+          hashedPin = await bcrypt.hash(pinStr, salt);
+        }
+      }
+    }
+
     const updated = await this.prisma.user.update({
       where: { id: userId },
       data: {
@@ -109,7 +123,7 @@ export class UsersService {
         email: dto.email,
         phoneNumber: dto.phoneNumber,
         twoFactorEnabled: dto.twoFactorEnabled,
-        twoFactorPin: dto.twoFactorPin
+        ...(hashedPin !== undefined ? { twoFactorPin: hashedPin } : {})
       },
       select: {
         id: true,

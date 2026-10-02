@@ -518,7 +518,7 @@ export class AdminService {
     return this.prisma.$transaction([
       this.prisma.device.update({
         where: { id: deviceId },
-        data: { status: 'REVOKED' }
+        data: { status: 'INACTIVE' }
       }),
       this.prisma.session.deleteMany({
         where: { deviceId }

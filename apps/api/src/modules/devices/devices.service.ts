@@ -82,7 +82,7 @@ export class DevicesService {
           where: { deviceUuid: dto.deviceUuid },
           include: { user: { select: { username: true } } }
         });
-        if (dev && dev.status === 'ACTIVE') {
+        if (dev && (dev.status === 'ACTIVE' || dev.status === 'INACTIVE')) {
           isRegistered = true;
           username = dev.user.username;
         }
@@ -146,8 +146,7 @@ export class DevicesService {
       throw new UnauthorizedException(`Device is permanently ${device.status}`);
     }
     // NOTE: INACTIVE status is allowed — the device was displaced by single-device policy
-    // and the user is now re-authenticating. generateTokens() will re-activate it and
-    // displace the currently active device in turn.
+    // or session was disconnected from backoffice / logged out, and user is now re-authenticating with PIN.
 
     if (device.user.status !== 'ACTIVE') {
       throw new UnauthorizedException(`User account is ${device.user.status}`);
@@ -158,7 +157,31 @@ export class DevicesService {
     if (pin) {
       // Authenticate via PIN verification for re-attestation
       if (device.user.twoFactorPin) {
-        const isPinMatch = await bcrypt.compare(pin, device.user.twoFactorPin);
+        let isPinMatch = false;
+        const storedPin = device.user.twoFactorPin.trim();
+        const trimmedPin = pin.trim();
+
+        if (storedPin.startsWith('$2a$') || storedPin.startsWith('$2b$')) {
+          try {
+            isPinMatch = await bcrypt.compare(trimmedPin, storedPin);
+          } catch {
+            isPinMatch = false;
+          }
+        } else {
+          // Plaintext fallback with auto-migration to bcrypt
+          isPinMatch = (trimmedPin === storedPin);
+          if (isPinMatch) {
+            try {
+              const salt = await bcrypt.genSalt(10);
+              const hashedPin = await bcrypt.hash(trimmedPin, salt);
+              await this.prisma.user.update({
+                where: { id: device.user.id },
+                data: { twoFactorPin: hashedPin }
+              });
+            } catch (_) {}
+          }
+        }
+
         if (!isPinMatch) {
           await this.prisma.securityEvent.create({
             data: {
@@ -191,6 +214,11 @@ export class DevicesService {
         });
       }
     } else {
+      // If device is INACTIVE (session disconnected or logged out), re-attestation requires PIN
+      if (device.status === 'INACTIVE') {
+        throw new UnauthorizedException('PIN_REATTEST_REQUIRED');
+      }
+
       // Cryptographic signature check
       if (!signature) {
         throw new BadRequestException('Signature atau PIN diperlukan untuk verifikasi perangkat');

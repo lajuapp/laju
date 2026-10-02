@@ -58,11 +58,19 @@ export class JwtAuthGuard implements CanActivate {
           const device = await this.prisma.device.findUnique({
             where: { id: payload.deviceId }
           });
-          // Only hard-reject if the device is explicitly disabled.
-          // If device record is simply missing (e.g. DB was reset), allow through —
-          // messaging service's getValidDeviceId() will resolve a valid device.
-          if (device && (device.status === 'REVOKED' || device.status === 'CONTAINED' || device.status === 'DECOMMISSIONED')) {
-            throw new UnauthorizedException('Device has been revoked');
+          if (device && (device.status === 'REVOKED' || device.status === 'CONTAINED' || device.status === 'DECOMMISSIONED' || device.status === 'INACTIVE')) {
+            throw new UnauthorizedException('Device session has been displaced or inactivated');
+          }
+
+          // Verify that this device still holds an active, non-expired session
+          const session = await this.prisma.session.findFirst({
+            where: {
+              userId: payload.sub,
+              deviceId: payload.deviceId
+            }
+          });
+          if (!session) {
+            throw new UnauthorizedException('Session has been terminated or displaced');
           }
         } catch (err: any) {
           if (err instanceof UnauthorizedException) throw err;

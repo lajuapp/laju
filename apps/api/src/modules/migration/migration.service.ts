@@ -297,7 +297,7 @@ export class MigrationService {
       await tx.device.update({
         where: { id: migration.sourceDeviceId },
         data: {
-          status: 'REVOKED',
+          status: 'INACTIVE',
           revokedAt: now
         }
       });
