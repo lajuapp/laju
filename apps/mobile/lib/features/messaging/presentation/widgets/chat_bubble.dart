@@ -806,8 +806,8 @@ class ChatBubble extends StatelessWidget {
 
     return LajuAnimatedSticker(
       pathOrUrl: pathOrUrl,
-      width: 145,
-      height: 145,
+      width: 155,
+      height: 155,
       fit: BoxFit.contain,
       fallback: _buildFallbackStickerIcon(isDark),
     );

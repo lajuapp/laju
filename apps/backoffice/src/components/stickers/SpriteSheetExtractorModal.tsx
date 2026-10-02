@@ -110,7 +110,7 @@ export function SpriteSheetExtractorModal({
   // Auto-Trim, Target Resolution & Anti-Blur (Cegah Gambar Pecah)
   const [autoTrim, setAutoTrim] = useState(true);
   const [outputResolutionMode, setOutputResolutionMode] = useState<'512' | 'native' | '1024'>('512');
-  const [preventUpscaleBlur, setPreventUpscaleBlur] = useState(true);
+  const [preventUpscaleBlur, setPreventUpscaleBlur] = useState(false);
   const [namePrefix, setNamePrefix] = useState('Stiker');
 
   // Slices Gallery State
@@ -1041,6 +1041,16 @@ export function SpriteSheetExtractorModal({
     if (dragActionRef.current?.type === 'draw_new') {
       setActiveTool('select');
     }
+    if (
+      dragActionRef.current?.type === 'box_move' ||
+      dragActionRef.current?.type === 'box_resize' ||
+      dragActionRef.current?.type === 'draw_new'
+    ) {
+      setBoxes((prev) => {
+        syncMasterGridFromBoxes(prev);
+        return prev;
+      });
+    }
     dragActionRef.current = null;
   }, []);
 
@@ -1063,15 +1073,17 @@ export function SpriteSheetExtractorModal({
 
   const updateSelectedBox = (updates: Partial<CropBox>) => {
     if (!selectedBoxId) return;
-    setBoxes((prev) =>
-      prev.map((b) => {
+    setBoxes((prev) => {
+      const next = prev.map((b) => {
         if (b.id !== selectedBoxId) return b;
         const updated = { ...b, ...updates, customized: true };
         updated.x = Math.max(0, Math.min(sheetDimensions.width - (updated.width || 8), updated.x));
         updated.y = Math.max(0, Math.min(sheetDimensions.height - (updated.height || 8), updated.y));
         return updated;
-      })
-    );
+      });
+      syncMasterGridFromBoxes(next);
+      return next;
+    });
   };
 
   const nudgeSelectedBox = (deltaX: number, deltaY: number) => {
@@ -1091,13 +1103,21 @@ export function SpriteSheetExtractorModal({
       y: Math.min(sheetDimensions.height - selectedBox.height, selectedBox.y + 24),
       customized: true,
     };
-    setBoxes((prev) => [...prev, newBox]);
+    setBoxes((prev) => {
+      const next = [...prev, newBox];
+      syncMasterGridFromBoxes(next);
+      return next;
+    });
     setSelectedBoxId(newBox.id);
   };
 
   const deleteSelectedBox = () => {
     if (!selectedBoxId) return;
-    setBoxes((prev) => prev.filter((b) => b.id !== selectedBoxId));
+    setBoxes((prev) => {
+      const next = prev.filter((b) => b.id !== selectedBoxId);
+      syncMasterGridFromBoxes(next);
+      return next;
+    });
     setSelectedBoxId(null);
   };
 
@@ -1141,29 +1161,46 @@ export function SpriteSheetExtractorModal({
         boxes.forEach((box, idx) => {
           if (box.width <= 0 || box.height <= 0) return;
 
+          const bX = Math.round(box.x);
+          const bY = Math.round(box.y);
+          const bW = Math.max(1, Math.round(box.width));
+          const bH = Math.max(1, Math.round(box.height));
+
           const rawCropCanvas = document.createElement('canvas');
-          rawCropCanvas.width = box.width;
-          rawCropCanvas.height = box.height;
+          rawCropCanvas.width = bW;
+          rawCropCanvas.height = bH;
           const rawCtx = rawCropCanvas.getContext('2d', { willReadFrequently: true });
           if (!rawCtx) return;
 
           // Draw directly from native sheetImage for 100% source fidelity and crispness
           rawCtx.imageSmoothingEnabled = true;
           rawCtx.imageSmoothingQuality = 'high';
-          rawCtx.drawImage(
-            sheetImage,
-            box.x,
-            box.y,
-            box.width,
-            box.height,
-            0,
-            0,
-            box.width,
-            box.height
-          );
+
+          // Safe source bounds clamping to guarantee 1:1 pixel match with what is shown on screen
+          const srcX = Math.max(0, bX);
+          const srcY = Math.max(0, bY);
+          const srcW = Math.min(sheetDimensions.width - srcX, bW - (srcX - bX));
+          const srcH = Math.min(sheetDimensions.height - srcY, bH - (srcY - bY));
+
+          const dstX = Math.max(0, srcX - bX);
+          const dstY = Math.max(0, srcY - bY);
+
+          if (srcW > 0 && srcH > 0) {
+            rawCtx.drawImage(
+              sheetImage,
+              srcX,
+              srcY,
+              srcW,
+              srcH,
+              dstX,
+              dstY,
+              srcW,
+              srcH
+            );
+          }
 
           if (removeBgColor) {
-            const imgData = rawCtx.getImageData(0, 0, box.width, box.height);
+            const imgData = rawCtx.getImageData(0, 0, bW, bH);
             const d = imgData.data;
             const maxDist = (bgTolerance / 100) * 441.67;
 
@@ -1186,17 +1223,17 @@ export function SpriteSheetExtractorModal({
           let isEmpty = false;
 
           if (autoTrim) {
-            const imgData = rawCtx.getImageData(0, 0, box.width, box.height);
+            const imgData = rawCtx.getImageData(0, 0, bW, bH);
             const d = imgData.data;
-            let minX = box.width;
-            let minY = box.height;
+            let minX = bW;
+            let minY = bH;
             let maxX = 0;
             let maxY = 0;
             let hasVisiblePixel = false;
 
-            for (let py = 0; py < box.height; py++) {
-              for (let px = 0; px < box.width; px++) {
-                const a = d[(py * box.width + px) * 4 + 3];
+            for (let py = 0; py < bH; py++) {
+              for (let px = 0; px < bW; px++) {
+                const a = d[(py * bW + px) * 4 + 3];
                 if (a > 15) {
                   hasVisiblePixel = true;
                   if (px < minX) minX = px;
@@ -1246,12 +1283,12 @@ export function SpriteSheetExtractorModal({
               targetCtx.imageSmoothingEnabled = true;
               targetCtx.imageSmoothingQuality = 'high';
 
-              const safeMargin = 20;
+              // Margin aman ramping (12px untuk 512px = 488px konten, stiker tampil besar & jelas di mobile)
+              const safeMargin = targetDimension === 1024 ? 24 : 12;
               const availSize = targetDimension - safeMargin * 2;
 
               let scale = Math.min(availSize / cropCanvas.width, availSize / cropCanvas.height);
-              // Cegah blur: Jika gambar lebih kecil dari target kanvas dan opsi anti-blur aktif,
-              // pertahankan ukuran 1:1 tajam tanpa dipaksa upscale pecah
+              // Jika opsi 1:1 dipilih manual, pertahankan ukuran asli tanpa upscale
               if (preventUpscaleBlur && cropCanvas.width < availSize && cropCanvas.height < availSize) {
                 scale = 1.0;
               }
@@ -1993,9 +2030,9 @@ export function SpriteSheetExtractorModal({
                     className="rounded text-brand-600 focus:ring-brand-500 w-3.5 h-3.5 mt-0.5"
                   />
                   <div className="space-y-0.5">
-                    <span className="text-[11px] font-bold text-neutral-800 block">Jaga Ketajaman (Cegah Blur)</span>
+                    <span className="text-[11px] font-bold text-neutral-800 block">Kunci Ukuran 1:1 (Jangan Perbesar)</span>
                     <p className="text-[10px] text-neutral-400 leading-snug">
-                      Mencegah gambar kecil ditarik melebihi ukuran aslinya agar stiker tidak pecah atau kabur.
+                      Jika dicentang, stiker kecil tidak akan diperbesar ke {outputResolutionMode}px (akan tampak kecil di mobile). Biarkan tidak dicentang agar stiker mengisi kanvas secara proporsional dan tampil jelas di chat.
                     </p>
                   </div>
                 </label>
@@ -2136,22 +2173,27 @@ export function SpriteSheetExtractorModal({
             >
               {sheetImageSrc && sheetDimensions.width > 0 ? (
                 <div
-                  className="relative origin-center"
+                  className="relative origin-center shrink-0"
                   style={{
                     width: sheetDimensions.width,
                     height: sheetDimensions.height,
+                    minWidth: sheetDimensions.width,
+                    minHeight: sheetDimensions.height,
                     transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
                     transition: isDragging ? 'none' : 'transform 75ms ease-out',
                   }}
                 >
-                  {/* Native Crisp Sprite Sheet Image (Guaranteed to show, 0 lag) */}
+                  {/* Native Crisp Sprite Sheet Image (Guaranteed 1:1 pixel alignment) */}
                   <img
                     src={sheetImageSrc}
                     alt="Sprite Sheet"
-                    className="absolute inset-0 pointer-events-none select-none drop-shadow-md rounded"
+                    className="absolute inset-0 pointer-events-none select-none max-w-none max-h-none w-full h-full block"
                     style={{
                       width: sheetDimensions.width,
                       height: sheetDimensions.height,
+                      maxWidth: 'none',
+                      maxHeight: 'none',
+                      objectFit: 'fill',
                       imageRendering: zoom > 1.2 ? 'pixelated' : 'auto',
                     }}
                   />
@@ -2161,6 +2203,7 @@ export function SpriteSheetExtractorModal({
                   <svg
                     ref={svgOverlayRef}
                     viewBox={`0 0 ${sheetDimensions.width} ${sheetDimensions.height}`}
+                    preserveAspectRatio="none"
                     className="absolute inset-0 w-full h-full pointer-events-auto"
                     width={sheetDimensions.width}
                     height={sheetDimensions.height}
@@ -2331,7 +2374,7 @@ export function SpriteSheetExtractorModal({
                         >
                           <rect
                             x={gridX}
-                            y={Math.max(2, gridY - Math.max(22, 26 / zoom))}
+                            y={gridY > 26 / zoom ? gridY - Math.max(22, 26 / zoom) : gridY + 2}
                             width={Math.max(120, 140 / zoom)}
                             height={Math.max(18, 22 / zoom)}
                             rx={4 / zoom}
@@ -2339,7 +2382,7 @@ export function SpriteSheetExtractorModal({
                           />
                           <text
                             x={gridX + Math.max(60, 70 / zoom)}
-                            y={Math.max(2, gridY - Math.max(22, 26 / zoom)) + Math.max(12, 15 / zoom)}
+                            y={(gridY > 26 / zoom ? gridY - Math.max(22, 26 / zoom) : gridY + 2) + Math.max(12, 15 / zoom)}
                             textAnchor="middle"
                             fill="#FFFFFF"
                             fontSize={Math.max(9, 11 / zoom)}
