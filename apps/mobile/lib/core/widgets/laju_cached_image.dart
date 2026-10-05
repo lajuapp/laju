@@ -246,6 +246,21 @@ class _LajuCachedImageState extends State<LajuCachedImage> with SingleTickerProv
   Widget build(BuildContext context) {
     final raw = widget.imageUrlOrPath?.trim() ?? '';
 
+    // Safeguard aspect ratio: When fit is not BoxFit.fill, specifying both cacheWidth
+    // and cacheHeight triggers ResizeImagePolicy.exact in Flutter engine, which forcibly
+    // squashes or stretches non-square images into a distorted square bitmap.
+    // By keeping only the dominant dimension, Flutter decodes the other dimension
+    // proportionally, preserving the original aspect ratio perfectly.
+    int? effCacheWidth = widget.cacheWidth;
+    int? effCacheHeight = widget.cacheHeight;
+    if (widget.fit != BoxFit.fill && effCacheWidth != null && effCacheHeight != null) {
+      if (effCacheWidth >= effCacheHeight) {
+        effCacheHeight = null;
+      } else {
+        effCacheWidth = null;
+      }
+    }
+
     Widget content;
     if (_hasError || raw.isEmpty) {
       content = _buildError(context);
@@ -260,8 +275,8 @@ class _LajuCachedImageState extends State<LajuCachedImage> with SingleTickerProv
           height: widget.height,
           fit: widget.fit,
           alignment: widget.alignment,
-          cacheWidth: widget.cacheWidth,
-          cacheHeight: widget.cacheHeight,
+          cacheWidth: effCacheWidth,
+          cacheHeight: effCacheHeight,
           errorBuilder: (_, __, ___) => _buildError(context),
         ),
       );
@@ -274,8 +289,8 @@ class _LajuCachedImageState extends State<LajuCachedImage> with SingleTickerProv
           height: widget.height,
           fit: widget.fit,
           alignment: widget.alignment,
-          cacheWidth: widget.cacheWidth,
-          cacheHeight: widget.cacheHeight,
+          cacheWidth: effCacheWidth,
+          cacheHeight: effCacheHeight,
           errorBuilder: (_, __, ___) => _buildError(context),
         ),
       );
@@ -288,8 +303,8 @@ class _LajuCachedImageState extends State<LajuCachedImage> with SingleTickerProv
           height: widget.height,
           fit: widget.fit,
           alignment: widget.alignment,
-          cacheWidth: widget.cacheWidth,
-          cacheHeight: widget.cacheHeight,
+          cacheWidth: effCacheWidth,
+          cacheHeight: effCacheHeight,
           errorBuilder: (_, __, ___) => _buildError(context),
         ),
       );

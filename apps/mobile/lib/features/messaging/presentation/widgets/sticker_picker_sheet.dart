@@ -78,14 +78,16 @@ class _StickerPickerSheetState extends State<StickerPickerSheet> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Container(
+                SizedBox(
                   width: 160,
                   height: 160,
-                  child: LajuAnimatedSticker(
-                    pathOrUrl: sticker.isRemote ? sticker.effectivePathOrUrl : sticker.assetPath,
-                    width: 160,
-                    height: 160,
-                    fit: BoxFit.contain,
+                  child: Center(
+                    child: LajuAnimatedSticker(
+                      pathOrUrl: sticker.isRemote ? sticker.effectivePathOrUrl : sticker.assetPath,
+                      width: 160,
+                      height: 160,
+                      fit: BoxFit.contain,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 14),
@@ -462,16 +464,17 @@ class _StickerPickerSheetState extends State<StickerPickerSheet> {
       if (thumb.startsWith('http://') || thumb.startsWith('https://') || thumb.startsWith('/')) {
         thumbWidget = LajuCachedImage(
           imageUrlOrPath: thumb,
+          width: 26,
+          height: 26,
           fit: BoxFit.contain,
-          cacheWidth: 64,
-          cacheHeight: 64,
-          errorWidget: const Icon(Icons.sticky_note_2_rounded, size: 20, color: AppColors.primary),
+          cacheWidth: 80,
+          errorWidget: const Icon(Icons.sticky_note_2_rounded, size: 18, color: AppColors.primary),
         );
       } else {
-        thumbWidget = Image.asset(thumb, fit: BoxFit.contain);
+        thumbWidget = Image.asset(thumb, width: 26, height: 26, fit: BoxFit.contain);
       }
     } else {
-      thumbWidget = const Icon(Icons.sticky_note_2_rounded, size: 20, color: AppColors.primary);
+      thumbWidget = const Icon(Icons.sticky_note_2_rounded, size: 18, color: AppColors.primary);
     }
 
     return GestureDetector(
@@ -500,9 +503,9 @@ class _StickerPickerSheetState extends State<StickerPickerSheet> {
           mainAxisSize: MainAxisSize.min,
           children: [
             SizedBox(
-              width: 28,
-              height: 28,
-              child: thumbWidget,
+              width: 26,
+              height: 26,
+              child: Center(child: thumbWidget),
             ),
             const SizedBox(width: 8),
             Text(
@@ -601,14 +604,12 @@ class _StickerPickerSheetState extends State<StickerPickerSheet> {
               width: 1,
             ),
           ),
-          padding: const EdgeInsets.all(6),
+          padding: const EdgeInsets.all(8),
+          alignment: Alignment.center,
           child: LajuCachedImage(
             imageUrlOrPath: pathOrUrl,
-            width: 64,
-            height: 64,
             fit: BoxFit.contain,
-            cacheWidth: 128,
-            cacheHeight: 128,
+            cacheWidth: 192,
             placeholder: const SizedBox(),
             errorWidget: Icon(
               Icons.sticky_note_2_outlined,

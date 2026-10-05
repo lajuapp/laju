@@ -34,8 +34,11 @@ class ApngFrame {
 class ApngAnimation {
   final List<ApngFrame> frames;
   final int numPlays;
+  late final List<MemoryImage> frameProviders;
 
-  ApngAnimation({required this.frames, this.numPlays = 0});
+  ApngAnimation({required this.frames, this.numPlays = 0}) {
+    frameProviders = frames.map((f) => MemoryImage(f.pngBytes)).toList(growable: false);
+  }
 }
 
 class LajuApngDecoder {
@@ -193,8 +196,14 @@ class LajuApngDecoder {
     return anim;
   }
 
+  static ApngAnimation? getCachedAnimation(String key) {
+    return _memoryCache[key];
+  }
+
   static void _putCache(String key, ApngAnimation? value) {
-    if (_cacheKeys.length >= _maxCacheSize) {
+    if (_memoryCache.containsKey(key)) {
+      _cacheKeys.remove(key);
+    } else if (_cacheKeys.length >= _maxCacheSize) {
       final oldest = _cacheKeys.removeAt(0);
       _memoryCache.remove(oldest);
     }
@@ -236,7 +245,7 @@ class _LajuAnimatedStickerState extends State<LajuAnimatedSticker> {
   @override
   void initState() {
     super.initState();
-    _loadStickerData();
+    _checkSyncCacheAndLoad();
   }
 
   @override
@@ -244,7 +253,11 @@ class _LajuAnimatedStickerState extends State<LajuAnimatedSticker> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.pathOrUrl != widget.pathOrUrl) {
       _stopTimer();
-      _loadStickerData();
+      _currentFrameIdx = 0;
+      _rawBytes = null;
+      _apngAnimation = null;
+      _hasError = false;
+      _checkSyncCacheAndLoad();
     }
   }
 
@@ -264,19 +277,76 @@ class _LajuAnimatedStickerState extends State<LajuAnimatedSticker> {
     return lower.endsWith('.webp') || lower.endsWith('.gif');
   }
 
+  void _checkSyncCacheAndLoad() {
+    final src = widget.pathOrUrl;
+    if (src.isEmpty) {
+      _hasError = true;
+      return;
+    }
+
+    if (_isNativeAnimated) return;
+
+    // 1. Check in-memory decoded APNG cache (Instant 0ms render)
+    final cachedAnim = LajuApngDecoder.getCachedAnimation(src);
+    if (cachedAnim != null) {
+      _apngAnimation = cachedAnim;
+      _isLoading = false;
+      _hasError = false;
+      _startAnimation();
+      _precacheRemainingFrames();
+      return;
+    }
+
+    // 2. Check synchronous local disk cache
+    try {
+      File? localFile;
+      if (src.startsWith('file://')) {
+        localFile = File(Uri.parse(src).toFilePath());
+      } else if (!src.startsWith('http://') && !src.startsWith('https://') && !src.startsWith('assets/') && !src.startsWith('data:')) {
+        final f = File(src);
+        if (f.existsSync()) localFile = f;
+      } else if (src.startsWith('http://') || src.startsWith('https://') || src.startsWith('/') || src.startsWith('admin/media')) {
+        localFile = LajuMediaCacheManager.instance.getCachedFileIfPresentSync(src);
+      }
+
+      if (localFile != null && localFile.existsSync()) {
+        final bytes = localFile.readAsBytesSync();
+        _rawBytes = bytes;
+        final decoded = LajuApngDecoder.decode(bytes, cacheKey: src);
+        if (decoded != null && decoded.frames.isNotEmpty) {
+          _apngAnimation = decoded;
+          _isLoading = false;
+          _hasError = false;
+          _startAnimation();
+          _precacheRemainingFrames();
+          return;
+        }
+      }
+    } catch (_) {}
+
+    // 3. Fallback to async loading
+    _loadStickerData();
+  }
+
+  void _precacheRemainingFrames() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _apngAnimation == null) return;
+      final providers = _apngAnimation!.frameProviders;
+      for (int i = 0; i < providers.length; i++) {
+        precacheImage(providers[i], context).catchError((_) {});
+      }
+    });
+  }
+
   Future<void> _loadStickerData() async {
     final src = widget.pathOrUrl;
     if (src.isEmpty) {
-      setState(() => _hasError = true);
+      if (mounted) setState(() => _hasError = true);
       return;
     }
 
-    // 1. If it's WebP or GIF, Flutter's Image widget handles it natively at 60fps!
-    if (_isNativeAnimated) {
-      return;
-    }
+    if (_isNativeAnimated) return;
 
-    // 2. For PNG or APNG, load bytes and parse APNG frames
     setState(() {
       _isLoading = true;
       _hasError = false;
@@ -307,6 +377,7 @@ class _LajuAnimatedStickerState extends State<LajuAnimatedSticker> {
         if (decoded != null && decoded.frames.length > 1) {
           _apngAnimation = decoded;
           _startAnimation();
+          _precacheRemainingFrames();
         }
 
         setState(() {
@@ -332,7 +403,7 @@ class _LajuAnimatedStickerState extends State<LajuAnimatedSticker> {
     _stopTimer();
     if (_apngAnimation == null || _apngAnimation!.frames.isEmpty) return;
 
-    final currentFrame = _apngAnimation!.frames[_currentFrameIdx];
+    final currentFrame = _apngAnimation!.frames[_currentFrameIdx % _apngAnimation!.frames.length];
     _frameTimer = Timer(currentFrame.duration, () {
       if (!mounted || _apngAnimation == null) return;
       setState(() {
@@ -355,7 +426,7 @@ class _LajuAnimatedStickerState extends State<LajuAnimatedSticker> {
       child: Center(
         child: Icon(
           Icons.sticky_note_2_outlined,
-          size: (widget.width != null && widget.width! < 60) ? 20 : 32,
+          size: (widget.width < 60) ? 20 : 32,
           color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.2),
         ),
       ),
@@ -370,7 +441,7 @@ class _LajuAnimatedStickerState extends State<LajuAnimatedSticker> {
       return _buildFallback(context);
     }
 
-    if (_isLoading && !_isNativeAnimated) {
+    if (_isLoading && !_isNativeAnimated && _apngAnimation == null && _rawBytes == null) {
       return _buildFallback(context);
     }
 
@@ -379,9 +450,11 @@ class _LajuAnimatedStickerState extends State<LajuAnimatedSticker> {
       if (src.startsWith('assets/')) {
         return Image.asset(
           src,
+          key: ValueKey('asset_${widget.pathOrUrl}'),
           width: widget.width,
           height: widget.height,
           fit: widget.fit,
+          gaplessPlayback: true,
           errorBuilder: (_, __, ___) => _buildFallback(context),
         );
       } else if (src.startsWith('http://') || src.startsWith('https://') || src.startsWith('/') || src.startsWith('admin/media')) {
@@ -390,32 +463,34 @@ class _LajuAnimatedStickerState extends State<LajuAnimatedSticker> {
           width: widget.width,
           height: widget.height,
           fit: widget.fit,
-          cacheWidth: widget.width != null ? (widget.width! * 2).toInt() : 256,
-          cacheHeight: widget.height != null ? (widget.height! * 2).toInt() : 256,
+          cacheWidth: (widget.width * 2).toInt(),
           placeholder: _buildFallback(context),
           errorWidget: _buildFallback(context),
         );
       } else if (File(src).existsSync()) {
         return Image.file(
           File(src),
+          key: ValueKey('file_${widget.pathOrUrl}'),
           width: widget.width,
           height: widget.height,
           fit: widget.fit,
+          gaplessPlayback: true,
           errorBuilder: (_, __, ___) => _buildFallback(context),
         );
       }
     }
 
-    // B. APNG Animated Multi-Frame Player
-    if (_apngAnimation != null && _apngAnimation!.frames.isNotEmpty) {
-      final activeFrame = _apngAnimation!.frames[_currentFrameIdx];
-      return Image.memory(
-        activeFrame.pngBytes,
-        key: ValueKey('apng_frame_$_currentFrameIdx'),
+    // B. APNG Animated Multi-Frame Player (Seamless, Pre-cached, Gapless)
+    if (_apngAnimation != null && _apngAnimation!.frameProviders.isNotEmpty) {
+      final safeIdx = _currentFrameIdx % _apngAnimation!.frameProviders.length;
+      return Image(
+        key: ValueKey('apng_player_${widget.pathOrUrl}'),
+        image: _apngAnimation!.frameProviders[safeIdx],
         width: widget.width,
         height: widget.height,
         fit: widget.fit,
         gaplessPlayback: true,
+        filterQuality: FilterQuality.medium,
         errorBuilder: (_, __, ___) => _buildFallback(context),
       );
     }
@@ -424,6 +499,7 @@ class _LajuAnimatedStickerState extends State<LajuAnimatedSticker> {
     if (_rawBytes != null) {
       return Image.memory(
         _rawBytes!,
+        key: ValueKey('raw_png_${widget.pathOrUrl}'),
         width: widget.width,
         height: widget.height,
         fit: widget.fit,
@@ -436,9 +512,11 @@ class _LajuAnimatedStickerState extends State<LajuAnimatedSticker> {
     if (src.startsWith('assets/')) {
       return Image.asset(
         src,
+        key: ValueKey('asset_fallback_${widget.pathOrUrl}'),
         width: widget.width,
         height: widget.height,
         fit: widget.fit,
+        gaplessPlayback: true,
         errorBuilder: (_, __, ___) => _buildFallback(context),
       );
     }
@@ -449,8 +527,7 @@ class _LajuAnimatedStickerState extends State<LajuAnimatedSticker> {
         width: widget.width,
         height: widget.height,
         fit: widget.fit,
-        cacheWidth: widget.width != null ? (widget.width! * 2).toInt() : 256,
-        cacheHeight: widget.height != null ? (widget.height! * 2).toInt() : 256,
+        cacheWidth: (widget.width * 2).toInt(),
         placeholder: _buildFallback(context),
         errorWidget: _buildFallback(context),
       );
