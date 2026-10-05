@@ -41,6 +41,7 @@ class _LockedChatsScreenState extends State<LockedChatsScreen> {
           builder: (context) => GroupChatScreen(
             groupId: conv.id,
             groupName: conv.title,
+            avatarUrl: conv.avatarUrl,
           ),
         ),
       );

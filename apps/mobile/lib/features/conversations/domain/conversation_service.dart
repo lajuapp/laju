@@ -130,15 +130,43 @@ class ConversationService {
   /// Active typing indicators per conversation ID (true if remote participant is typing)
   final ValueNotifier<Map<String, bool>> typingStatusNotifier = ValueNotifier({});
 
+  /// Active typing user names per conversation ID (e.g. 'Alice')
+  final ValueNotifier<Map<String, String?>> typingUserNamesNotifier = ValueNotifier({});
+
+  /// Real-time peer online status per conversation ID
+  final ValueNotifier<Map<String, bool>> peerOnlineStatusNotifier = ValueNotifier({});
+
   /// Update remote typing indicator state (received from backend sync)
   void setTyping(String conversationId, bool isTyping) {
-    final current = Map<String, bool>.from(typingStatusNotifier.value);
+    setTypingDetails(conversationId, isTyping, null);
+  }
+
+  /// Update remote typing indicator state with user names
+  void setTypingDetails(String conversationId, bool isTyping, [List<String>? typingUsers]) {
+    final currentStatus = Map<String, bool>.from(typingStatusNotifier.value);
+    final currentNames = Map<String, String?>.from(typingUserNamesNotifier.value);
     if (isTyping) {
-      current[conversationId] = true;
+      currentStatus[conversationId] = true;
+      if (typingUsers != null && typingUsers.isNotEmpty) {
+        currentNames[conversationId] = typingUsers.join(', ');
+      } else {
+        currentNames[conversationId] = null;
+      }
     } else {
-      current.remove(conversationId);
+      currentStatus.remove(conversationId);
+      currentNames.remove(conversationId);
     }
-    typingStatusNotifier.value = current;
+    typingStatusNotifier.value = currentStatus;
+    typingUserNamesNotifier.value = currentNames;
+  }
+
+  /// Update peer online status for a conversation
+  void setPeerOnline(String conversationId, bool isOnline) {
+    final current = Map<String, bool>.from(peerOnlineStatusNotifier.value);
+    if (current[conversationId] != isOnline) {
+      current[conversationId] = isOnline;
+      peerOnlineStatusNotifier.value = current;
+    }
   }
 
   /// Inform backend of current user's typing activity so the other party sees it
@@ -278,6 +306,19 @@ class ConversationService {
         for (final item in list) {
           final convId = item['id'] as String?;
           if (convId == null) continue;
+
+          final serverPurgedAt = item['purgedAt'] as String?;
+          if (serverPurgedAt != null) {
+            final prefs = await SharedPreferences.getInstance();
+            final localClearedStr = prefs.getString('laju_chat_cleared_at_$convId');
+            final pDate = DateTime.tryParse(serverPurgedAt);
+            final lDate = localClearedStr != null ? DateTime.tryParse(localClearedStr) : null;
+            if (pDate != null && (lDate == null || pDate.isAfter(lDate))) {
+              await LocalDatabase.instance.clearMessages(convId);
+              _inMemoryMessages[convId] = [];
+              await prefs.setString('laju_chat_cleared_at_$convId', serverPurgedAt);
+            }
+          }
 
           final msgs = item['messages'] as List?;
           if (msgs != null && msgs.isNotEmpty) {
@@ -443,9 +484,12 @@ class ConversationService {
           final isMsgRecalled = firstMsgMap != null &&
               (firstMsgMap['state'] == 'DELETED' || firstMsgMap['ciphertext'] == '__DELETED_FOR_EVERYONE__');
 
+          final isOutgoingLatest = firstMsgMap != null && firstMsgMap['senderUserId'] == currentUserId;
+          final recallText = isOutgoingLatest ? 'Anda menarik pesan ini' : 'Pesan ini telah ditarik';
+
           final lastMsgRaw = firstMsgMap != null
-              ? (isMsgRecalled ? 'Pesan ini telah ditarik' : (firstMsgMap['ciphertext'] ?? 'Encrypted Message'))
-              : 'No messages yet';
+              ? (isMsgRecalled ? recallText : (firstMsgMap['ciphertext'] ?? 'Encrypted Message'))
+              : (item['purgedAt'] != null ? 'Pesan telah dihancurkan' : 'No messages yet');
           String lastMsg = lastMsgRaw;
           if (!isMsgRecalled && lastMsg.startsWith('{') && (lastMsg.contains('"media"') || lastMsg.contains('"type"'))) {
             try {
@@ -820,7 +864,34 @@ class ConversationService {
 
       if (response.isSuccess && response.rawJson is Map) {
         if (response.rawJson.containsKey('isTyping')) {
-          setTyping(conversationId, response.rawJson['isTyping'] == true);
+          final isTyping = response.rawJson['isTyping'] == true;
+          final typingUsersRaw = response.rawJson['typingUsers'] as List?;
+          final typingUsers = typingUsersRaw != null ? typingUsersRaw.map((u) => u.toString()).toList() : <String>[];
+          setTypingDetails(conversationId, isTyping, typingUsers);
+          if (effectiveConvId != conversationId) {
+            setTypingDetails(effectiveConvId, isTyping, typingUsers);
+          }
+        }
+
+        if (response.rawJson.containsKey('peerOnline')) {
+          final isPeerOnline = response.rawJson['peerOnline'] == true;
+          setPeerOnline(conversationId, isPeerOnline);
+          if (effectiveConvId != conversationId) {
+            setPeerOnline(effectiveConvId, isPeerOnline);
+          }
+        }
+
+        if (response.rawJson.containsKey('groupInfo') && response.rawJson['groupInfo'] is Map) {
+          final gInfo = response.rawJson['groupInfo'] as Map;
+          GroupController.instance.updateGroupFromRealtime(
+            groupId: effectiveConvId,
+            title: gInfo['title'] as String?,
+            description: gInfo['description'] as String?,
+            avatarUrl: gInfo['avatarUrl'] as String?,
+            memberCount: (gInfo['memberCount'] as num?)?.toInt(),
+            isMember: gInfo['isMember'] == true,
+            role: gInfo['role'] as String?,
+          );
         }
 
         final messagesList = response.rawJson['messages'];
@@ -1019,6 +1090,18 @@ class ConversationService {
 
             final isDeletedState = m['state'] == 'DELETED' || rawCiphertext == '__DELETED_FOR_EVERYONE__';
 
+            MessageDeliveryStatus deliveryStatus = MessageDeliveryStatus.delivered;
+            final mState = m['state'] as String?;
+            final deliveries = m['deliveries'] as List?;
+            if (mState == 'READ') {
+              deliveryStatus = MessageDeliveryStatus.read;
+            } else if (deliveries != null && deliveries.isNotEmpty) {
+              final hasRead = deliveries.any((d) => d is Map && d['status'] == 'READ');
+              if (hasRead) {
+                deliveryStatus = MessageDeliveryStatus.read;
+              }
+            }
+
             return MessageModel(
               id: m['id'],
               clientMessageId: m['clientMessageId'] as String?,
@@ -1031,7 +1114,7 @@ class ConversationService {
               contentType: isDeletedState ? MessageContentType.text : contentType,
               timestamp: DateHelper.parseUtc(m['createdAt']),
               isOutgoing: isOutgoing,
-              status: MessageDeliveryStatus.delivered,
+              status: deliveryStatus,
               replyTo: isDeletedState ? null : parsedReplyTo,
               reactions: isDeletedState ? const [] : reactionsList,
               isDeleted: isDeletedState,
@@ -1040,8 +1123,45 @@ class ConversationService {
 
           final deduplicated = MessageModel.deduplicate(messages);
           final prefs = await SharedPreferences.getInstance();
-          final clearedStr = prefs.getString('laju_chat_cleared_at_$conversationId') ??
+          final serverPurgedAtStr = response.rawJson['purgedAt'] as String?;
+          String? clearedStr = prefs.getString('laju_chat_cleared_at_$conversationId') ??
               prefs.getString('laju_chat_cleared_at_$effectiveConvId');
+
+          if (serverPurgedAtStr != null) {
+            final serverPurgedAt = DateTime.tryParse(serverPurgedAtStr);
+            final localClearedAt = clearedStr != null ? DateTime.tryParse(clearedStr) : null;
+
+            if (serverPurgedAt != null && (localClearedAt == null || serverPurgedAt.isAfter(localClearedAt))) {
+              await LocalDatabase.instance.clearMessages(conversationId);
+              if (effectiveConvId != conversationId) {
+                await LocalDatabase.instance.clearMessages(effectiveConvId);
+              }
+              _inMemoryMessages[conversationId] = [];
+              if (effectiveConvId != conversationId) {
+                _inMemoryMessages[effectiveConvId] = [];
+              }
+              await prefs.setString('laju_chat_cleared_at_$conversationId', serverPurgedAtStr);
+              if (effectiveConvId != conversationId) {
+                await prefs.setString('laju_chat_cleared_at_$effectiveConvId', serverPurgedAtStr);
+              }
+              clearedStr = serverPurgedAtStr;
+
+              final currentList = inMemoryConversations ?? conversationsNotifier.value;
+              final idx = currentList.indexWhere((c) => c.id == conversationId || c.id == effectiveConvId);
+              if (idx != -1) {
+                final old = currentList[idx];
+                final updated = old.copyWith(
+                  lastMessage: 'Pesan telah dihancurkan',
+                  unreadCount: 0,
+                );
+                currentList[idx] = updated;
+                inMemoryConversations = List.from(currentList);
+                conversationsNotifier.value = List.from(currentList);
+                await LocalDatabase.instance.upsertConversations([updated]);
+              }
+            }
+          }
+
           List<MessageModel> finalMessages = deduplicated;
           if (clearedStr != null) {
             final clearedAt = DateTime.tryParse(clearedStr);
@@ -1057,6 +1177,16 @@ class ConversationService {
           updateMemoryMessages(conversationId, filtered);
           if (filtered.isNotEmpty) {
             LocalDatabase.instance.upsertMessages(conversationId, filtered);
+            for (final m in filtered) {
+              if (m.isRecalled) {
+                LocalDatabase.instance.markMessageDeleted(m.id);
+              }
+            }
+          } else if (serverPurgedAtStr != null) {
+            await LocalDatabase.instance.clearMessages(conversationId);
+            if (effectiveConvId != conversationId) {
+              await LocalDatabase.instance.clearMessages(effectiveConvId);
+            }
           }
           return filtered;
         }
@@ -1383,18 +1513,28 @@ class ConversationService {
       );
       if (response.isSuccess) {
         await LocalDatabase.instance.markMessageDeleted(messageId);
-        if (conversationId != null && _inMemoryMessages.containsKey(conversationId)) {
-          final list = _inMemoryMessages[conversationId]!;
-          final idx = list.indexWhere((m) => m.id == messageId);
-          if (idx != -1) {
-            list[idx] = list[idx].copyWith(
-              content: '__DELETED_FOR_EVERYONE__',
-              isDeleted: true,
-              attachmentName: null,
-              attachmentSize: null,
-              attachmentPath: null,
-            );
+        void updateMemList(String cid) {
+          if (_inMemoryMessages.containsKey(cid)) {
+            final list = _inMemoryMessages[cid]!;
+            final idx = list.indexWhere((m) => m.id == messageId || (m.clientMessageId != null && m.clientMessageId == messageId));
+            if (idx != -1) {
+              list[idx] = list[idx].copyWith(
+                content: '__DELETED_FOR_EVERYONE__',
+                isDeleted: true,
+                attachmentName: null,
+                attachmentSize: null,
+                attachmentPath: null,
+              );
+            }
           }
+        }
+        if (conversationId != null) {
+          updateMemList(conversationId);
+          final mapped = _tempToRealConvMap[conversationId];
+          if (mapped != null) updateMemList(mapped);
+          _tempToRealConvMap.forEach((k, v) {
+            if (v == conversationId) updateMemList(k);
+          });
         }
         return true;
       } else {

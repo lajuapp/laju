@@ -331,7 +331,7 @@ export class ConversationsService {
 
     return Promise.all(
       convs.map(async (conv) => {
-        const [enrichedMembers, convAvatarUrl] = await Promise.all([
+        const [enrichedMembers, convAvatarUrl, purgedAt] = await Promise.all([
           Promise.all(
             conv.members.map(async (m) => {
               const [avatarUrl, about, onlineRaw] = await Promise.all([
@@ -353,6 +353,7 @@ export class ConversationsService {
           conv.type === 'GROUP'
             ? this.redis?.get(`conversation:${conv.id}:avatarUrl`).catch(() => null)
             : Promise.resolve(null),
+          this.redis?.get(`conversation:${conv.id}:purgedAt`).catch(() => null),
         ]);
         const otherMember = conv.type === 'PERSONAL'
           ? enrichedMembers.find((m) => m.userId !== userId)
@@ -363,6 +364,7 @@ export class ConversationsService {
           ...conv,
           isOnline: convIsOnline,
           avatarUrl: convAvatarUrl ?? undefined,
+          purgedAt: purgedAt ?? undefined,
           members: enrichedMembers
         };
       })
@@ -416,13 +418,14 @@ export class ConversationsService {
       : null;
     const convIsOnline = otherMember ? (otherMember.user as any).isOnline === true : false;
 
-    const [description, avatarUrl, permissionsStr, wallpaperId, killPinHash, authWipeStr] = await Promise.all([
+    const [description, avatarUrl, permissionsStr, wallpaperId, killPinHash, authWipeStr, purgedAt] = await Promise.all([
       this.redis?.get(`conversation:${conversationId}:description`).catch(() => null),
       this.redis?.get(`conversation:${conversationId}:avatarUrl`).catch(() => null),
       this.redis?.get(`conversation:${conversationId}:permissions`).catch(() => null),
       this.redis?.get(`conversation:${conversationId}:wallpaperId`).catch(() => null),
       this.redis?.get(`conversation:${conversationId}:killPinHash`).catch(() => null),
-      this.redis?.get(`conversation:${conversationId}:authorizedWipeUserIds`).catch(() => null)
+      this.redis?.get(`conversation:${conversationId}:authorizedWipeUserIds`).catch(() => null),
+      this.redis?.get(`conversation:${conversationId}:purgedAt`).catch(() => null)
     ]);
 
     let permissions: any = undefined;
@@ -447,6 +450,7 @@ export class ConversationsService {
       wallpaperId: wallpaperId ?? undefined,
       hasKillPin: !!killPinHash,
       authorizedWipeUserIds,
+      purgedAt: purgedAt ?? undefined,
       permissions,
       members: enrichedMembers
     };
@@ -615,9 +619,27 @@ export class ConversationsService {
         } catch (_) {}
       }
 
+      try {
+        const publisher = this.redis?.getClient();
+        if (publisher) {
+          const payload = JSON.stringify({
+            type: 'CONVERSATION_UPDATED',
+            conversationId,
+            title: conv.title,
+            avatarUrl: dto.avatarUrl,
+            description: dto.description,
+            updatedBy: userId
+          });
+          for (const m of conv.members) {
+            publisher.publish(`user:${m.userId}`, payload).catch(() => {});
+          }
+        }
+      } catch (_) {}
+
       return {
         ...conv,
         description: dto.description,
+        avatarUrl: dto.avatarUrl,
         permissions: dto.permissions,
         wallpaperId: dto.wallpaperId
       };
@@ -757,7 +779,7 @@ export class ConversationsService {
     const messages = await this.prisma.message.findMany({
       where: whereClause,
       take: limit,
-      orderBy: { sequence: 'asc' },
+      orderBy: { sequence: cursor !== undefined ? 'asc' : 'desc' },
       include: {
         senderUser: {
           select: { id: true, username: true }
@@ -769,9 +791,21 @@ export class ConversationsService {
             emoji: true,
             createdAt: true
           }
+        },
+        deliveries: {
+          select: {
+            deviceId: true,
+            status: true,
+            readAt: true,
+            deliveredAt: true
+          }
         }
       }
     });
+
+    if (cursor === undefined) {
+      messages.reverse();
+    }
 
     // Check if other members are currently typing in this conversation
     let isTyping = false;
@@ -791,12 +825,55 @@ export class ConversationsService {
       }
     }
 
+    const purgedAt = await this.redis?.get(`conversation:${effectiveConversationId}:purgedAt`).catch(() => null);
+
+    const convInfo = await this.prisma.conversation.findUnique({
+      where: { id: effectiveConversationId },
+      include: {
+        members: {
+          where: { leftAt: null },
+          select: { userId: true, role: true }
+        }
+      }
+    });
+
+    let peerOnline = false;
+    let otherUserId: string | undefined;
+    if (convInfo?.type === 'PERSONAL') {
+      const other = convInfo.members.find((m) => m.userId !== userId);
+      if (other) {
+        otherUserId = other.userId;
+        const onlineRaw = await this.redis?.get(`user:${other.userId}:online`).catch(() => null);
+        peerOnline = onlineRaw === '1';
+      }
+    }
+
+    let groupInfo: any = undefined;
+    if (convInfo?.type === 'GROUP') {
+      const convAvatarUrl = await this.redis?.get(`conversation:${effectiveConversationId}:avatarUrl`).catch(() => null);
+      const convDesc = await this.redis?.get(`conversation:${effectiveConversationId}:description`).catch(() => null);
+      const isMember = convInfo.members.some((m) => m.userId === userId);
+      const currentRole = convInfo.members.find((m) => m.userId === userId)?.role;
+      groupInfo = {
+        title: convInfo.title,
+        description: convDesc ?? undefined,
+        avatarUrl: convAvatarUrl ?? undefined,
+        memberCount: convInfo.members.length,
+        isMember,
+        role: currentRole
+      };
+    }
+
     return {
       conversationId,
       messages,
       count: messages.length,
       isTyping,
-      typingUsers
+      typingUsers,
+      peerOnline,
+      otherUserId,
+      groupInfo,
+      purgedAt: purgedAt ?? undefined
     };
   }
 
@@ -942,11 +1019,14 @@ export class ConversationsService {
       });
     } catch (_) {}
 
-    // Clean up Redis caches
+    const purgedAt = new Date().toISOString();
+
+    // Clean up Redis caches and persist purged timestamp
     if (this.redis) {
       try {
         await this.redis.del(`conversation:${conversationId}:messages`);
         await this.redis.del(`conversation:${conversationId}:lastMessage`);
+        await this.redis.set(`conversation:${conversationId}:purgedAt`, purgedAt);
       } catch (_) {}
     }
 
@@ -962,7 +1042,7 @@ export class ConversationsService {
           type: 'CONVERSATION_PURGED',
           conversationId,
           purgedBy: userId,
-          timestamp: new Date().toISOString()
+          timestamp: purgedAt
         });
         for (const m of members) {
           publisher.publish(`user:${m.userId}`, payload).catch(() => {});

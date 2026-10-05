@@ -25,11 +25,13 @@ import 'chat_media_gallery_screen.dart';
 class GroupChatScreen extends StatefulWidget {
   final String groupId;
   final String? groupName;
+  final String? avatarUrl;
 
   const GroupChatScreen({
     super.key,
     this.groupId = 'grp-1',
     this.groupName,
+    this.avatarUrl,
   });
 
   @override
@@ -43,6 +45,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
   List<MessageModel> _messages = [];
   Timer? _pollTimer;
   bool _showScrollToBottom = false;
+  DateTime? _lastClearedAt;
 
   bool _isSearching = false;
   final TextEditingController _inGroupSearchController = TextEditingController();
@@ -188,16 +191,45 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
     if (!mounted) return;
     try {
       final msgs = await ConversationService.instance.fetchMessages(widget.groupId);
-      if (mounted && msgs.isNotEmpty) {
+      if (!mounted) return;
+
+      final prefs = await SharedPreferences.getInstance();
+      final clearedStr = prefs.getString('laju_chat_cleared_at_${widget.groupId}');
+      if (clearedStr != null) {
+        _lastClearedAt = DateTime.tryParse(clearedStr);
+      }
+
+      if (msgs.isEmpty) {
+        if (_messages.isNotEmpty && (_lastClearedAt != null || msgs.isEmpty)) {
+          setState(() {
+            _messages.clear();
+          });
+          ConversationService.instance.updateMemoryMessages(widget.groupId, []);
+        }
+      } else {
         _mergeAndSetMessages(msgs);
       }
     } catch (_) {}
   }
 
   void _mergeAndSetMessages(List<MessageModel> incoming) {
-    if (!mounted || incoming.isEmpty) return;
+    if (!mounted) return;
+    if (incoming.isEmpty) {
+      if (_messages.isNotEmpty) {
+        setState(() {
+          _messages.clear();
+        });
+      }
+      return;
+    }
 
-    final existingIds = _messages.map((m) => m.id).toSet();
+    // Filter current base messages to exclude anything timestamped before the most recent clear/purge
+    List<MessageModel> currentBase = _messages;
+    if (_lastClearedAt != null) {
+      currentBase = _messages.where((m) => m.timestamp.isAfter(_lastClearedAt!)).toList();
+    }
+
+    final existingIds = currentBase.map((m) => m.id).toSet();
     bool hasNewIncoming = false;
     for (final inc in incoming) {
       if (!inc.isOutgoing && !existingIds.contains(inc.id)) {
@@ -206,15 +238,31 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
       }
     }
 
-    final combined = List<MessageModel>.from(_messages)..addAll(incoming);
+    // Check for recalled status updates in incoming messages
+    bool hasRecalledUpdate = false;
+    for (final inc in incoming) {
+      if (inc.isRecalled) {
+        final existingIdx = _messages.indexWhere((m) =>
+            m.id == inc.id ||
+            (m.clientMessageId != null &&
+                inc.clientMessageId != null &&
+                m.clientMessageId == inc.clientMessageId));
+        if (existingIdx != -1 && !_messages[existingIdx].isRecalled) {
+          hasRecalledUpdate = true;
+          break;
+        }
+      }
+    }
+
+    final combined = List<MessageModel>.from(currentBase)..addAll(incoming);
     final merged = MessageModel.deduplicate(combined);
 
-    bool hasChanged = merged.length != _messages.length;
+    bool hasChanged = hasRecalledUpdate || (merged.length != _messages.length);
     if (!hasChanged) {
       for (int i = 0; i < merged.length; i++) {
         if (merged[i].id != _messages[i].id ||
             merged[i].status != _messages[i].status ||
-            merged[i].reactions.length != _messages[i].reactions.length ||
+            !listEquals(merged[i].reactions, _messages[i].reactions) ||
             merged[i].content != _messages[i].content ||
             merged[i].isDeleted != _messages[i].isDeleted ||
             merged[i].isRecalled != _messages[i].isRecalled) {
@@ -715,7 +763,10 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
     final isDark = ThemeModeController.instance.isDarkMode(context);
 
     return AnimatedBuilder(
-      animation: GroupController.instance,
+      animation: Listenable.merge([
+        GroupController.instance,
+        GroupController.instance.groupMembershipNotifier,
+      ]),
       builder: (context, _) {
         final group = GroupController.instance.getGroup(widget.groupId);
         final displayName = (group?.name != null && group!.name.isNotEmpty)
@@ -723,9 +774,10 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
             : ((widget.groupName != null && widget.groupName!.isNotEmpty)
                 ? widget.groupName!
                 : context.tr('groupChat'));
-        final memberCount = group?.members.length ?? 0;
+        final memberCount = GroupController.instance.getMemberCount(widget.groupId) ?? (group?.members.length ?? 0);
         final isUserAdmin = GroupController.instance.isCurrentUserAdmin(widget.groupId);
-        final canSend = group == null || group.canSendMessages || isUserAdmin;
+        final isMember = GroupController.instance.groupMembershipNotifier.value[widget.groupId] ?? true;
+        final canSend = (group == null || group.canSendMessages || isUserAdmin) && isMember;
 
 
 
@@ -1104,6 +1156,9 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                   backgroundColor: isDark ? AppColors.darkSurface : Colors.white,
                   title: GestureDetector(
                     onTap: () {
+                      final effectiveAvatar = (group?.avatarPath != null && group!.avatarPath!.isNotEmpty)
+                          ? group!.avatarPath
+                          : widget.avatarUrl;
                       Navigator.push(
                         context,
                         MaterialPageRoute(
@@ -1111,6 +1166,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                             groupId: widget.groupId,
                             groupName: displayName,
                             groupDescription: group?.description ?? '',
+                            avatarUrl: effectiveAvatar,
                           ),
                         ),
                       );
@@ -1119,7 +1175,9 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                       children: [
                         ModernAvatar(
                           name: displayName,
-                          imagePath: group?.avatarPath,
+                          imagePath: (group?.avatarPath != null && group!.avatarPath!.isNotEmpty)
+                              ? group!.avatarPath
+                              : widget.avatarUrl,
                           radius: 19,
                           isVerified: true,
                         ),
@@ -1136,14 +1194,21 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                                   color: isDark ? Colors.white : const Color(0xFF111827),
                                 ),
                               ),
-                              ValueListenableBuilder<Map<String, bool>>(
-                                valueListenable: ConversationService.instance.typingStatusNotifier,
-                                builder: (context, typings, _) {
-                                  final isTyping = typings[widget.groupId] == true;
+                              ValueListenableBuilder(
+                                valueListenable: Listenable.merge([
+                                  ConversationService.instance.typingStatusNotifier,
+                                  ConversationService.instance.typingUserNamesNotifier,
+                                ]),
+                                builder: (context, _) {
+                                  final isTyping = ConversationService.instance.typingStatusNotifier.value[widget.groupId] == true;
+                                  final typingNames = ConversationService.instance.typingUserNamesNotifier.value[widget.groupId];
                                   if (isTyping) {
-                                    return const Text(
-                                      'sedang mengetik...',
-                                      style: TextStyle(
+                                    final typingLabel = (typingNames != null && typingNames.isNotEmpty)
+                                        ? '$typingNames sedang mengetik...'
+                                        : 'sedang mengetik...';
+                                    return Text(
+                                      typingLabel,
+                                      style: const TextStyle(
                                         fontSize: 11,
                                         color: AppColors.primary,
                                         fontWeight: FontWeight.w600,
@@ -1519,7 +1584,40 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                         },
                       ),
               ),
-              if (canSend)
+              if (!isMember)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                  decoration: BoxDecoration(
+                    color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9),
+                    border: Border(
+                      top: BorderSide(
+                        color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
+                        width: 1,
+                      ),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.info_outline_rounded,
+                        size: 20,
+                        color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Anda bukan lagi anggota grup ini',
+                        style: TextStyle(
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w600,
+                          color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+              else if (canSend)
                 ChatInputBar(
                   onSend: _sendMessage,
                   onAttach: _openAttachmentMenu,

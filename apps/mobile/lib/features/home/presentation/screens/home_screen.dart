@@ -649,6 +649,7 @@ class _HomeScreenState extends State<HomeScreen> {
           builder: (context) => GroupChatScreen(
             groupId: conv.id,
             groupName: conv.title,
+            avatarUrl: conv.avatarUrl,
           ),
         ),
       );

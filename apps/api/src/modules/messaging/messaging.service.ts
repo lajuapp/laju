@@ -361,6 +361,13 @@ export class MessagingService {
         }
       });
 
+      await tx.conversation.update({
+        where: { id: message.conversationId },
+        data: {
+          updatedAt: new Date()
+        }
+      }).catch(() => {});
+
       // Delete attachments from SeaweedFS before deleting database records
       try {
         const attachments = await tx.attachment.findMany({
@@ -504,13 +511,13 @@ export class MessagingService {
   async markRead(deviceId: string, messageId: string) {
     const msg = await this.prisma.message.findUnique({
       where: { id: messageId },
-      select: { id: true }
+      select: { id: true, conversationId: true, state: true }
     });
     if (!msg) {
       return null;
     }
 
-    return this.prisma.messageDelivery.upsert({
+    const delivery = await this.prisma.messageDelivery.upsert({
       where: {
         messageId_deviceId: { messageId, deviceId }
       },
@@ -526,6 +533,15 @@ export class MessagingService {
         readAt: new Date()
       }
     });
+
+    if (msg.state !== 'DELETED') {
+      await this.prisma.message.update({
+        where: { id: messageId },
+        data: { state: 'READ' }
+      }).catch(() => {});
+    }
+
+    return delivery;
   }
 
   async addReaction(userId: string, messageId: string, emoji: string) {

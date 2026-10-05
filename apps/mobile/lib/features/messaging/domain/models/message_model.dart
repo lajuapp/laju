@@ -312,12 +312,18 @@ class MessageModel {
             replyTo: existing.replyTo ?? inc.replyTo,
           );
         } else {
+          final resolvedStatus = (existing.status == MessageDeliveryStatus.read || inc.status == MessageDeliveryStatus.read)
+              ? MessageDeliveryStatus.read
+              : ((existing.status == MessageDeliveryStatus.delivered || inc.status == MessageDeliveryStatus.delivered)
+                  ? MessageDeliveryStatus.delivered
+                  : (inc.status != MessageDeliveryStatus.sending ? inc.status : existing.status));
+
           result[idx] = existing.copyWith(
             clientMessageId: existing.clientMessageId ?? inc.clientMessageId,
             content: (inc.content.isNotEmpty && inc.content != existing.content) ? inc.content : existing.content,
             isEdited: inc.isEdited || existing.isEdited,
-            status: inc.status != MessageDeliveryStatus.sending ? inc.status : existing.status,
-            reactions: inc.reactions.isNotEmpty ? inc.reactions : existing.reactions,
+            status: resolvedStatus,
+            reactions: !isIncTemp ? inc.reactions : (inc.reactions.isNotEmpty ? inc.reactions : existing.reactions),
             attachmentPath: existing.attachmentPath ?? inc.attachmentPath,
             attachmentName: existing.attachmentName ?? inc.attachmentName,
             attachmentSize: existing.attachmentSize ?? inc.attachmentSize,

@@ -42,6 +42,7 @@ class _ArchivedChatsScreenState extends State<ArchivedChatsScreen> {
           builder: (context) => GroupChatScreen(
             groupId: conv.id,
             groupName: conv.title,
+            avatarUrl: conv.avatarUrl,
           ),
         ),
       );

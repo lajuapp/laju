@@ -1,3 +1,5 @@
+import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import '../../../../core/core.dart';
 import '../../../../core/network/api_client.dart';
@@ -113,6 +115,64 @@ class GroupController extends ChangeNotifier {
 
   GroupModel? getGroup(String id) => _groups[id];
 
+  final ValueNotifier<Map<String, bool>> groupMembershipNotifier = ValueNotifier({});
+  final Map<String, int> _memberCounts = {};
+
+  int? getMemberCount(String groupId) => _memberCounts[groupId] ?? _groups[groupId]?.members.length;
+
+  void setMembership(String groupId, bool isMember) {
+    final cur = Map<String, bool>.from(groupMembershipNotifier.value);
+    if (cur[groupId] != isMember) {
+      cur[groupId] = isMember;
+      groupMembershipNotifier.value = cur;
+    }
+  }
+
+  void updateGroupFromRealtime({
+    required String groupId,
+    String? title,
+    String? description,
+    String? avatarUrl,
+    int? memberCount,
+    bool isMember = true,
+    String? role,
+  }) {
+    setMembership(groupId, isMember);
+    if (memberCount != null) {
+      _memberCounts[groupId] = memberCount;
+    }
+    final existing = _groups[groupId];
+    if (existing != null) {
+      bool changed = false;
+      if (title != null && title.isNotEmpty && existing.name != title) {
+        existing.name = title;
+        changed = true;
+      }
+      if (description != null && existing.description != description) {
+        existing.description = description;
+        changed = true;
+      }
+      if (avatarUrl != null && existing.avatarPath != avatarUrl) {
+        existing.avatarPath = avatarUrl;
+        changed = true;
+      }
+      if (changed) {
+        notifyListeners();
+      }
+    } else if (title != null && title.isNotEmpty) {
+      _groups[groupId] = GroupModel(
+        id: groupId,
+        name: title,
+        description: description ?? '',
+        avatarPath: avatarUrl,
+        creatorId: '',
+        createdAt: DateTime.now(),
+        members: [],
+      );
+      notifyListeners();
+    }
+  }
+
   bool isCurrentUserAdmin(String groupId) {
     final group = _groups[groupId];
     if (group == null) return false;
@@ -183,6 +243,26 @@ class GroupController extends ChangeNotifier {
     return newGroup;
   }
 
+  /// Prepare avatar payload: converts local file paths to Base64 data URLs for cross-device compatibility
+  Future<String?> _prepareAvatarPayload(String? path) async {
+    if (path == null || path.trim().isEmpty) return null;
+    final trimmed = path.trim();
+    if (trimmed.startsWith('data:') || trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+      return trimmed;
+    }
+    try {
+      final file = File(trimmed);
+      if (await file.exists()) {
+        final bytes = await file.readAsBytes();
+        final base64String = base64Encode(bytes);
+        return 'data:image/jpeg;base64,$base64String';
+      }
+    } catch (e) {
+      debugPrint('[GroupController] _prepareAvatarPayload error: $e');
+    }
+    return trimmed;
+  }
+
   Future<void> updateGroupInfo(
     String groupId, {
     String? name,
@@ -191,9 +271,10 @@ class GroupController extends ChangeNotifier {
   }) async {
     final group = _groups[groupId];
     String? permanentAvatar = avatarPath;
-    if (avatarPath != null && avatarPath.isNotEmpty && !avatarPath.startsWith('http://') && !avatarPath.startsWith('https://')) {
+    if (avatarPath != null && avatarPath.isNotEmpty && !avatarPath.startsWith('http://') && !avatarPath.startsWith('https://') && !avatarPath.startsWith('data:')) {
       permanentAvatar = await DeviceMediaService.savePermanentAvatar(avatarPath);
     }
+    final avatarPayload = await _prepareAvatarPayload(permanentAvatar ?? avatarPath);
 
     if (group != null) {
       if (name != null && name.trim().isNotEmpty) {
@@ -202,8 +283,8 @@ class GroupController extends ChangeNotifier {
       if (description != null) {
         group.description = description.trim();
       }
-      if (permanentAvatar != null) {
-        group.avatarPath = permanentAvatar.isEmpty ? null : permanentAvatar;
+      if (avatarPayload != null) {
+        group.avatarPath = avatarPayload.isEmpty ? null : (permanentAvatar ?? avatarPayload);
       }
       notifyListeners();
     }
@@ -213,7 +294,7 @@ class GroupController extends ChangeNotifier {
       if (cachedConv != null) {
         final updated = cachedConv.copyWith(
           title: name?.trim().isNotEmpty == true ? name!.trim() : cachedConv.title,
-          avatarUrl: permanentAvatar != null ? (permanentAvatar.isEmpty ? null : permanentAvatar) : cachedConv.avatarUrl,
+          avatarUrl: avatarPayload != null ? (avatarPayload.isEmpty ? null : avatarPayload) : cachedConv.avatarUrl,
         );
         await LocalDatabase.instance.upsertConversations([updated]);
         final inMem = ConversationService.instance.inMemoryConversations;
@@ -231,7 +312,7 @@ class GroupController extends ChangeNotifier {
       conversationId: groupId,
       title: name,
       description: description,
-      avatarUrl: permanentAvatar,
+      avatarUrl: avatarPayload,
     );
   }
 
@@ -395,11 +476,12 @@ class GroupController extends ChangeNotifier {
         .toList();
 
     String? permanentAvatar = avatarPath;
-    if (avatarPath != null && avatarPath.isNotEmpty && !avatarPath.startsWith('http://') && !avatarPath.startsWith('https://')) {
+    if (avatarPath != null && avatarPath.isNotEmpty && !avatarPath.startsWith('http://') && !avatarPath.startsWith('https://') && !avatarPath.startsWith('data:')) {
       try {
         permanentAvatar = await DeviceMediaService.savePermanentAvatar(avatarPath);
       } catch (_) {}
     }
+    final avatarPayload = await _prepareAvatarPayload(permanentAvatar ?? avatarPath);
 
     try {
       backendConvId = await ConversationService.instance.createGroupConversation(
@@ -409,7 +491,7 @@ class GroupController extends ChangeNotifier {
         wallpaperId: wallpaperId,
         killPin: killPin,
         authorizedWipeUserIds: authorizedWipeUserIds,
-        avatarUrl: permanentAvatar,
+        avatarUrl: avatarPayload,
       );
     } catch (e) {
       debugPrint('[GroupController] createGroupConversation error: $e');
@@ -420,7 +502,7 @@ class GroupController extends ChangeNotifier {
       id: newId,
       name: name,
       description: description,
-      avatarPath: permanentAvatar,
+      avatarPath: avatarPayload ?? permanentAvatar,
       members: members,
       disappearingSeconds: disappearingSeconds,
       wallpaperId: wallpaperId,

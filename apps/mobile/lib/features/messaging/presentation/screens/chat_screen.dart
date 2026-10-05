@@ -71,6 +71,9 @@ class _ChatScreenState extends State<ChatScreen> {
   String? _chatDisappearingTimer;
 
   bool get _isCurrentPeerOnline {
+    final live = ConversationService.instance.peerOnlineStatusNotifier.value[_conversationId] ??
+        ConversationService.instance.peerOnlineStatusNotifier.value[widget.conversationId];
+    if (live != null) return live;
     final convs = ConversationService.instance.conversations;
     final match = convs.where((c) => c.id == _conversationId || c.id == widget.conversationId);
     if (match.isNotEmpty) return match.first.isOnline;
@@ -170,15 +173,31 @@ class _ChatScreenState extends State<ChatScreen> {
       }
     }
 
+    // Check for recalled status updates in incoming messages
+    bool hasRecalledUpdate = false;
+    for (final inc in incoming) {
+      if (inc.isRecalled) {
+        final existingIdx = _messages.indexWhere((m) =>
+            m.id == inc.id ||
+            (m.clientMessageId != null &&
+                inc.clientMessageId != null &&
+                m.clientMessageId == inc.clientMessageId));
+        if (existingIdx != -1 && !_messages[existingIdx].isRecalled) {
+          hasRecalledUpdate = true;
+          break;
+        }
+      }
+    }
+
     final combined = List<MessageModel>.from(_messages)..addAll(incoming);
     final merged = MessageModel.deduplicate(combined);
 
-    bool hasChanged = merged.length != _messages.length;
+    bool hasChanged = hasRecalledUpdate || (merged.length != _messages.length);
     if (!hasChanged) {
       for (int i = 0; i < merged.length; i++) {
         if (merged[i].id != _messages[i].id ||
             merged[i].status != _messages[i].status ||
-            merged[i].reactions.length != _messages[i].reactions.length ||
+            !listEquals(merged[i].reactions, _messages[i].reactions) ||
             merged[i].content != _messages[i].content ||
             merged[i].isDeleted != _messages[i].isDeleted ||
             merged[i].isRecalled != _messages[i].isRecalled) {
@@ -991,9 +1010,12 @@ class _ChatScreenState extends State<ChatScreen> {
                 },
                 child: Row(
                   children: [
-                    ValueListenableBuilder<List<ConversationModel>>(
-                      valueListenable: ConversationService.instance.conversationsNotifier,
-                      builder: (context, _, __) {
+                    AnimatedBuilder(
+                      animation: Listenable.merge([
+                        ConversationService.instance.conversationsNotifier,
+                        ConversationService.instance.peerOnlineStatusNotifier,
+                      ]),
+                      builder: (context, _) {
                         return ModernAvatar(
                           name: widget.title,
                           imagePath: widget.avatarUrl,
@@ -1059,9 +1081,12 @@ class _ChatScreenState extends State<ChatScreen> {
                                   ),
                                 );
                               }
-                              return ValueListenableBuilder<List<ConversationModel>>(
-                                valueListenable: ConversationService.instance.conversationsNotifier,
-                                builder: (context, _, __) {
+                              return AnimatedBuilder(
+                                animation: Listenable.merge([
+                                  ConversationService.instance.conversationsNotifier,
+                                  ConversationService.instance.peerOnlineStatusNotifier,
+                                ]),
+                                builder: (context, _) {
                                   final isPeerOnline = _isCurrentPeerOnline;
                                   final statusColor = isPeerOnline ? const Color(0xFF10B981) : const Color(0xFF94A3B8);
                                   final statusText = isPeerOnline ? 'Online' : 'Offline';
@@ -1396,7 +1421,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                       final msgToRecall = displayedMsgs[index];
                                       final ok = await ConversationService.instance.recallMessage(
                                         msgToRecall.id,
-                                        widget.conversationId,
+                                        _conversationId,
                                       );
                                       if (ok && mounted) {
                                         setState(() {
@@ -1416,7 +1441,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                       setState(() => _messages.removeWhere((m) => m.id == msgToDelete.id));
                                       await ConversationService.instance.deleteMessageForMe(
                                         msgToDelete.id,
-                                        widget.conversationId,
+                                        _conversationId,
                                       );
                                     },
                                   );
