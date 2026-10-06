@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart' show MethodChannel;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../../../core/core.dart';
+import '../../calls/domain/call_session_controller.dart';
 import '../../settings/domain/account_controller.dart';
 
 class AuthUser {
@@ -1412,6 +1413,7 @@ class AuthController extends ChangeNotifier {
     if (!_isAuthenticated) return; // Already logged out — avoid duplicate calls
     _isDeviceReplaced = true;
     ForegroundSyncService.instance.stop();
+    CallSessionController.instance.endCall();
     ApiClient.instance.clearAuth();
     _isAuthenticated = false;
     _isSuspended = false;
@@ -1426,6 +1428,7 @@ class AuthController extends ChangeNotifier {
   void logout() {
     _isDeviceReplaced = false; // Clear replaced flag on explicit logout
     ForegroundSyncService.instance.stop();
+    CallSessionController.instance.endCall();
     try {
       ApiClient.instance.post(ApiEndpoints.logout);
     } catch (_) {}

@@ -78,6 +78,8 @@ class ApiClient {
 
   void Function(String reason)? onAccountSuspended;
   void Function()? onUnauthorized;
+  void Function(String token)? onAuthChanged;
+  void Function()? onAuthCleared;
 
   void setAuth({
     required String token,
@@ -87,12 +89,14 @@ class ApiClient {
     _authToken = token;
     if (deviceId != null) _deviceId = deviceId;
     if (userId != null) _userId = userId;
+    onAuthChanged?.call(token);
   }
 
   void clearAuth() {
     _authToken = null;
     _deviceId = null;
     _userId = null;
+    onAuthCleared?.call();
   }
 
   /// Check if the backend API is currently reachable

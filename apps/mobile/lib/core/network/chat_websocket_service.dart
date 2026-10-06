@@ -7,7 +7,14 @@ import 'api_client.dart';
 
 /// Real-time WebSocket connection for Chat messaging, receipts, typing, and recalls.
 class ChatWebSocketService {
-  ChatWebSocketService._();
+  ChatWebSocketService._() {
+    ApiClient.instance.onAuthChanged = (token) {
+      connect();
+    };
+    ApiClient.instance.onAuthCleared = () {
+      disconnect();
+    };
+  }
   static final ChatWebSocketService instance = ChatWebSocketService._();
 
   WebSocket? _ws;
