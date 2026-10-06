@@ -125,6 +125,8 @@ describe('ConversationsService', () => {
         data: {
           type: ConversationType.GROUP,
           title: 'My Awesome Group',
+          description: 'Test group description',
+          avatarUrl: null,
         },
       });
 

@@ -101,7 +101,7 @@ class _GroupCallPickerScreenState extends State<GroupCallPickerScreen> {
     super.dispose();
   }
 
-  void _startGroupCall(String name, List<String> participants, bool isVideo) {
+  void _startGroupCall(String name, List<String> participants, bool isVideo, {String? conversationId}) {
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -109,6 +109,7 @@ class _GroupCallPickerScreenState extends State<GroupCallPickerScreen> {
           groupName: name,
           initialParticipants: participants,
           isVideo: isVideo,
+          conversationId: conversationId,
           returnToCallsScreen: true,
         ),
       ),
@@ -312,16 +313,16 @@ class _GroupCallPickerScreenState extends State<GroupCallPickerScreen> {
                                 IconButton(
                                   icon: const Icon(Icons.call_rounded, color: AppColors.primary, size: 22),
                                   tooltip: context.tr('voiceCall'),
-                                  onPressed: () => _startGroupCall(grp.name, grp.members, false),
+                                  onPressed: () => _startGroupCall(grp.name, grp.members, false, conversationId: grp.id),
                                 ),
                                 IconButton(
                                   icon: const Icon(Icons.videocam_rounded, color: AppColors.primary, size: 24),
                                   tooltip: context.tr('videoCall'),
-                                  onPressed: () => _startGroupCall(grp.name, grp.members, true),
+                                  onPressed: () => _startGroupCall(grp.name, grp.members, true, conversationId: grp.id),
                                 ),
                               ],
                             ),
-                            onTap: () => _startGroupCall(grp.name, grp.members, false),
+                            onTap: () => _startGroupCall(grp.name, grp.members, false, conversationId: grp.id),
                           ),
                         ),
                         if (!isLast)

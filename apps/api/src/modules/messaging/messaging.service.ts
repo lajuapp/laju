@@ -273,21 +273,44 @@ export class MessagingService {
         ? 'Pesan baru'
         : `Mengirim ${message.messageType.toLowerCase()}`;
 
-      for (const member of recipientMembers) {
-        if (this.redisService) {
-          try {
-            await this.redisService.getClient().publish(
-              `user:${member.userId}`,
-              JSON.stringify({
-                type: 'NEW_MESSAGE',
-                conversationId,
-                senderName,
-                preview: messagePreview,
-                messageId: message.id
-              })
-            );
-          } catch (_) {}
+      const messagePayload = {
+        type: 'NEW_MESSAGE',
+        conversationId,
+        senderName,
+        preview: messagePreview,
+        messageId: message.id,
+        message: {
+          id: message.id,
+          conversationId,
+          senderUserId: message.senderUserId,
+          senderDeviceId: message.senderDeviceId,
+          ciphertext: message.ciphertext,
+          nonce: message.nonce,
+          messageType: message.messageType,
+          state: message.state,
+          createdAt: message.createdAt,
+          sequence: message.sequence,
+          senderUser: {
+            id: senderUserId,
+            username: senderName,
+          }
         }
+      };
+
+      if (this.redisService) {
+        try {
+          const client = this.redisService.getClient();
+          const strPayload = JSON.stringify(messagePayload);
+          // Broadcast to sender (other active sessions)
+          client.publish(`user:${senderUserId}`, strPayload).catch(() => {});
+          // Broadcast to all recipients
+          for (const member of recipientMembers) {
+            client.publish(`user:${member.userId}`, strPayload).catch(() => {});
+          }
+        } catch (_) {}
+      }
+
+      for (const member of recipientMembers) {
 
         for (const device of member.user.devices) {
           const tokens: string[] = [];
@@ -511,7 +534,7 @@ export class MessagingService {
   async markRead(deviceId: string, messageId: string) {
     const msg = await this.prisma.message.findUnique({
       where: { id: messageId },
-      select: { id: true, conversationId: true, state: true }
+      select: { id: true, conversationId: true, state: true, senderUserId: true }
     });
     if (!msg) {
       return null;
@@ -541,12 +564,27 @@ export class MessagingService {
       }).catch(() => {});
     }
 
+    // Real-time read receipt notification to sender
+    try {
+      const publisher = this.redisService?.getClient();
+      if (publisher && msg.senderUserId) {
+        const payload = JSON.stringify({
+          type: 'MESSAGE_READ',
+          conversationId: msg.conversationId,
+          messageId,
+          readAt: new Date().toISOString()
+        });
+        publisher.publish(`user:${msg.senderUserId}`, payload).catch(() => {});
+      }
+    } catch (_) {}
+
     return delivery;
   }
 
   async addReaction(userId: string, messageId: string, emoji: string) {
     const message = await this.prisma.message.findUnique({
-      where: { id: messageId }
+      where: { id: messageId },
+      include: { conversation: { include: { members: true } } }
     });
     if (!message) {
       throw new NotFoundException('Message not found');
@@ -559,7 +597,7 @@ export class MessagingService {
       throw new ForbiddenException('Not a member of this conversation');
     }
 
-    return this.prisma.messageReaction.upsert({
+    const reaction = await this.prisma.messageReaction.upsert({
       where: {
         messageId_userId_emoji: {
           messageId,
@@ -574,16 +612,66 @@ export class MessagingService {
         emoji
       }
     });
+
+    // Broadcast reaction event in real-time to all active conversation members
+    try {
+      const activeMembers = message.conversation.members.filter((m) => !m.leftAt);
+      const publisher = this.redisService?.getClient();
+      if (publisher) {
+        const payload = JSON.stringify({
+          type: 'MESSAGE_REACTION',
+          conversationId: message.conversationId,
+          messageId,
+          userId,
+          emoji,
+          action: 'ADD'
+        });
+        for (const m of activeMembers) {
+          publisher.publish(`user:${m.userId}`, payload).catch(() => {});
+        }
+      }
+    } catch (_) {}
+
+    return reaction;
   }
 
   async removeReaction(userId: string, messageId: string, emoji: string) {
-    return this.prisma.messageReaction.deleteMany({
+    const message = await this.prisma.message.findUnique({
+      where: { id: messageId },
+      include: { conversation: { include: { members: true } } }
+    });
+    if (!message) {
+      throw new NotFoundException('Message not found');
+    }
+
+    const result = await this.prisma.messageReaction.deleteMany({
       where: {
         messageId,
         userId,
         emoji
       }
     });
+
+    // Broadcast reaction removal in real-time to all active conversation members
+    try {
+      const activeMembers = message.conversation.members.filter((m) => !m.leftAt);
+      const publisher = this.redisService?.getClient();
+      if (publisher) {
+        const payload = JSON.stringify({
+          type: 'MESSAGE_REACTION',
+          conversationId: message.conversationId,
+          messageId,
+          userId,
+          emoji,
+          action: 'REMOVE'
+        });
+        for (const m of activeMembers) {
+          publisher.publish(`user:${m.userId}`, payload).catch(() => {});
+        }
+      }
+    } catch (_) {}
+
+    return result;
   }
 }
 

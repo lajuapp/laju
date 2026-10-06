@@ -71,7 +71,12 @@ class ModernAvatar extends StatelessWidget {
       }
     }
 
-    final isNetwork = normalizedPath.startsWith('http://') || normalizedPath.startsWith('https://');
+    final isNetwork = normalizedPath.startsWith('http://') ||
+        normalizedPath.startsWith('https://') ||
+        normalizedPath.startsWith('/attachments/') ||
+        normalizedPath.startsWith('attachments/') ||
+        normalizedPath.startsWith('/admin/') ||
+        normalizedPath.startsWith('admin/');
     final isBase64 = normalizedPath.startsWith('data:image') || normalizedPath.startsWith('data:application');
     final isLocalFile = !isNetwork && !isBase64 && File(normalizedPath).existsSync();
 

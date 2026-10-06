@@ -4,6 +4,7 @@ import {
   SubscribeMessage,
   OnGatewayConnection,
   OnGatewayDisconnect,
+  OnGatewayInit,
   MessageBody,
   ConnectedSocket,
   WsException
@@ -25,7 +26,7 @@ interface CallClient {
   path: '/ws/calls',
   cors: { origin: '*' }
 })
-export class CallSignalingGateway implements OnGatewayConnection, OnGatewayDisconnect {
+export class CallSignalingGateway implements OnGatewayConnection, OnGatewayDisconnect, OnGatewayInit {
   @WebSocketServer()
   server!: Server;
 
@@ -39,6 +40,32 @@ export class CallSignalingGateway implements OnGatewayConnection, OnGatewayDisco
     private readonly configService: ConfigService,
     private readonly redisService: RedisService
   ) {}
+
+  afterInit() {
+    this.logger.log('CallSignalingGateway initialized at /ws/calls');
+    try {
+      const redisSubscriber = this.redisService.getSubscriber();
+      redisSubscriber.on('message', (channel: string, message: string) => {
+        if (channel.startsWith('user:')) {
+          const userId = channel.substring(5);
+          try {
+            const parsed = JSON.parse(message);
+            const type = (parsed.type || parsed.event || '').toString();
+            if (
+              type.startsWith('CALL_') ||
+              type.startsWith('WEBRTC_') ||
+              type.startsWith('ICE_') ||
+              type.startsWith('PEER_')
+            ) {
+              this._sendToUser(userId, message);
+            }
+          } catch (_) {}
+        }
+      });
+    } catch (err: any) {
+      this.logger.warn(`Redis subscriber init error in CallSignalingGateway: ${err.message}`);
+    }
+  }
 
   async handleConnection(ws: WebSocket, req: any) {
     const socketId = this._generateId();
@@ -68,26 +95,29 @@ export class CallSignalingGateway implements OnGatewayConnection, OnGatewayDisco
 
       this.logger.log(`Client connected: userId=${userId} socketId=${socketId}`);
 
-      // Subscribe Redis channel for user-level events (incoming calls, etc.)
-      const redisSubscriber = this.redisService.getSubscriber();
-      const channelKey = `user:${userId}`;
-      try {
-        await redisSubscriber.subscribe(channelKey);
-        (redisSubscriber as any).__callHandler = (channel: string, message: string) => {
-          if (channel === channelKey) {
-            this._sendToUser(userId, message);
-          }
-        };
-        redisSubscriber.on('message', (channel: string, message: string) => {
-          const targets = this._getUserSocketIds(userId);
-          for (const sid of targets) {
-            const c = this.clients.get(sid);
-            if (c && c.ws.readyState === WebSocket.OPEN) {
-              try { c.ws.send(message); } catch (_) {}
+      // Attach raw message listener for maximum client compatibility
+      ws.on('message', (raw: string | Buffer) => {
+        try {
+          const parsed = JSON.parse(raw.toString());
+          const event = (parsed.event || parsed.type || '').toString().toLowerCase();
+          const data = parsed.data || parsed;
+          if (event === 'join_call') {
+            this.handleJoinCall(ws, data);
+          } else if (event === 'webrtc_offer') {
+            this.handleWebRTCOffer(ws, data);
+          } else if (event === 'webrtc_answer') {
+            this.handleWebRTCAnswer(ws, data);
+          } else if (event === 'ice_candidate') {
+            this.handleIceCandidate(ws, data);
+          } else if (event === 'call_event') {
+            this.handleCallEvent(ws, data);
+          } else if (event === 'ping') {
+            if (ws.readyState === WebSocket.OPEN) {
+              ws.send(JSON.stringify({ type: 'PONG', timestamp: Date.now() }));
             }
           }
-        });
-      } catch (_) {}
+        } catch (_) {}
+      });
 
       ws.send(JSON.stringify({ type: 'CONNECTED', userId, socketId }));
     } catch (err: any) {

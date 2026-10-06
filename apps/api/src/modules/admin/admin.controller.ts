@@ -291,6 +291,15 @@ export class AdminController {
     return this.adminService.deleteStickerItem(id);
   }
 
+  @Patch('stickers/:id')
+  @UseGuards(AdminAuthGuard)
+  updateStickerItem(
+    @Param('id') id: string,
+    @Body() dto: { name?: string; emoji?: string; imageUrl?: string }
+  ) {
+    return this.adminService.updateStickerItem(id, dto);
+  }
+
   // ─── MEDIA UPLOAD & SERVING ─────────────────────────────────────
   @Post('upload')
   @UseGuards(AdminAuthGuard)

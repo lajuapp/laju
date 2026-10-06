@@ -41,15 +41,157 @@ class UserDirectoryItem {
 }
 
 class ConversationService {
-  ConversationService._();
+  ConversationService._() {
+    initWebSocket();
+  }
   static final ConversationService instance = ConversationService._();
+
+  /// Realtime stream of newly arrived messages
+  final StreamController<MessageModel> _realtimeMessageStreamController =
+      StreamController<MessageModel>.broadcast();
+  Stream<MessageModel> get realtimeMessageStream => _realtimeMessageStreamController.stream;
+
+  /// Realtime stream of recalled/deleted message IDs
+  final StreamController<Map<String, String>> _realtimeMessageDeletedController =
+      StreamController<Map<String, String>>.broadcast();
+  Stream<Map<String, String>> get realtimeMessageDeletedStream =>
+      _realtimeMessageDeletedController.stream;
+
+  bool _isWsInitialized = false;
+
+  void initWebSocket() {
+    if (_isWsInitialized) return;
+    _isWsInitialized = true;
+
+    final ws = ChatWebSocketService.instance;
+    ws.connect();
+
+    ws.onNewMessage = (msgData) {
+      final convId = (msgData['conversationId'] ?? '') as String;
+      if (convId.isEmpty) return;
+      final parsed = parseMessageFromJson(msgData, convId);
+      _handleRealtimeNewMessage(convId, parsed);
+    };
+
+    ws.onMessageDeleted = (convId, msgId) {
+      _handleRealtimeMessageDeleted(convId, msgId);
+    };
+
+    ws.onTyping = (convId, userId, username, isTyping) {
+      if (userId != ApiClient.instance.userId) {
+        setTypingDetails(convId, isTyping, username != null ? [username] : null);
+      }
+    };
+
+    ws.onConversationPurged = (convId) {
+      clearChatForMe(convId);
+    };
+
+    ws.onMessageReaction = (convId, msgId, userId, emoji, action) {
+      _handleRealtimeMessageReaction(convId, msgId, userId, emoji, action);
+    };
+  }
+
+  void _handleRealtimeNewMessage(String conversationId, MessageModel msg) {
+    _seenMessageIds.add(msg.id);
+
+    final current = _inMemoryMessages[conversationId] ?? [];
+    final existingIdx = current.indexWhere((m) =>
+        m.id == msg.id ||
+        (m.clientMessageId != null &&
+            msg.clientMessageId != null &&
+            m.clientMessageId == msg.clientMessageId));
+    if (existingIdx != -1) {
+      current[existingIdx] = msg;
+    } else {
+      current.add(msg);
+    }
+    _inMemoryMessages[conversationId] = current;
+
+    LocalDatabase.instance.upsertMessages([msg]).catchError((_) {});
+    _realtimeMessageStreamController.add(msg);
+
+    if (inMemoryConversations != null) {
+      final idx = inMemoryConversations!.indexWhere((c) => c.id == conversationId);
+      if (idx != -1) {
+        final conv = inMemoryConversations![idx];
+        final isCurOpen = currentActiveConversationId == conversationId;
+        final updated = conv.copyWith(
+          lastMessage: msg.displaySnippet,
+          lastMessageTime: msg.timestamp,
+          unreadCount: isCurOpen ? 0 : conv.unreadCount + (msg.isOutgoing ? 0 : 1),
+        );
+        inMemoryConversations![idx] = updated;
+        conversationsNotifier.value = List.from(inMemoryConversations!);
+        LocalDatabase.instance.upsertConversations([updated]).catchError((_) {});
+      }
+    }
+  }
+
+  void _handleRealtimeMessageDeleted(String conversationId, String messageId) {
+    final current = _inMemoryMessages[conversationId];
+    if (current != null) {
+      final idx = current.indexWhere((m) => m.id == messageId);
+      if (idx != -1) {
+        final old = current[idx];
+        final updated = old.copyWith(
+          isDeleted: true,
+          content: '__DELETED_FOR_EVERYONE__',
+          attachmentPath: null,
+          attachmentName: null,
+          attachmentSize: null,
+        );
+        current[idx] = updated;
+        _inMemoryMessages[conversationId] = current;
+        LocalDatabase.instance.upsertMessages([updated]).catchError((_) {});
+      }
+    }
+    _realtimeMessageDeletedController.add({'conversationId': conversationId, 'messageId': messageId});
+  }
+
+  void _handleRealtimeMessageReaction(
+    String conversationId,
+    String messageId,
+    String userId,
+    String emoji,
+    String action,
+  ) {
+    void updateForConv(String cid) {
+      final current = _inMemoryMessages[cid];
+      if (current != null) {
+        final idx = current.indexWhere((m) => m.id == messageId);
+        if (idx != -1) {
+          final msg = current[idx];
+          final reactions = List<String>.from(msg.reactions);
+          if (action == 'ADD') {
+            if (!reactions.contains(emoji)) {
+              reactions.add(emoji);
+            }
+          } else if (action == 'REMOVE') {
+            reactions.remove(emoji);
+          }
+          final updated = msg.copyWith(reactions: reactions);
+          current[idx] = updated;
+          _inMemoryMessages[cid] = current;
+          _realtimeMessageStreamController.add(updated);
+          LocalDatabase.instance.upsertMessages([updated]).catchError((_) {});
+        }
+      }
+    }
+
+    updateForConv(conversationId);
+    final mapped = _tempToRealConvMap[conversationId];
+    if (mapped != null && mapped != conversationId) {
+      updateForConv(mapped);
+    }
+  }
 
   /// Current conversation screen open by user to prevent banner popup for active chat
   String? currentActiveConversationId;
 
   bool _isInitialSyncComplete = false;
-  final Set<String> _seenMessageIds = {};
   final Map<String, String> _tempToRealConvMap = {};
+  String resolveConversationId(String id) => _tempToRealConvMap[id] ?? id;
 
   /// Detects MIME type from file extension
   static String detectMimeType(String path, {String? fileName}) {
@@ -793,14 +935,29 @@ class ConversationService {
   }
 
   /// Leave a group conversation
-  Future<bool> leaveGroup(String conversationId) async {
+  Future<bool> leaveGroup(String conversationId, {String? newOwnerUserId}) async {
     try {
       final response = await ApiClient.instance.post(
         ApiEndpoints.conversationLeave(conversationId),
+        body: newOwnerUserId != null ? {'newOwnerUserId': newOwnerUserId} : {},
       );
       return response.isSuccess;
     } catch (e) {
       debugPrint('[ConversationService] leaveGroup error: $e');
+      return false;
+    }
+  }
+
+  /// Transfer ownership of a group to another member
+  Future<bool> transferGroupOwnership(String conversationId, String newOwnerUserId) async {
+    try {
+      final response = await ApiClient.instance.post(
+        ApiEndpoints.conversationTransferOwnership(conversationId),
+        body: {'newOwnerUserId': newOwnerUserId},
+      );
+      return response.isSuccess;
+    } catch (e) {
+      debugPrint('[ConversationService] transferGroupOwnership error: $e');
       return false;
     }
   }
@@ -896,229 +1053,8 @@ class ConversationService {
 
         final messagesList = response.rawJson['messages'];
         if (messagesList is List) {
-          final currentUserId = ApiClient.instance.userId;
           final messages = messagesList.map((m) {
-            final isOutgoing = m['senderUserId'] == currentUserId;
-            final reactionsRaw = m['reactions'] as List?;
-            final reactionsList = reactionsRaw != null
-                ? reactionsRaw
-                    .where((r) => r is Map && r['emoji'] != null)
-                    .map((r) => r['emoji'] as String)
-                    .toList()
-                : <String>[];
-
-            final rawCiphertext = (m['ciphertext'] ?? '') as String;
-            final msgType = (m['messageType'] ?? 'TEXT') as String;
-
-            MessageContentType contentType = MessageContentType.text;
-            String contentText = rawCiphertext;
-            String? mediaData;
-            String? attName;
-            String? attSize;
-            MessageModel? parsedReplyTo;
-
-            if (rawCiphertext.startsWith('{')) {
-              try {
-                final parsed = jsonDecode(rawCiphertext);
-                if (parsed is Map) {
-                  if (parsed['replyTo'] is Map) {
-                    final r = parsed['replyTo'] as Map;
-                    parsedReplyTo = MessageModel(
-                      id: (r['id'] ?? '') as String,
-                      conversationId: conversationId,
-                      senderName: (r['senderName'] ?? 'Contact') as String,
-                      content: (r['content'] ?? '') as String,
-                      attachmentPath: r['attachmentPath'] as String?,
-                      attachmentName: r['attachmentName'] as String?,
-                      timestamp: DateTime.now(),
-                      isOutgoing: false,
-                      contentType: MessageContentType.values.firstWhere(
-                        (ct) => ct.name == r['contentType'],
-                        orElse: () => MessageContentType.text,
-                      ),
-                    );
-                  }
-
-                  if (parsed['type'] == 'image') {
-                    contentType = MessageContentType.attachment;
-                    mediaData = parsed['media'] as String?;
-                    attName = (parsed['fileName'] ?? 'Foto.jpg') as String;
-                    contentText = (parsed['caption'] ?? '') as String;
-                  } else if (parsed['type'] == 'audio') {
-                    final fn = (parsed['fileName'] ?? 'Voice Note') as String;
-                    final isAudioFile = fn != 'Voice Note' &&
-                        (fn.toLowerCase().endsWith('.mp3') ||
-                         fn.toLowerCase().endsWith('.wav') ||
-                         fn.toLowerCase().endsWith('.m4a') ||
-                         fn.toLowerCase().endsWith('.aac') ||
-                         fn.toLowerCase().endsWith('.ogg') ||
-                         fn.toLowerCase().endsWith('.flac'));
-                    contentType = isAudioFile ? MessageContentType.attachment : MessageContentType.voiceNote;
-                    mediaData = parsed['media'] as String?;
-                    attName = fn;
-                    attSize = (parsed['duration'] ?? '') as String;
-                    final cap = (parsed['caption'] ?? '') as String;
-                    contentText = isAudioFile
-                        ? cap
-                        : (attSize.isNotEmpty ? 'Pesan Suara ($attSize)' : 'Pesan Suara');
-                  } else if (parsed['type'] == 'document') {
-                    contentType = MessageContentType.attachment;
-                    mediaData = parsed['media'] as String?;
-                    attName = (parsed['fileName'] ?? 'Dokumen') as String;
-                    attSize = (parsed['fileSize'] ?? '') as String;
-                    contentText = (parsed['caption'] ?? '') as String;
-                    if (attSize.isEmpty && mediaData != null && mediaData.contains(',')) {
-                      final b64Part = mediaData.split(',').last;
-                      final approxBytes = (b64Part.length * 3) ~/ 4;
-                      if (approxBytes > 0) {
-                        attSize = approxBytes < 1024 * 1024
-                            ? '${(approxBytes / 1024).toStringAsFixed(1)} KB'
-                            : '${(approxBytes / (1024 * 1024)).toStringAsFixed(1)} MB';
-                      }
-                    }
-
-                    // If document is an image, ensure mediaData has valid data:image URI for flawless rendering
-                    if (isImageFile(attName) && mediaData != null && mediaData.startsWith('data:') && !mediaData.startsWith('data:image')) {
-                      final b64 = mediaData.split(',').last;
-                      final imgMime = detectMimeType(attName);
-                      mediaData = 'data:${imgMime.startsWith('image/') ? imgMime : 'image/jpeg'};base64,$b64';
-                    }
-                  } else if (parsed['type'] == 'location') {
-                    contentType = MessageContentType.location;
-                    attName = (parsed['name'] ?? 'Lokasi') as String;
-                    attSize = (parsed['address'] ?? '') as String;
-                    contentText = rawCiphertext;
-                  } else if (parsed['type'] == 'contact') {
-                    contentType = MessageContentType.contact;
-                    attName = (parsed['name'] ?? 'Kontak LAJU') as String;
-                    attSize = (parsed['username'] ?? '') as String;
-                    contentText = rawCiphertext;
-                  } else if (parsed['type'] == 'sticker') {
-                    contentType = MessageContentType.sticker;
-                    attName = (parsed['stickerId'] ?? 'cat_thumbs_up') as String;
-                    mediaData = parsed['assetPath'] as String? ?? parsed['media'] as String?;
-                    contentText = (parsed['caption'] ?? '') as String;
-                  } else if (parsed['type'] == 'reply') {
-                    contentText = (parsed['text'] ?? '') as String;
-                  } else if (parsed['type'] == 'wallpaper_change') {
-                    contentType = MessageContentType.systemNotice;
-                    final wpId = parsed['wallpaperId'] as String? ?? 'none';
-                    final wpName = (parsed['wallpaperName'] ?? (wpId == 'none' ? 'Default Polos' : wpId)) as String;
-                    final senderName = isOutgoing ? 'Anda' : (m['senderUser']?['username'] ?? 'Kontak');
-                    contentText = wpId == 'none'
-                        ? '$senderName menyetel wallpaper obrolan ke default'
-                        : '$senderName mengubah wallpaper obrolan menjadi "$wpName"';
-                    ChatAppearanceController.instance.syncRemoteChatWallpaper(conversationId, wpId);
-                    if (effectiveConvId != conversationId) {
-                      ChatAppearanceController.instance.syncRemoteChatWallpaper(effectiveConvId, wpId);
-                    }
-                  }
-                }
-              } catch (_) {}
-            }
-            if (mediaData == null && contentType != MessageContentType.location && contentType != MessageContentType.sticker) {
-              if (msgType == 'STICKER') {
-                contentType = MessageContentType.sticker;
-                attName = rawCiphertext;
-              } else if (msgType == 'IMAGE' || rawCiphertext.startsWith('data:image')) {
-                contentType = MessageContentType.attachment;
-                mediaData = rawCiphertext;
-                attName = 'Foto.jpg';
-                contentText = ''; // No generic description
-              } else if (msgType == 'AUDIO' || rawCiphertext.startsWith('data:audio')) {
-                contentType = MessageContentType.voiceNote;
-                mediaData = rawCiphertext;
-                attName = 'Voice Note';
-                contentText = 'Pesan Suara';
-                attSize = '0:00';
-              } else if (msgType == 'DOCUMENT' || rawCiphertext.startsWith('data:') || rawCiphertext.startsWith('Dokumen')) {
-                contentType = MessageContentType.attachment;
-                mediaData = rawCiphertext.startsWith('data:') ? rawCiphertext : null;
-                attName = 'Dokumen';
-                contentText = '';
-              } else if (msgType == 'LOCATION' || rawCiphertext.contains('"type":"location"') || rawCiphertext.contains('"type": "location"')) {
-                contentType = MessageContentType.location;
-                contentText = rawCiphertext;
-              } else if (msgType == 'CONTACT' || rawCiphertext.contains('"type":"contact"') || rawCiphertext.contains('"type": "contact"')) {
-                contentType = MessageContentType.contact;
-                contentText = rawCiphertext;
-                if (rawCiphertext.startsWith('{')) {
-                  try {
-                    final parsed = jsonDecode(rawCiphertext);
-                    if (parsed is Map) {
-                      attName = (parsed['name'] ?? 'Kontak LAJU') as String;
-                      attSize = (parsed['username'] ?? '') as String;
-                    }
-                  } catch (_) {}
-                }
-              } else if (msgType == 'ATTACHMENT') {
-                if (rawCiphertext.contains('"type":"contact"') || rawCiphertext.contains('"type": "contact"')) {
-                  contentType = MessageContentType.contact;
-                  contentText = rawCiphertext;
-                  if (rawCiphertext.startsWith('{')) {
-                    try {
-                      final parsed = jsonDecode(rawCiphertext);
-                      if (parsed is Map) {
-                        attName = (parsed['name'] ?? 'Kontak LAJU') as String;
-                        attSize = (parsed['username'] ?? '') as String;
-                      }
-                    } catch (_) {}
-                  }
-                } else if (rawCiphertext.startsWith('{')) {
-                  try {
-                    final parsed = jsonDecode(rawCiphertext);
-                    if (parsed is Map) {
-                      mediaData = parsed['media'] as String?;
-                      attName = (parsed['fileName'] ?? 'Dokumen') as String;
-                      attSize = (parsed['fileSize'] ?? '') as String;
-                      contentText = (parsed['caption'] ?? '') as String;
-                    } else {
-                      contentText = '';
-                    }
-                  } catch (_) {
-                    contentText = '';
-                  }
-                } else if (rawCiphertext.startsWith('data:')) {
-                  mediaData = rawCiphertext;
-                  attName = 'Dokumen';
-                  contentText = '';
-                } else {
-                  contentText = rawCiphertext;
-                }
-              }
-            }
-
-            final isDeletedState = m['state'] == 'DELETED' || rawCiphertext == '__DELETED_FOR_EVERYONE__';
-
-            MessageDeliveryStatus deliveryStatus = MessageDeliveryStatus.delivered;
-            final mState = m['state'] as String?;
-            final deliveries = m['deliveries'] as List?;
-            if (mState == 'READ') {
-              deliveryStatus = MessageDeliveryStatus.read;
-            } else if (deliveries != null && deliveries.isNotEmpty) {
-              final hasRead = deliveries.any((d) => d is Map && d['status'] == 'READ');
-              if (hasRead) {
-                deliveryStatus = MessageDeliveryStatus.read;
-              }
-            }
-
-            return MessageModel(
-              id: m['id'],
-              clientMessageId: m['clientMessageId'] as String?,
-              conversationId: conversationId,
-              senderName: isOutgoing ? 'You' : (m['senderUser']?['username'] ?? 'Contact'),
-              content: isDeletedState ? '__DELETED_FOR_EVERYONE__' : contentText,
-              attachmentPath: isDeletedState ? null : mediaData,
-              attachmentName: isDeletedState ? null : attName,
-              attachmentSize: isDeletedState ? null : attSize,
-              contentType: isDeletedState ? MessageContentType.text : contentType,
-              timestamp: DateHelper.parseUtc(m['createdAt']),
-              isOutgoing: isOutgoing,
-              status: deliveryStatus,
-              replyTo: isDeletedState ? null : parsedReplyTo,
-              reactions: isDeletedState ? const [] : reactionsList,
-              isDeleted: isDeletedState,
-            );
+            return parseMessageFromJson(m as Map<String, dynamic>, conversationId);
           }).toList();
 
           final deduplicated = MessageModel.deduplicate(messages);
@@ -1195,6 +1131,238 @@ class ConversationService {
       debugPrint('[ConversationService] fetchMessages error: $e');
     }
     return [];
+  }
+
+  /// Helper to convert backend JSON into MessageModel
+  MessageModel parseMessageFromJson(Map<String, dynamic> m, String conversationId) {
+    final currentUserId = ApiClient.instance.userId;
+    final isOutgoing = m['senderUserId'] == currentUserId;
+    final reactionsRaw = m['reactions'] as List?;
+    final reactionsList = reactionsRaw != null
+        ? reactionsRaw
+            .where((r) => r is Map && r['emoji'] != null)
+            .map((r) => r['emoji'] as String)
+            .toList()
+        : <String>[];
+
+    final rawCiphertext = (m['ciphertext'] ?? '') as String;
+    final msgType = (m['messageType'] ?? 'TEXT') as String;
+
+    MessageContentType contentType = MessageContentType.text;
+    String contentText = rawCiphertext;
+    String? mediaData;
+    String? attName;
+    String? attSize;
+    MessageModel? parsedReplyTo;
+
+    if (rawCiphertext.startsWith('{')) {
+      try {
+        final parsed = jsonDecode(rawCiphertext);
+        if (parsed is Map) {
+          if (parsed['replyTo'] is Map) {
+            final r = parsed['replyTo'] as Map;
+            parsedReplyTo = MessageModel(
+              id: (r['id'] ?? '') as String,
+              conversationId: conversationId,
+              senderName: (r['senderName'] ?? 'Contact') as String,
+              content: (r['content'] ?? '') as String,
+              attachmentPath: r['attachmentPath'] as String?,
+              attachmentName: r['attachmentName'] as String?,
+              timestamp: DateTime.now(),
+              isOutgoing: false,
+              contentType: MessageContentType.values.firstWhere(
+                (ct) => ct.name == r['contentType'],
+                orElse: () => MessageContentType.text,
+              ),
+            );
+          }
+
+          if (parsed['type'] == 'image') {
+            contentType = MessageContentType.attachment;
+            mediaData = parsed['media'] as String?;
+            attName = (parsed['fileName'] ?? 'Foto.jpg') as String;
+            contentText = (parsed['caption'] ?? '') as String;
+          } else if (parsed['type'] == 'audio') {
+            final fn = (parsed['fileName'] ?? 'Voice Note') as String;
+            final isAudioFile = fn != 'Voice Note' &&
+                (fn.toLowerCase().endsWith('.mp3') ||
+                 fn.toLowerCase().endsWith('.wav') ||
+                 fn.toLowerCase().endsWith('.m4a') ||
+                 fn.toLowerCase().endsWith('.aac') ||
+                 fn.toLowerCase().endsWith('.ogg') ||
+                 fn.toLowerCase().endsWith('.flac'));
+            contentType = isAudioFile ? MessageContentType.attachment : MessageContentType.voiceNote;
+            mediaData = parsed['media'] as String?;
+            attName = fn;
+            attSize = (parsed['duration'] ?? '') as String;
+            final cap = (parsed['caption'] ?? '') as String;
+            contentText = isAudioFile
+                ? cap
+                : (attSize.isNotEmpty ? 'Pesan Suara ($attSize)' : 'Pesan Suara');
+          } else if (parsed['type'] == 'document') {
+            contentType = MessageContentType.attachment;
+            mediaData = parsed['media'] as String?;
+            attName = (parsed['fileName'] ?? 'Dokumen') as String;
+            attSize = (parsed['fileSize'] ?? '') as String;
+            contentText = (parsed['caption'] ?? '') as String;
+            if (attSize.isEmpty && mediaData != null && mediaData.contains(',')) {
+              final b64Part = mediaData.split(',').last;
+              final approxBytes = (b64Part.length * 3) ~/ 4;
+              if (approxBytes > 0) {
+                attSize = approxBytes < 1024 * 1024
+                    ? '${(approxBytes / 1024).toStringAsFixed(1)} KB'
+                    : '${(approxBytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+              }
+            }
+
+            if (isImageFile(attName) && mediaData != null && mediaData.startsWith('data:') && !mediaData.startsWith('data:image')) {
+              final b64 = mediaData.split(',').last;
+              final imgMime = detectMimeType(attName);
+              mediaData = 'data:${imgMime.startsWith('image/') ? imgMime : 'image/jpeg'};base64,$b64';
+            }
+          } else if (parsed['type'] == 'location') {
+            contentType = MessageContentType.location;
+            attName = (parsed['name'] ?? 'Lokasi') as String;
+            attSize = (parsed['address'] ?? '') as String;
+            contentText = rawCiphertext;
+          } else if (parsed['type'] == 'contact') {
+            contentType = MessageContentType.contact;
+            attName = (parsed['name'] ?? 'Kontak LAJU') as String;
+            attSize = (parsed['username'] ?? '') as String;
+            contentText = rawCiphertext;
+            if (rawCiphertext.startsWith('{')) {
+              try {
+                final pContact = jsonDecode(rawCiphertext);
+                if (pContact is Map) {
+                  attName = (pContact['name'] ?? 'Kontak LAJU') as String;
+                  attSize = (pContact['username'] ?? '') as String;
+                }
+              } catch (_) {}
+            }
+          } else if (parsed['type'] == 'sticker') {
+            contentType = MessageContentType.sticker;
+            attName = (parsed['stickerId'] ?? 'cat_thumbs_up') as String;
+            mediaData = parsed['assetPath'] as String? ?? parsed['media'] as String?;
+            contentText = (parsed['caption'] ?? '') as String;
+          } else if (parsed['type'] == 'reply') {
+            contentText = (parsed['text'] ?? '') as String;
+          } else if (parsed['type'] == 'wallpaper_change') {
+            contentType = MessageContentType.systemNotice;
+            final wpId = parsed['wallpaperId'] as String? ?? 'none';
+            final wpName = (parsed['wallpaperName'] ?? (wpId == 'none' ? 'Default Polos' : wpId)) as String;
+            final senderName = isOutgoing ? 'Anda' : (m['senderUser']?['username'] ?? 'Kontak');
+            contentText = wpId == 'none'
+                ? '$senderName menyetel wallpaper obrolan ke default'
+                : '$senderName mengubah wallpaper obrolan menjadi "$wpName"';
+            ChatAppearanceController.instance.syncRemoteChatWallpaper(conversationId, wpId);
+          }
+        }
+      } catch (_) {}
+    }
+
+    if (mediaData == null && contentType != MessageContentType.location && contentType != MessageContentType.sticker) {
+      if (msgType == 'STICKER') {
+        contentType = MessageContentType.sticker;
+        attName = rawCiphertext;
+      } else if (msgType == 'IMAGE' || rawCiphertext.startsWith('data:image')) {
+        contentType = MessageContentType.attachment;
+        mediaData = rawCiphertext;
+        attName = 'Foto.jpg';
+        contentText = '';
+      } else if (msgType == 'AUDIO' || rawCiphertext.startsWith('data:audio')) {
+        contentType = MessageContentType.voiceNote;
+        mediaData = rawCiphertext;
+        attName = 'Voice Note';
+        contentText = 'Pesan Suara';
+        attSize = '0:00';
+      } else if (msgType == 'DOCUMENT' || rawCiphertext.startsWith('data:') || rawCiphertext.startsWith('Dokumen')) {
+        contentType = MessageContentType.attachment;
+        mediaData = rawCiphertext.startsWith('data:') ? rawCiphertext : null;
+        attName = 'Dokumen';
+        contentText = '';
+      } else if (msgType == 'LOCATION' || rawCiphertext.contains('"type":"location"') || rawCiphertext.contains('"type": "location"')) {
+        contentType = MessageContentType.location;
+        contentText = rawCiphertext;
+      } else if (msgType == 'CONTACT' || rawCiphertext.contains('"type":"contact"') || rawCiphertext.contains('"type": "contact"')) {
+        contentType = MessageContentType.contact;
+        contentText = rawCiphertext;
+        if (rawCiphertext.startsWith('{')) {
+          try {
+            final parsed = jsonDecode(rawCiphertext);
+            if (parsed is Map) {
+              attName = (parsed['name'] ?? 'Kontak LAJU') as String;
+              attSize = (parsed['username'] ?? '') as String;
+            }
+          } catch (_) {}
+        }
+      } else if (msgType == 'ATTACHMENT') {
+        if (rawCiphertext.contains('"type":"contact"') || rawCiphertext.contains('"type": "contact"')) {
+          contentType = MessageContentType.contact;
+          contentText = rawCiphertext;
+          if (rawCiphertext.startsWith('{')) {
+            try {
+              final parsed = jsonDecode(rawCiphertext);
+              if (parsed is Map) {
+                attName = (parsed['name'] ?? 'Kontak LAJU') as String;
+                attSize = (parsed['username'] ?? '') as String;
+              }
+            } catch (_) {}
+          }
+        } else if (rawCiphertext.startsWith('{')) {
+          try {
+            final parsed = jsonDecode(rawCiphertext);
+            if (parsed is Map) {
+              mediaData = parsed['media'] as String?;
+              attName = (parsed['fileName'] ?? 'Dokumen') as String;
+              attSize = (parsed['fileSize'] ?? '') as String;
+              contentText = (parsed['caption'] ?? '') as String;
+            } else {
+              contentText = '';
+            }
+          } catch (_) {
+            contentText = '';
+          }
+        } else if (rawCiphertext.startsWith('data:')) {
+          mediaData = rawCiphertext;
+          attName = 'Dokumen';
+          contentText = '';
+        } else {
+          contentText = rawCiphertext;
+        }
+      }
+    }
+
+    final isDeletedState = m['state'] == 'DELETED' || rawCiphertext == '__DELETED_FOR_EVERYONE__';
+
+    MessageDeliveryStatus deliveryStatus = MessageDeliveryStatus.delivered;
+    final mState = m['state'] as String?;
+    final deliveries = m['deliveries'] as List?;
+    if (mState == 'READ') {
+      deliveryStatus = MessageDeliveryStatus.read;
+    } else if (deliveries != null && deliveries.isNotEmpty) {
+      final hasRead = deliveries.any((d) => d is Map && d['status'] == 'READ');
+      if (hasRead) {
+        deliveryStatus = MessageDeliveryStatus.read;
+      }
+    }
+
+    return MessageModel(
+      id: m['id'] ?? '',
+      clientMessageId: m['clientMessageId'] as String?,
+      conversationId: conversationId,
+      senderName: isOutgoing ? 'You' : (m['senderUser']?['username'] ?? 'Contact'),
+      content: isDeletedState ? '__DELETED_FOR_EVERYONE__' : contentText,
+      attachmentPath: isDeletedState ? null : mediaData,
+      attachmentName: isDeletedState ? null : attName,
+      attachmentSize: isDeletedState ? null : attSize,
+      contentType: isDeletedState ? MessageContentType.text : contentType,
+      timestamp: DateHelper.parseUtc(m['createdAt']),
+      isOutgoing: isOutgoing,
+      status: deliveryStatus,
+      replyTo: isDeletedState ? null : parsedReplyTo,
+      reactions: isDeletedState ? const [] : reactionsList,
+      isDeleted: isDeletedState,
+    );
   }
 
   /// Send message to conversation (supports text, images, audio voice notes, documents, and replies)
@@ -1615,22 +1783,20 @@ class ConversationService {
   }
 
   /// Clear all messages of a conversation locally on this device
-  Future<void> clearConversationMessages(String conversationId) async {
+  /// Clear conversation messages for current user only (persisted on server & local)
+  Future<void> clearChatForMe(String conversationId) async {
     final effectiveConvId = _tempToRealConvMap[conversationId] ?? conversationId;
 
-    // 1. Clear in-memory messages
+    // 1. Clear locally first for instant UI response
     _inMemoryMessages[conversationId] = [];
     if (effectiveConvId != conversationId) {
       _inMemoryMessages[effectiveConvId] = [];
     }
-
-    // 2. Clear SQLite local database messages
     await LocalDatabase.instance.clearMessages(conversationId);
     if (effectiveConvId != conversationId) {
       await LocalDatabase.instance.clearMessages(effectiveConvId);
     }
 
-    // 3. Save cleared timestamp to SharedPreferences so background sync does not resurrect old messages
     final nowIso = DateTime.now().toIso8601String();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('laju_chat_cleared_at_$conversationId', nowIso);
@@ -1638,7 +1804,6 @@ class ConversationService {
       await prefs.setString('laju_chat_cleared_at_$effectiveConvId', nowIso);
     }
 
-    // 4. Update conversation snippet in local conversation list
     final currentList = inMemoryConversations ?? conversationsNotifier.value;
     final idx = currentList.indexWhere((c) => c.id == conversationId || c.id == effectiveConvId);
     if (idx != -1) {
@@ -1652,6 +1817,61 @@ class ConversationService {
       conversationsNotifier.value = List.from(currentList);
       await LocalDatabase.instance.upsertConversations([updated]);
     }
+
+    // 2. Call backend to persist clearedAt in Postgres
+    try {
+      await ApiClient.instance.post(
+        ApiEndpoints.conversationClearForMe(effectiveConvId),
+      );
+    } catch (e) {
+      debugPrint('[ConversationService] clearChatForMe backend error: $e');
+    }
   }
+
+  /// Permanently clear conversation messages for all members (owner/admin)
+  Future<void> clearChatForAll(String conversationId) async {
+    final effectiveConvId = _tempToRealConvMap[conversationId] ?? conversationId;
+
+    _inMemoryMessages[conversationId] = [];
+    if (effectiveConvId != conversationId) {
+      _inMemoryMessages[effectiveConvId] = [];
+    }
+    await LocalDatabase.instance.clearMessages(conversationId);
+    if (effectiveConvId != conversationId) {
+      await LocalDatabase.instance.clearMessages(effectiveConvId);
+    }
+
+    final nowIso = DateTime.now().toIso8601String();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('laju_chat_cleared_at_$conversationId', nowIso);
+    if (effectiveConvId != conversationId) {
+      await prefs.setString('laju_chat_cleared_at_$effectiveConvId', nowIso);
+    }
+
+    final currentList = inMemoryConversations ?? conversationsNotifier.value;
+    final idx = currentList.indexWhere((c) => c.id == conversationId || c.id == effectiveConvId);
+    if (idx != -1) {
+      final old = currentList[idx];
+      final updated = old.copyWith(
+        lastMessage: '',
+        unreadCount: 0,
+      );
+      currentList[idx] = updated;
+      inMemoryConversations = List.from(currentList);
+      conversationsNotifier.value = List.from(currentList);
+      await LocalDatabase.instance.upsertConversations([updated]);
+    }
+
+    try {
+      await ApiClient.instance.post(
+        ApiEndpoints.conversationClearAll(effectiveConvId),
+      );
+    } catch (e) {
+      debugPrint('[ConversationService] clearChatForAll backend error: $e');
+    }
+  }
+
+  /// Backward-compatible alias
+  Future<void> clearConversationMessages(String conversationId) => clearChatForMe(conversationId);
 }
 

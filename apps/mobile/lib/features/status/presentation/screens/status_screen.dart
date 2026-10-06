@@ -82,6 +82,10 @@ class StatusScreenState extends State<StatusScreen> with AutomaticKeepAliveClien
       }
     }
     _loadStatuses();
+    // Live push updates from contacts via WebSocket
+    ChatWebSocketService.instance.onStatusUpdate = (_) {
+      if (mounted) _loadStatuses();
+    };
     // Background polling every 15 seconds for live updates from contacts
     _pollingTimer = Timer.periodic(const Duration(seconds: 15), (_) => _loadStatuses());
   }
@@ -1092,6 +1096,7 @@ class StatusScreenState extends State<StatusScreen> with AutomaticKeepAliveClien
 
   @override
   void dispose() {
+    ChatWebSocketService.instance.onStatusUpdate = null;
     _pollingTimer?.cancel();
     _searchController.dispose();
     super.dispose();

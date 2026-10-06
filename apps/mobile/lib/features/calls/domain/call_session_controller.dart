@@ -37,6 +37,9 @@ class CallSessionController extends ChangeNotifier with WidgetsBindingObserver {
         endCall();
       }
     };
+    ChatWebSocketService.instance.onCallIncoming = (_) {
+      checkForIncomingCalls();
+    };
   }
   static final CallSessionController instance = CallSessionController._();
 
@@ -251,6 +254,7 @@ class CallSessionController extends ChangeNotifier with WidgetsBindingObserver {
     required String groupName,
     required List<String> initialParticipants,
     required bool isVideo,
+    String? conversationId,
   }) {
     _stopCallAudio();
     _playCallTone('stop');
@@ -274,6 +278,25 @@ class CallSessionController extends ChangeNotifier with WidgetsBindingObserver {
 
     _startTimer();
     _initCallAudio();
+
+    // Initialize local WebRTC stream and preview for group call
+    WebRTCCallService.instance.initializePeerConnection(
+      isVideo: isVideo,
+      isAudio: true,
+    ).catchError((e) {
+      debugPrint('[CallSessionController] Group call local media init error: $e');
+    });
+
+    if (conversationId != null && conversationId.isNotEmpty) {
+      _dispatchGroupCallToBackend(conversationId, isVideo: isVideo);
+    } else {
+      // Connect to WebRTC signaling gateway for group call room
+      WebRTCCallService.instance.connectSignaling(
+        callId: _callId!,
+        isInitiator: true,
+      );
+    }
+
     notifyListeners();
   }
 
@@ -609,6 +632,41 @@ class CallSessionController extends ChangeNotifier with WidgetsBindingObserver {
     } catch (_) {}
   }
 
+  void _dispatchGroupCallToBackend(String conversationId, {bool isVideo = false}) async {
+    try {
+      if (ApiClient.instance.authToken != null) {
+        final resp = await ApiClient.instance.post(
+          ApiEndpoints.callGroup,
+          body: {
+            'conversationId': conversationId,
+            'isVideo': isVideo,
+          },
+        );
+        if (resp.isSuccess && resp.rawJson is Map && resp.rawJson['id'] != null) {
+          final realId = resp.rawJson['id'].toString();
+          _callId = realId;
+          _handledCallIds.add(realId);
+          _startCallStatusPoller();
+          WebRTCCallService.instance.connectSignaling(
+            callId: realId,
+            isInitiator: true,
+          ).catchError((_) {});
+        } else {
+          WebRTCCallService.instance.connectSignaling(
+            callId: _callId!,
+            isInitiator: true,
+          ).catchError((_) {});
+        }
+      }
+    } catch (e) {
+      debugPrint('[CallSessionController] _dispatchGroupCallToBackend error: $e');
+      WebRTCCallService.instance.connectSignaling(
+        callId: _callId!,
+        isInitiator: true,
+      ).catchError((_) {});
+    }
+  }
+
   void _dispatchEndCallToBackend(String id) async {
     try {
       if (ApiClient.instance.authToken != null && !id.startsWith('call-') && !id.startsWith('group-')) {
@@ -655,6 +713,12 @@ class CallSessionController extends ChangeNotifier with WidgetsBindingObserver {
         final callerAvatar = (data['initiatorAvatar'] as String?) ?? (data['avatarUrl'] as String?);
         final resolvedAvatar = callerAvatar ?? _resolveAvatar(callerId, callerPhone, callerName);
         final isVideo = data['isVideo'] == true;
+        final isGroup = data['isGroup'] == true;
+        final groupName = data['groupName'] as String?;
+        final conversationId = data['conversationId'] as String?;
+        final effectiveDisplayName = isGroup && groupName != null && groupName.isNotEmpty
+            ? groupName
+            : callerName;
 
         if (incomingCallId != null &&
             incomingCallId != _callId &&
@@ -662,7 +726,7 @@ class CallSessionController extends ChangeNotifier with WidgetsBindingObserver {
             incomingCallId != _lastRingingCallId &&
             incomingCallId != _declinedCallId) {
           _lastRingingCallId = incomingCallId;
-          _lastRingingCallerName = callerName;
+          _lastRingingCallerName = effectiveDisplayName;
           _lastRingingCallerId = callerId;
           _lastRingingCallerPhone = callerPhone;
           _lastRingingCallerAvatar = resolvedAvatar;
@@ -675,20 +739,32 @@ class CallSessionController extends ChangeNotifier with WidgetsBindingObserver {
             _systemNotifChannel.invokeMethod('cancelNotification', {'id': 9999}).catchError((_) {});
             _systemNotifChannel.invokeMethod('cancelAll').catchError((_) {});
             AppNotificationService.instance.showIncomingCall(
-              callerName: callerName,
+              callerName: isGroup ? '$effectiveDisplayName (Grup)' : effectiveDisplayName,
               isVideo: isVideo,
               avatarUrl: resolvedAvatar,
-              onAccept: () => answerIncomingCall(
-                incomingCallId,
-                callerName: callerName,
-                isVideo: isVideo,
-                callerId: callerId,
-                callerPhone: callerPhone,
-                avatarUrl: resolvedAvatar,
-              ),
+              onAccept: () {
+                if (isGroup) {
+                  answerIncomingGroupCall(
+                    incomingCallId,
+                    groupName: effectiveDisplayName,
+                    conversationId: conversationId,
+                    isVideo: isVideo,
+                    callerName: callerName,
+                  );
+                } else {
+                  answerIncomingCall(
+                    incomingCallId,
+                    callerName: callerName,
+                    isVideo: isVideo,
+                    callerId: callerId,
+                    callerPhone: callerPhone,
+                    avatarUrl: resolvedAvatar,
+                  );
+                }
+              },
               onDecline: () => declineIncomingCall(
                 incomingCallId,
-                callerName: callerName,
+                callerName: effectiveDisplayName,
                 isVideo: isVideo,
                 callerId: callerId,
                 callerPhone: callerPhone,
@@ -699,7 +775,7 @@ class CallSessionController extends ChangeNotifier with WidgetsBindingObserver {
             // Background / Minimized: Trigger native Android system notification
             _systemNotifChannel.invokeMethod('showCallNotification', {
               'callId': incomingCallId,
-              'callerName': callerName,
+              'callerName': isGroup ? '$effectiveDisplayName (Grup)' : effectiveDisplayName,
               'isVideo': isVideo,
             }).catchError((_) {});
           }
@@ -790,6 +866,88 @@ class CallSessionController extends ChangeNotifier with WidgetsBindingObserver {
         }
       }
     });
+  }
+
+  Future<void> answerIncomingGroupCall(
+    String incomingCallId, {
+    required String groupName,
+    required String? conversationId,
+    required bool isVideo,
+    String? callerName,
+  }) async {
+    _isActive = true;
+    _handledCallIds.add(incomingCallId);
+    _lastRingingCallId = incomingCallId;
+    _lastRingingCallerName = null;
+    _lastRingingCallerId = null;
+    _lastRingingCallerPhone = null;
+    _lastRingingCallerAvatar = null;
+    _systemNotifChannel.invokeMethod('cancelNotification', {'id': 9999}).catchError((_) {});
+    _systemNotifChannel.invokeMethod('cancelAll').catchError((_) {});
+    AppNotificationService.instance.dismissAll();
+
+    var effectiveIsVideo = isVideo;
+    final permResult = await CallPermissionService.instance.checkAndRequestPermissions(
+      isVideo: isVideo,
+      context: AppNavigation.navigatorKey.currentContext,
+    );
+
+    if (permResult == CallPermissionResult.denied) {
+      await declineIncomingCall(
+        incomingCallId,
+        callerName: groupName,
+        isVideo: isVideo,
+      );
+      return;
+    }
+
+    if (isVideo && permResult == CallPermissionResult.audioOnlyGranted) {
+      effectiveIsVideo = false;
+    }
+
+    _stopCallAudio();
+    _callId = incomingCallId;
+    _title = groupName;
+    _groupName = groupName;
+    _isGroup = true;
+    _isOutgoing = false;
+    _isVideo = effectiveIsVideo;
+    _isVideoOn = effectiveIsVideo;
+    _isSpeaker = true;
+    _durationSeconds = 0;
+    _hasLoggedCurrentCall = false;
+    _status = CallStatus.connected;
+    _startTimer();
+    _initCallAudio();
+    _startCallStatusPoller();
+
+    WebRTCCallService.instance.initializePeerConnection(
+      isVideo: effectiveIsVideo,
+      isAudio: true,
+    ).catchError((_) {});
+
+    WebRTCCallService.instance.connectSignaling(
+      callId: incomingCallId,
+      isInitiator: false,
+    ).catchError((_) {});
+
+    notifyListeners();
+
+    try {
+      await ApiClient.instance.post(ApiEndpoints.callAccept(incomingCallId));
+    } catch (_) {}
+
+    AppNavigation.navigatorKey.currentState?.push(
+      MaterialPageRoute(
+        builder: (_) => ActiveGroupCallScreen(
+          groupName: groupName,
+          initialParticipants: callerName != null ? [callerName] : [],
+          isVideo: effectiveIsVideo,
+          conversationId: conversationId,
+          returnToCallsScreen: false,
+        ),
+      ),
+    );
   }
 
   Future<void> answerIncomingCall(

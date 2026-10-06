@@ -11,6 +11,7 @@ class GroupMemberItem {
   final String phone;
   final String role;
   final bool isAdmin;
+  final bool isOwner;
   final bool isOnline;
   final String? avatarUrl;
 
@@ -20,6 +21,7 @@ class GroupMemberItem {
     required this.phone,
     required this.role,
     this.isAdmin = false,
+    this.isOwner = false,
     this.isOnline = false,
     this.avatarUrl,
   });
@@ -30,6 +32,7 @@ class GroupMemberItem {
     String? phone,
     String? role,
     bool? isAdmin,
+    bool? isOwner,
     bool? isOnline,
     String? avatarUrl,
   }) {
@@ -39,6 +42,7 @@ class GroupMemberItem {
       phone: phone ?? this.phone,
       role: role ?? this.role,
       isAdmin: isAdmin ?? this.isAdmin,
+      isOwner: isOwner ?? this.isOwner,
       isOnline: isOnline ?? this.isOnline,
       avatarUrl: avatarUrl ?? this.avatarUrl,
     );
@@ -184,6 +188,18 @@ class GroupController extends ChangeNotifier {
     return user.isAdmin;
   }
 
+  bool isCurrentUserOwner(String groupId) {
+    final group = _groups[groupId];
+    if (group == null) return false;
+    final curUserId = ApiClient.instance.userId;
+    if (group.creatorId == curUserId || (curUserId == null && group.creatorId == 'm-you')) return true;
+    final user = group.members.firstWhere(
+      (m) => (curUserId != null && m.id == curUserId) || m.id == 'm-you',
+      orElse: () => const GroupMemberItem(id: '', name: '', phone: '', role: ''),
+    );
+    return user.isOwner;
+  }
+
   GroupModel createGroup({
     String? id,
     required String name,
@@ -243,22 +259,47 @@ class GroupController extends ChangeNotifier {
     return newGroup;
   }
 
-  /// Prepare avatar payload: converts local file paths to Base64 data URLs for cross-device compatibility
+  /// Prepare avatar payload: uploads local file/base64 to backend storage and returns public URL
   Future<String?> _prepareAvatarPayload(String? path) async {
     if (path == null || path.trim().isEmpty) return null;
     final trimmed = path.trim();
-    if (trimmed.startsWith('data:') || trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+    if (trimmed.startsWith('http://') ||
+        trimmed.startsWith('https://') ||
+        trimmed.startsWith('/attachments/') ||
+        trimmed.startsWith('attachments/')) {
       return trimmed;
     }
+
     try {
-      final file = File(trimmed);
-      if (await file.exists()) {
-        final bytes = await file.readAsBytes();
-        final base64String = base64Encode(bytes);
-        return 'data:image/jpeg;base64,$base64String';
+      String base64String = '';
+      if (trimmed.startsWith('data:')) {
+        base64String = trimmed;
+      } else {
+        final file = File(trimmed);
+        if (await file.exists()) {
+          final bytes = await file.readAsBytes();
+          base64String = base64Encode(bytes);
+        }
+      }
+
+      if (base64String.isNotEmpty) {
+        final uploadResp = await ApiClient.instance.post(
+          ApiEndpoints.attachmentAvatar,
+          body: {
+            'base64Data': base64String,
+            'filename': 'group_avatar_${DateTime.now().millisecondsSinceEpoch}.jpg',
+            'mimeType': 'image/jpeg',
+          },
+        );
+        if (uploadResp.isSuccess && uploadResp.rawJson is Map) {
+          final url = uploadResp.rawJson['url'] as String?;
+          if (url != null && url.isNotEmpty) {
+            return url;
+          }
+        }
       }
     } catch (e) {
-      debugPrint('[GroupController] _prepareAvatarPayload error: $e');
+      debugPrint('[GroupController] _prepareAvatarPayload upload error: $e');
     }
     return trimmed;
   }
@@ -350,6 +391,15 @@ class GroupController extends ChangeNotifier {
     }
   }
 
+  Future<bool> transferOwnership(String groupId, String targetMemberId) async {
+    final success = await ConversationService.instance.transferGroupOwnership(groupId, targetMemberId);
+    if (success) {
+      await fetchGroupFromBackend(groupId);
+      notifyListeners();
+    }
+    return success;
+  }
+
   void setDisappearingSeconds(String groupId, int? seconds) {
     final group = _groups[groupId];
     if (group != null) {
@@ -395,15 +445,16 @@ class GroupController extends ChangeNotifier {
               final user = m['user'] as Map?;
               final uId = (m['userId'] ?? user?['id'] ?? '').toString();
               final isCurrentUser = uId == curUserId;
-              final role = (m['role'] ?? 'MEMBER').toString();
-              final isAdmin = role == 'OWNER' || role == 'ADMIN';
+              final isOwner = role == 'OWNER';
+              final isAdmin = isOwner || role == 'ADMIN';
 
               groupMembers.add(GroupMemberItem(
                 id: uId,
                 name: isCurrentUser ? 'Anda' : (user?['username'] ?? 'User'),
                 phone: (user?['phoneNumber'] ?? '').toString(),
-                role: role == 'OWNER' ? 'Admin Grup • Owner' : (isAdmin ? 'Admin Grup' : 'Anggota'),
+                role: isOwner ? 'Admin Grup • Owner' : (isAdmin ? 'Admin Grup' : 'Anggota'),
                 isAdmin: isAdmin,
+                isOwner: isOwner,
                 isOnline: true,
                 avatarUrl: user?['avatarUrl'] as String?,
               ));

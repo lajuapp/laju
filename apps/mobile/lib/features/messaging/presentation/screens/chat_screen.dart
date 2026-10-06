@@ -60,6 +60,8 @@ class _ChatScreenState extends State<ChatScreen> {
   MessageModel? _replyingTo;
   MessageModel? _editingMessage;
   Timer? _pollTimer;
+  StreamSubscription<MessageModel>? _rtMsgSub;
+  StreamSubscription<Map<String, String>>? _rtDelSub;
   bool _showScrollToBottom = false;
   bool _initialScrollDone = false;
 
@@ -95,6 +97,35 @@ class _ChatScreenState extends State<ChatScreen> {
     _loadMessagesFromApi();
     _startPolling();
 
+    // Listen to 0ms instant real-time message stream from WebSocket
+    _rtMsgSub = ConversationService.instance.realtimeMessageStream.listen((msg) {
+      if (!mounted) return;
+      final realId = ConversationService.instance.resolveConversationId(_conversationId);
+      if (msg.conversationId == _conversationId || msg.conversationId == realId) {
+        _mergeAndSetMessages([msg]);
+      }
+    });
+
+    _rtDelSub = ConversationService.instance.realtimeMessageDeletedStream.listen((event) {
+      if (!mounted) return;
+      final cId = event['conversationId'];
+      final mId = event['messageId'];
+      final realId = ConversationService.instance.resolveConversationId(_conversationId);
+      if ((cId == _conversationId || cId == realId) && mId != null) {
+        final idx = _messages.indexWhere((m) => m.id == mId);
+        if (idx != -1) {
+          setState(() {
+            _messages[idx] = _messages[idx].copyWith(
+              isDeleted: true,
+              content: '__DELETED_FOR_EVERYONE__',
+            );
+          });
+        }
+      }
+    });
+
+    ChatWebSocketService.instance.isConnectedNotifier.addListener(_onWsConnectionChanged);
+
     final convs = ConversationService.instance.conversationsNotifier.value.where((c) => c.id == _conversationId).toList();
     if (convs.isNotEmpty && convs.first.disappearingSeconds != null) {
       final s = convs.first.disappearingSeconds!;
@@ -117,6 +148,12 @@ class _ChatScreenState extends State<ChatScreen> {
             _conversationId,
             widget.contactUserId ?? widget.title,
           );
+  }
+
+  void _onWsConnectionChanged() {
+    if (mounted) {
+      _startPolling();
+    }
   }
 
   Future<void> _resolveBackendConversation() async {
@@ -146,7 +183,8 @@ class _ChatScreenState extends State<ChatScreen> {
 
   void _startPolling() {
     _pollTimer?.cancel();
-    _pollTimer = Timer.periodic(const Duration(milliseconds: 1000), (_) async {
+    final interval = ChatWebSocketService.instance.isConnected ? 15000 : 1000;
+    _pollTimer = Timer.periodic(Duration(milliseconds: interval), (_) async {
       _syncMessages();
     });
   }
@@ -251,6 +289,9 @@ class _ChatScreenState extends State<ChatScreen> {
       ConversationService.instance.currentActiveConversationId = null;
     }
     _pollTimer?.cancel();
+    _rtMsgSub?.cancel();
+    _rtDelSub?.cancel();
+    ChatWebSocketService.instance.isConnectedNotifier.removeListener(_onWsConnectionChanged);
     _inChatSearchController.dispose();
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
@@ -876,6 +917,24 @@ class _ChatScreenState extends State<ChatScreen> {
                 ),
               ),
             ),
+            OutlinedButton(
+              style: OutlinedButton.styleFrom(
+                foregroundColor: isDark ? Colors.white : AppColors.textPrimary,
+                side: BorderSide(color: isDark ? Colors.white24 : Colors.grey.shade300),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+              onPressed: () async {
+                Navigator.pop(dialogCtx);
+                setState(() {
+                  _messages.clear();
+                });
+                await ConversationService.instance.clearChatForMe(_conversationId);
+                if (context.mounted) {
+                  LajuToast.info(context, 'Riwayat chat berhasil dibersihkan untuk Anda');
+                }
+              },
+              child: const Text('Untuk Saya', style: TextStyle(fontWeight: FontWeight.w600)),
+            ),
             ElevatedButton(
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.danger,
@@ -887,12 +946,12 @@ class _ChatScreenState extends State<ChatScreen> {
                 setState(() {
                   _messages.clear();
                 });
-                await ConversationService.instance.clearConversationMessages(_conversationId);
+                await ConversationService.instance.clearChatForAll(_conversationId);
                 if (context.mounted) {
-                  LajuToast.info(context, 'Chat berhasil dibersihkan');
+                  LajuToast.info(context, 'Pesan chat dihapus untuk kedua pihak');
                 }
               },
-              child: const Text('Bersihkan Pesan', style: TextStyle(fontWeight: FontWeight.w700)),
+              child: const Text('Hapus Semua', style: TextStyle(fontWeight: FontWeight.w700)),
             ),
           ],
         );

@@ -45,4 +45,6 @@ export 'utils/safety_number_helper.dart';
 export 'network/api_client.dart';
 export 'network/api_endpoints.dart';
 export 'network/media_url_resolver.dart';
+export 'network/chat_websocket_service.dart';
+
 

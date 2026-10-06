@@ -1,10 +1,12 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter_webrtc/flutter_webrtc.dart';
 import '../../../../core/core.dart';
 import '../../../conversations/domain/conversation_service.dart';
 import '../../../home/presentation/screens/home_screen.dart';
 import '../../../settings/domain/account_controller.dart';
 import '../../domain/call_session_controller.dart';
+import '../../domain/webrtc_call_service.dart';
 
 enum ParticipantCallStatus { ringing, connected, unanswered }
 
@@ -39,6 +41,7 @@ class ActiveGroupCallScreen extends StatefulWidget {
   final List<String> initialParticipants;
   final bool isVideo;
   final bool returnToCallsScreen;
+  final String? conversationId;
 
   const ActiveGroupCallScreen({
     super.key,
@@ -46,6 +49,7 @@ class ActiveGroupCallScreen extends StatefulWidget {
     required this.initialParticipants,
     this.isVideo = false,
     this.returnToCallsScreen = false,
+    this.conversationId,
   });
 
   @override
@@ -79,6 +83,7 @@ class _ActiveGroupCallScreenState extends State<ActiveGroupCallScreen>
           groupName: widget.groupName,
           initialParticipants: widget.initialParticipants,
           isVideo: widget.isVideo,
+          conversationId: widget.conversationId,
         );
       });
     } else {
@@ -140,6 +145,29 @@ class _ActiveGroupCallScreenState extends State<ActiveGroupCallScreen>
       vsync: this,
       duration: const Duration(milliseconds: 600),
     )..repeat(reverse: true);
+
+    WebRTCCallService.instance.onSignalingEvent = (event) {
+      if (!mounted) return;
+      final type = ((event['type'] as String?) ?? (event['event'] as String?) ?? '').toUpperCase();
+      if (type == 'PEER_JOINED' || type == 'CALL_ACCEPTED') {
+        final uid = (event['userId'] ?? event['participantId'])?.toString();
+        setState(() {
+          for (final p in _participants) {
+            if (!p.isSelf && (p.id == uid || p.name == uid || p.status == ParticipantCallStatus.ringing)) {
+              p.status = ParticipantCallStatus.connected;
+              break;
+            }
+          }
+        });
+      } else if (type == 'PEER_LEFT') {
+        final uid = event['userId']?.toString();
+        setState(() {
+          _participants.removeWhere((p) => !p.isSelf && (p.id == uid || p.name == uid));
+        });
+      } else if (type == 'CALL_ENDED') {
+        _exitCall();
+      }
+    };
 
     _startCallTimers();
   }
@@ -248,6 +276,7 @@ class _ActiveGroupCallScreenState extends State<ActiveGroupCallScreen>
 
   @override
   void dispose() {
+    WebRTCCallService.instance.onSignalingEvent = null;
     _tickerTimer?.cancel();
     _pulseController.dispose();
     _equalizerController.dispose();
@@ -539,8 +568,23 @@ class _ActiveGroupCallScreenState extends State<ActiveGroupCallScreen>
                 child: Stack(
                   alignment: Alignment.center,
                   children: [
-                  // Video Stream Background if video is active for this user
-                  if ((participant.isSelf && _isSelfVideoOn) || (!participant.isSelf && participant.isVideoOn && isConnected))
+                  // Video Stream View if video is active for this user
+                  if (participant.isSelf && _isSelfVideoOn && WebRTCCallService.instance.isLocalVideoReady && WebRTCCallService.instance.localRenderer != null)
+                    Positioned.fill(
+                      child: RTCVideoView(
+                        WebRTCCallService.instance.localRenderer!,
+                        mirror: true,
+                        objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
+                      ),
+                    )
+                  else if (!participant.isSelf && participant.isVideoOn && isConnected && WebRTCCallService.instance.isRemoteVideoReady && WebRTCCallService.instance.remoteRenderer != null)
+                    Positioned.fill(
+                      child: RTCVideoView(
+                        WebRTCCallService.instance.remoteRenderer!,
+                        objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
+                      ),
+                    )
+                  else if ((participant.isSelf && _isSelfVideoOn) || (!participant.isSelf && participant.isVideoOn && isConnected))
                     Positioned.fill(
                       child: Container(
                         decoration: BoxDecoration(

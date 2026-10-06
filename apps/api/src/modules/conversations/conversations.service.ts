@@ -202,7 +202,9 @@ export class ConversationsService {
         const conv = await tx.conversation.create({
           data: {
             type: dto.type,
-            title: dto.title || 'Grup Baru'
+            title: dto.title || 'Grup Baru',
+            description: dto.description || null,
+            avatarUrl: dto.avatarUrl || null,
           }
         });
 
@@ -363,7 +365,7 @@ export class ConversationsService {
         return {
           ...conv,
           isOnline: convIsOnline,
-          avatarUrl: convAvatarUrl ?? undefined,
+          avatarUrl: conv.avatarUrl ?? convAvatarUrl ?? undefined,
           purgedAt: purgedAt ?? undefined,
           members: enrichedMembers
         };
@@ -445,8 +447,8 @@ export class ConversationsService {
     return {
       ...conv,
       isOnline: convIsOnline,
-      description: description ?? undefined,
-      avatarUrl: avatarUrl ?? undefined,
+      description: conv.description ?? description ?? undefined,
+      avatarUrl: conv.avatarUrl ?? avatarUrl ?? undefined,
       wallpaperId: wallpaperId ?? undefined,
       hasKillPin: !!killPinHash,
       authorizedWipeUserIds,
@@ -508,7 +510,7 @@ export class ConversationsService {
     });
   }
 
-  async leaveGroup(userId: string, conversationId: string) {
+  async leaveGroup(userId: string, conversationId: string, newOwnerUserId?: string) {
     const member = await this.prisma.conversationMember.findFirst({
       where: { conversationId, userId, leftAt: null }
     });
@@ -516,21 +518,110 @@ export class ConversationsService {
       throw new NotFoundException('Not a member');
     }
 
-    await this.prisma.$transaction([
-      this.prisma.conversationMember.update({
+    return this.prisma.$transaction(async (tx) => {
+      if (member.role === 'OWNER') {
+        const otherActiveMembers = await tx.conversationMember.findMany({
+          where: { conversationId, userId: { not: userId }, leftAt: null },
+          orderBy: [
+            { role: 'asc' }, // ADMIN comes before MEMBER alphabetically
+            { joinedAt: 'asc' }
+          ]
+        });
+
+        if (otherActiveMembers.length > 0) {
+          const targetNewOwner = newOwnerUserId
+            ? otherActiveMembers.find((m) => m.userId === newOwnerUserId) || otherActiveMembers[0]
+            : otherActiveMembers[0];
+
+          await tx.conversationMember.update({
+            where: { id: targetNewOwner.id },
+            data: { role: 'OWNER' }
+          });
+
+          await tx.conversationEvent.create({
+            data: {
+              conversationId,
+              eventType: 'OWNERSHIP_TRANSFERRED',
+              payload: JSON.stringify({ previousOwnerId: userId, newOwnerId: targetNewOwner.userId })
+            }
+          });
+        }
+      }
+
+      await tx.conversationMember.update({
         where: { id: member.id },
         data: { leftAt: new Date() }
-      }),
-      this.prisma.conversationEvent.create({
+      });
+
+      await tx.conversationEvent.create({
         data: {
           conversationId,
           eventType: 'MEMBER_LEFT',
           payload: JSON.stringify({ userId })
         }
+      });
+
+      return { success: true };
+    });
+  }
+
+  async transferOwnership(userId: string, conversationId: string, newOwnerUserId: string) {
+    const caller = await this.prisma.conversationMember.findFirst({
+      where: { conversationId, userId, leftAt: null }
+    });
+    if (!caller || caller.role !== 'OWNER') {
+      throw new ForbiddenException('Only the current group owner can transfer ownership');
+    }
+
+    if (userId === newOwnerUserId) {
+      throw new BadRequestException('Cannot transfer ownership to yourself');
+    }
+
+    const target = await this.prisma.conversationMember.findFirst({
+      where: { conversationId, userId: newOwnerUserId, leftAt: null }
+    });
+    if (!target) {
+      throw new NotFoundException('Target user is not an active member of this group');
+    }
+
+    await this.prisma.$transaction([
+      this.prisma.conversationMember.update({
+        where: { id: caller.id },
+        data: { role: 'ADMIN' }
+      }),
+      this.prisma.conversationMember.update({
+        where: { id: target.id },
+        data: { role: 'OWNER' }
+      }),
+      this.prisma.conversationEvent.create({
+        data: {
+          conversationId,
+          eventType: 'OWNERSHIP_TRANSFERRED',
+          payload: JSON.stringify({ previousOwnerId: userId, newOwnerId: newOwnerUserId })
+        }
       })
     ]);
 
-    return { success: true };
+    try {
+      const activeMembers = await this.prisma.conversationMember.findMany({
+        where: { conversationId, leftAt: null },
+        select: { userId: true }
+      });
+      const publisher = this.redis.getClient();
+      if (publisher) {
+        const payload = JSON.stringify({
+          type: 'OWNERSHIP_TRANSFERRED',
+          conversationId,
+          previousOwnerId: userId,
+          newOwnerId: newOwnerUserId
+        });
+        for (const m of activeMembers) {
+          publisher.publish(`user:${m.userId}`, payload).catch(() => {});
+        }
+      }
+    } catch (_) {}
+
+    return { success: true, newOwnerId: newOwnerUserId };
   }
 
   async updateConversation(userId: string, conversationId: string, dto: UpdateConversationDto) {
@@ -544,6 +635,12 @@ export class ConversationsService {
     const updateData: any = {};
     if (dto.title !== undefined) {
       updateData.title = dto.title;
+    }
+    if (dto.description !== undefined) {
+      updateData.description = dto.description;
+    }
+    if (dto.avatarUrl !== undefined) {
+      updateData.avatarUrl = dto.avatarUrl;
     }
 
     const updated = await this.prisma.$transaction(async (tx) => {
@@ -772,6 +869,9 @@ export class ConversationsService {
         { state: 'DELETED' }
       ]
     };
+    if (member?.clearedAt) {
+      whereClause.createdAt = { gt: member.clearedAt };
+    }
     if (cursor !== undefined) {
       whereClause.sequence = { gt: cursor };
     }
@@ -1056,4 +1156,166 @@ export class ConversationsService {
       message: 'Seluruh riwayat obrolan grup telah dihancurkan secara permanen'
     };
   }
+
+  async clearChatForMe(userId: string, conversationId: string) {
+    let effectiveConversationId = conversationId;
+    let member = await this.prisma.conversationMember.findFirst({
+      where: { conversationId: effectiveConversationId, userId, leftAt: null }
+    });
+
+    if (!member && conversationId.startsWith('conv-')) {
+      const targetIdentifier = conversationId.substring(5).trim();
+      const targetUser = await this.resolveUser(targetIdentifier);
+      if (targetUser && targetUser.id !== userId) {
+        const otherUserId = targetUser.id;
+        const existingConv = await this.prisma.conversation.findFirst({
+          where: {
+            type: 'PERSONAL',
+            AND: [
+              { members: { some: { userId, leftAt: null } } },
+              { members: { some: { userId: otherUserId, leftAt: null } } }
+            ]
+          }
+        });
+        if (existingConv) {
+          effectiveConversationId = existingConv.id;
+          member = await this.prisma.conversationMember.findFirst({
+            where: { conversationId: effectiveConversationId, userId, leftAt: null }
+          });
+        }
+      }
+    }
+
+    if (!member) {
+      throw new ForbiddenException('Bukan anggota dari obrolan ini');
+    }
+
+    const now = new Date();
+    await this.prisma.conversationMember.update({
+      where: { id: member.id },
+      data: { clearedAt: now }
+    });
+
+    return {
+      success: true,
+      conversationId: effectiveConversationId,
+      clearedAt: now.toISOString()
+    };
+  }
+
+  async clearChatForAll(userId: string, conversationId: string) {
+    let effectiveConversationId = conversationId;
+    let member = await this.prisma.conversationMember.findFirst({
+      where: { conversationId: effectiveConversationId, userId, leftAt: null }
+    });
+
+    if (!member && conversationId.startsWith('conv-')) {
+      const targetIdentifier = conversationId.substring(5).trim();
+      const targetUser = await this.resolveUser(targetIdentifier);
+      if (targetUser && targetUser.id !== userId) {
+        const otherUserId = targetUser.id;
+        const existingConv = await this.prisma.conversation.findFirst({
+          where: {
+            type: 'PERSONAL',
+            AND: [
+              { members: { some: { userId, leftAt: null } } },
+              { members: { some: { userId: otherUserId, leftAt: null } } }
+            ]
+          }
+        });
+        if (existingConv) {
+          effectiveConversationId = existingConv.id;
+          member = await this.prisma.conversationMember.findFirst({
+            where: { conversationId: effectiveConversationId, userId, leftAt: null }
+          });
+        }
+      }
+    }
+
+    if (!member) {
+      throw new ForbiddenException('Bukan anggota dari obrolan ini');
+    }
+
+    const conv = await this.prisma.conversation.findUnique({
+      where: { id: effectiveConversationId }
+    });
+    if (!conv) {
+      throw new NotFoundException('Obrolan tidak ditemukan');
+    }
+
+    if (conv.type === 'GROUP' && member.role !== 'OWNER' && member.role !== 'ADMIN') {
+      throw new ForbiddenException('Hanya admin atau pemilik grup yang dapat menghapus pesan untuk semua orang');
+    }
+
+    // Clean up attachments
+    try {
+      const attachments = await this.prisma.attachment.findMany({
+        where: { message: { conversationId: effectiveConversationId } },
+        select: { blobId: true }
+      });
+      if (this.seaweedFs && attachments.length > 0) {
+        for (const att of attachments) {
+          if (att.blobId) {
+            this.seaweedFs.deleteBlob(att.blobId).catch(() => {});
+          }
+        }
+      }
+    } catch (_) {}
+
+    // Permanently delete messages
+    const deleteResult = await this.prisma.message.deleteMany({
+      where: { conversationId: effectiveConversationId }
+    });
+
+    const purgedAt = new Date().toISOString();
+
+    try {
+      await this.prisma.conversationEvent.create({
+        data: {
+          conversationId: effectiveConversationId,
+          eventType: 'CONVERSATION_PURGED',
+          payload: JSON.stringify({
+            purgedBy: userId,
+            deletedCount: deleteResult.count,
+            timestamp: purgedAt
+          })
+        }
+      });
+    } catch (_) {}
+
+    if (this.redis) {
+      try {
+        await this.redis.del(`conversation:${effectiveConversationId}:messages`);
+        await this.redis.del(`conversation:${effectiveConversationId}:lastMessage`);
+        await this.redis.set(`conversation:${effectiveConversationId}:purgedAt`, purgedAt);
+      } catch (_) {}
+    }
+
+    try {
+      const publisher = this.redis?.getClient();
+      if (publisher) {
+        const members = await this.prisma.conversationMember.findMany({
+          where: { conversationId: effectiveConversationId, leftAt: null },
+          select: { userId: true }
+        });
+        const payload = JSON.stringify({
+          type: 'CONVERSATION_PURGED',
+          conversationId: effectiveConversationId,
+          purgedBy: userId,
+          timestamp: purgedAt
+        });
+        for (const m of members) {
+          publisher.publish(`user:${m.userId}`, payload).catch(() => {});
+        }
+      }
+    } catch (_) {}
+
+    return {
+      success: true,
+      conversationId: effectiveConversationId,
+      deletedCount: deleteResult.count,
+      purgedAt
+    };
+  }
 }
+

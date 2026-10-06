@@ -137,3 +137,32 @@ export function useDeleteStickerItem() {
     },
   });
 }
+
+export function useUpdateStickerItem() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      id,
+      name,
+      emoji,
+      imageUrl,
+    }: {
+      id: string;
+      name?: string;
+      emoji?: string;
+      imageUrl?: string;
+    }) => {
+      const res = await apiClient.patch(`/admin/stickers/${id}`, {
+        name,
+        emoji,
+        imageUrl,
+      });
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'stickerPacks'] });
+    },
+  });
+}
+

@@ -59,6 +59,16 @@ export class CallsController {
     return this.callsService.createCall(userId, deviceId, calleeUserId, isVideo);
   }
 
+  @Post('group')
+  createGroupCall(
+    @CurrentUser('userId') userId: string,
+    @CurrentUser('deviceId') deviceId: string,
+    @Body('conversationId') conversationId: string,
+    @Body('isVideo') isVideo?: boolean
+  ) {
+    return this.callsService.createGroupCall(userId, deviceId, conversationId, isVideo);
+  }
+
   @Post(':id/accept')
   acceptCall(
     @CurrentUser('userId') userId: string,

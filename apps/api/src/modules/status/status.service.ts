@@ -92,7 +92,7 @@ export class StatusService implements OnModuleInit, OnModuleDestroy {
 
   async createStatus(userId: string, dto: CreateStatusDto) {
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours expiry
-    return this.prisma.userStatusStory.create({
+    const created = await this.prisma.userStatusStory.create({
       data: {
         userId,
         type: dto.type || StatusTypeDto.TEXT,
@@ -112,6 +112,42 @@ export class StatusService implements OnModuleInit, OnModuleDestroy {
         views: true
       }
     });
+
+    // Broadcast STATUS_UPDATE in real-time to active contacts & sender's devices
+    try {
+      const myConversations = await this.prisma.conversationMember.findMany({
+        where: { userId, leftAt: null },
+        select: { conversationId: true }
+      });
+      const convIds = myConversations.map((c) => c.conversationId);
+      const contactMembers = await this.prisma.conversationMember.findMany({
+        where: {
+          conversationId: { in: convIds },
+          userId: { not: userId },
+          leftAt: null
+        },
+        select: { userId: true },
+        distinct: ['userId']
+      });
+
+      const publisher = this.redis.getClient();
+      if (publisher) {
+        const payload = JSON.stringify({
+          type: 'STATUS_UPDATE',
+          userId,
+          username: created.user?.username,
+          statusId: created.id,
+          action: 'CREATED',
+          createdAt: created.createdAt
+        });
+        publisher.publish(`user:${userId}`, payload).catch(() => {});
+        for (const m of contactMembers) {
+          publisher.publish(`user:${m.userId}`, payload).catch(() => {});
+        }
+      }
+    } catch (_) {}
+
+    return created;
   }
 
   async getMyStatuses(userId: string) {
@@ -365,6 +401,39 @@ export class StatusService implements OnModuleInit, OnModuleDestroy {
     await this.prisma.userStatusStory.delete({
       where: { id: storyId }
     });
+
+    if (story) {
+      try {
+        const myConversations = await this.prisma.conversationMember.findMany({
+          where: { userId: story.userId, leftAt: null },
+          select: { conversationId: true }
+        });
+        const convIds = myConversations.map((c) => c.conversationId);
+        const contactMembers = await this.prisma.conversationMember.findMany({
+          where: {
+            conversationId: { in: convIds },
+            userId: { not: story.userId },
+            leftAt: null
+          },
+          select: { userId: true },
+          distinct: ['userId']
+        });
+
+        const publisher = this.redis.getClient();
+        if (publisher) {
+          const payload = JSON.stringify({
+            type: 'STATUS_UPDATE',
+            userId: story.userId,
+            statusId: storyId,
+            action: 'DELETED'
+          });
+          publisher.publish(`user:${story.userId}`, payload).catch(() => {});
+          for (const m of contactMembers) {
+            publisher.publish(`user:${m.userId}`, payload).catch(() => {});
+          }
+        }
+      } catch (_) {}
+    }
 
     return { success: true };
   }

@@ -44,6 +44,8 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
   MessageModel? _editingMessage;
   List<MessageModel> _messages = [];
   Timer? _pollTimer;
+  StreamSubscription<MessageModel>? _rtMsgSub;
+  StreamSubscription<Map<String, String>>? _rtDelSub;
   bool _showScrollToBottom = false;
   DateTime? _lastClearedAt;
 
@@ -63,11 +65,44 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
     }
     _loadMessages();
     _startPolling();
+
+    // Listen to 0ms instant real-time message stream from WebSocket
+    _rtMsgSub = ConversationService.instance.realtimeMessageStream.listen((msg) {
+      if (!mounted) return;
+      if (msg.conversationId == widget.groupId) {
+        _mergeAndSetMessages([msg]);
+      }
+    });
+
+    _rtDelSub = ConversationService.instance.realtimeMessageDeletedStream.listen((event) {
+      if (!mounted) return;
+      final cId = event['conversationId'];
+      final mId = event['messageId'];
+      if (cId == widget.groupId && mId != null) {
+        final idx = _messages.indexWhere((m) => m.id == mId);
+        if (idx != -1) {
+          setState(() {
+            _messages[idx] = _messages[idx].copyWith(
+              isDeleted: true,
+              content: '__DELETED_FOR_EVERYONE__',
+            );
+          });
+        }
+      }
+    });
+
+    ChatWebSocketService.instance.isConnectedNotifier.addListener(_onWsConnectionChanged);
     GroupController.instance.fetchGroupFromBackend(widget.groupId);
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _scrollToBottom(immediate: true);
     });
+  }
+
+  void _onWsConnectionChanged() {
+    if (mounted) {
+      _startPolling();
+    }
   }
 
   void _onScroll() {
@@ -147,6 +182,9 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
       ConversationService.instance.currentActiveConversationId = null;
     }
     _pollTimer?.cancel();
+    _rtMsgSub?.cancel();
+    _rtDelSub?.cancel();
+    ChatWebSocketService.instance.isConnectedNotifier.removeListener(_onWsConnectionChanged);
     _inGroupSearchController.dispose();
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
@@ -182,7 +220,8 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
 
   void _startPolling() {
     _pollTimer?.cancel();
-    _pollTimer = Timer.periodic(const Duration(milliseconds: 1000), (_) async {
+    final interval = ChatWebSocketService.instance.isConnected ? 15000 : 1000;
+    _pollTimer = Timer.periodic(Duration(milliseconds: interval), (_) async {
       _syncMessages();
     });
   }
@@ -803,6 +842,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
               color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
             ),
           ),
+          ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogCtx),
@@ -814,10 +854,10 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                 ),
               ),
             ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.danger,
-                foregroundColor: Colors.white,
+            OutlinedButton(
+              style: OutlinedButton.styleFrom(
+                foregroundColor: isDark ? Colors.white : AppColors.textPrimary,
+                side: BorderSide(color: isDark ? Colors.white24 : Colors.grey.shade300),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
               ),
               onPressed: () async {
@@ -825,13 +865,32 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                 setState(() {
                   _messages.clear();
                 });
-                await ConversationService.instance.clearConversationMessages(widget.groupId);
+                await ConversationService.instance.clearChatForMe(widget.groupId);
                 if (context.mounted) {
-                  LajuToast.info(context, 'Pesan grup berhasil dibersihkan');
+                  LajuToast.info(context, 'Riwayat chat berhasil dibersihkan untuk Anda');
                 }
               },
-              child: const Text('Bersihkan Pesan', style: TextStyle(fontWeight: FontWeight.w700)),
+              child: const Text('Untuk Saya', style: TextStyle(fontWeight: FontWeight.w600)),
             ),
+            if (GroupController.instance.isCurrentUserAdmin(widget.groupId))
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.danger,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+                onPressed: () async {
+                  Navigator.pop(dialogCtx);
+                  setState(() {
+                    _messages.clear();
+                  });
+                  await ConversationService.instance.clearChatForAll(widget.groupId);
+                  if (context.mounted) {
+                    LajuToast.info(context, 'Pesan grup dihapus untuk semua orang');
+                  }
+                },
+                child: const Text('Hapus Semua', style: TextStyle(fontWeight: FontWeight.w700)),
+              ),
           ],
         );
       },
@@ -1248,6 +1307,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                                       .toList() ??
                                   [],
                               isVideo: false,
+                              conversationId: widget.conversationId,
                             ),
                           ),
                         );
@@ -1267,6 +1327,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                                       .toList() ??
                                   [],
                               isVideo: true,
+                              conversationId: widget.conversationId,
                             ),
                           ),
                         );

@@ -1002,6 +1002,30 @@ export class AdminService {
     });
   }
 
+  async updateStickerItem(
+    id: string,
+    dto: { name?: string; emoji?: string; imageUrl?: string }
+  ) {
+    const item = await this.prisma.stickerItem.findUnique({ where: { id } });
+    if (!item) throw new NotFoundException('Sticker item not found');
+
+    if (dto.imageUrl && dto.imageUrl !== item.imageUrl && item.imageUrl) {
+      const oldBlob = this.extractBlobId(item.imageUrl);
+      if (oldBlob && this.seaweedFs) {
+        await this.seaweedFs.deleteBlob(oldBlob).catch(() => {});
+      }
+    }
+
+    return this.prisma.stickerItem.update({
+      where: { id },
+      data: {
+        ...(dto.name !== undefined && { name: dto.name }),
+        ...(dto.emoji !== undefined && { emoji: dto.emoji }),
+        ...(dto.imageUrl !== undefined && { imageUrl: dto.imageUrl })
+      }
+    });
+  }
+
   // System Announcements & Push Broadcast
   async listAnnouncements() {
     const announcements = await this.prisma.systemAnnouncement.findMany({

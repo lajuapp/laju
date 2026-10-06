@@ -389,6 +389,62 @@ class _GroupProfileScreenState extends State<GroupProfileScreen> {
 
   void _confirmExitGroup(String groupName) {
     final isDark = ThemeModeController.instance.isDarkMode(context);
+    final isOwner = GroupController.instance.isCurrentUserOwner(widget.groupId);
+    final group = GroupController.instance.getGroup(widget.groupId);
+    final curUserId = ApiClient.instance.userId;
+    final otherMembers = (group?.members ?? []).where((m) => m.id != curUserId && m.id != 'm-you').toList();
+
+    if (isOwner && otherMembers.isNotEmpty) {
+      showDialog(
+        context: context,
+        builder: (dialogCtx) => AlertDialog(
+          backgroundColor: isDark ? AppColors.darkSurface : Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Text(
+            'Keluar dari grup $groupName?',
+            style: TextStyle(
+              color: isDark ? Colors.white : const Color(0xFF111827),
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Anda adalah Pemilik grup ini. Saat Anda keluar, kepemilikan grup akan otomatis diserahkan ke admin atau anggota paling senior.',
+                style: TextStyle(color: isDark ? Colors.white70 : const Color(0xFF4B5563)),
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                'Anda tidak akan dapat mengirim atau menerima pesan lagi di grup ini.',
+                style: TextStyle(color: AppColors.danger, fontSize: 13),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogCtx),
+              child: Text(context.tr('cancel')),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: AppColors.danger),
+              onPressed: () async {
+                Navigator.pop(dialogCtx);
+                await ConversationService.instance.leaveGroup(widget.groupId);
+                if (mounted) {
+                  Navigator.pop(context);
+                  Navigator.pop(context);
+                  LajuToast.info(context, 'Anda telah keluar dari $groupName');
+                }
+              },
+              child: const Text('Keluar & Serahkan', style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
 
     showDialog(
       context: context,
@@ -596,11 +652,56 @@ class _GroupProfileScreenState extends State<GroupProfileScreen> {
     );
   }
 
+  void _confirmTransferOwnership(GroupMemberItem member) {
+    final isDark = ThemeModeController.instance.isDarkMode(context);
+
+    showDialog(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        backgroundColor: isDark ? AppColors.darkSurface : Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(
+          'Transfer Kepemilikan Grup?',
+          style: TextStyle(
+            color: isDark ? Colors.white : const Color(0xFF111827),
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        content: Text(
+          'Apakah Anda yakin ingin menyerahkan kepemilikan grup kepada ${member.name}? Anda akan tetap menjadi Admin di grup ini.',
+          style: TextStyle(color: isDark ? Colors.white70 : const Color(0xFF4B5563)),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogCtx),
+            child: Text(context.tr('cancel')),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.amber[700]),
+            onPressed: () async {
+              Navigator.pop(dialogCtx);
+              final success = await GroupController.instance.transferOwnership(widget.groupId, member.id);
+              if (mounted) {
+                if (success) {
+                  LajuToast.success(context, 'Kepemilikan grup berhasil ditransfer ke ${member.name}');
+                } else {
+                  LajuToast.error(context, 'Gagal mentransfer kepemilikan grup');
+                }
+              }
+            },
+            child: const Text('Transfer', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _showMemberActions(GroupMemberItem member, bool isUserAdmin) {
     final curUserId = ApiClient.instance.userId;
     if (member.id == 'm-you' || (curUserId != null && member.id == curUserId)) return;
 
     final isDark = ThemeModeController.instance.isDarkMode(context);
+    final isCurrentUserOwner = GroupController.instance.isCurrentUserOwner(widget.groupId);
 
     showModalBottomSheet(
       context: context,
@@ -684,6 +785,26 @@ class _GroupProfileScreenState extends State<GroupProfileScreen> {
                   );
                 },
               ),
+
+              // Owner-only actions (Transfer ownership)
+              if (isCurrentUserOwner && !member.isOwner) ...[
+                Divider(height: 1, color: isDark ? AppColors.darkSurfaceBorder : const Color(0xFFE5E7EB)),
+                ListTile(
+                  leading: const Icon(Icons.workspace_premium_rounded, color: Colors.amber),
+                  title: Text(
+                    'Transfer Kepemilikan ke ${member.name}',
+                    style: const TextStyle(fontWeight: FontWeight.w600, color: Colors.amber),
+                  ),
+                  subtitle: Text(
+                    'Jadikan ${member.name} sebagai Pemilik baru grup ini',
+                    style: TextStyle(fontSize: 12, color: isDark ? Colors.white60 : Colors.black54),
+                  ),
+                  onTap: () {
+                    Navigator.pop(sheetCtx);
+                    _confirmTransferOwnership(member);
+                  },
+                ),
+              ],
 
               // Admin-only member actions
               if (isUserAdmin) ...[
@@ -1443,7 +1564,20 @@ class _GroupProfileScreenState extends State<GroupProfileScreen> {
                                   ),
                                 ),
                               ),
-                              if (member.isAdmin)
+                              if (member.isOwner)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: Colors.amber.withValues(alpha: 0.15),
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(color: Colors.amber.withValues(alpha: 0.4)),
+                                  ),
+                                  child: const Text(
+                                    'Pemilik',
+                                    style: TextStyle(fontSize: 10, color: Colors.amber, fontWeight: FontWeight.w700),
+                                  ),
+                                )
+                              else if (member.isAdmin)
                                 Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                                   decoration: BoxDecoration(

@@ -83,12 +83,22 @@ export class ConversationsController {
     return this.conversationsService.removeMember(userId, conversationId, targetUserId);
   }
 
+  @Post(':id/transfer-ownership')
+  transferOwnership(
+    @CurrentUser('userId') userId: string,
+    @Param('id') conversationId: string,
+    @Body('newOwnerUserId') newOwnerUserId: string
+  ) {
+    return this.conversationsService.transferOwnership(userId, conversationId, newOwnerUserId);
+  }
+
   @Post(':id/leave')
   leave(
     @CurrentUser('userId') userId: string,
-    @Param('id') conversationId: string
+    @Param('id') conversationId: string,
+    @Body('newOwnerUserId') newOwnerUserId?: string
   ) {
-    return this.conversationsService.leaveGroup(userId, conversationId);
+    return this.conversationsService.leaveGroup(userId, conversationId, newOwnerUserId);
   }
 
   @Delete(':id')
@@ -116,6 +126,22 @@ export class ConversationsController {
     @Body() dto: DestructiveWipeDto
   ) {
     return this.conversationsService.destructiveWipe(userId, conversationId, dto.pin);
+  }
+
+  @Post(':id/clear-for-me')
+  clearForMe(
+    @CurrentUser('userId') userId: string,
+    @Param('id') conversationId: string
+  ) {
+    return this.conversationsService.clearChatForMe(userId, conversationId);
+  }
+
+  @Post(':id/clear-all')
+  clearForAll(
+    @CurrentUser('userId') userId: string,
+    @Param('id') conversationId: string
+  ) {
+    return this.conversationsService.clearChatForAll(userId, conversationId);
   }
 
   @Post(':id/typing')

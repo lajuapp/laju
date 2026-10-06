@@ -99,6 +99,24 @@ class MessageModel {
 
   bool get isRecalled => isDeleted || content == '__DELETED_FOR_EVERYONE__';
 
+  String get displaySnippet {
+    if (isRecalled) return 'Pesan telah ditarik';
+    switch (contentType) {
+      case MessageContentType.attachment:
+        return attachmentName != null && attachmentName!.isNotEmpty ? attachmentName! : 'Foto/Berkas';
+      case MessageContentType.voiceNote:
+        return 'Pesan Suara';
+      case MessageContentType.sticker:
+        return 'Stiker';
+      case MessageContentType.location:
+        return 'Lokasi';
+      case MessageContentType.contact:
+        return 'Kontak';
+      default:
+        return content;
+    }
+  }
+
   MessageModel copyWith({
     String? id,
     String? clientMessageId,

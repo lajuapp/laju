@@ -18,6 +18,7 @@ import {
   Copy,
   Check,
   Scissors,
+  Pencil,
 } from 'lucide-react';
 import {
   useStickerPacksList,
@@ -26,6 +27,7 @@ import {
   useAddStickerItem,
   useAddBulkStickers,
   useDeleteStickerItem,
+  useUpdateStickerItem,
 } from '../hooks/useStickers';
 import { useMediaUpload } from '../hooks/useMediaUpload';
 import { Button } from '../components/ui/Button';
@@ -62,6 +64,7 @@ export function StickersPage() {
   const addSticker = useAddStickerItem();
   const addBulkStickers = useAddBulkStickers();
   const deleteSticker = useDeleteStickerItem();
+  const updateSticker = useUpdateStickerItem();
   const mediaUpload = useMediaUpload();
 
   const [isPackModalOpen, setIsPackModalOpen] = useState(false);
@@ -71,6 +74,14 @@ export function StickersPage() {
   const [isApngStudioOpen, setIsApngStudioOpen] = useState(false);
   const [isSpriteSheetExtractorOpen, setIsSpriteSheetExtractorOpen] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  // Edit Sticker state
+  const [editingSticker, setEditingSticker] = useState<StickerItem | null>(null);
+  const [editStickerName, setEditStickerName] = useState('');
+  const [editStickerEmoji, setEditStickerEmoji] = useState('');
+  const [editStickerFile, setEditStickerFile] = useState<File | null>(null);
+  const [editStickerPreview, setEditStickerPreview] = useState<string | null>(null);
+  const [isUpdatingSticker, setIsUpdatingSticker] = useState(false);
 
   // File upload state for Pack Cover
   const [packCoverFile, setPackCoverFile] = useState<File | null>(null);
@@ -170,6 +181,40 @@ export function StickersPage() {
       setStickerPreview(null);
     } catch (err: any) {
       setErrorMessage(err.response?.data?.message || 'Gagal mengunggah stiker');
+    }
+  };
+
+  const handleOpenEditSticker = (stk: StickerItem) => {
+    setEditingSticker(stk);
+    setEditStickerName(stk.name || '');
+    setEditStickerEmoji(stk.emoji || '');
+    setEditStickerFile(null);
+    setEditStickerPreview(resolveMediaUrl(stk.imageUrl));
+  };
+
+  const handleSaveEditSticker = async () => {
+    if (!editingSticker) return;
+    setIsUpdatingSticker(true);
+    setErrorMessage(null);
+    try {
+      let imageUrl = editingSticker.imageUrl;
+      if (editStickerFile) {
+        const uploadRes = await mediaUpload.mutateAsync(editStickerFile);
+        imageUrl = uploadRes.url;
+      }
+      await updateSticker.mutateAsync({
+        id: editingSticker.id,
+        name: editStickerName.trim() || editingSticker.name,
+        emoji: editStickerEmoji.trim() || undefined,
+        imageUrl,
+      });
+      setEditingSticker(null);
+      setEditStickerFile(null);
+      setEditStickerPreview(null);
+    } catch (err: any) {
+      setErrorMessage(err.response?.data?.message || 'Gagal memperbarui stiker');
+    } finally {
+      setIsUpdatingSticker(false);
     }
   };
 
@@ -522,17 +567,29 @@ export function StickersPage() {
                               </span>
                             </div>
 
-                            {/* Delete button */}
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleOpenDeleteSticker(stk.id);
-                              }}
-                              className="absolute top-2 right-2 p-1.5 rounded-lg bg-white/90 border border-neutral-200 text-neutral-400 hover:text-rose-600 opacity-0 group-hover:opacity-100 transition-opacity shadow-xs z-10"
-                              title="Hapus stiker"
-                            >
-                              <X className="w-3.5 h-3.5" />
-                            </button>
+                            {/* Action buttons (Edit & Delete) */}
+                            <div className="absolute top-2 right-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleOpenEditSticker(stk);
+                                }}
+                                className="p-1.5 rounded-lg bg-white/95 border border-neutral-200 text-neutral-600 hover:text-indigo-600 hover:border-indigo-300 shadow-xs transition-colors"
+                                title="Edit thumbnail & stiker"
+                              >
+                                <Pencil className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleOpenDeleteSticker(stk.id);
+                                }}
+                                className="p-1.5 rounded-lg bg-white/95 border border-neutral-200 text-neutral-400 hover:text-rose-600 hover:border-rose-300 shadow-xs transition-colors"
+                                title="Hapus stiker"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
 
                             {/* Sticker Preview Stage with Transparency Checkerboard */}
                             <div
@@ -1069,17 +1126,124 @@ export function StickersPage() {
               >
                 <Trash2 className="w-4 h-4 mr-1.5" /> Hapus Stiker
               </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setPreviewSticker(null)}
-              >
-                Tutup
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const stk = previewSticker;
+                    setPreviewSticker(null);
+                    handleOpenEditSticker(stk);
+                  }}
+                >
+                  <Pencil className="w-3.5 h-3.5 mr-1.5" /> Edit Thumbnail
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPreviewSticker(null)}
+                >
+                  Tutup
+                </Button>
+              </div>
             </div>
           </div>
         )}
       </Modal>
+
+      {/* Modal Edit Thumbnail & Detail Stiker */}
+      {editingSticker && (
+        <Modal
+          isOpen={!!editingSticker}
+          onClose={() => setEditingSticker(null)}
+          title="Edit Thumbnail & Detail Stiker"
+          maxWidth="md"
+        >
+          <div className="space-y-4">
+            <div>
+              <label className="block text-xs font-semibold text-neutral-700 mb-1.5">
+                Gambar / Thumbnail Stiker
+              </label>
+              <div className="flex items-center gap-4 p-3 bg-neutral-50 rounded-xl border border-neutral-200">
+                <div
+                  className="w-16 h-16 rounded-lg border border-neutral-200 flex items-center justify-center p-1 bg-white overflow-hidden shrink-0"
+                  style={{
+                    backgroundImage:
+                      'linear-gradient(45deg, #f1f5f9 25%, transparent 25%), linear-gradient(-45deg, #f1f5f9 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #f1f5f9 75%), linear-gradient(-45deg, transparent 75%, #f1f5f9 75%)',
+                    backgroundSize: '8px 8px',
+                  }}
+                >
+                  <img
+                    src={editStickerPreview || resolveMediaUrl(editingSticker.imageUrl)}
+                    alt={editingSticker.name}
+                    className="max-w-full max-h-full object-contain"
+                  />
+                </div>
+                <div className="flex-1">
+                  <label className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-white border border-neutral-200 hover:bg-neutral-50 cursor-pointer shadow-2xs">
+                    <Upload className="w-3.5 h-3.5 text-neutral-500" />
+                    <span>Ganti Gambar / Thumbnail</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => {
+                        if (e.target.files && e.target.files[0]) {
+                          const file = e.target.files[0];
+                          setEditStickerFile(file);
+                          setEditStickerPreview(URL.createObjectURL(file));
+                        }
+                      }}
+                    />
+                  </label>
+                  <p className="text-[11px] text-neutral-400 mt-1">
+                    Format didukung: PNG, APNG, GIF, WEBP.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-neutral-700 mb-1">
+                Nama Stiker
+              </label>
+              <Input
+                value={editStickerName}
+                onChange={(e) => setEditStickerName(e.target.value)}
+                placeholder="Contoh: Kucing Jempol"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-neutral-700 mb-1">
+                Shortcut Emoji (Opsional)
+              </label>
+              <Input
+                value={editStickerEmoji}
+                onChange={(e) => setEditStickerEmoji(e.target.value)}
+                placeholder="Contoh: 👍 atau thumbsup"
+              />
+            </div>
+
+            <div className="flex justify-end gap-2 pt-3 border-t border-neutral-100">
+              <Button
+                variant="outline"
+                onClick={() => setEditingSticker(null)}
+                disabled={isUpdatingSticker}
+              >
+                Batal
+              </Button>
+              <Button
+                onClick={handleSaveEditSticker}
+                disabled={isUpdatingSticker}
+                isLoading={isUpdatingSticker}
+              >
+                Simpan Perubahan
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
 
       {/* Modal Hapus Paket Stiker */}
       <ConfirmModal

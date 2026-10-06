@@ -28,9 +28,12 @@ class ApiEndpoints {
   static String conversationMembers(String id) => '/conversations/$id/members';
   static String conversationMemberRole(String id, String userId) => '/conversations/$id/members/$userId';
   static String conversationLeave(String id) => '/conversations/$id/leave';
+  static String conversationTransferOwnership(String id) => '/conversations/$id/transfer-ownership';
   static String conversationMessages(String id) => '/conversations/$id/messages';
   static String conversationTyping(String id) => '/conversations/$id/typing';
   static String conversationDestructiveWipe(String id) => '/conversations/$id/destructive-wipe';
+  static String conversationClearForMe(String id) => '/conversations/$id/clear-for-me';
+  static String conversationClearAll(String id) => '/conversations/$id/clear-all';
 
   // Messages
   static String messageById(String id) => '/messages/$id';
@@ -39,6 +42,7 @@ class ApiEndpoints {
 
   // Calls
   static const String calls = '/calls';
+  static const String callGroup = '/calls/group';
   static const String callIncoming = '/calls/incoming';
   static const String callHistory = '/calls/history';
   static String callById(String id) => '/calls/$id';
@@ -53,6 +57,7 @@ class ApiEndpoints {
   static String callMediaStream(String id) => '/calls/$id/media-stream';
 
   // Attachments
+  static const String attachmentAvatar = '/attachments/avatar';
   static String attachmentUpload(String messageId) => '/attachments/$messageId';
   static String attachmentDownload(String blobId) => '/attachments/$blobId';
 

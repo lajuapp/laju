@@ -190,6 +190,148 @@ export class CallsService {
     });
   }
 
+  async createGroupCall(callerUserId: string, callerDeviceId: string, conversationId: string, isVideo?: boolean) {
+    if (!conversationId) {
+      throw new BadRequestException('ID percakapan grup tidak valid');
+    }
+
+    const conversation = await this.prisma.conversation.findUnique({
+      where: { id: conversationId },
+      include: {
+        members: {
+          where: { leftAt: null },
+          include: {
+            user: {
+              include: {
+                devices: {
+                  where: { status: 'ACTIVE' },
+                  orderBy: { lastSeenAt: 'desc' }
+                }
+              }
+            }
+          }
+        }
+      }
+    });
+
+    if (!conversation) {
+      throw new NotFoundException('Grup tidak ditemukan');
+    }
+
+    const isMember = conversation.members.some((m) => m.userId === callerUserId);
+    if (!isMember) {
+      throw new ForbiddenException('Bukan anggota dari grup ini');
+    }
+
+    const caller = await this.prisma.user.findUnique({
+      where: { id: callerUserId },
+      select: { username: true }
+    });
+
+    return this.prisma.$transaction(async (tx) => {
+      const call = await tx.call.create({
+        data: {
+          initiatorId: callerUserId,
+          state: 'INITIATED'
+        }
+      });
+
+      let safeCallerDeviceId = callerDeviceId;
+      if (!safeCallerDeviceId) {
+        const callerDevice = await tx.device.findFirst({
+          where: { userId: callerUserId, status: 'ACTIVE' },
+          orderBy: { lastSeenAt: 'desc' }
+        });
+        safeCallerDeviceId = callerDevice?.id || `dev-${callerUserId.substring(0, 8)}`;
+      }
+
+      await tx.callParticipant.create({
+        data: {
+          callId: call.id,
+          userId: callerUserId,
+          deviceId: safeCallerDeviceId,
+          state: 'CONNECTED',
+          joinedAt: new Date()
+        }
+      });
+
+      const otherMembers = conversation.members.filter((m) => m.userId !== callerUserId);
+
+      for (const member of otherMembers) {
+        const memberDevice = member.user.devices[0];
+        let safeMemberDeviceId = memberDevice?.id || `dev-${member.userId.substring(0, 8)}`;
+        if (safeMemberDeviceId === safeCallerDeviceId) {
+          safeMemberDeviceId = `${safeMemberDeviceId}-${member.userId.substring(0, 4)}`;
+        }
+
+        try {
+          await tx.callParticipant.create({
+            data: {
+              callId: call.id,
+              userId: member.userId,
+              deviceId: safeMemberDeviceId,
+              state: 'RINGING',
+              joinedAt: new Date()
+            }
+          });
+        } catch (_) {}
+      }
+
+      const groupName = conversation.title || 'Panggilan Grup';
+      await this.redis.set(
+        `call:${call.id}:meta`,
+        JSON.stringify({
+          isVideo: !!isVideo,
+          isGroup: true,
+          conversationId,
+          groupName
+        }),
+        'EX',
+        3600
+      );
+
+      const incomingPayload = {
+        type: 'CALL_INCOMING',
+        callId: call.id,
+        conversationId,
+        groupName,
+        isGroup: true,
+        initiatorId: callerUserId,
+        initiatorName: caller?.username || 'Kontak',
+        callerDeviceId: safeCallerDeviceId,
+        isVideo: !!isVideo
+      };
+
+      for (const member of otherMembers) {
+        await this.redis.publish(
+          `user:${member.userId}`,
+          JSON.stringify(incomingPayload)
+        ).catch(() => {});
+
+        this.callGateway?.notifyUser(member.userId, incomingPayload);
+
+        if (this.gotifyService) {
+          const pushToken = member.user.devices[0]?.pushToken;
+          this.gotifyService.sendPushNotification({
+            targetToken: pushToken || undefined,
+            title: `${groupName}: Panggilan Masuk dari ${caller?.username || 'Kontak'}`,
+            message: isVideo ? 'Panggilan Video Grup Masuk' : 'Panggilan Suara Grup Masuk',
+            conversationId: call.id,
+            priority: 8
+          }).catch(() => {});
+        }
+      }
+
+      return {
+        ...call,
+        conversationId,
+        groupName,
+        isGroup: true,
+        isVideo: !!isVideo
+      };
+    });
+  }
+
   async acceptCall(calleeUserId: string, calleeDeviceId: string, callId: string) {
     const participant = await this.prisma.callParticipant.findFirst({
       where: { callId, userId: calleeUserId }
@@ -284,6 +426,44 @@ export class CallsService {
   }
 
   async endCall(userId: string, callId: string) {
+    const call = await this.prisma.call.findUnique({
+      where: { id: callId },
+      include: { participants: true }
+    });
+
+    if (!call) {
+      return { success: true };
+    }
+
+    const metaStr = await this.redis.get(`call:${callId}:meta`);
+    const isGroup = metaStr?.includes('"isGroup":true');
+
+    // If it's a group call and the leaving user is NOT the initiator,
+    // and there are still other active/ringing participants, only leave this participant.
+    if (isGroup && call.initiatorId !== userId) {
+      const activeOthers = call.participants.filter(
+        (p) => p.userId !== userId && (p.state === 'CONNECTED' || p.state === 'RINGING') && !p.leftAt
+      );
+
+      if (activeOthers.length > 0) {
+        await this.prisma.callParticipant.updateMany({
+          where: { callId, userId },
+          data: { leftAt: new Date() }
+        });
+
+        const leftPayload = {
+          type: 'PEER_LEFT',
+          callId,
+          userId
+        };
+
+        await this.redis.publish(`call:${callId}`, JSON.stringify(leftPayload));
+        this.callGateway?.notifyCallRoom(callId, leftPayload);
+
+        return { success: true };
+      }
+    }
+
     await this.prisma.$transaction([
       this.prisma.call.update({
         where: { id: callId },
@@ -575,11 +755,18 @@ export class CallsService {
     });
 
     let isVideo = false;
+    let isGroup = false;
+    let groupName: string | undefined;
+    let conversationId: string | undefined;
+
     try {
       const meta = await this.redis.get(`call:${participant.callId}:meta`);
       if (meta) {
         const parsed = JSON.parse(meta);
         isVideo = !!parsed.isVideo;
+        isGroup = !!parsed.isGroup;
+        groupName = parsed.groupName;
+        conversationId = parsed.conversationId;
       }
     } catch (_) {}
 
@@ -589,6 +776,9 @@ export class CallsService {
       initiatorName: initiator?.username || 'Kontak',
       initiatorPhone: initiator?.phoneNumber || null,
       isVideo,
+      isGroup,
+      groupName,
+      conversationId,
       createdAt: participant.call.startedAt
     };
   }
@@ -658,11 +848,18 @@ export class CallsService {
     return Promise.all(
       calls.map(async (call) => {
         let isVideo = false;
+        let isGroup = false;
+        let groupName: string | undefined;
+        let conversationId: string | undefined;
+
         try {
           const meta = await this.redis.get(`call:${call.id}:meta`);
           if (meta) {
             const parsed = JSON.parse(meta);
             isVideo = !!parsed.isVideo;
+            isGroup = !!parsed.isGroup;
+            groupName = parsed.groupName;
+            conversationId = parsed.conversationId;
           }
         } catch (_) {}
 
@@ -713,8 +910,11 @@ export class CallsService {
           endedAt: call.endedAt,
           durationSeconds,
           isVideo,
-          contactId: contactUser?.id || (isInitiator ? otherParticipant?.userId : call.initiatorId),
-          contactName: contactUser?.username || 'Kontak',
+          isGroup: !!isGroup,
+          groupName: groupName || undefined,
+          conversationId: conversationId || undefined,
+          contactId: isGroup ? conversationId : (contactUser?.id || (isInitiator ? otherParticipant?.userId : call.initiatorId)),
+          contactName: isGroup ? (groupName || 'Panggilan Grup') : (contactUser?.username || 'Kontak'),
           contactPhone: contactUser?.phoneNumber || null
         };
       })
