@@ -28,6 +28,7 @@ export class UsersService {
         status: true,
         trustScore: true,
         twoFactorEnabled: true,
+        avatarUrl: true,
         createdAt: true,
         updatedAt: true,
         devices: {
@@ -45,7 +46,7 @@ export class UsersService {
       this.redis.get(`user:${userId}:avatar`),
       this.redis.get(`user:${userId}:about`)
     ]);
-    return { ...user, avatarUrl, about: about ?? 'Available' };
+    return { ...user, avatarUrl: avatarUrl || user.avatarUrl || null, about: about ?? 'Available' };
   }
 
   async updateProfile(userId: string, dto: UpdateUserProfileDto) {
@@ -123,6 +124,7 @@ export class UsersService {
         email: dto.email,
         phoneNumber: dto.phoneNumber,
         twoFactorEnabled: dto.twoFactorEnabled,
+        ...(dto.avatarUrl !== undefined ? { avatarUrl: dto.avatarUrl && dto.avatarUrl.length > 0 ? dto.avatarUrl : null } : {}),
         ...(hashedPin !== undefined ? { twoFactorPin: hashedPin } : {})
       },
       select: {
@@ -132,6 +134,7 @@ export class UsersService {
         phoneNumber: true,
         status: true,
         twoFactorEnabled: true,
+        avatarUrl: true,
         createdAt: true,
         updatedAt: true
       }
@@ -141,7 +144,7 @@ export class UsersService {
       this.redis.get(`user:${userId}:avatar`),
       this.redis.get(`user:${userId}:about`)
     ]);
-    return { ...updated, avatarUrl, about: about ?? 'Available' };
+    return { ...updated, avatarUrl: avatarUrl || updated.avatarUrl || null, about: about ?? 'Available' };
   }
 
   async searchUsers(currentUserId: string, query?: string, limitStr?: string, offsetStr?: string) {
@@ -171,6 +174,7 @@ export class UsersService {
           email: true,
           phoneNumber: true,
           status: true,
+          avatarUrl: true,
           createdAt: true
         },
         take: limit,
@@ -188,7 +192,7 @@ export class UsersService {
         ]);
         return {
           ...u,
-          avatarUrl,
+          avatarUrl: avatarUrl || u.avatarUrl || null,
           isOnline: onlineRaw === '1'
         };
       })
@@ -212,6 +216,7 @@ export class UsersService {
         email: true,
         status: true,
         trustScore: true,
+        avatarUrl: true,
         createdAt: true
       }
     });
@@ -226,6 +231,7 @@ export class UsersService {
           email: true,
           status: true,
           trustScore: true,
+          avatarUrl: true,
           createdAt: true
         }
       });
@@ -240,7 +246,7 @@ export class UsersService {
       this.redis.get(`user:${user.id}:about`),
       this.redis.get(`user:${user.id}:online`),
     ]);
-    return { ...user, avatarUrl, about: about ?? 'Available', isOnline: onlineRaw === '1' };
+    return { ...user, avatarUrl: avatarUrl || user.avatarUrl || null, about: about ?? 'Available', isOnline: onlineRaw === '1' };
   }
 
   async createUserReport(reporterId: string, dto: CreateUserReportDto) {

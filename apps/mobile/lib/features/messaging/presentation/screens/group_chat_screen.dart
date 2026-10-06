@@ -46,6 +46,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
   Timer? _pollTimer;
   StreamSubscription<MessageModel>? _rtMsgSub;
   StreamSubscription<Map<String, String>>? _rtDelSub;
+  StreamSubscription<String>? _rtPurgedSub;
   bool _showScrollToBottom = false;
   DateTime? _lastClearedAt;
 
@@ -88,6 +89,15 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
             );
           });
         }
+      }
+    });
+
+    _rtPurgedSub = ConversationService.instance.realtimePurgedStream.listen((cId) {
+      if (!mounted) return;
+      if (cId == widget.groupId) {
+        setState(() {
+          _messages.clear();
+        });
       }
     });
 
@@ -184,6 +194,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
     _pollTimer?.cancel();
     _rtMsgSub?.cancel();
     _rtDelSub?.cancel();
+    _rtPurgedSub?.cancel();
     ChatWebSocketService.instance.isConnectedNotifier.removeListener(_onWsConnectionChanged);
     _inGroupSearchController.dispose();
     _scrollController.removeListener(_onScroll);
@@ -1296,16 +1307,18 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                     IconButton(
                       icon: Icon(Icons.call_rounded, color: isDark ? Colors.white : const Color(0xFF111827)),
                       onPressed: () {
+                        final curUserId = ApiClient.instance.userId;
+                        final otherMembers = group?.members
+                                .where((m) => m.id != 'm-you' && (curUserId == null || m.id != curUserId))
+                                .toList() ??
+                            [];
                         Navigator.push(
                           context,
                           MaterialPageRoute(
                             builder: (context) => ActiveGroupCallScreen(
                               groupName: displayName,
-                              initialParticipants: group?.members
-                                      .where((m) => m.id != 'm-you')
-                                      .map((m) => m.name)
-                                      .toList() ??
-                                  [],
+                              initialParticipants: otherMembers.map((m) => m.name).toList(),
+                              initialParticipantIds: otherMembers.map((m) => m.id).toList(),
                               isVideo: false,
                               conversationId: widget.conversationId,
                             ),
@@ -1316,16 +1329,18 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                     IconButton(
                       icon: Icon(Icons.videocam_rounded, color: isDark ? Colors.white : const Color(0xFF111827)),
                       onPressed: () {
+                        final curUserId = ApiClient.instance.userId;
+                        final otherMembers = group?.members
+                                .where((m) => m.id != 'm-you' && (curUserId == null || m.id != curUserId))
+                                .toList() ??
+                            [];
                         Navigator.push(
                           context,
                           MaterialPageRoute(
                             builder: (context) => ActiveGroupCallScreen(
                               groupName: displayName,
-                              initialParticipants: group?.members
-                                      .where((m) => m.id != 'm-you')
-                                      .map((m) => m.name)
-                                      .toList() ??
-                                  [],
+                              initialParticipants: otherMembers.map((m) => m.name).toList(),
+                              initialParticipantIds: otherMembers.map((m) => m.id).toList(),
                               isVideo: true,
                               conversationId: widget.conversationId,
                             ),

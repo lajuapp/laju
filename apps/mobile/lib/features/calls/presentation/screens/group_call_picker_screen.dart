@@ -10,6 +10,7 @@ class GroupCallItem {
   final String membersInfo;
   final String description;
   final List<String> members;
+  final List<String> memberIds;
 
   const GroupCallItem({
     required this.id,
@@ -17,6 +18,7 @@ class GroupCallItem {
     required this.membersInfo,
     required this.description,
     this.members = const [],
+    this.memberIds = const [],
   });
 }
 
@@ -86,13 +88,20 @@ class _GroupCallPickerScreenState extends State<GroupCallPickerScreen> {
   }
 
   List<GroupCallItem> get _existingGroups {
-    return GroupController.instance.allGroups.map((g) => GroupCallItem(
-      id: g.id,
-      name: g.name,
-      membersInfo: '${g.members.length} anggota',
-      description: g.description,
-      members: g.members.map((m) => m.name).toList(),
-    )).toList();
+    final curUserId = ApiClient.instance.userId;
+    return GroupController.instance.allGroups.map((g) {
+      final otherMembers = g.members
+          .where((m) => m.id != 'm-you' && (curUserId == null || m.id != curUserId))
+          .toList();
+      return GroupCallItem(
+        id: g.id,
+        name: g.name,
+        membersInfo: '${otherMembers.length} anggota',
+        description: g.description,
+        members: otherMembers.map((m) => m.name).toList(),
+        memberIds: otherMembers.map((m) => m.id).toList(),
+      );
+    }).toList();
   }
 
   @override
@@ -101,13 +110,20 @@ class _GroupCallPickerScreenState extends State<GroupCallPickerScreen> {
     super.dispose();
   }
 
-  void _startGroupCall(String name, List<String> participants, bool isVideo, {String? conversationId}) {
+  void _startGroupCall(
+    String name,
+    List<String> participants,
+    bool isVideo, {
+    String? conversationId,
+    List<String>? participantIds,
+  }) {
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => ActiveGroupCallScreen(
           groupName: name,
           initialParticipants: participants,
+          initialParticipantIds: participantIds,
           isVideo: isVideo,
           conversationId: conversationId,
           returnToCallsScreen: true,
@@ -117,16 +133,17 @@ class _GroupCallPickerScreenState extends State<GroupCallPickerScreen> {
   }
 
   void _startCustomGroupCall(bool isVideo) {
-    final names = _availableContacts
+    final selectedContacts = _availableContacts
         .where((c) => _selectedContactIds.contains(c.id))
-        .map((c) => c.name)
         .toList();
+    final names = selectedContacts.map((c) => c.name).toList();
+    final ids = selectedContacts.map((c) => c.id).toList();
 
     final groupName = names.length <= 2
         ? names.join(' & ')
         : '${names.first} + ${names.length - 1} lainnya';
 
-    _startGroupCall(groupName, names, isVideo);
+    _startGroupCall(groupName, names, isVideo, participantIds: ids);
   }
 
   @override
@@ -313,16 +330,16 @@ class _GroupCallPickerScreenState extends State<GroupCallPickerScreen> {
                                 IconButton(
                                   icon: const Icon(Icons.call_rounded, color: AppColors.primary, size: 22),
                                   tooltip: context.tr('voiceCall'),
-                                  onPressed: () => _startGroupCall(grp.name, grp.members, false, conversationId: grp.id),
+                                  onPressed: () => _startGroupCall(grp.name, grp.members, false, conversationId: grp.id, participantIds: grp.memberIds),
                                 ),
                                 IconButton(
                                   icon: const Icon(Icons.videocam_rounded, color: AppColors.primary, size: 24),
                                   tooltip: context.tr('videoCall'),
-                                  onPressed: () => _startGroupCall(grp.name, grp.members, true, conversationId: grp.id),
+                                  onPressed: () => _startGroupCall(grp.name, grp.members, true, conversationId: grp.id, participantIds: grp.memberIds),
                                 ),
                               ],
                             ),
-                            onTap: () => _startGroupCall(grp.name, grp.members, false, conversationId: grp.id),
+                            onTap: () => _startGroupCall(grp.name, grp.members, false, conversationId: grp.id, participantIds: grp.memberIds),
                           ),
                         ),
                         if (!isLast)

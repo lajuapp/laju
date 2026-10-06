@@ -62,6 +62,7 @@ class _ChatScreenState extends State<ChatScreen> {
   Timer? _pollTimer;
   StreamSubscription<MessageModel>? _rtMsgSub;
   StreamSubscription<Map<String, String>>? _rtDelSub;
+  StreamSubscription<String>? _rtPurgedSub;
   bool _showScrollToBottom = false;
   bool _initialScrollDone = false;
 
@@ -121,6 +122,16 @@ class _ChatScreenState extends State<ChatScreen> {
             );
           });
         }
+      }
+    });
+
+    _rtPurgedSub = ConversationService.instance.realtimePurgedStream.listen((cId) {
+      if (!mounted) return;
+      final realId = ConversationService.instance.resolveConversationId(_conversationId);
+      if (cId == _conversationId || cId == realId) {
+        setState(() {
+          _messages.clear();
+        });
       }
     });
 
@@ -291,6 +302,7 @@ class _ChatScreenState extends State<ChatScreen> {
     _pollTimer?.cancel();
     _rtMsgSub?.cancel();
     _rtDelSub?.cancel();
+    _rtPurgedSub?.cancel();
     ChatWebSocketService.instance.isConnectedNotifier.removeListener(_onWsConnectionChanged);
     _inChatSearchController.dispose();
     _scrollController.removeListener(_onScroll);

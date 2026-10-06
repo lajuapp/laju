@@ -1414,24 +1414,40 @@ class _GroupProfileScreenState extends State<GroupProfileScreen> {
                         ),
                         subtitle: Text(
                           group.disappearingSeconds != null
-                              ? '${group.disappearingSeconds} detik'
+                              ? (group.disappearingSeconds == 86400
+                                  ? '24 jam'
+                                  : group.disappearingSeconds == 604800
+                                      ? '7 hari'
+                                      : group.disappearingSeconds == 7776000
+                                          ? '90 hari'
+                                          : '${group.disappearingSeconds} detik')
                               : 'Mati • Pesan baru tidak otomatis dihapus',
                           style: TextStyle(color: textSecondary, fontSize: 12),
                         ),
                         trailing: const Icon(Icons.chevron_right_rounded, color: AppColors.textSecondary),
                         onTap: () {
+                          final currentTimer = group.disappearingSeconds != null
+                              ? (group.disappearingSeconds == 86400
+                                  ? '24 hours'
+                                  : group.disappearingSeconds == 604800
+                                      ? '7 days'
+                                      : group.disappearingSeconds == 7776000
+                                          ? '90 days'
+                                          : 'Off')
+                              : 'Off';
                           Navigator.push<String>(
                             context,
                             MaterialPageRoute(
-                              builder: (context) => const DisappearingMessagesScreen(initialTimer: 'Off'),
+                              builder: (context) => DisappearingMessagesScreen(initialTimer: currentTimer),
                             ),
-                          ).then((val) {
+                          ).then((val) async {
                             if (val != null) {
                               int? seconds;
                               if (val == '24 hours') seconds = 86400;
                               if (val == '7 days') seconds = 604800;
                               if (val == '90 days') seconds = 7776000;
                               GroupController.instance.setDisappearingSeconds(widget.groupId, seconds);
+                              await ConversationService.instance.updateConversationDisappearingTimer(widget.groupId, seconds);
                             }
                           });
                         },

@@ -39,6 +39,7 @@ class GroupCallParticipant {
 class ActiveGroupCallScreen extends StatefulWidget {
   final String groupName;
   final List<String> initialParticipants;
+  final List<String>? initialParticipantIds;
   final bool isVideo;
   final bool returnToCallsScreen;
   final String? conversationId;
@@ -47,6 +48,7 @@ class ActiveGroupCallScreen extends StatefulWidget {
     super.key,
     required this.groupName,
     required this.initialParticipants,
+    this.initialParticipantIds,
     this.isVideo = false,
     this.returnToCallsScreen = false,
     this.conversationId,
@@ -96,6 +98,8 @@ class _ActiveGroupCallScreenState extends State<ActiveGroupCallScreen>
         ? AccountController.instance.avatarUrl
         : null;
     final convs = ConversationService.instance.inMemoryConversations ?? [];
+    final curUserId = ApiClient.instance.userId;
+    final selfUsername = AccountController.instance.username.toLowerCase();
 
     // Self participant
     final participantsList = <GroupCallParticipant>[
@@ -109,11 +113,23 @@ class _ActiveGroupCallScreenState extends State<ActiveGroupCallScreen>
       ),
     ];
 
-    // Seed other participants from initialParticipants
+    // Seed other participants from initialParticipants (excluding caller)
     final seeds = widget.initialParticipants;
 
     for (int i = 0; i < seeds.length; i++) {
       final seedName = seeds[i];
+      final seedId = (widget.initialParticipantIds != null && i < widget.initialParticipantIds!.length)
+          ? widget.initialParticipantIds![i]
+          : 'p-$i';
+
+      // Skip self if present in seeds
+      if (seedId == curUserId ||
+          seedId == 'm-you' ||
+          seedName.trim().toLowerCase() == 'anda' ||
+          (selfUsername.isNotEmpty && seedName.trim().toLowerCase() == selfUsername)) {
+        continue;
+      }
+
       String? seedAvatar;
       for (final c in convs) {
         if (c.title.trim().toLowerCase() == seedName.trim().toLowerCase()) {
@@ -123,7 +139,7 @@ class _ActiveGroupCallScreenState extends State<ActiveGroupCallScreen>
       }
       participantsList.add(
         GroupCallParticipant(
-          id: 'p-$i',
+          id: seedId,
           name: seedName,
           avatarUrl: seedAvatar,
           isSelf: false,

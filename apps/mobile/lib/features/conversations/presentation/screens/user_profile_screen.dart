@@ -41,6 +41,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   bool _isMuted = false;
   bool _isLocked = false;
   bool _isLoading = false;
+  int? _disappearingSeconds;
 
   String? _resolvedUserId;
   String? _resolvedPhone;
@@ -69,6 +70,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
       if (match.isNotEmpty) {
         _isLocked = match.first.isLocked;
         _isMuted = match.first.isMuted;
+        _disappearingSeconds = match.first.disappearingSeconds;
       }
     }
 
@@ -834,17 +836,51 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                             style: TextStyle(fontWeight: FontWeight.w600, color: textPrimary, fontSize: 14.5),
                           ),
                           subtitle: Text(
-                            'Mati • Pesan baru otomatis dihapus sesuai waktu',
+                            _disappearingSeconds != null
+                                ? (_disappearingSeconds == 86400
+                                    ? '24 jam'
+                                    : _disappearingSeconds == 604800
+                                        ? '7 hari'
+                                        : _disappearingSeconds == 7776000
+                                            ? '90 hari'
+                                            : '$_disappearingSeconds detik')
+                                : 'Mati • Pesan baru tidak otomatis dihapus',
                             style: TextStyle(color: textSecondary, fontSize: 12),
                           ),
                           trailing: const Icon(Icons.chevron_right_rounded, color: AppColors.textSecondary),
-                          onTap: () {
-                            Navigator.push(
+                          onTap: () async {
+                            final currentTimer = _disappearingSeconds != null
+                                ? (_disappearingSeconds == 86400
+                                    ? '24 hours'
+                                    : _disappearingSeconds == 604800
+                                        ? '7 days'
+                                        : _disappearingSeconds == 7776000
+                                            ? '90 days'
+                                            : 'Off')
+                                : 'Off';
+                            final res = await Navigator.push<String>(
                               context,
                               MaterialPageRoute(
-                                builder: (context) => const DisappearingMessagesScreen(initialTimer: 'Off'),
+                                builder: (context) => DisappearingMessagesScreen(initialTimer: currentTimer),
                               ),
                             );
+                            if (res != null && mounted) {
+                              int? seconds;
+                              if (res == '24 hours') seconds = 86400;
+                              if (res == '7 days') seconds = 604800;
+                              if (res == '90 days') seconds = 7776000;
+                              setState(() {
+                                _disappearingSeconds = seconds;
+                              });
+                              String convId = widget.conversationId ?? 'conv-${_resolvedUserId ?? widget.contactName}';
+                              try {
+                                if (widget.conversationId == null && _resolvedUserId != null) {
+                                  final backendId = await ConversationService.instance.createPersonalConversation(_resolvedUserId!);
+                                  if (backendId != null) convId = backendId;
+                                }
+                                await ConversationService.instance.updateConversationDisappearingTimer(convId, seconds);
+                              } catch (_) {}
+                            }
                           },
                         ),
                         Divider(height: 1, indent: 64, color: isDark ? Colors.white10 : Colors.black12),

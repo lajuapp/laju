@@ -57,6 +57,11 @@ class ConversationService {
   Stream<Map<String, String>> get realtimeMessageDeletedStream =>
       _realtimeMessageDeletedController.stream;
 
+  /// Realtime stream of purged/cleared conversation IDs
+  final StreamController<String> _realtimePurgedController =
+      StreamController<String>.broadcast();
+  Stream<String> get realtimePurgedStream => _realtimePurgedController.stream;
+
   bool _isWsInitialized = false;
 
   void initWebSocket() {
@@ -85,6 +90,7 @@ class ConversationService {
 
     ws.onConversationPurged = (convId) {
       clearChatForMe(convId);
+      _realtimePurgedController.add(convId);
     };
 
     ws.onMessageReaction = (convId, msgId, userId, emoji, action) {
@@ -1818,6 +1824,11 @@ class ConversationService {
       await LocalDatabase.instance.upsertConversations([updated]);
     }
 
+    _realtimePurgedController.add(conversationId);
+    if (effectiveConvId != conversationId) {
+      _realtimePurgedController.add(effectiveConvId);
+    }
+
     // 2. Call backend to persist clearedAt in Postgres
     try {
       await ApiClient.instance.post(
@@ -1860,6 +1871,11 @@ class ConversationService {
       inMemoryConversations = List.from(currentList);
       conversationsNotifier.value = List.from(currentList);
       await LocalDatabase.instance.upsertConversations([updated]);
+    }
+
+    _realtimePurgedController.add(conversationId);
+    if (effectiveConvId != conversationId) {
+      _realtimePurgedController.add(effectiveConvId);
     }
 
     try {
