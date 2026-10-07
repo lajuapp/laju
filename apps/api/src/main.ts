@@ -10,8 +10,8 @@ async function bootstrap() {
 
   app.useWebSocketAdapter(new WsAdapter(app));
 
-  app.use(json({ limit: '150mb' }));
-  app.use(urlencoded({ extended: true, limit: '150mb' }));
+  app.use(json({ limit: '500mb' }));
+  app.use(urlencoded({ extended: true, limit: '500mb' }));
 
   app.enableCors({
     origin: (origin, callback) => {

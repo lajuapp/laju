@@ -15,8 +15,10 @@ import {
   Logger,
   BadRequestException,
   InternalServerErrorException,
-  Query
+  Query,
+  UploadedFile
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { Request, Response } from 'express';
 import { AdminService } from './admin.service';
 import { SeaweedFsService } from '../../infrastructure/seaweedfs/seaweedfs.service';
@@ -599,37 +601,47 @@ export class AdminController {
 
   @Post('app-config/upload-apk')
   @UseGuards(AdminAuthGuard)
+  @UseInterceptors(FileInterceptor('file', {
+    limits: { fileSize: 500 * 1024 * 1024 }
+  }))
   async uploadApk(
+    @UploadedFile() file?: Express.Multer.File,
     @Body()
-    body: {
-      filename: string;
-      base64Data: string;
+    body?: {
+      filename?: string;
+      base64Data?: string;
       version?: string;
       minVersion?: string;
-      forceUpdate?: boolean;
+      forceUpdate?: boolean | string;
       releaseNotes?: string;
     }
   ) {
-    if (!body?.base64Data) {
-      throw new BadRequestException('base64Data berkas APK wajib disertakan');
+    let buffer: Buffer;
+    let rawFilename: string;
+
+    if (file && file.buffer) {
+      buffer = file.buffer;
+      rawFilename = file.originalname || 'laju-latest.apk';
+    } else if (body?.base64Data) {
+      rawFilename = body.filename || 'laju-latest.apk';
+      const rawData = body.base64Data.includes(',')
+        ? body.base64Data.split(',')[1]
+        : body.base64Data;
+      buffer = Buffer.from(rawData, 'base64');
+    } else {
+      throw new BadRequestException('Berkas APK tidak ditemukan dalam request (multipart field "file" atau "base64Data")');
     }
 
-    const rawFilename = body.filename || 'laju-latest.apk';
     if (!rawFilename.toLowerCase().endsWith('.apk')) {
       throw new BadRequestException('Berkas yang diunggah harus memiliki ekstensi .apk');
     }
-
-    const rawData = body.base64Data.includes(',')
-      ? body.base64Data.split(',')[1]
-      : body.base64Data;
-    const buffer = Buffer.from(rawData, 'base64');
 
     if (buffer.length < 1000) {
       throw new BadRequestException('Ukuran berkas APK tidak valid (terlalu kecil)');
     }
 
     const sha256 = crypto.createHash('sha256').update(buffer).digest('hex');
-    const version = body.version?.trim() || '1.0.0';
+    const version = body?.version?.trim() || '1.0.0';
     const cleanVersion = version.replace(/[^a-zA-Z0-9.-]/g, '') || '1.0.0';
     const versionedFilename = `laju-v${cleanVersion}.apk`;
 
@@ -662,16 +674,18 @@ export class AdminController {
       throw new InternalServerErrorException('Gagal menyimpan berkas APK ke storage');
     }
 
+    const forceUpdate = body?.forceUpdate === true || body?.forceUpdate === 'true';
+
     // 3. Update database AppSystemConfig
     const updatedConfig = await this.adminService.updateAppConfig({
       latestAndroidVersion: version,
-      minAndroidVersion: body.minVersion || undefined,
-      forceUpdate: body.forceUpdate !== undefined ? body.forceUpdate : undefined,
+      minAndroidVersion: body?.minVersion || undefined,
+      forceUpdate,
       apkUrl: '/admin/app-config/download-apk',
       apkFilename: versionedFilename,
       apkSize: buffer.length,
       apkSha256: sha256,
-      releaseNotes: body.releaseNotes || undefined,
+      releaseNotes: body?.releaseNotes || undefined,
     });
 
     return {

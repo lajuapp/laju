@@ -48,6 +48,7 @@ export function AppVersionPage() {
   const [apkUploadSuccess, setApkUploadSuccess] = useState<string | null>(null);
   const [apkUploadError, setApkUploadError] = useState<string | null>(null);
   const [isUploadingApk, setIsUploadingApk] = useState<boolean>(false);
+  const [uploadProgress, setUploadProgress] = useState<number>(0);
 
   const {
     register,
@@ -123,34 +124,30 @@ export function AppVersionPage() {
 
     try {
       setIsUploadingApk(true);
+      setUploadProgress(0);
       setApkUploadError(null);
       setApkUploadSuccess(null);
 
-      // Convert file to base64
-      const reader = new FileReader();
-      const base64Promise = new Promise<string>((resolve, reject) => {
-        reader.onload = () => resolve(reader.result as string);
-        reader.onerror = (err) => reject(err);
-      });
-      reader.readAsDataURL(selectedApkFile);
-      const base64Data = await base64Promise;
-
       const res = await uploadApkMutation.mutateAsync({
-        filename: selectedApkFile.name,
-        base64Data,
+        file: selectedApkFile,
         version: apkVersionInput || '1.0.0',
         minVersion: apkMinVersionInput || undefined,
         forceUpdate: apkForceUpdate,
         releaseNotes: apkReleaseNotes || undefined,
+        onProgress: (percent) => {
+          setUploadProgress(percent);
+        },
       });
 
       setApkUploadSuccess(res.message || 'Berkas APK berhasil diunggah dan dirilis!');
       setSelectedApkFile(null);
+      setUploadProgress(0);
       setTimeout(() => setApkUploadSuccess(null), 6000);
     } catch (err: any) {
       setApkUploadError(
         err.response?.data?.message || err.message || 'Gagal mengunggah berkas APK'
       );
+      setUploadProgress(0);
     } finally {
       setIsUploadingApk(false);
     }
@@ -307,7 +304,7 @@ export function AppVersionPage() {
                     Pilih atau tarik berkas APK Android (.apk) ke sini
                   </p>
                   <p className="text-[11px] text-neutral-400 mt-1">
-                    Maksimal ukuran berkas hingga 150 MB
+                    Maksimal ukuran berkas hingga 500 MB (Streaming multipart)
                   </p>
                 </div>
               )}
@@ -375,6 +372,29 @@ export function AppVersionPage() {
               </div>
             </label>
           </div>
+          {/* Upload Progress Indicator */}
+          {isUploadingApk && (
+            <div className="space-y-1.5 p-3.5 rounded-2xl bg-brand-50 border border-brand-200 shadow-xs">
+              <div className="flex justify-between items-center text-xs font-bold text-brand-900">
+                <span className="flex items-center gap-1.5">
+                  <UploadCloud className="w-4 h-4 text-brand-600 animate-pulse" />
+                  Mengunggah Berkas APK ke Server...
+                </span>
+                <span className="font-mono text-xs bg-white px-2 py-0.5 rounded-full border border-brand-200 text-brand-800">
+                  {uploadProgress}%
+                </span>
+              </div>
+              <div className="w-full bg-brand-200/60 rounded-full h-2.5 overflow-hidden">
+                <div
+                  className="bg-brand-600 h-2.5 rounded-full transition-all duration-200 ease-out"
+                  style={{ width: `${Math.max(uploadProgress, 2)}%` }}
+                />
+              </div>
+              <p className="text-[10px] text-brand-700">
+                Streaming berkas binary langsung tanpa buffering memori browser. Jangan tutup halaman ini.
+              </p>
+            </div>
+          )}
 
           <div className="flex justify-end pt-2">
             <Button
@@ -384,7 +404,7 @@ export function AppVersionPage() {
               isLoading={isUploadingApk}
               disabled={!selectedApkFile || isUploadingApk}
             >
-              {isUploadingApk ? 'Mengunggah & Merilis APK...' : 'Unggah & Rilis APK Sekarang'}
+              {isUploadingApk ? `Mengunggah (${uploadProgress}%)...` : 'Unggah & Rilis APK Sekarang'}
             </Button>
           </div>
         </form>
