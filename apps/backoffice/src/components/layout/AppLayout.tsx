@@ -12,6 +12,7 @@ import {
   Sparkles,
   Megaphone,
   Settings2,
+  LifeBuoy,
 } from 'lucide-react';
 import { useAdminMe, useLogout } from '../../hooks/useAdminAuth';
 import { useDashboardStats } from '../../hooks/useDashboardStats';
@@ -53,10 +54,11 @@ export function AppLayout() {
       ],
     },
     {
-      group: 'Kepatuhan & Keamanan',
+      group: 'Layanan & Kepatuhan',
       items: [
-        { label: 'Log Aktivitas', to: '/security', icon: ShieldAlert },
+        { label: 'Tiket Bantuan', to: '/tickets', icon: LifeBuoy },
         { label: 'Laporan Pengguna', to: '/reports', icon: ShieldCheck },
+        { label: 'Log Aktivitas', to: '/security', icon: ShieldAlert },
       ],
     },
     {

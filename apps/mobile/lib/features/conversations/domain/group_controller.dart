@@ -442,9 +442,11 @@ class GroupController extends ChangeNotifier {
         if (membersList is List) {
           for (final m in membersList) {
             if (m is Map) {
+              if (m['leftAt'] != null) continue;
               final user = m['user'] as Map?;
               final uId = (m['userId'] ?? user?['id'] ?? '').toString();
               final isCurrentUser = uId == curUserId;
+              final role = (m['role'] ?? '').toString().toUpperCase();
               final isOwner = role == 'OWNER';
               final isAdmin = isOwner || role == 'ADMIN';
 
@@ -572,6 +574,14 @@ class GroupController extends ChangeNotifier {
   void updateGroupWallpaper(String groupId, String? wallpaperId) {
     if (_groups.containsKey(groupId)) {
       _groups[groupId]!.wallpaperId = wallpaperId;
+      notifyListeners();
+    }
+  }
+
+  /// Remove group from local controller when leaving or deleting group
+  void removeGroup(String groupId) {
+    if (_groups.containsKey(groupId)) {
+      _groups.remove(groupId);
       notifyListeners();
     }
   }

@@ -18,6 +18,7 @@ class ApiEndpoints {
   static const String users = '/users';
   static String userById(String id) => '/users/$id';
   static const String userReport = '/users/report';
+  static const String userSupport = '/users/support';
   static String userTrustScore(String id) => '/users/$id/trust-score';
   static const String userReportsAll = '/users/reports/all';
   static String reviewUserReport(String id) => '/users/reports/$id/review';

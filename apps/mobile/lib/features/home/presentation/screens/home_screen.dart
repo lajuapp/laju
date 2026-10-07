@@ -201,7 +201,7 @@ class _HomeScreenState extends State<HomeScreen> {
       if (mounted) {
         if (!ConversationModel.areListsEqual(_conversations, apiConvs)) {
           setState(() {
-            if (apiConvs.isNotEmpty) _conversations = apiConvs;
+            _conversations = apiConvs;
             _isLoadingConversations = false;
           });
         } else if (_isLoadingConversations) {

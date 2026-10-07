@@ -71,6 +71,19 @@ export class UsersController {
     return this.usersService.searchUsers(userId, query.q, query.limit, query.offset);
   }
 
+  @Get('support/my-tickets')
+  getMyTickets(@CurrentUser('userId') userId: string) {
+    return this.usersService.getUserTickets(userId);
+  }
+
+  @Post('support')
+  createSupportTicket(
+    @CurrentUser('userId') userId: string,
+    @Body() body: { subject: string; message: string; category?: string; appVersion?: string }
+  ) {
+    return this.usersService.createSupportTicket(userId, body);
+  }
+
   @Get(':id')
   getUserById(@Param('id') id: string) {
     return this.usersService.getUserById(id);

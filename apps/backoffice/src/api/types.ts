@@ -278,3 +278,45 @@ export interface AppSystemConfig {
   updatedAt: string;
 }
 
+export type TicketStatus = 'OPEN' | 'IN_PROGRESS' | 'RESOLVED' | 'CLOSED';
+export type TicketPriority = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+
+export interface SupportTicketItem {
+  id: string;
+  ticketCode: string;
+  userId: string;
+  category: string;
+  subject: string;
+  message: string;
+  appVersion?: string | null;
+  status: TicketStatus;
+  priority: TicketPriority;
+  adminNotes?: string | null;
+  responseMessage?: string | null;
+  assignedToId?: string | null;
+  resolvedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  user?: {
+    id: string;
+    username: string;
+    email?: string | null;
+    phoneNumber?: string | null;
+    trustScore?: number;
+    status?: string;
+  };
+  assignedTo?: {
+    id: string;
+    name: string;
+    username: string;
+  } | null;
+}
+
+export interface UpdateTicketPayload {
+  status?: TicketStatus;
+  priority?: TicketPriority;
+  adminNotes?: string;
+  responseMessage?: string;
+  assignedToId?: string;
+}
+

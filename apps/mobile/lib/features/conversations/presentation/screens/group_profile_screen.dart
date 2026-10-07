@@ -8,6 +8,7 @@ import '../../../messaging/presentation/screens/chat_screen.dart';
 import '../../../messaging/domain/models/message_model.dart';
 import '../../domain/group_controller.dart';
 import '../../domain/conversation_service.dart';
+import '../../domain/models/conversation_model.dart';
 import 'group_settings_screen.dart';
 import 'user_profile_screen.dart';
 
@@ -1217,16 +1218,19 @@ class _GroupProfileScreenState extends State<GroupProfileScreen> {
                             label: 'Panggilan',
                             isDark: isDark,
                             onTap: () {
+                              final curUserId = ApiClient.instance.userId;
+                              final otherMembers = members
+                                  .where((m) => m.id != 'm-you' && (curUserId == null || m.id != curUserId))
+                                  .toList();
                               Navigator.push(
                                 context,
                                 MaterialPageRoute(
                                   builder: (context) => ActiveGroupCallScreen(
                                     groupName: group.name,
-                                    initialParticipants: members
-                                        .where((m) => m.id != 'm-you')
-                                        .map((m) => m.name)
-                                        .toList(),
+                                    initialParticipants: otherMembers.map((m) => m.name).toList(),
+                                    initialParticipantIds: otherMembers.map((m) => m.id).toList(),
                                     isVideo: false,
+                                    conversationId: widget.groupId,
                                   ),
                                 ),
                               );
@@ -1237,16 +1241,19 @@ class _GroupProfileScreenState extends State<GroupProfileScreen> {
                             label: 'Video',
                             isDark: isDark,
                             onTap: () {
+                              final curUserId = ApiClient.instance.userId;
+                              final otherMembers = members
+                                  .where((m) => m.id != 'm-you' && (curUserId == null || m.id != curUserId))
+                                  .toList();
                               Navigator.push(
                                 context,
                                 MaterialPageRoute(
                                   builder: (context) => ActiveGroupCallScreen(
                                     groupName: group.name,
-                                    initialParticipants: members
-                                        .where((m) => m.id != 'm-you')
-                                        .map((m) => m.name)
-                                        .toList(),
+                                    initialParticipants: otherMembers.map((m) => m.name).toList(),
+                                    initialParticipantIds: otherMembers.map((m) => m.id).toList(),
                                     isVideo: true,
+                                    conversationId: widget.groupId,
                                   ),
                                 ),
                               );

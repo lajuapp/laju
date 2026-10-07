@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import '../../../../core/core.dart';
 import '../../domain/models/message_model.dart';
 import '../widgets/chat_bubble.dart';
@@ -91,6 +92,7 @@ class _ChatScreenState extends State<ChatScreen> {
       _replyingTo = widget.initialReplyTo;
     }
     _scrollController.addListener(_onScroll);
+    ChatWebSocketService.instance.connect();
     ConversationService.instance.currentActiveConversationId = _conversationId;
     final mem = ConversationService.instance.getMemoryMessages(_conversationId);
     _messages = mem != null ? List<MessageModel>.from(mem) : [];
@@ -102,7 +104,17 @@ class _ChatScreenState extends State<ChatScreen> {
     _rtMsgSub = ConversationService.instance.realtimeMessageStream.listen((msg) {
       if (!mounted) return;
       final realId = ConversationService.instance.resolveConversationId(_conversationId);
-      if (msg.conversationId == _conversationId || msg.conversationId == realId) {
+      final isMatch = msg.conversationId == _conversationId ||
+          msg.conversationId == realId ||
+          (widget.contactUserId != null &&
+              widget.contactUserId!.isNotEmpty &&
+              (msg.senderUserId == widget.contactUserId ||
+                  _conversationId == 'conv-${widget.contactUserId}'));
+      if (isMatch) {
+        if (_conversationId.startsWith('conv-') && msg.conversationId != _conversationId) {
+          _conversationId = msg.conversationId;
+          ConversationService.instance.currentActiveConversationId = msg.conversationId;
+        }
         _mergeAndSetMessages([msg]);
       }
     });
@@ -194,8 +206,9 @@ class _ChatScreenState extends State<ChatScreen> {
 
   void _startPolling() {
     _pollTimer?.cancel();
-    final interval = ChatWebSocketService.instance.isConnected ? 15000 : 1000;
-    _pollTimer = Timer.periodic(Duration(milliseconds: interval), (_) async {
+    // Fast 1000ms polling while chat is open, ensuring no noticeable delay
+    const interval = 1000;
+    _pollTimer = Timer.periodic(const Duration(milliseconds: interval), (_) async {
       _syncMessages();
     });
   }
@@ -1130,7 +1143,11 @@ class _ChatScreenState extends State<ChatScreen> {
                           ValueListenableBuilder<Map<String, bool>>(
                             valueListenable: ConversationService.instance.typingStatusNotifier,
                             builder: (context, typings, _) {
-                              final isTyping = typings[_conversationId] == true || typings[widget.conversationId] == true;
+                              final realId = ConversationService.instance.resolveConversationId(_conversationId);
+                              final isTyping = typings[_conversationId] == true ||
+                                  typings[widget.conversationId] == true ||
+                                  typings[realId] == true ||
+                                  (widget.contactUserId != null && typings[widget.contactUserId!] == true);
                               if (isTyping) {
                                 return const Text(
                                   'sedang mengetik...',

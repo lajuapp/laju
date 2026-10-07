@@ -37,7 +37,8 @@ import {
   CreateAnnouncementDto,
   UpdateAnnouncementDto,
   UpdateAppConfigDto,
-  ReviewReportDto
+  ReviewReportDto,
+  UpdateTicketDto
 } from './dto/admin.dto';
 import { AdminAuthGuard } from '../../common/guards/admin-auth.guard';
 import { RequirePermissions } from '../../common/decorators/permissions.decorator';
@@ -190,6 +191,43 @@ export class AdminController {
     @Body() dto: ReviewReportDto
   ) {
     return this.adminService.reviewReport(id, req.admin.adminId, dto);
+  }
+
+  // ─── SUPPORT TICKETS MANAGEMENT ─────────────────────────────────
+  @Get('tickets')
+  @UseGuards(AdminAuthGuard)
+  listTickets(
+    @Query('status') status?: string,
+    @Query('priority') priority?: string,
+    @Query('category') category?: string,
+    @Query('search') search?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string
+  ) {
+    return this.adminService.listTickets(
+      status,
+      priority,
+      category,
+      search,
+      page ? parseInt(page, 10) : 1,
+      limit ? parseInt(limit, 10) : 20
+    );
+  }
+
+  @Get('tickets/:id')
+  @UseGuards(AdminAuthGuard)
+  getTicketDetails(@Param('id') id: string) {
+    return this.adminService.getTicketDetails(id);
+  }
+
+  @Patch('tickets/:id')
+  @UseGuards(AdminAuthGuard)
+  updateTicket(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Body() dto: UpdateTicketDto
+  ) {
+    return this.adminService.updateTicket(id, req.admin?.adminId, dto);
   }
 
   // ─── DEVICES MANAGEMENT ─────────────────────────────────────────

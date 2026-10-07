@@ -71,6 +71,7 @@ class MessageModel {
   final String? attachmentSize;
   final String? attachmentPath;
 
+  final String? senderUserId;
   final MessageModel? replyTo;
   final List<String> reactions;
   final bool isEdited;
@@ -81,6 +82,7 @@ class MessageModel {
     this.clientMessageId,
     required this.conversationId,
     required this.senderName,
+    this.senderUserId,
     required this.content,
     required this.timestamp,
     required this.isOutgoing,
@@ -99,29 +101,13 @@ class MessageModel {
 
   bool get isRecalled => isDeleted || content == '__DELETED_FOR_EVERYONE__';
 
-  String get displaySnippet {
-    if (isRecalled) return 'Pesan telah ditarik';
-    switch (contentType) {
-      case MessageContentType.attachment:
-        return attachmentName != null && attachmentName!.isNotEmpty ? attachmentName! : 'Foto/Berkas';
-      case MessageContentType.voiceNote:
-        return 'Pesan Suara';
-      case MessageContentType.sticker:
-        return 'Stiker';
-      case MessageContentType.location:
-        return 'Lokasi';
-      case MessageContentType.contact:
-        return 'Kontak';
-      default:
-        return content;
-    }
-  }
 
   MessageModel copyWith({
     String? id,
     String? clientMessageId,
     String? conversationId,
     String? senderName,
+    String? senderUserId,
     String? content,
     DateTime? timestamp,
     bool? isOutgoing,
@@ -142,6 +128,7 @@ class MessageModel {
       clientMessageId: clientMessageId ?? this.clientMessageId,
       conversationId: conversationId ?? this.conversationId,
       senderName: senderName ?? this.senderName,
+      senderUserId: senderUserId ?? this.senderUserId,
       content: content ?? this.content,
       timestamp: timestamp ?? this.timestamp,
       isOutgoing: isOutgoing ?? this.isOutgoing,
@@ -244,6 +231,7 @@ class MessageModel {
       clientMessageId: clientMessageId,
       conversationId: conversationId,
       senderName: senderName,
+      senderUserId: senderUserId,
       content: '__DELETED_FOR_EVERYONE__',
       timestamp: timestamp,
       isOutgoing: isOutgoing,

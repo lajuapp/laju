@@ -434,4 +434,56 @@ export class UsersService {
       };
     }
   }
+
+  async createSupportTicket(userId: string, data: { subject: string; message: string; category?: string; appVersion?: string }) {
+    const ticketCode = `TKT-${Date.now().toString(36).toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}`;
+
+    const ticket = await this.prisma.supportTicket.create({
+      data: {
+        ticketCode,
+        userId,
+        category: data.category || 'General',
+        subject: data.subject,
+        message: data.message,
+        appVersion: data.appVersion || '1.0.0',
+        status: 'OPEN',
+        priority: 'MEDIUM',
+      },
+    });
+
+    return {
+      success: true,
+      ticketId: ticket.id,
+      ticketCode: ticket.ticketCode,
+      message: 'Tiket bantuan berhasil dikirim. Tim dukungan kami akan segera meninjau.',
+      createdAt: ticket.createdAt.toISOString(),
+    };
+  }
+
+  async getUserTickets(userId: string) {
+    const tickets = await this.prisma.supportTicket.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        ticketCode: true,
+        category: true,
+        subject: true,
+        message: true,
+        appVersion: true,
+        status: true,
+        priority: true,
+        responseMessage: true,
+        resolvedAt: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    return {
+      success: true,
+      data: tickets,
+      total: tickets.length,
+    };
+  }
 }

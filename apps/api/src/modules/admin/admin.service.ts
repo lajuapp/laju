@@ -26,7 +26,8 @@ import {
   CreateAnnouncementDto,
   UpdateAnnouncementDto,
   UpdateAppConfigDto,
-  ReviewReportDto
+  ReviewReportDto,
+  UpdateTicketDto
 } from './dto/admin.dto';
 
 @Injectable()
@@ -1535,6 +1536,199 @@ export class AdminService {
         lastSeenAt: d.lastSeenAt
       })),
       counts: user._count
+    };
+  }
+
+  // ─── SUPPORT TICKETS MANAGEMENT ─────────────────────────────────
+  async listTickets(
+    status?: string,
+    priority?: string,
+    category?: string,
+    search?: string,
+    page: number = 1,
+    limit: number = 20
+  ) {
+    const where: any = {};
+    if (status && status !== 'ALL') {
+      where.status = status;
+    }
+    if (priority && priority !== 'ALL') {
+      where.priority = priority;
+    }
+    if (category && category !== 'ALL') {
+      where.category = category;
+    }
+    if (search && search.trim()) {
+      const q = search.trim();
+      where.OR = [
+        { ticketCode: { contains: q, mode: 'insensitive' } },
+        { subject: { contains: q, mode: 'insensitive' } },
+        { message: { contains: q, mode: 'insensitive' } },
+        { user: { username: { contains: q, mode: 'insensitive' } } },
+      ];
+    }
+
+    const skip = (page - 1) * limit;
+
+    const [tickets, total, openCount, inProgressCount, resolvedCount, closedCount] = await Promise.all([
+      (this.prisma as any).supportTicket.findMany({
+        where,
+        include: {
+          user: {
+            select: { id: true, username: true, email: true, phoneNumber: true, trustScore: true }
+          },
+          assignedTo: {
+            select: { id: true, name: true, username: true }
+          }
+        },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+      (this.prisma as any).supportTicket.count({ where }),
+      (this.prisma as any).supportTicket.count({ where: { status: 'OPEN' } }),
+      (this.prisma as any).supportTicket.count({ where: { status: 'IN_PROGRESS' } }),
+      (this.prisma as any).supportTicket.count({ where: { status: 'RESOLVED' } }),
+      (this.prisma as any).supportTicket.count({ where: { status: 'CLOSED' } }),
+    ]);
+
+    return {
+      data: tickets,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+      counts: {
+        open: openCount,
+        inProgress: inProgressCount,
+        resolved: resolvedCount,
+        closed: closedCount,
+      }
+    };
+  }
+
+  async getTicketDetails(id: string) {
+    const ticket = await (this.prisma as any).supportTicket.findFirst({
+      where: {
+        OR: [
+          { id },
+          { ticketCode: id }
+        ]
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            username: true,
+            email: true,
+            phoneNumber: true,
+            trustScore: true,
+            status: true,
+            createdAt: true,
+          }
+        },
+        assignedTo: {
+          select: { id: true, name: true, username: true }
+        }
+      }
+    });
+
+    if (!ticket) {
+      throw new NotFoundException('Tiket bantuan tidak ditemukan');
+    }
+
+    return ticket;
+  }
+
+  async updateTicket(id: string, adminId: string, dto: UpdateTicketDto) {
+    const ticket = await (this.prisma as any).supportTicket.findUnique({
+      where: { id },
+      include: { user: true }
+    });
+
+    if (!ticket) {
+      throw new NotFoundException('Tiket bantuan tidak ditemukan');
+    }
+
+    const updateData: any = {};
+    if (dto.status !== undefined) {
+      updateData.status = dto.status;
+      if (dto.status === 'RESOLVED' && !ticket.resolvedAt) {
+        updateData.resolvedAt = new Date();
+      }
+    }
+    if (dto.priority !== undefined) {
+      updateData.priority = dto.priority;
+    }
+    if (dto.adminNotes !== undefined) {
+      updateData.adminNotes = dto.adminNotes;
+    }
+    if (dto.responseMessage !== undefined) {
+      updateData.responseMessage = dto.responseMessage;
+    }
+    if (dto.assignedToId !== undefined) {
+      updateData.assignedToId = dto.assignedToId;
+    } else if (!ticket.assignedToId && adminId) {
+      updateData.assignedToId = adminId;
+    }
+
+    const updated = await (this.prisma as any).supportTicket.update({
+      where: { id },
+      data: updateData,
+      include: {
+        user: {
+          select: { id: true, username: true, email: true, phoneNumber: true, trustScore: true }
+        },
+        assignedTo: {
+          select: { id: true, name: true, username: true }
+        }
+      }
+    });
+
+    // Notify user via Push Notification & Redis Event
+    try {
+      const title = `[LAJU Dukungan] Tiket ${ticket.ticketCode}`;
+      const message = dto.responseMessage
+        ? `Tanggapan: ${dto.responseMessage}`
+        : `Status tiket diperbarui menjadi: ${dto.status || ticket.status}`;
+
+      if (this.redisService) {
+        await this.redisService.publish(
+          `user:${ticket.userId}:events`,
+          JSON.stringify({
+            type: 'SUPPORT_TICKET_UPDATE',
+            ticketId: ticket.id,
+            ticketCode: ticket.ticketCode,
+            status: updated.status,
+            priority: updated.priority,
+            responseMessage: updated.responseMessage,
+            updatedAt: updated.updatedAt,
+          })
+        );
+      }
+
+      if (this.gotifyService) {
+        const activeDevices = await this.prisma.device.findMany({
+          where: { userId: ticket.userId, status: 'ACTIVE' },
+          select: { pushToken: true }
+        });
+        for (const device of activeDevices) {
+          if (device.pushToken) {
+            await this.gotifyService.sendPushNotification({
+              targetToken: device.pushToken,
+              title,
+              message,
+              priority: 7
+            }).catch(() => {});
+          }
+        }
+      }
+    } catch (_) {}
+
+    return {
+      success: true,
+      message: 'Tiket bantuan berhasil diperbarui.',
+      data: updated
     };
   }
 }

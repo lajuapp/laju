@@ -124,6 +124,7 @@ class AccountController extends ChangeNotifier {
     if (authName != null && authName.isNotEmpty) return authName;
     return _userName;
   }
+  String get username => userName;
   String get phoneNumber => _phoneNumber;
   String get about => _about;
   String get avatarUrl {

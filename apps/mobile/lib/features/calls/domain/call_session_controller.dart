@@ -250,27 +250,45 @@ class CallSessionController extends ChangeNotifier with WidgetsBindingObserver {
     notifyListeners();
   }
 
-  void startGroupCall({
+  Future<void> startGroupCall({
     required String groupName,
     required List<String> initialParticipants,
     required bool isVideo,
     String? conversationId,
-  }) {
+  }) async {
     _stopCallAudio();
     _playCallTone('stop');
     _timer?.cancel();
     _statusPoller?.cancel();
 
+    // Check & request permissions before proceeding
+    var effectiveIsVideo = isVideo;
+    final permResult = await CallPermissionService.instance.checkAndRequestPermissions(
+      isVideo: isVideo,
+      context: AppNavigation.navigatorKey.currentContext,
+    );
+
+    if (permResult == CallPermissionResult.denied) {
+      _isActive = false;
+      _status = CallStatus.idle;
+      notifyListeners();
+      return;
+    }
+
+    if (isVideo && permResult == CallPermissionResult.audioOnlyGranted) {
+      effectiveIsVideo = false;
+    }
+
     _callId = 'group-call-${DateTime.now().millisecondsSinceEpoch}';
     _title = groupName;
     _groupName = groupName;
     _isGroup = true;
-    _isVideo = isVideo;
+    _isVideo = effectiveIsVideo;
     _isOutgoing = true;
     _participants = List.from(initialParticipants);
     _durationSeconds = 0;
     _isMuted = false;
-    _isVideoOn = isVideo;
+    _isVideoOn = effectiveIsVideo;
     _isSpeaker = true;
     _isMinimized = false;
     _isActive = true;
@@ -281,14 +299,14 @@ class CallSessionController extends ChangeNotifier with WidgetsBindingObserver {
 
     // Initialize local WebRTC stream and preview for group call
     WebRTCCallService.instance.initializePeerConnection(
-      isVideo: isVideo,
+      isVideo: effectiveIsVideo,
       isAudio: true,
     ).catchError((e) {
       debugPrint('[CallSessionController] Group call local media init error: $e');
     });
 
     if (conversationId != null && conversationId.isNotEmpty) {
-      _dispatchGroupCallToBackend(conversationId, isVideo: isVideo);
+      _dispatchGroupCallToBackend(conversationId, isVideo: effectiveIsVideo);
     } else {
       // Connect to WebRTC signaling gateway for group call room
       WebRTCCallService.instance.connectSignaling(

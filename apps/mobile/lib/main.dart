@@ -22,7 +22,11 @@ void main() async {
   await AppLockController.instance.init();
   await AccountController.instance.init();
   await PrivacyController.instance.init();
+  ChatWebSocketService.instance; // Ensure WS callbacks are registered on ApiClient
   await AuthController.instance.initSession();
+  if (AuthController.instance.isAuthenticated) {
+    ChatWebSocketService.instance.connect();
+  }
   await PushNotificationService.instance.init();
   ForegroundSyncService.instance.init();
   runApp(const LajuApp());

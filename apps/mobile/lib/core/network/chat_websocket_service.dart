@@ -41,9 +41,16 @@ class ChatWebSocketService {
   Function(Map<String, dynamic> payload)? onStatusUpdate;
 
   /// Connect to /ws/chat
-  Future<void> connect() async {
-    if (_isConnecting || (_ws != null && _ws!.readyState == WebSocket.open)) {
+  Future<void> connect({bool force = false}) async {
+    if (!force && (_isConnecting || (_ws != null && _ws!.readyState == WebSocket.open))) {
       return;
+    }
+
+    if (force && _ws != null) {
+      try {
+        _ws?.close();
+      } catch (_) {}
+      _ws = null;
     }
 
     final token = ApiClient.instance.authToken;
@@ -104,9 +111,10 @@ class ChatWebSocketService {
 
       switch (type) {
         case 'NEW_MESSAGE':
-          if (map['message'] is Map) {
-            onNewMessage?.call(Map<String, dynamic>.from(map['message'] as Map));
-          }
+          final msgMap = (map['message'] is Map)
+              ? Map<String, dynamic>.from(map['message'] as Map)
+              : map;
+          onNewMessage?.call(msgMap);
           break;
 
         case 'MESSAGE_DELETED':
@@ -178,7 +186,7 @@ class ChatWebSocketService {
 
   void _startPing() {
     _pingTimer?.cancel();
-    _pingTimer = Timer.periodic(const Duration(seconds: 25), (t) {
+    _pingTimer = Timer.periodic(const Duration(seconds: 12), (t) {
       if (_ws != null && _ws!.readyState == WebSocket.open) {
         try {
           _ws!.add(jsonEncode({'type': 'ping', 'timestamp': DateTime.now().millisecondsSinceEpoch}));

@@ -78,6 +78,7 @@ class _ActiveGroupCallScreenState extends State<ActiveGroupCallScreen>
     _isSelfVideoOn = widget.isVideo;
 
     final session = CallSessionController.instance;
+    session.addListener(_onSessionUpdated);
     if (!session.isActive || session.callId == null || !session.isGroup) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
@@ -161,6 +162,27 @@ class _ActiveGroupCallScreenState extends State<ActiveGroupCallScreen>
       vsync: this,
       duration: const Duration(milliseconds: 600),
     )..repeat(reverse: true);
+
+    WebRTCCallService.instance.onRendererReady = (local, remote) {
+      if (!mounted) return;
+      setState(() {});
+    };
+
+    WebRTCCallService.instance.onCallConnected = () {
+      if (!mounted) return;
+      setState(() {
+        for (final p in _participants) {
+          if (!p.isSelf && p.status == ParticipantCallStatus.ringing) {
+            p.status = ParticipantCallStatus.connected;
+          }
+        }
+      });
+    };
+
+    WebRTCCallService.instance.onCallEnded = () {
+      if (!mounted) return;
+      _exitCall();
+    };
 
     WebRTCCallService.instance.onSignalingEvent = (event) {
       if (!mounted) return;
@@ -290,9 +312,32 @@ class _ActiveGroupCallScreenState extends State<ActiveGroupCallScreen>
     Navigator.pop(context);
   }
 
+  void _onSessionUpdated() {
+    if (!mounted) return;
+    final session = CallSessionController.instance;
+    setState(() {
+      _isSelfMuted = session.isMuted;
+      _isSpeakerOn = session.isSpeaker;
+      _isSelfVideoOn = session.isVideoOn;
+      for (final p in _participants) {
+        if (p.isSelf) {
+          p.isVideoOn = session.isVideoOn;
+          p.isMuted = session.isMuted;
+        }
+      }
+    });
+    if (!session.isActive || session.status == CallStatus.ended || session.status == CallStatus.rejected) {
+      _exitCall();
+    }
+  }
+
   @override
   void dispose() {
+    CallSessionController.instance.removeListener(_onSessionUpdated);
     WebRTCCallService.instance.onSignalingEvent = null;
+    WebRTCCallService.instance.onRendererReady = null;
+    WebRTCCallService.instance.onCallConnected = null;
+    WebRTCCallService.instance.onCallEnded = null;
     _tickerTimer?.cancel();
     _pulseController.dispose();
     _equalizerController.dispose();
@@ -449,12 +494,21 @@ class _ActiveGroupCallScreenState extends State<ActiveGroupCallScreen>
             ),
           ),
 
-          // Add Participant Button
+          if (_isSelfVideoOn)
             IconButton(
-              icon: Icon(Icons.person_add_rounded, color: textPrimary, size: 22),
-              tooltip: context.tr('addParticipant'),
-              onPressed: () => _showParticipantsSheet(isDark, cardColor, textPrimary, textSecondary, borderColor),
+              icon: Icon(Icons.flip_camera_ios_rounded, color: textPrimary, size: 22),
+              tooltip: 'Ganti Kamera',
+              onPressed: () {
+                CallSessionController.instance.switchCamera();
+              },
             ),
+
+          // Add Participant Button
+          IconButton(
+            icon: Icon(Icons.person_add_rounded, color: textPrimary, size: 22),
+            tooltip: context.tr('addParticipant'),
+            onPressed: () => _showParticipantsSheet(isDark, cardColor, textPrimary, textSecondary, borderColor),
+          ),
           ],
         ),
       ),
@@ -593,14 +647,14 @@ class _ActiveGroupCallScreenState extends State<ActiveGroupCallScreen>
                         objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
                       ),
                     )
-                  else if (!participant.isSelf && participant.isVideoOn && isConnected && WebRTCCallService.instance.isRemoteVideoReady && WebRTCCallService.instance.remoteRenderer != null)
+                  else if (!participant.isSelf && (participant.isVideoOn || WebRTCCallService.instance.isRemoteVideoReady) && WebRTCCallService.instance.isRemoteVideoReady && WebRTCCallService.instance.remoteRenderer != null)
                     Positioned.fill(
                       child: RTCVideoView(
                         WebRTCCallService.instance.remoteRenderer!,
                         objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
                       ),
                     )
-                  else if ((participant.isSelf && _isSelfVideoOn) || (!participant.isSelf && participant.isVideoOn && isConnected))
+                  else if ((participant.isSelf && _isSelfVideoOn) || (!participant.isSelf && (participant.isVideoOn || widget.isVideo) && (isConnected || isRinging)))
                     Positioned.fill(
                       child: Container(
                         decoration: BoxDecoration(
@@ -889,8 +943,9 @@ class _ActiveGroupCallScreenState extends State<ActiveGroupCallScreen>
               textSecondary: textSecondary,
               borderColor: borderColor,
               onTap: () {
+                CallSessionController.instance.toggleSpeaker();
                 setState(() {
-                  _isSpeakerOn = !_isSpeakerOn;
+                  _isSpeakerOn = CallSessionController.instance.isSpeaker;
                 });
               },
             ),
@@ -906,8 +961,12 @@ class _ActiveGroupCallScreenState extends State<ActiveGroupCallScreen>
               textSecondary: textSecondary,
               borderColor: borderColor,
               onTap: () {
+                CallSessionController.instance.toggleVideo();
                 setState(() {
-                  _isSelfVideoOn = !_isSelfVideoOn;
+                  _isSelfVideoOn = CallSessionController.instance.isVideoOn;
+                  for (final p in _participants) {
+                    if (p.isSelf) p.isVideoOn = _isSelfVideoOn;
+                  }
                 });
               },
             ),
@@ -923,8 +982,12 @@ class _ActiveGroupCallScreenState extends State<ActiveGroupCallScreen>
               textSecondary: textSecondary,
               borderColor: borderColor,
               onTap: () {
+                CallSessionController.instance.toggleMute();
                 setState(() {
-                  _isSelfMuted = !_isSelfMuted;
+                  _isSelfMuted = CallSessionController.instance.isMuted;
+                  for (final p in _participants) {
+                    if (p.isSelf) p.isMuted = _isSelfMuted;
+                  }
                 });
               },
             ),

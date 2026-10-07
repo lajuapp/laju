@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/widgets.dart';
 import '../network/api_client.dart';
+import '../network/chat_websocket_service.dart';
 import '../widgets/app_notification_service.dart';
 import '../../features/auth/domain/auth_controller.dart';
 import '../../features/auth/presentation/widgets/transfer_approval_bottom_sheet.dart';
@@ -43,6 +44,7 @@ class ForegroundSyncService with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       start();
+      ChatWebSocketService.instance.connect();
       CallSessionController.instance.checkLaunchPayload();
     } else if (state == AppLifecycleState.paused || state == AppLifecycleState.detached) {
       // Keep slow-polling in background (every 8 seconds)

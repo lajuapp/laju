@@ -394,4 +394,26 @@ export class ReviewReportDto {
   suspendUser?: boolean;
 }
 
+export class UpdateTicketDto {
+  @IsString()
+  @IsOptional()
+  status?: 'OPEN' | 'IN_PROGRESS' | 'RESOLVED' | 'CLOSED';
+
+  @IsString()
+  @IsOptional()
+  priority?: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+
+  @IsString()
+  @IsOptional()
+  adminNotes?: string;
+
+  @IsString()
+  @IsOptional()
+  responseMessage?: string;
+
+  @IsString()
+  @IsOptional()
+  assignedToId?: string;
+}
+
 

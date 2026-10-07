@@ -272,7 +272,11 @@ class AuthController extends ChangeNotifier {
         if (userMap is Map<String, dynamic>) {
           _currentUser = AuthUser.fromJson(userMap);
         } else {
-          _completeAuthentication();
+          _currentUser = AuthUser(
+            id: userMap?['id'] ?? 'u-${DateTime.now().millisecondsSinceEpoch}',
+            username: username,
+            status: 'ACTIVE',
+          );
         }
 
         _isAuthenticated = true;
@@ -280,13 +284,17 @@ class AuthController extends ChangeNotifier {
         _saveSessionToPrefs();
         notifyListeners();
         return true;
+      } else {
+        _lastAuthError = response.errorMessage ?? 'Pendaftaran gagal';
       }
-    } catch (_) {
-      // Fallback
+    } catch (e) {
+      _lastAuthError = e.toString();
+    } finally {
+      _isLoading = false;
+      notifyListeners();
     }
 
-    _completeAuthentication();
-    return true;
+    return false;
   }
 
   /// Login using OTP against backend
@@ -326,7 +334,11 @@ class AuthController extends ChangeNotifier {
         if (data['user'] is Map<String, dynamic>) {
           _currentUser = AuthUser.fromJson(data['user']);
         } else {
-          _completeAuthentication();
+          _currentUser = AuthUser(
+            id: data['user']?['id'] ?? 'u-${DateTime.now().millisecondsSinceEpoch}',
+            username: _pendingIdentifier ?? 'User',
+            status: 'ACTIVE',
+          );
         }
 
         _isAuthenticated = true;
@@ -334,13 +346,17 @@ class AuthController extends ChangeNotifier {
         _saveSessionToPrefs();
         notifyListeners();
         return true;
+      } else {
+        _lastAuthError = response.errorMessage ?? 'Login OTP gagal';
       }
-    } catch (_) {
-      // Fallback
+    } catch (e) {
+      _lastAuthError = e.toString();
+    } finally {
+      _isLoading = false;
+      notifyListeners();
     }
 
-    _completeAuthentication();
-    return true;
+    return false;
   }
 
   /// Login using Password directly
@@ -348,19 +364,8 @@ class AuthController extends ChangeNotifier {
     required String identifier,
     required String password,
   }) {
-    if (identifier.trim().isEmpty || password.isEmpty) return false;
-
-    _pendingIdentifier = identifier.trim();
-
-    final is2FaActive = AccountController.instance.twoStepVerificationEnabled;
-    if (is2FaActive) {
-      _requiresTwoFactor = true;
-      notifyListeners();
-      return true;
-    }
-
-    _completeAuthentication();
-    return true;
+    // Offline password authentication without server token is prohibited in production
+    return false;
   }
 
   /// Async login using password against backend
@@ -405,29 +410,34 @@ class AuthController extends ChangeNotifier {
         if (data['user'] is Map<String, dynamic>) {
           _currentUser = AuthUser.fromJson(data['user']);
         } else {
-          _pendingIdentifier = identifier;
-          _completeAuthentication();
+          _currentUser = AuthUser(
+            id: data['user']?['id'] ?? 'u-${DateTime.now().millisecondsSinceEpoch}',
+            username: identifier.trim(),
+            status: 'ACTIVE',
+          );
         }
 
         _isAuthenticated = true;
         _requiresTwoFactor = false;
         _saveSessionToPrefs();
         return true;
+      } else {
+        _lastAuthError = response.errorMessage ?? 'ID atau kata sandi tidak valid';
       }
-    } catch (_) {
-      // Fallback
+    } catch (e) {
+      _lastAuthError = e.toString();
     } finally {
       _isLoading = false;
       notifyListeners();
     }
 
-    return loginWithPassword(identifier: identifier, password: password);
+    return false;
   }
 
   /// Verifies Two-Factor Authentication PIN
   bool verifyTwoFactorPin(String pin) {
     final expectedPin = AccountController.instance.twoStepPin;
-    if (pin == expectedPin || pin == '123456') {
+    if (expectedPin.isNotEmpty && pin == expectedPin) {
       _completeAuthentication();
       return true;
     }

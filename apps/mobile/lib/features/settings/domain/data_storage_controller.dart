@@ -523,14 +523,29 @@ class DataStorageController extends ChangeNotifier {
     _proxyStatus = 'connecting';
     notifyListeners();
 
-    await Future.delayed(const Duration(milliseconds: 600));
+    if (_proxyHost.trim().isEmpty || _proxyPort <= 0) {
+      _proxyStatus = 'error';
+      _proxyPingMs = null;
+      notifyListeners();
+      return false;
+    }
 
-    if (_proxyHost.trim().isNotEmpty && _proxyPort > 0) {
+    try {
+      final sw = Stopwatch()..start();
+      final socket = await Socket.connect(
+        _proxyHost.trim(),
+        _proxyPort,
+        timeout: const Duration(seconds: 4),
+      );
+      sw.stop();
+      await socket.close();
+
       _proxyStatus = 'connected';
-      _proxyPingMs = 35 + (DateTime.now().millisecond % 25);
+      _proxyPingMs = sw.elapsedMilliseconds;
       notifyListeners();
       return true;
-    } else {
+    } catch (e) {
+      debugPrint('[DataStorageController] testProxyConnection error: $e');
       _proxyStatus = 'error';
       _proxyPingMs = null;
       notifyListeners();

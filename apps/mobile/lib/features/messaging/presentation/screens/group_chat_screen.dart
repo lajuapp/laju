@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
 import '../../../../core/core.dart';
 import '../../domain/models/message_model.dart';
@@ -59,6 +61,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
   void initState() {
     super.initState();
     _scrollController.addListener(_onScroll);
+    ChatWebSocketService.instance.connect();
     ConversationService.instance.currentActiveConversationId = widget.groupId;
     final mem = ConversationService.instance.getMemoryMessages(widget.groupId);
     if (mem != null) {
@@ -70,7 +73,8 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
     // Listen to 0ms instant real-time message stream from WebSocket
     _rtMsgSub = ConversationService.instance.realtimeMessageStream.listen((msg) {
       if (!mounted) return;
-      if (msg.conversationId == widget.groupId) {
+      final realId = ConversationService.instance.resolveConversationId(widget.groupId);
+      if (msg.conversationId == widget.groupId || msg.conversationId == realId) {
         _mergeAndSetMessages([msg]);
       }
     });
@@ -231,8 +235,9 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
 
   void _startPolling() {
     _pollTimer?.cancel();
-    final interval = ChatWebSocketService.instance.isConnected ? 15000 : 1000;
-    _pollTimer = Timer.periodic(Duration(milliseconds: interval), (_) async {
+    // Fast 1000ms polling while group chat is open, ensuring no noticeable delay
+    const interval = 1000;
+    _pollTimer = Timer.periodic(const Duration(milliseconds: interval), (_) async {
       _syncMessages();
     });
   }
@@ -808,28 +813,6 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final isDark = ThemeModeController.instance.isDarkMode(context);
-
-    return AnimatedBuilder(
-      animation: Listenable.merge([
-        GroupController.instance,
-        GroupController.instance.groupMembershipNotifier,
-      ]),
-      builder: (context, _) {
-        final group = GroupController.instance.getGroup(widget.groupId);
-        final displayName = (group?.name != null && group!.name.isNotEmpty)
-            ? group.name
-            : ((widget.groupName != null && widget.groupName!.isNotEmpty)
-                ? widget.groupName!
-                : context.tr('groupChat'));
-        final memberCount = GroupController.instance.getMemberCount(widget.groupId) ?? (group?.members.length ?? 0);
-        final isUserAdmin = GroupController.instance.isCurrentUserAdmin(widget.groupId);
-        final isMember = GroupController.instance.groupMembershipNotifier.value[widget.groupId] ?? true;
-        final canSend = (group == null || group.canSendMessages || isUserAdmin) && isMember;
-
-
 
   void _confirmClearChat(BuildContext context, bool isDark) {
     showDialog(
@@ -852,7 +835,6 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
               fontSize: 13.5,
               color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
             ),
-          ),
           ),
           actions: [
             TextButton(
@@ -1173,6 +1155,28 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
       ),
     );
   }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = ThemeModeController.instance.isDarkMode(context);
+
+    return AnimatedBuilder(
+      animation: Listenable.merge([
+        GroupController.instance,
+        GroupController.instance.groupMembershipNotifier,
+      ]),
+      builder: (context, _) {
+        final group = GroupController.instance.getGroup(widget.groupId);
+        final displayName = (group?.name != null && group!.name.isNotEmpty)
+            ? group.name
+            : ((widget.groupName != null && widget.groupName!.isNotEmpty)
+                ? widget.groupName!
+                : context.tr('groupChat'));
+        final memberCount = GroupController.instance.getMemberCount(widget.groupId) ?? (group?.members.length ?? 0);
+        final isUserAdmin = GroupController.instance.isCurrentUserAdmin(widget.groupId);
+        final isMember = GroupController.instance.groupMembershipNotifier.value[widget.groupId] ?? true;
+        final canSend = (group == null || group.canSendMessages || isUserAdmin) && isMember;
+
         return Scaffold(
           backgroundColor: isDark ? const Color(0xFF0B1015) : const Color(0xFFF3F4F6),
           appBar: _isSearching
@@ -1264,14 +1268,17 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                                   color: isDark ? Colors.white : const Color(0xFF111827),
                                 ),
                               ),
-                              ValueListenableBuilder(
-                                valueListenable: Listenable.merge([
+                              ListenableBuilder(
+                                listenable: Listenable.merge([
                                   ConversationService.instance.typingStatusNotifier,
                                   ConversationService.instance.typingUserNamesNotifier,
                                 ]),
                                 builder: (context, _) {
-                                  final isTyping = ConversationService.instance.typingStatusNotifier.value[widget.groupId] == true;
-                                  final typingNames = ConversationService.instance.typingUserNamesNotifier.value[widget.groupId];
+                                  final realId = ConversationService.instance.resolveConversationId(widget.groupId);
+                                  final isTyping = ConversationService.instance.typingStatusNotifier.value[widget.groupId] == true ||
+                                      ConversationService.instance.typingStatusNotifier.value[realId] == true;
+                                  final typingNames = ConversationService.instance.typingUserNamesNotifier.value[widget.groupId] ??
+                                      ConversationService.instance.typingUserNamesNotifier.value[realId];
                                   if (isTyping) {
                                     final typingLabel = (typingNames != null && typingNames.isNotEmpty)
                                         ? '$typingNames sedang mengetik...'
@@ -1320,7 +1327,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                               initialParticipants: otherMembers.map((m) => m.name).toList(),
                               initialParticipantIds: otherMembers.map((m) => m.id).toList(),
                               isVideo: false,
-                              conversationId: widget.conversationId,
+                              conversationId: widget.groupId,
                             ),
                           ),
                         );
@@ -1342,7 +1349,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                               initialParticipants: otherMembers.map((m) => m.name).toList(),
                               initialParticipantIds: otherMembers.map((m) => m.id).toList(),
                               isVideo: true,
-                              conversationId: widget.conversationId,
+                              conversationId: widget.groupId,
                             ),
                           ),
                         );

@@ -24,8 +24,9 @@ class SystemStatusScreen extends StatefulWidget {
 
 class _SystemStatusScreenState extends State<SystemStatusScreen> {
   bool _isRefreshing = false;
+  bool _isAllHealthy = true;
 
-  final List<ServiceStatusDef> _services = const [
+  List<ServiceStatusDef> _services = const [
     ServiceStatusDef(
       nameKey: 'sysServiceAuth',
       uptime: '100%',
@@ -64,20 +65,86 @@ class _SystemStatusScreenState extends State<SystemStatusScreen> {
     ),
   ];
 
+  @override
+  void initState() {
+    super.initState();
+    _refreshStatus();
+  }
+
   Future<void> _refreshStatus() async {
     setState(() {
       _isRefreshing = true;
     });
 
-    await Future.delayed(const Duration(milliseconds: 900));
+    try {
+      final res = await ApiClient.instance.get(ApiEndpoints.health);
+      final isSuccess = res.isSuccess;
+      String dbStatus = 'up';
+      String redisStatus = 'up';
 
-    if (!mounted) return;
+      if (isSuccess && res.rawJson is Map && res.rawJson['services'] is Map) {
+        final services = res.rawJson['services'] as Map;
+        dbStatus = services['database']?.toString() ?? 'up';
+        redisStatus = services['redis']?.toString() ?? 'up';
+      }
 
-    setState(() {
-      _isRefreshing = false;
-    });
+      final isDbNormal = dbStatus == 'up';
+      final isRedisNormal = redisStatus == 'up';
+      final isHealthy = isSuccess && isDbNormal && isRedisNormal;
 
-    LajuToast.success(context, context.tr('systemRefreshedToast'));
+      if (!mounted) return;
+
+      setState(() {
+        _isAllHealthy = isHealthy;
+        _isRefreshing = false;
+        _services = [
+          ServiceStatusDef(
+            nameKey: 'sysServiceAuth',
+            uptime: isHealthy ? '100%' : '98.5%',
+            statusKey: isHealthy ? 'sysNormal' : 'sysDegraded',
+            icon: Icons.key_rounded,
+          ),
+          ServiceStatusDef(
+            nameKey: 'sysServiceOutbox',
+            uptime: isRedisNormal ? '99.99%' : '95.0%',
+            statusKey: isRedisNormal ? 'sysNormal' : 'sysDegraded',
+            icon: Icons.sync_lock_rounded,
+          ),
+          ServiceStatusDef(
+            nameKey: 'sysServiceWebrtc',
+            uptime: isHealthy ? '99.98%' : '97.2%',
+            statusKey: isHealthy ? 'sysNormal' : 'sysDegraded',
+            icon: Icons.phone_locked_rounded,
+          ),
+          ServiceStatusDef(
+            nameKey: 'sysServiceMedia',
+            uptime: isHealthy ? '100%' : '99.0%',
+            statusKey: isHealthy ? 'sysNormal' : 'sysDegraded',
+            icon: Icons.attachment_rounded,
+          ),
+          ServiceStatusDef(
+            nameKey: 'sysServicePush',
+            uptime: isHealthy ? '100%' : '99.5%',
+            statusKey: isHealthy ? 'sysNormal' : 'sysDegraded',
+            icon: Icons.notifications_active_rounded,
+          ),
+          ServiceStatusDef(
+            nameKey: 'sysServiceAntiSpam',
+            uptime: isDbNormal ? '100%' : '98.0%',
+            statusKey: isDbNormal ? 'sysNormal' : 'sysDegraded',
+            icon: Icons.security_rounded,
+          ),
+        ];
+      });
+
+      LajuToast.success(context, context.tr('systemRefreshedToast'));
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _isRefreshing = false;
+        });
+      }
+    }
   }
 
   @override
@@ -135,16 +202,16 @@ class _SystemStatusScreenState extends State<SystemStatusScreen> {
                     width: 50,
                     height: 50,
                     decoration: BoxDecoration(
-                      color: const Color(0xFF16A34A).withValues(alpha: 0.15),
+                      color: (_isAllHealthy ? const Color(0xFF16A34A) : const Color(0xFFD97706)).withValues(alpha: 0.15),
                       shape: BoxShape.circle,
                       border: Border.all(
-                        color: const Color(0xFF22C55E),
+                        color: _isAllHealthy ? const Color(0xFF22C55E) : const Color(0xFFF59E0B),
                         width: 2,
                       ),
                     ),
-                    child: const Icon(
-                      Icons.check_circle_outline_rounded,
-                      color: Color(0xFF22C55E),
+                    child: Icon(
+                      _isAllHealthy ? Icons.check_circle_outline_rounded : Icons.warning_amber_rounded,
+                      color: _isAllHealthy ? const Color(0xFF22C55E) : const Color(0xFFF59E0B),
                       size: 30,
                     ),
                   ),
@@ -154,7 +221,7 @@ class _SystemStatusScreenState extends State<SystemStatusScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          context.tr('systemStatusAllGood'),
+                          _isAllHealthy ? context.tr('systemStatusAllGood') : 'Sebagian Layanan Mengalami Kendala',
                           style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.w800,

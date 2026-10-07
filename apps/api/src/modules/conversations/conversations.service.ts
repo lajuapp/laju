@@ -318,6 +318,7 @@ export class ConversationsService {
       },
       include: {
         members: {
+          where: { leftAt: null },
           include: {
             user: {
               select: { id: true, username: true, phoneNumber: true, status: true, trustScore: true }
@@ -385,6 +386,7 @@ export class ConversationsService {
       where: { id: conversationId },
       include: {
         members: {
+          where: { leftAt: null },
           include: {
             user: { select: { id: true, username: true, phoneNumber: true, status: true, trustScore: true } }
           }
@@ -563,6 +565,26 @@ export class ConversationsService {
 
       return { success: true };
     });
+
+    try {
+      const activeMembers = await this.prisma.conversationMember.findMany({
+        where: { conversationId, leftAt: null },
+        select: { userId: true }
+      });
+      const publisher = this.redis.getClient();
+      if (publisher) {
+        const payload = JSON.stringify({
+          type: 'MEMBER_LEFT',
+          conversationId,
+          userId
+        });
+        for (const m of activeMembers) {
+          publisher.publish(`user:${m.userId}`, payload).catch(() => {});
+        }
+      }
+    } catch (_) {}
+
+    return { success: true };
   }
 
   async transferOwnership(userId: string, conversationId: string, newOwnerUserId: string) {

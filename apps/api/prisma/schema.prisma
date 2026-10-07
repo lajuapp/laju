@@ -134,6 +134,7 @@ model User {
   statusStoryViews     StatusStoryView[]
   messageReactions     MessageReaction[]
   transferRequests     DeviceTransferRequest[] @relation("UserTransferRequests")
+  supportTickets       SupportTicket[]
 
   @@map("users")
 }
@@ -511,6 +512,7 @@ model AdminUser {
 
   role         AdminRole     @relation(fields: [roleId], references: [id], onDelete: Restrict)
   sessions     AdminSession[]
+  assignedTickets SupportTicket[]
 
   @@map("admin_users")
 }
@@ -777,5 +779,46 @@ model AppSystemConfig {
   updatedAt            DateTime @updatedAt @map("updated_at")
 
   @@map("app_system_configs")
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+enum TicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+model SupportTicket {
+  id              String         @id @default(uuid())
+  ticketCode      String         @unique @map("ticket_code")
+  userId          String         @map("user_id")
+  category        String         @default("General")
+  subject         String
+  message         String
+  appVersion      String?        @map("app_version")
+  status          TicketStatus   @default(OPEN)
+  priority        TicketPriority @default(MEDIUM)
+  adminNotes      String?        @map("admin_notes")
+  responseMessage String?        @map("response_message")
+  assignedToId    String?        @map("assigned_to_id")
+  resolvedAt      DateTime?      @map("resolved_at")
+  createdAt       DateTime       @default(now()) @map("created_at")
+  updatedAt       DateTime       @updatedAt @map("updated_at")
+
+  user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  assignedTo      AdminUser?     @relation(fields: [assignedToId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([status])
+  @@index([priority])
+  @@index([createdAt])
+  @@map("support_tickets")
 }
 

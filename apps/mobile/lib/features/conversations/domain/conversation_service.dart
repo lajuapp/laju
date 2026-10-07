@@ -46,6 +46,8 @@ class ConversationService {
   }
   static final ConversationService instance = ConversationService._();
 
+  final Set<String> _seenMessageIds = {};
+
   /// Realtime stream of newly arrived messages
   final StreamController<MessageModel> _realtimeMessageStreamController =
       StreamController<MessageModel>.broadcast();
@@ -114,7 +116,7 @@ class ConversationService {
     }
     _inMemoryMessages[conversationId] = current;
 
-    LocalDatabase.instance.upsertMessages([msg]).catchError((_) {});
+    LocalDatabase.instance.upsertMessages(conversationId, [msg]).catchError((_) {});
     _realtimeMessageStreamController.add(msg);
 
     if (inMemoryConversations != null) {
@@ -149,7 +151,7 @@ class ConversationService {
         );
         current[idx] = updated;
         _inMemoryMessages[conversationId] = current;
-        LocalDatabase.instance.upsertMessages([updated]).catchError((_) {});
+        LocalDatabase.instance.upsertMessages(conversationId, [updated]).catchError((_) {});
       }
     }
     _realtimeMessageDeletedController.add({'conversationId': conversationId, 'messageId': messageId});
@@ -180,7 +182,7 @@ class ConversationService {
           current[idx] = updated;
           _inMemoryMessages[cid] = current;
           _realtimeMessageStreamController.add(updated);
-          LocalDatabase.instance.upsertMessages([updated]).catchError((_) {});
+          LocalDatabase.instance.upsertMessages(cid, [updated]).catchError((_) {});
         }
       }
     }
@@ -293,16 +295,28 @@ class ConversationService {
   void setTypingDetails(String conversationId, bool isTyping, [List<String>? typingUsers]) {
     final currentStatus = Map<String, bool>.from(typingStatusNotifier.value);
     final currentNames = Map<String, String?>.from(typingUserNamesNotifier.value);
-    if (isTyping) {
-      currentStatus[conversationId] = true;
-      if (typingUsers != null && typingUsers.isNotEmpty) {
-        currentNames[conversationId] = typingUsers.join(', ');
-      } else {
-        currentNames[conversationId] = null;
+
+    final idsToUpdate = <String>{conversationId};
+    final resolved = resolveConversationId(conversationId);
+    idsToUpdate.add(resolved);
+    _tempToRealConvMap.forEach((tempId, realId) {
+      if (realId == conversationId || realId == resolved) {
+        idsToUpdate.add(tempId);
       }
-    } else {
-      currentStatus.remove(conversationId);
-      currentNames.remove(conversationId);
+    });
+
+    for (final cid in idsToUpdate) {
+      if (isTyping) {
+        currentStatus[cid] = true;
+        if (typingUsers != null && typingUsers.isNotEmpty) {
+          currentNames[cid] = typingUsers.join(', ');
+        } else {
+          currentNames[cid] = null;
+        }
+      } else {
+        currentStatus.remove(cid);
+        currentNames.remove(cid);
+      }
     }
     typingStatusNotifier.value = currentStatus;
     typingUserNamesNotifier.value = currentNames;
@@ -319,9 +333,12 @@ class ConversationService {
 
   /// Inform backend of current user's typing activity so the other party sees it
   Future<void> sendTypingStatus(String conversationId, bool isTyping) async {
+    final effectiveConvId = resolveConversationId(conversationId);
+    // Instant WebSocket typing broadcast (0ms delay)
+    ChatWebSocketService.instance.sendTyping(effectiveConvId, isTyping);
     try {
       await ApiClient.instance.post(
-        ApiEndpoints.conversationTyping(conversationId),
+        ApiEndpoints.conversationTyping(effectiveConvId),
         body: {'isTyping': isTyping},
       );
     } catch (_) {
@@ -455,6 +472,20 @@ class ConversationService {
           final convId = item['id'] as String?;
           if (convId == null) continue;
 
+          // Register alias mapping for instant 1-on-1 contact lookup
+          final members = item['members'];
+          if (members is List) {
+            for (final m in members) {
+              if (m is Map) {
+                final uId = m['userId'] as String?;
+                if (uId != null && uId != currentUserId) {
+                  _tempToRealConvMap['conv-$uId'] = convId;
+                  _tempToRealConvMap[uId] = convId;
+                }
+              }
+            }
+          }
+
           final serverPurgedAt = item['purgedAt'] as String?;
           if (serverPurgedAt != null) {
             final prefs = await SharedPreferences.getInstance();
@@ -485,21 +516,26 @@ class ConversationService {
             final latestMsgId = latest['id'] as String?;
             final senderId = latest['senderUserId'] as String?;
 
-            if (latestMsgId != null && senderId != null && senderId != currentUserId) {
+            if (latestMsgId != null) {
               if (!_seenMessageIds.contains(latestMsgId)) {
                 _seenMessageIds.add(latestMsgId);
 
-                if (_isInitialSyncComplete) {
-                  final msgType = latest['messageType'] as String?;
-                  DataStorageController.instance.recordMessageReceived(
-                    bytes: rawMsg.isNotEmpty ? rawMsg.length : 64,
-                    isMedia: msgType == 'ATTACHMENT' || rawMsg.contains('"media"'),
-                  );
-                }
+                // Instantly pipe to active screen and memory cache
+                final parsedMsg = parseMessageFromJson(latest, convId);
+                _handleRealtimeNewMessage(convId, parsedMsg);
 
-                // If initial sync is complete and user is not currently in this chat, trigger notification!
-                final isConvMuted = cachedMap[convId]?.isMuted ?? false;
-                if (_isInitialSyncComplete && currentActiveConversationId != convId && !isConvMuted) {
+                if (senderId != null && senderId != currentUserId) {
+                  if (_isInitialSyncComplete) {
+                    final msgType = latest['messageType'] as String?;
+                    DataStorageController.instance.recordMessageReceived(
+                      bytes: rawMsg.isNotEmpty ? rawMsg.length : 64,
+                      isMedia: msgType == 'ATTACHMENT' || rawMsg.contains('"media"'),
+                    );
+                  }
+
+                  // If initial sync is complete and user is not currently in this chat, trigger notification!
+                  final isConvMuted = cachedMap[convId]?.isMuted ?? false;
+                  if (_isInitialSyncComplete && currentActiveConversationId != convId && !isConvMuted) {
                   final isGroup = item['type'] == 'GROUP';
                   String notifTitle = item['title'] ?? '';
                   String? avatarUrl;
@@ -577,12 +613,11 @@ class ConversationService {
                   );
                 }
               }
-            } else if (latestMsgId != null) {
-              _seenMessageIds.add(latestMsgId);
             }
           }
         }
-        _isInitialSyncComplete = true;
+      }
+      _isInitialSyncComplete = true;
 
         final conversations = list.map((item) {
           final isGroup = item['type'] == 'GROUP';
@@ -728,6 +763,17 @@ class ConversationService {
                 );
               }
             }
+          }
+        }
+
+        // Prune groups in SQLite that are no longer in server list (e.g. left or kicked)
+        final serverConvIds = conversations.map((c) => c.id).toSet();
+        final cached = await LocalDatabase.instance.getConversations();
+        for (final c in cached) {
+          if (c.isGroup && !serverConvIds.contains(c.id)) {
+            await LocalDatabase.instance.deleteConversation(c.id);
+            _inMemoryMessages.remove(c.id);
+            GroupController.instance.removeGroup(c.id);
           }
         }
 
@@ -943,11 +989,35 @@ class ConversationService {
   /// Leave a group conversation
   Future<bool> leaveGroup(String conversationId, {String? newOwnerUserId}) async {
     try {
+      final realId = resolveConversationId(conversationId);
       final response = await ApiClient.instance.post(
-        ApiEndpoints.conversationLeave(conversationId),
+        ApiEndpoints.conversationLeave(realId),
         body: newOwnerUserId != null ? {'newOwnerUserId': newOwnerUserId} : {},
       );
-      return response.isSuccess;
+      if (response.isSuccess) {
+        // Completely delete group and history from local storage and memory
+        await LocalDatabase.instance.deleteConversation(conversationId);
+        if (realId != conversationId) {
+          await LocalDatabase.instance.deleteConversation(realId);
+        }
+        _inMemoryMessages.remove(conversationId);
+        _inMemoryMessages.remove(realId);
+        GroupController.instance.removeGroup(conversationId);
+        GroupController.instance.removeGroup(realId);
+
+        if (inMemoryConversations != null) {
+          inMemoryConversations = inMemoryConversations!
+              .where((c) => c.id != conversationId && c.id != realId)
+              .toList();
+          conversationsNotifier.value = List.from(inMemoryConversations!);
+        } else {
+          final cur = List<ConversationModel>.from(conversationsNotifier.value);
+          cur.removeWhere((c) => c.id == conversationId || c.id == realId);
+          conversationsNotifier.value = cur;
+        }
+        return true;
+      }
+      return false;
     } catch (e) {
       debugPrint('[ConversationService] leaveGroup error: $e');
       return false;
@@ -1117,8 +1187,14 @@ class ConversationService {
 
           // Persist to local cache and memory cache
           updateMemoryMessages(conversationId, filtered);
+          if (effectiveConvId != conversationId) {
+            updateMemoryMessages(effectiveConvId, filtered);
+          }
           if (filtered.isNotEmpty) {
             LocalDatabase.instance.upsertMessages(conversationId, filtered);
+            if (effectiveConvId != conversationId) {
+              LocalDatabase.instance.upsertMessages(effectiveConvId, filtered);
+            }
             for (final m in filtered) {
               if (m.isRecalled) {
                 LocalDatabase.instance.markMessageDeleted(m.id);
@@ -1357,6 +1433,7 @@ class ConversationService {
       clientMessageId: m['clientMessageId'] as String?,
       conversationId: conversationId,
       senderName: isOutgoing ? 'You' : (m['senderUser']?['username'] ?? 'Contact'),
+      senderUserId: m['senderUserId'] as String?,
       content: isDeletedState ? '__DELETED_FOR_EVERYONE__' : contentText,
       attachmentPath: isDeletedState ? null : mediaData,
       attachmentName: isDeletedState ? null : attName,

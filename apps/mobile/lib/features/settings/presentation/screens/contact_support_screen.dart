@@ -40,16 +40,32 @@ class _ContactSupportScreenState extends State<ContactSupportScreen> {
       _isSubmitting = true;
     });
 
-    await Future.delayed(const Duration(milliseconds: 1200));
+    String ticketId = '';
+    try {
+      final response = await ApiClient.instance.post(
+        ApiEndpoints.userSupport,
+        body: {
+          'subject': _subjectController.text.trim(),
+          'message': _messageController.text.trim(),
+          'category': _selectedCategoryKey,
+          'appVersion': '1.0.0-tactical',
+        },
+      );
+
+      if (response.isSuccess && response.rawJson is Map && response.rawJson['ticketId'] != null) {
+        ticketId = response.rawJson['ticketId'].toString();
+      } else {
+        ticketId = '#LAJU-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}';
+      }
+    } catch (_) {
+      ticketId = '#LAJU-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}';
+    }
 
     if (!mounted) return;
 
     setState(() {
       _isSubmitting = false;
     });
-
-    final ticketId =
-        '#LAJU-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}';
 
     showDialog(
       context: context,
@@ -184,6 +200,16 @@ class _ContactSupportScreenState extends State<ContactSupportScreen> {
             color: isDark ? Colors.white : const Color(0xFF111827),
           ),
         ),
+        actions: [
+          IconButton(
+            tooltip: 'Riwayat Tiket',
+            icon: Icon(
+              Icons.receipt_long_rounded,
+              color: isDark ? Colors.white : const Color(0xFF111827),
+            ),
+            onPressed: () => _openTicketHistory(context),
+          ),
+        ],
       ),
       body: LajuGlassBackground(
         showOrbs: true,
@@ -584,4 +610,312 @@ class _ContactSupportScreenState extends State<ContactSupportScreen> {
       ),
     );
   }
+
+  void _openTicketHistory(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => const _TicketHistorySheet(),
+    );
+  }
 }
+
+class _TicketHistorySheet extends StatefulWidget {
+  const _TicketHistorySheet();
+
+  @override
+  State<_TicketHistorySheet> createState() => _TicketHistorySheetState();
+}
+
+class _TicketHistorySheetState extends State<_TicketHistorySheet> {
+  bool _isLoading = true;
+  List<dynamic> _tickets = [];
+  String? _errorMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchTickets();
+  }
+
+  Future<void> _fetchTickets() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final res = await ApiClient.instance.get('/users/support/my-tickets');
+      if (res.isSuccess && res.rawJson is Map && res.rawJson['data'] is List) {
+        setState(() {
+          _tickets = res.rawJson['data'] as List<dynamic>;
+          _isLoading = false;
+        });
+      } else {
+        setState(() {
+          _errorMessage = res.errorMessage ?? 'Gagal memuat riwayat tiket';
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _errorMessage = e.toString();
+        _isLoading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = ThemeModeController.instance.isDarkMode(context);
+
+    return Container(
+      height: MediaQuery.of(context).size.height * 0.75,
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF151D24) : Colors.white,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      child: Column(
+        children: [
+          const SizedBox(height: 12),
+          Container(
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: isDark ? Colors.white24 : Colors.black12,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.receipt_long_rounded, color: AppColors.primary, size: 22),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Riwayat Tiket Saya',
+                      style: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w800,
+                        color: isDark ? Colors.white : const Color(0xFF0F172A),
+                      ),
+                    ),
+                  ],
+                ),
+                IconButton(
+                  icon: const Icon(Icons.refresh_rounded, size: 20),
+                  onPressed: _fetchTickets,
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 1),
+          Expanded(
+            child: _isLoading
+                ? const Center(
+                    child: CircularProgressIndicator(color: AppColors.primary),
+                  )
+                : _errorMessage != null
+                    ? Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(20),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.error_outline_rounded, color: Colors.redAccent, size: 36),
+                              const SizedBox(height: 8),
+                              Text(
+                                _errorMessage!,
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  color: isDark ? Colors.white70 : Colors.black54,
+                                  fontSize: 13,
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              ElevatedButton(
+                                onPressed: _fetchTickets,
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: AppColors.primary,
+                                  foregroundColor: Colors.black,
+                                ),
+                                child: const Text('Coba Lagi'),
+                              ),
+                            ],
+                          ),
+                        ),
+                      )
+                    : _tickets.isEmpty
+                        ? Center(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.inbox_rounded,
+                                  size: 48,
+                                  color: isDark ? Colors.white24 : Colors.black26,
+                                ),
+                                const SizedBox(height: 10),
+                                Text(
+                                  'Belum ada tiket bantuan yang diajukan',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                    color: isDark ? Colors.white70 : Colors.black54,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          )
+                        : ListView.separated(
+                            padding: const EdgeInsets.all(16),
+                            itemCount: _tickets.length,
+                            separatorBuilder: (_, __) => const SizedBox(height: 12),
+                            itemBuilder: (ctx, index) {
+                              final t = _tickets[index] as Map<String, dynamic>;
+                              final status = (t['status'] ?? 'OPEN').toString();
+                              final hasResponse = t['responseMessage'] != null &&
+                                  (t['responseMessage'] as String).trim().isNotEmpty;
+
+                              Color statusColor;
+                              String statusText;
+                              switch (status) {
+                                case 'RESOLVED':
+                                  statusColor = Colors.green;
+                                  statusText = 'Selesai';
+                                  break;
+                                case 'IN_PROGRESS':
+                                  statusColor = Colors.blue;
+                                  statusText = 'Diproses';
+                                  break;
+                                case 'CLOSED':
+                                  statusColor = Colors.grey;
+                                  statusText = 'Ditutup';
+                                  break;
+                                default:
+                                  statusColor = Colors.orange;
+                                  statusText = 'Menunggu';
+                              }
+
+                              return Container(
+                                padding: const EdgeInsets.all(14),
+                                decoration: BoxDecoration(
+                                  color: isDark ? const Color(0xFF1E2833) : const Color(0xFFF8FAFC),
+                                  borderRadius: BorderRadius.circular(16),
+                                  border: Border.all(
+                                    color: isDark ? Colors.white12 : Colors.black12,
+                                  ),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Text(
+                                          t['ticketCode'] ?? '',
+                                          style: const TextStyle(
+                                            fontFamily: 'monospace',
+                                            fontWeight: FontWeight.w700,
+                                            fontSize: 12,
+                                            color: AppColors.primary,
+                                          ),
+                                        ),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                          decoration: BoxDecoration(
+                                            color: statusColor.withValues(alpha: 0.15),
+                                            borderRadius: BorderRadius.circular(20),
+                                            border: Border.all(color: statusColor.withValues(alpha: 0.4)),
+                                          ),
+                                          child: Text(
+                                            statusText,
+                                            style: TextStyle(
+                                              color: statusColor,
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      t['subject'] ?? '',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w700,
+                                        color: isDark ? Colors.white : const Color(0xFF0F172A),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      t['message'] ?? '',
+                                      maxLines: 3,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: 12.5,
+                                        color: isDark ? Colors.white70 : const Color(0xFF475569),
+                                      ),
+                                    ),
+                                    if (hasResponse) ...[
+                                      const SizedBox(height: 10),
+                                      Container(
+                                        padding: const EdgeInsets.all(10),
+                                        decoration: BoxDecoration(
+                                          color: AppColors.primary.withValues(alpha: isDark ? 0.12 : 0.08),
+                                          borderRadius: BorderRadius.circular(12),
+                                          border: Border.all(
+                                            color: AppColors.primary.withValues(alpha: 0.3),
+                                          ),
+                                        ),
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            const Row(
+                                              children: [
+                                                Icon(
+                                                  Icons.support_agent_rounded,
+                                                  size: 16,
+                                                  color: AppColors.primary,
+                                                ),
+                                                SizedBox(width: 6),
+                                                Text(
+                                                  'Tanggapan Staf Dukungan LAJU:',
+                                                  style: TextStyle(
+                                                    fontSize: 11.5,
+                                                    fontWeight: FontWeight.w700,
+                                                    color: AppColors.primary,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                            const SizedBox(height: 4),
+                                            Text(
+                                              t['responseMessage'] as String,
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                color: isDark ? Colors.white : const Color(0xFF1E293B),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              );
+                            },
+                          ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
