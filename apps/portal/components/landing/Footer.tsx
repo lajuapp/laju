@@ -18,7 +18,7 @@ export function Footer() {
             <Link href="/terms" className="hover:text-slate-900 transition-colors">
               Ketentuan
             </Link>
-            <Link href="/terms" className="hover:text-slate-900 transition-colors">
+            <Link href="/#bantuan" className="hover:text-slate-900 transition-colors">
               Bantuan
             </Link>
           </div>

@@ -33,7 +33,7 @@ export function Navbar() {
             Privasi
           </Link>
           <Link
-            href="/terms"
+            href="/#bantuan"
             className="px-4 py-1.5 rounded-full text-slate-600 hover:text-slate-900 font-medium text-xs sm:text-sm transition-colors"
           >
             Bantuan
