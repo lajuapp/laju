@@ -306,7 +306,7 @@ export class AdminService {
         take: 5
       }),
       (this.prisma.message as any).groupBy({
-        by: ['type'],
+        by: ['messageType'],
         _count: { id: true }
       })
     ]);
@@ -409,7 +409,7 @@ export class AdminService {
           count: v._count.id
         })),
         messageTypes: messagesByTypeRaw.map(m => ({
-          type: m.type,
+          type: m.messageType || m.type || 'TEXT',
           count: m._count.id
         }))
       },

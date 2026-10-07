@@ -49,6 +49,7 @@ import { AdminPermission } from '@secure-messenger/shared-types';
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as os from 'os';
 
 const MEDIA_DIR = process.env.ADMIN_MEDIA_DIR || path.join(process.cwd(), 'uploads', 'admin-media');
 const RELEASES_DIR = process.env.APP_RELEASES_DIR || path.join(process.cwd(), 'uploads', 'releases');
@@ -694,6 +695,145 @@ export class AdminController {
       config: updatedConfig,
       sha256,
       size: buffer.length,
+      filename: versionedFilename,
+    };
+  }
+
+  @Post('app-config/upload-apk-chunk')
+  @UseGuards(AdminAuthGuard)
+  @UseInterceptors(FileInterceptor('chunk', {
+    limits: { fileSize: 50 * 1024 * 1024 }
+  }))
+  async uploadApkChunk(
+    @UploadedFile() chunkFile?: Express.Multer.File,
+    @Body()
+    body?: {
+      uploadId: string;
+      chunkIndex: string | number;
+      totalChunks: string | number;
+      filename: string;
+      version?: string;
+      minVersion?: string;
+      forceUpdate?: boolean | string;
+      releaseNotes?: string;
+    }
+  ) {
+    if (!chunkFile?.buffer) {
+      throw new BadRequestException('Bagian chunk berkas tidak ditemukan');
+    }
+    if (!body?.uploadId) {
+      throw new BadRequestException('uploadId wajib disertakan');
+    }
+
+    const chunkIndex = parseInt(String(body.chunkIndex), 10);
+    const totalChunks = parseInt(String(body.totalChunks), 10);
+    if (isNaN(chunkIndex) || isNaN(totalChunks) || totalChunks <= 0) {
+      throw new BadRequestException('chunkIndex atau totalChunks tidak valid');
+    }
+
+    // Direktori penyimpanan potongan chunk
+    const sanitizedUploadId = body.uploadId.replace(/[^a-zA-Z0-9_-]/g, '');
+    const chunkDir = path.join(os.tmpdir(), 'laju_apk_chunks', sanitizedUploadId);
+    if (!fs.existsSync(chunkDir)) {
+      fs.mkdirSync(chunkDir, { recursive: true });
+    }
+
+    // Tulis chunk saat ini
+    const partPath = path.join(chunkDir, `part_${chunkIndex}`);
+    await fs.promises.writeFile(partPath, chunkFile.buffer);
+
+    // Jika belum chunk terakhir, balas sukses parsial
+    if (chunkIndex < totalChunks - 1) {
+      return {
+        success: true,
+        isComplete: false,
+        chunkIndex,
+        totalChunks,
+        message: `Chunk ${chunkIndex + 1}/${totalChunks} diterima.`,
+      };
+    }
+
+    // Chunk terakhir diterima: Rakit semua potongan menjadi satu file APK utuh
+    const rawFilename = body.filename || 'laju-latest.apk';
+    if (!rawFilename.toLowerCase().endsWith('.apk')) {
+      throw new BadRequestException('Berkas yang diunggah harus memiliki ekstensi .apk');
+    }
+
+    const version = body?.version?.trim() || '1.0.0';
+    const cleanVersion = version.replace(/[^a-zA-Z0-9.-]/g, '') || '1.0.0';
+    const versionedFilename = `laju-v${cleanVersion}.apk`;
+
+    if (!fs.existsSync(RELEASES_DIR)) {
+      fs.mkdirSync(RELEASES_DIR, { recursive: true });
+    }
+    const versionedPath = path.join(RELEASES_DIR, versionedFilename);
+    const latestPath = path.join(RELEASES_DIR, 'laju-latest.apk');
+
+    const writeStream = fs.createWriteStream(versionedPath);
+    const hash = crypto.createHash('sha256');
+    let totalSize = 0;
+
+    for (let i = 0; i < totalChunks; i++) {
+      const p = path.join(chunkDir, `part_${i}`);
+      if (!fs.existsSync(p)) {
+        writeStream.destroy();
+        throw new BadRequestException(`Chunk bagian ${i} hilang atau gagal terunggah.`);
+      }
+      const partBuf = await fs.promises.readFile(p);
+      hash.update(partBuf);
+      totalSize += partBuf.length;
+      writeStream.write(partBuf);
+    }
+
+    await new Promise<void>((resolve, reject) => {
+      writeStream.end((err?: any) => {
+        if (err) reject(err);
+        else resolve();
+      });
+    });
+
+    const sha256 = hash.digest('hex');
+
+    // Buat salinan ke laju-latest.apk
+    await fs.promises.copyFile(versionedPath, latestPath).catch(() => {});
+
+    // Bersihkan temporary chunk directory
+    await fs.promises.rm(chunkDir, { recursive: true, force: true }).catch(() => {});
+
+    // Simpan ke SeaweedFS Object Storage
+    let seaweedApkUploaded = false;
+    if (this.seaweedFs) {
+      try {
+        const fullBuffer = await fs.promises.readFile(versionedPath);
+        await this.seaweedFs.uploadBlob(versionedFilename, fullBuffer, 'application/vnd.android.package-archive');
+        await this.seaweedFs.uploadBlob('laju-latest.apk', fullBuffer, 'application/vnd.android.package-archive');
+        seaweedApkUploaded = true;
+      } catch (swErr: any) {
+        this.logger.error(`SeaweedFS chunked upload APK failed: ${swErr.message}`);
+      }
+    }
+
+    const forceUpdate = body?.forceUpdate === true || body?.forceUpdate === 'true';
+
+    // Update database AppSystemConfig
+    const updatedConfig = await this.adminService.updateAppConfig({
+      latestAndroidVersion: version,
+      minAndroidVersion: body?.minVersion || undefined,
+      forceUpdate,
+      apkUrl: '/admin/app-config/download-apk',
+      apkFilename: versionedFilename,
+      apkSize: totalSize,
+      apkSha256: sha256,
+      releaseNotes: body?.releaseNotes || undefined,
+    });
+
+    return {
+      success: true,
+      isComplete: true,
+      message: `Berkas APK ${versionedFilename} (${(totalSize / (1024 * 1024)).toFixed(1)} MB) berhasil dirilis!`,
+      config: updatedConfig,
+      sha256,
+      size: totalSize,
       filename: versionedFilename,
     };
   }
