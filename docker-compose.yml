@@ -2,12 +2,12 @@ name: laju
 
 services:
   api:
-    container_name: laju-api
     build:
       context: .
       dockerfile: apps/api/Dockerfile
     restart: unless-stopped
-    command: sh -c "npx prisma db push --accept-data-loss --skip-generate || true; node dist/main.js"
+    stop_grace_period: 15s
+    command: sh -c "npx prisma db push --accept-data-loss --skip-generate || true; exec node dist/main.js"
     env_file:
       - .env
     environment:
@@ -18,12 +18,23 @@ services:
       - admin_media_data:/app/apps/api/uploads
     expose:
       - "3000"
+    deploy:
+      replicas: 1
+      update_config:
+        order: start-first
+        failure_action: rollback
+        delay: 5s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.services.api.loadbalancer.healthcheck.path=/health"
+      - "traefik.http.services.api.loadbalancer.healthcheck.interval=3s"
+      - "traefik.http.services.api.loadbalancer.healthcheck.timeout=2s"
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://127.0.0.1:3000/health || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 60s
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 15s
     depends_on:
       postgres:
         condition: service_healthy

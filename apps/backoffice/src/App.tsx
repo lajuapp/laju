@@ -13,6 +13,7 @@ import { AnnouncementsPage } from './pages/AnnouncementsPage';
 import { AppVersionPage } from './pages/AppVersionPage';
 import { ReportsPage } from './pages/ReportsPage';
 import { TicketsPage } from './pages/TicketsPage';
+import { MaintenancePage } from './pages/MaintenancePage';
 
 export function App() {
   return (
@@ -30,6 +31,7 @@ export function App() {
         <Route path="stickers" element={<StickersPage />} />
         <Route path="announcements" element={<AnnouncementsPage />} />
         <Route path="app-version" element={<AppVersionPage />} />
+        <Route path="maintenance" element={<MaintenancePage />} />
         <Route path="conversations" element={<Navigate to="/" replace />} />
         <Route path="security" element={<SecurityPage />} />
       </Route>

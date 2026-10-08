@@ -320,3 +320,36 @@ export interface UpdateTicketPayload {
   assignedToId?: string;
 }
 
+export interface MaintenanceStats {
+  totalUsers: number;
+  totalDevices: number;
+  totalDirectConversations: number;
+  totalGroupConversations: number;
+  totalMessages: number;
+  totalStories: number;
+  totalCalls: number;
+  totalWallpapers: number;
+  totalStickerPacks: number;
+  totalStickers: number;
+  totalAdmins: number;
+}
+
+export interface MaintenanceResetRequest {
+  resetChats?: boolean;
+  resetGroups?: boolean;
+  resetUserStatuses?: boolean;
+  resetCalls?: boolean;
+  resetUserAccountStatuses?: boolean;
+  wipeAllUsers?: boolean;
+  reseedDefaults?: boolean;
+  deleteWallpapers?: boolean;
+  deleteStickers?: boolean;
+  confirmationCode: string;
+}
+
+export interface MaintenanceResetResponse {
+  success: boolean;
+  message: string;
+  results: Record<string, any>;
+}
+

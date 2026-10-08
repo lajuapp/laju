@@ -416,4 +416,46 @@ export class UpdateTicketDto {
   assignedToId?: string;
 }
 
+export class MaintenanceResetDto {
+  @IsBoolean()
+  @IsOptional()
+  resetChats?: boolean;
+
+  @IsBoolean()
+  @IsOptional()
+  resetGroups?: boolean;
+
+  @IsBoolean()
+  @IsOptional()
+  resetUserStatuses?: boolean;
+
+  @IsBoolean()
+  @IsOptional()
+  resetCalls?: boolean;
+
+  @IsBoolean()
+  @IsOptional()
+  resetUserAccountStatuses?: boolean;
+
+  @IsBoolean()
+  @IsOptional()
+  wipeAllUsers?: boolean;
+
+  @IsBoolean()
+  @IsOptional()
+  reseedDefaults?: boolean;
+
+  @IsBoolean()
+  @IsOptional()
+  deleteWallpapers?: boolean;
+
+  @IsBoolean()
+  @IsOptional()
+  deleteStickers?: boolean;
+
+  @IsString()
+  @IsNotEmpty()
+  confirmationCode: string;
+}
+
 

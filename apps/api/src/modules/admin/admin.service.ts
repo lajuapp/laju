@@ -27,7 +27,8 @@ import {
   UpdateAnnouncementDto,
   UpdateAppConfigDto,
   ReviewReportDto,
-  UpdateTicketDto
+  UpdateTicketDto,
+  MaintenanceResetDto
 } from './dto/admin.dto';
 
 @Injectable()
@@ -1729,6 +1730,431 @@ export class AdminService {
       success: true,
       message: 'Tiket bantuan berhasil diperbarui.',
       data: updated
+    };
+  }
+
+  // ─── DATA MAINTENANCE & RESET TOOLS (DEVELOPMENT & ADMIN) ─────────
+
+  async getMaintenanceStats() {
+    const [
+      totalUsers,
+      totalDevices,
+      totalDirectConversations,
+      totalGroupConversations,
+      totalMessages,
+      totalStories,
+      totalCalls,
+      totalWallpapers,
+      totalStickerPacks,
+      totalStickers,
+      totalAdmins,
+    ] = await Promise.all([
+      this.prisma.user.count(),
+      this.prisma.device.count(),
+      this.prisma.conversation.count({ where: { type: 'PERSONAL' } }),
+      this.prisma.conversation.count({ where: { type: 'GROUP' } }),
+      this.prisma.message.count(),
+      this.prisma.userStatusStory.count(),
+      this.prisma.call.count(),
+      this.prisma.chatWallpaper.count(),
+      this.prisma.stickerPack.count(),
+      this.prisma.stickerItem.count(),
+      this.prisma.adminUser.count(),
+    ]);
+
+    return {
+      totalUsers,
+      totalDevices,
+      totalDirectConversations,
+      totalGroupConversations,
+      totalMessages,
+      totalStories,
+      totalCalls,
+      totalWallpapers,
+      totalStickerPacks,
+      totalStickers,
+      totalAdmins,
+    };
+  }
+
+  async reseedDefaults() {
+    const permissions = [
+      { slug: 'conversation.metadata.read', description: 'Read conversation metadata' },
+      { slug: 'conversation.content.request', description: 'Request access to conversation plaintext' },
+      { slug: 'conversation.content.approve', description: 'Approve access request to conversation plaintext' },
+      { slug: 'location.read.coarse', description: 'Read coarse location' },
+      { slug: 'location.read.precise', description: 'Read precise location' },
+      { slug: 'location.export', description: 'Export location trails' },
+      { slug: 'device.revoke', description: 'Revoke device access' },
+      { slug: 'user.suspend', description: 'Suspend user account' },
+      { slug: 'incident.contain.account', description: 'Contain account in incident' },
+      { slug: 'incident.contain.device', description: 'Contain device in incident' },
+      { slug: 'incident.wipe.application_data', description: 'Order wipe of application encrypted data' },
+      { slug: 'call.metadata.read', description: 'Read call metadata' },
+      { slug: 'audit.read', description: 'Read audit logs' },
+      { slug: 'retention.manage', description: 'Manage retention policies' },
+      { slug: 'admin_role.manage', description: 'Manage admin roles and permissions' }
+    ];
+
+    const roles = [
+      {
+        name: 'Super Admin',
+        description: 'Universal administrative control',
+        permissions: permissions.map((p) => p.slug)
+      },
+      {
+        name: 'Security Admin',
+        description: 'Security and incident containment specialist',
+        permissions: [
+          'incident.contain.account',
+          'incident.contain.device',
+          'incident.wipe.application_data',
+          'device.revoke',
+          'user.suspend',
+          'audit.read'
+        ]
+      },
+      {
+        name: 'Conversation Investigator',
+        description: 'Authorized investigator for sensitive conversations',
+        permissions: [
+          'conversation.metadata.read',
+          'conversation.content.request',
+          'audit.read'
+        ]
+      },
+      {
+        name: 'Auditor',
+        description: 'Compliance and security audit',
+        permissions: ['audit.read', 'conversation.metadata.read', 'call.metadata.read']
+      }
+    ];
+
+    // 1. Seed / Upsert Permissions
+    for (const perm of permissions) {
+      await this.prisma.adminPermission.upsert({
+        where: { slug: perm.slug },
+        update: { description: perm.description },
+        create: perm
+      });
+    }
+
+    // 2. Seed / Upsert Roles
+    let superAdminRoleId = '';
+    for (const role of roles) {
+      const createdRole = await this.prisma.adminRole.upsert({
+        where: { name: role.name },
+        update: { description: role.description },
+        create: { name: role.name, description: role.description }
+      });
+
+      if (role.name === 'Super Admin') {
+        superAdminRoleId = createdRole.id;
+      }
+
+      for (const permSlug of role.permissions) {
+        const perm = await this.prisma.adminPermission.findUnique({ where: { slug: permSlug } });
+        if (perm) {
+          await this.prisma.adminRolePermission.upsert({
+            where: {
+              roleId_permissionId: {
+                roleId: createdRole.id,
+                permissionId: perm.id
+              }
+            },
+            update: {},
+            create: {
+              roleId: createdRole.id,
+              permissionId: perm.id
+            }
+          });
+        }
+      }
+    }
+
+    // 3. Super Admin User default (hanya jika belum ada admin)
+    let superAdminCreated = false;
+    if (superAdminRoleId) {
+      const existingSuperAdmin = await this.prisma.adminUser.findFirst({
+        where: { role: { name: 'Super Admin' } }
+      });
+      if (!existingSuperAdmin) {
+        const salt = await bcrypt.genSalt(10);
+        const passwordHash = await bcrypt.hash('admin12345', salt);
+        await this.prisma.adminUser.create({
+          data: {
+            username: 'admin',
+            email: 'admin@laju.chat',
+            name: 'System Administrator',
+            passwordHash,
+            roleId: superAdminRoleId,
+            isActive: true
+          }
+        });
+        superAdminCreated = true;
+      }
+    }
+
+    // 4. Default Wallpapers (HANYA DITAMBAHKAN JIKA BELUM ADA, TIDAK AKAN MENGHAPUS / MENIMPA WALLPAPER KUSTOM)
+    const defaultWallpapers = [
+      { name: 'Default Minimalist', category: 'SOLID', colorHex: '#0F172A', isDefault: true, sortOrder: 1 },
+      { name: 'Warm Amber Sand', category: 'SOLID', colorHex: '#78350F', isDefault: false, sortOrder: 2 },
+      { name: 'Emerald Forest', category: 'SOLID', colorHex: '#064E3B', isDefault: false, sortOrder: 3 },
+      { name: 'Deep Midnight Slate', category: 'GRADIENT', colorHex: '#1E1B4B', isDefault: false, sortOrder: 4 }
+    ];
+    let newWallpapersAdded = 0;
+    for (const wp of defaultWallpapers) {
+      const existing = await this.prisma.chatWallpaper.findFirst({ where: { name: wp.name } });
+      if (!existing) {
+        await this.prisma.chatWallpaper.create({ data: wp });
+        newWallpapersAdded++;
+      }
+    }
+
+    // 5. Default Sticker Pack (HANYA DITAMBAHKAN JIKA BELUM ADA, TIDAK AKAN MENGHAPUS / MENIMPA STIKER KUSTOM)
+    let newStickerPackAdded = false;
+    const existingCatPack = await this.prisma.stickerPack.findUnique({ where: { id: 'pack-cat-vibes' } });
+    if (!existingCatPack) {
+      await this.prisma.stickerPack.create({
+        data: {
+          id: 'pack-cat-vibes',
+          name: 'Cat Vibes Official',
+          description: 'Stiker kucing ekspresif dan lucu untuk obrolan harian',
+          publisher: 'LAJU Creative Team',
+          coverUrl: '/assets/stickers/cat_cheer.png',
+          sortOrder: 1,
+          isActive: true,
+          stickers: {
+            create: [
+              { name: 'Cat Thumbs Up', imageUrl: '/assets/stickers/cat_thumbs_up.png', emoji: '👍' },
+              { name: 'Cat Cool', imageUrl: '/assets/stickers/cat_cool.png', emoji: '😎' },
+              { name: 'Cat Cheer', imageUrl: '/assets/stickers/cat_cheer.png', emoji: '🎉' }
+            ]
+          }
+        }
+      });
+      newStickerPackAdded = true;
+    }
+
+    return {
+      permissionsSynced: permissions.length,
+      superAdminCreated,
+      newWallpapersAdded,
+      newStickerPackAdded,
+      message: 'Re-seed data default berhasil. Seluruh aset Wallpaper & Stiker tetap terlindungi dan utuh.'
+    };
+  }
+
+  async executeMaintenanceReset(
+    dto: MaintenanceResetDto,
+    adminId: string,
+    ipAddress?: string
+  ) {
+    if (!dto.confirmationCode || dto.confirmationCode.trim().toUpperCase() !== 'RESET') {
+      throw new BadRequestException('Kode konfirmasi tidak valid. Harap ketik "RESET" untuk mengonfirmasi tindakan ini.');
+    }
+
+    const results: Record<string, any> = {};
+
+    // 1. Reset Status Pengguna ke ACTIVE (jika diminta)
+    if (dto.resetUserAccountStatuses) {
+      const updated = await this.prisma.user.updateMany({
+        where: { status: { not: 'ACTIVE' } },
+        data: { status: 'ACTIVE', suspendedAt: null, suspendedReason: null }
+      });
+      results.userAccountStatusesReset = updated.count;
+    }
+
+    // 2. Reset Status Pengguna / Stories
+    if (dto.resetUserStatuses || dto.wipeAllUsers) {
+      const deletedViews = await this.prisma.statusStoryView.deleteMany({});
+      const deletedStories = await this.prisma.userStatusStory.deleteMany({});
+      results.userStatusesReset = {
+        views: deletedViews.count,
+        stories: deletedStories.count
+      };
+    }
+
+    // 3. Reset Riwayat Panggilan (Calls)
+    if (dto.resetCalls || dto.wipeAllUsers) {
+      const deletedParticipants = await this.prisma.callParticipant.deleteMany({});
+      const deletedCalls = await this.prisma.call.deleteMany({});
+      results.callsReset = {
+        participants: deletedParticipants.count,
+        calls: deletedCalls.count
+      };
+    }
+
+    // 4. Reset Direct Chats (Personal)
+    if (dto.resetChats || dto.wipeAllUsers) {
+      const directConvs = await this.prisma.conversation.findMany({
+        where: { type: 'PERSONAL' },
+        select: { id: true }
+      });
+      const directIds = directConvs.map((c) => c.id);
+      if (directIds.length > 0) {
+        const msgs = await this.prisma.message.findMany({
+          where: { conversationId: { in: directIds } },
+          select: { id: true }
+        });
+        const msgIds = msgs.map((m) => m.id);
+        if (msgIds.length > 0) {
+          await this.prisma.messageReaction.deleteMany({ where: { messageId: { in: msgIds } } });
+          await this.prisma.messageDelivery.deleteMany({ where: { messageId: { in: msgIds } } });
+          await this.prisma.attachment.deleteMany({ where: { messageId: { in: msgIds } } });
+          await this.prisma.message.deleteMany({ where: { id: { in: msgIds } } });
+        }
+        await this.prisma.conversationEvent.deleteMany({ where: { conversationId: { in: directIds } } });
+        const grants = await this.prisma.conversationAccessGrant.findMany({
+          where: { conversationId: { in: directIds } },
+          select: { id: true }
+        });
+        const grantIds = grants.map((g) => g.id);
+        if (grantIds.length > 0) {
+          await this.prisma.conversationAccessApproval.deleteMany({ where: { grantId: { in: grantIds } } });
+          await this.prisma.conversationAccessGrant.deleteMany({ where: { id: { in: grantIds } } });
+        }
+        await this.prisma.conversationMember.deleteMany({ where: { conversationId: { in: directIds } } });
+        const delConvs = await this.prisma.conversation.deleteMany({ where: { id: { in: directIds } } });
+        results.directChatsReset = {
+          conversations: delConvs.count,
+          messages: msgIds.length
+        };
+      } else {
+        results.directChatsReset = { conversations: 0, messages: 0 };
+      }
+    }
+
+    // 5. Reset Groups (Grup Obrolan)
+    if (dto.resetGroups || dto.wipeAllUsers) {
+      const groupConvs = await this.prisma.conversation.findMany({
+        where: { type: 'GROUP' },
+        select: { id: true }
+      });
+      const groupIds = groupConvs.map((c) => c.id);
+      if (groupIds.length > 0) {
+        const msgs = await this.prisma.message.findMany({
+          where: { conversationId: { in: groupIds } },
+          select: { id: true }
+        });
+        const msgIds = msgs.map((m) => m.id);
+        if (msgIds.length > 0) {
+          await this.prisma.messageReaction.deleteMany({ where: { messageId: { in: msgIds } } });
+          await this.prisma.messageDelivery.deleteMany({ where: { messageId: { in: msgIds } } });
+          await this.prisma.attachment.deleteMany({ where: { messageId: { in: msgIds } } });
+          await this.prisma.message.deleteMany({ where: { id: { in: msgIds } } });
+        }
+        await this.prisma.conversationEvent.deleteMany({ where: { conversationId: { in: groupIds } } });
+        const grants = await this.prisma.conversationAccessGrant.findMany({
+          where: { conversationId: { in: groupIds } },
+          select: { id: true }
+        });
+        const grantIds = grants.map((g) => g.id);
+        if (grantIds.length > 0) {
+          await this.prisma.conversationAccessApproval.deleteMany({ where: { grantId: { in: grantIds } } });
+          await this.prisma.conversationAccessGrant.deleteMany({ where: { id: { in: grantIds } } });
+        }
+        await this.prisma.conversationMember.deleteMany({ where: { conversationId: { in: groupIds } } });
+        const delConvs = await this.prisma.conversation.deleteMany({ where: { id: { in: groupIds } } });
+        results.groupsReset = {
+          conversations: delConvs.count,
+          messages: msgIds.length
+        };
+      } else {
+        results.groupsReset = { conversations: 0, messages: 0 };
+      }
+    }
+
+    // 6. Wipe All Users (Hapus seluruh data pengguna tester, perangkat, dan sesi)
+    if (dto.wipeAllUsers) {
+      // Pastikan seluruh percakapan & pesan sudah bersih
+      await this.prisma.messageReaction.deleteMany({});
+      await this.prisma.messageDelivery.deleteMany({});
+      await this.prisma.attachment.deleteMany({});
+      await this.prisma.message.deleteMany({});
+      await this.prisma.conversationEvent.deleteMany({});
+      await this.prisma.conversationAccessApproval.deleteMany({});
+      await this.prisma.conversationAccessGrant.deleteMany({});
+      await this.prisma.conversationMember.deleteMany({});
+      await this.prisma.conversation.deleteMany({});
+
+      // Bersihkan data user lainnya
+      await this.prisma.location.deleteMany({});
+      await this.prisma.userReport.deleteMany({});
+      await this.prisma.supportTicket.deleteMany({});
+      await this.prisma.securityEvent.deleteMany({});
+      await this.prisma.outboxEvent.deleteMany({});
+      await this.prisma.incidentTarget.deleteMany({});
+      await this.prisma.pushDevice.deleteMany({});
+      await this.prisma.deviceKey.deleteMany({});
+      await this.prisma.preKey.deleteMany({});
+      await this.prisma.deviceMigration.deleteMany({});
+      await this.prisma.deviceTransferRequest.deleteMany({});
+      await this.prisma.session.deleteMany({});
+      const delDevices = await this.prisma.device.deleteMany({});
+      await this.prisma.otpCode.deleteMany({});
+      const delUsers = await this.prisma.user.deleteMany({});
+
+      results.usersWiped = {
+        users: delUsers.count,
+        devices: delDevices.count
+      };
+    }
+
+    // 7. Delete Wallpapers (HANYA jika secara eksplisit dicentang)
+    if (dto.deleteWallpapers) {
+      const delWp = await this.prisma.chatWallpaper.deleteMany({});
+      results.wallpapersDeleted = delWp.count;
+    }
+
+    // 8. Delete Stickers (HANYA jika secara eksplisit dicentang)
+    if (dto.deleteStickers) {
+      const delItems = await this.prisma.stickerItem.deleteMany({});
+      const delPacks = await this.prisma.stickerPack.deleteMany({});
+      results.stickersDeleted = {
+        items: delItems.count,
+        packs: delPacks.count
+      };
+    }
+
+    // 9. Reseed Defaults (Roles, Permissions, Super Admin, Default Wallpaper jika belum ada, Default Sticker jika belum ada)
+    if (dto.reseedDefaults) {
+      const reseedResult = await this.reseedDefaults();
+      results.reseeded = reseedResult;
+    }
+
+    // Catat Audit Event
+    try {
+      await this.prisma.adminAuditEvent.create({
+        data: {
+          adminId,
+          action: 'MAINTENANCE_RESET_EXECUTE',
+          resource: 'maintenance',
+          details: JSON.stringify({
+            optionsRequested: {
+              resetChats: !!dto.resetChats,
+              resetGroups: !!dto.resetGroups,
+              resetUserStatuses: !!dto.resetUserStatuses,
+              resetCalls: !!dto.resetCalls,
+              resetUserAccountStatuses: !!dto.resetUserAccountStatuses,
+              wipeAllUsers: !!dto.wipeAllUsers,
+              reseedDefaults: !!dto.reseedDefaults,
+              deleteWallpapers: !!dto.deleteWallpapers,
+              deleteStickers: !!dto.deleteStickers
+            },
+            summary: results
+          }),
+          ipAddress: ipAddress || 'internal'
+        }
+      });
+    } catch (err) {
+      console.error('Failed to log maintenance audit event:', err);
+    }
+
+    return {
+      success: true,
+      message: 'Operasi pemeliharaan dan reset data berhasil dijalankan.',
+      results
     };
   }
 }

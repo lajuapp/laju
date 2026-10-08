@@ -40,7 +40,8 @@ import {
   UpdateAnnouncementDto,
   UpdateAppConfigDto,
   ReviewReportDto,
-  UpdateTicketDto
+  UpdateTicketDto,
+  MaintenanceResetDto
 } from './dto/admin.dto';
 import { AdminAuthGuard } from '../../common/guards/admin-auth.guard';
 import { RequirePermissions } from '../../common/decorators/permissions.decorator';
@@ -880,6 +881,38 @@ export class AdminController {
     return res.status(HttpStatus.NOT_FOUND).json({
       error: 'Berkas APK belum diunggah dari Backoffice',
     });
+  }
+
+  // ─── DATA MAINTENANCE & RESET ──────────────────────────────────────
+  @Get('maintenance/stats')
+  @UseGuards(AdminAuthGuard)
+  getMaintenanceStats() {
+    return this.adminService.getMaintenanceStats();
+  }
+
+  @Post('maintenance/reset')
+  @UseGuards(AdminAuthGuard)
+  executeMaintenanceReset(
+    @Body() dto: MaintenanceResetDto,
+    @Req() req: any
+  ) {
+    const ipAddress = req.ip || req.connection?.remoteAddress || 'unknown';
+    return this.adminService.executeMaintenanceReset(
+      dto,
+      req.admin.adminId,
+      ipAddress
+    );
+  }
+
+  @Post('maintenance/reseed')
+  @UseGuards(AdminAuthGuard)
+  reseedDefaults(@Req() req: any) {
+    const ipAddress = req.ip || req.connection?.remoteAddress || 'unknown';
+    return this.adminService.executeMaintenanceReset(
+      { reseedDefaults: true, confirmationCode: 'RESET' },
+      req.admin.adminId,
+      ipAddress
+    );
   }
 }
 

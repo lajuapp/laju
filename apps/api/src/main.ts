@@ -8,6 +8,8 @@ async function bootstrap() {
   const logger = new Logger('Bootstrap');
   const app = await NestFactory.create(AppModule);
 
+  app.enableShutdownHooks();
+
   app.useWebSocketAdapter(new WsAdapter(app));
 
   app.use(json({ limit: '500mb' }));

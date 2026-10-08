@@ -13,6 +13,7 @@ import {
   Megaphone,
   Settings2,
   LifeBuoy,
+  Database,
 } from 'lucide-react';
 import { useAdminMe, useLogout } from '../../hooks/useAdminAuth';
 import { useDashboardStats } from '../../hooks/useDashboardStats';
@@ -51,6 +52,7 @@ export function AppLayout() {
       group: 'Pengaturan Sistem',
       items: [
         { label: 'Versi Aplikasi', to: '/app-version', icon: Settings2 },
+        { label: 'Pemeliharaan Data', to: '/maintenance', icon: Database },
       ],
     },
     {
