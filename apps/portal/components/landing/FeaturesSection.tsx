@@ -1,3 +1,5 @@
+'use client';
+
 import { 
   MessageSquare, 
   Clock, 
@@ -5,8 +7,11 @@ import {
   FileImage, 
   Users 
 } from 'lucide-react';
+import { useLanguage } from '@/context/LanguageContext';
 
 export function FeaturesSection() {
+  const { t } = useLanguage();
+
   return (
     <section id="fitur" className="py-20 sm:py-28 bg-[#F5F4EF] border-t border-[#EAE8DE] relative overflow-hidden">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
@@ -27,12 +32,12 @@ export function FeaturesSection() {
           <div className="lg:col-span-5 space-y-8 text-left">
             <div>
               <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">
-                FITUR UTAMA
+                {t('features_tag')}
               </p>
               <h2 className="text-4xl sm:text-5xl font-extrabold text-slate-900 tracking-tight leading-tight">
-                Satu aplikasi<br />
-                dengan kendali<br />
-                penuh untukmu.
+                {t('features_title_line1')}<br />
+                {t('features_title_line2')}<br />
+                {t('features_title_line3')}
               </h2>
             </div>
 
@@ -43,9 +48,9 @@ export function FeaturesSection() {
                   <MessageSquare className="h-5 w-5 stroke-[1.5]" />
                 </div>
                 <div>
-                  <h4 className="text-base font-bold text-slate-900">Pesan pribadi dan grup</h4>
+                  <h4 className="text-base font-bold text-slate-900">{t('features_item1_title')}</h4>
                   <p className="text-xs sm:text-sm text-slate-600 mt-1 leading-relaxed">
-                    Ngobrol dengan nyaman bersama orang terdekat.
+                    {t('features_item1_desc')}
                   </p>
                 </div>
               </div>
@@ -56,9 +61,9 @@ export function FeaturesSection() {
                   <Clock className="h-5 w-5 stroke-[1.5]" />
                 </div>
                 <div>
-                  <h4 className="text-base font-bold text-slate-900">Pesan sementara</h4>
+                  <h4 className="text-base font-bold text-slate-900">{t('features_item2_title')}</h4>
                   <p className="text-xs sm:text-sm text-slate-600 mt-1 leading-relaxed">
-                    Atur pesan agar otomatis hilang sesuai waktu.
+                    {t('features_item2_desc')}
                   </p>
                 </div>
               </div>
@@ -69,9 +74,9 @@ export function FeaturesSection() {
                   <ShieldAlert className="h-5 w-5 stroke-[1.5]" />
                 </div>
                 <div>
-                  <h4 className="text-base font-bold text-slate-900">Kode keamanan grup</h4>
+                  <h4 className="text-base font-bold text-slate-900">{t('features_item3_title')}</h4>
                   <p className="text-xs sm:text-sm text-slate-600 mt-1 leading-relaxed">
-                    Bersihkan pesan atau hancurkan grup dengan kode khusus.
+                    {t('features_item3_desc')}
                   </p>
                 </div>
               </div>
@@ -82,9 +87,9 @@ export function FeaturesSection() {
                   <FileImage className="h-5 w-5 stroke-[1.5]" />
                 </div>
                 <div>
-                  <h4 className="text-base font-bold text-slate-900">Foto, video, dan dokumen</h4>
+                  <h4 className="text-base font-bold text-slate-900">{t('features_item4_title')}</h4>
                   <p className="text-xs sm:text-sm text-slate-600 mt-1 leading-relaxed">
-                    Kirim berkas tanpa mengorbankan privasi.
+                    {t('features_item4_desc')}
                   </p>
                 </div>
               </div>
@@ -95,9 +100,9 @@ export function FeaturesSection() {
                   <Users className="h-5 w-5 stroke-[1.5]" />
                 </div>
                 <div>
-                  <h4 className="text-base font-bold text-slate-900">Ringan dan cepat</h4>
+                  <h4 className="text-base font-bold text-slate-900">{t('features_item5_title')}</h4>
                   <p className="text-xs sm:text-sm text-slate-600 mt-1 leading-relaxed">
-                    Tetap lancar di berbagai kondisi jaringan.
+                    {t('features_item5_desc')}
                   </p>
                 </div>
               </div>

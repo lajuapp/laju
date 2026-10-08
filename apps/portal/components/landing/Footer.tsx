@@ -1,6 +1,11 @@
+'use client';
+
 import Link from 'next/link';
+import { useLanguage } from '@/context/LanguageContext';
 
 export function Footer() {
+  const { t } = useLanguage();
+
   return (
     <footer className="border-t border-[#EAE8DE] bg-[#F5F4EF] py-10 text-slate-600 text-xs">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
@@ -13,19 +18,19 @@ export function Footer() {
           {/* Links */}
           <div className="flex items-center gap-6 font-medium text-slate-600">
             <Link href="/privacy" className="hover:text-slate-900 transition-colors">
-              Privasi
+              {t('footer_privacy')}
             </Link>
             <Link href="/terms" className="hover:text-slate-900 transition-colors">
-              Ketentuan
+              {t('footer_terms')}
             </Link>
-            <Link href="/#bantuan" className="hover:text-slate-900 transition-colors">
-              Bantuan
+            <Link href="/help" className="hover:text-slate-900 transition-colors">
+              {t('footer_help')}
             </Link>
           </div>
 
           {/* Copyright */}
           <div className="text-slate-500 text-[11px]">
-            &copy; 2026 LAJU. Semua hak dilindungi.
+            {t('footer_copyright')}
           </div>
         </div>
       </div>

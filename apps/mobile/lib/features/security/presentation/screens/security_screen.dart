@@ -9,6 +9,7 @@ import 'package:laju_mobile/features/settings/presentation/screens/biometric_set
 import 'device_migration_screen.dart';
 import 'backup_identity_screen.dart';
 import 'package:laju_mobile/features/settings/presentation/screens/passkeys_screen.dart';
+import '../../settings/domain/account_controller.dart';
 
 class SecurityScreen extends StatefulWidget {
   const SecurityScreen({super.key});
@@ -477,34 +478,17 @@ class _SecurityScreenState extends State<SecurityScreen> {
       isScrollControlled: true,
       builder: (sheetCtx) {
         String query = '';
-        List<dynamic> users = [];
-        bool isLoading = true;
+        final savedContacts = AccountController.instance.savedContacts;
 
         return StatefulBuilder(
           builder: (ctx, setModalState) {
-            void loadUsers(String q) async {
-              setModalState(() => isLoading = true);
-              try {
-                final res = await ConversationService.instance.searchUsers(q.trim());
-                if (ctx.mounted) {
-                  setModalState(() {
-                    users = res;
-                    isLoading = false;
-                  });
-                }
-              } catch (_) {
-                if (ctx.mounted) {
-                  setModalState(() {
-                    users = [];
-                    isLoading = false;
-                  });
-                }
-              }
-            }
-
-            if (isLoading && users.isEmpty && query.isEmpty) {
-              loadUsers('');
-            }
+            final users = query.isEmpty
+                ? savedContacts
+                : savedContacts.where((c) {
+                    final q = query.toLowerCase();
+                    return c.username.toLowerCase().contains(q) ||
+                        (c.displayName != null && c.displayName!.toLowerCase().contains(q));
+                  }).toList();
 
             return ClipRRect(
               borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
@@ -613,54 +597,55 @@ class _SecurityScreenState extends State<SecurityScreen> {
                             contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                           ),
                           onChanged: (val) {
-                            query = val;
-                            loadUsers(val);
+                            setModalState(() {
+                              query = val;
+                            });
                           },
                         ),
                       ),
                       const SizedBox(height: 14),
                       Expanded(
-                        child: isLoading
-                            ? const Center(child: CircularProgressIndicator())
-                            : users.isEmpty
-                                ? Center(
-                                    child: Text(
-                                      'Tidak ada kontak ditemukan',
+                        child: users.isEmpty
+                            ? Center(
+                                child: Text(
+                                  'Tidak ada kontak personal ditemukan',
+                                  style: TextStyle(
+                                    color: isDark ? AppColors.darkTextSecondary : const Color(0xFF6B7280),
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              )
+                            : ListView.separated(
+                                itemCount: users.length,
+                                separatorBuilder: (ctx, index) => Divider(
+                                  height: 1,
+                                  indent: 56,
+                                  color: isDark
+                                      ? Colors.white.withValues(alpha: 0.06)
+                                      : const Color(0xFFF1F5F9),
+                                ),
+                                itemBuilder: (context, i) {
+                                  final u = users[i];
+                                  final name = (u.displayName != null && u.displayName!.isNotEmpty) ? u.displayName! : u.username;
+                                  return ListTile(
+                                    contentPadding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                                    leading: ModernAvatar(name: u.username, radius: 20, isVerified: true),
+                                    title: Text(
+                                      name,
                                       style: TextStyle(
-                                        color: isDark ? AppColors.darkTextSecondary : const Color(0xFF6B7280),
-                                        fontWeight: FontWeight.w500,
+                                        color: isDark ? Colors.white : const Color(0xFF0F172A),
+                                        fontWeight: FontWeight.w700,
                                       ),
                                     ),
-                                  )
-                                : ListView.separated(
-                                    itemCount: users.length,
-                                    separatorBuilder: (ctx, index) => Divider(
-                                      height: 1,
-                                      indent: 56,
-                                      color: isDark
-                                          ? Colors.white.withValues(alpha: 0.06)
-                                          : const Color(0xFFF1F5F9),
+                                    subtitle: Text(
+                                      (u.phoneNumber != null && u.phoneNumber!.isNotEmpty)
+                                          ? u.phoneNumber!
+                                          : '@${u.username}',
+                                      style: TextStyle(
+                                        color: isDark ? AppColors.darkTextSecondary : const Color(0xFF64748B),
+                                        fontSize: 12,
+                                      ),
                                     ),
-                                    itemBuilder: (context, i) {
-                                      final u = users[i];
-                                      final name = u.username as String;
-                                      return ListTile(
-                                        contentPadding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-                                        leading: ModernAvatar(name: name, radius: 20, isVerified: true),
-                                        title: Text(
-                                          name,
-                                          style: TextStyle(
-                                            color: isDark ? Colors.white : const Color(0xFF0F172A),
-                                            fontWeight: FontWeight.w700,
-                                          ),
-                                        ),
-                                        subtitle: Text(
-                                          u.phoneNumber ?? u.email ?? 'Verified Member',
-                                          style: TextStyle(
-                                            color: isDark ? AppColors.darkTextSecondary : const Color(0xFF64748B),
-                                            fontSize: 12,
-                                          ),
-                                        ),
                                         trailing: Container(
                                           padding: const EdgeInsets.all(6),
                                           decoration: BoxDecoration(

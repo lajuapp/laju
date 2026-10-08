@@ -1,4 +1,5 @@
-import type { Metadata } from 'next';
+'use client';
+
 import { 
   ShieldCheck, 
   Lock, 
@@ -7,20 +8,16 @@ import {
   ArrowLeft, 
   CheckCircle2, 
   Key, 
-  FileText, 
-  Smartphone, 
   Trash2, 
-  Download,
-  HelpCircle
+  Download, 
+  HelpCircle 
 } from 'lucide-react';
 import Link from 'next/link';
-
-export const metadata: Metadata = {
-  title: 'Kebijakan Privasi | LAJU Secure Messenger',
-  description: 'Kebijakan privasi resmi LAJU Messenger. Privasi dan enkripsi data Anda adalah prioritas mutlak kami.',
-};
+import { useLanguage } from '@/context/LanguageContext';
 
 export default function PrivacyPage() {
+  const { t } = useLanguage();
+
   return (
     <div className="py-12 sm:py-20 bg-[#F5F4EF] min-h-screen">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
@@ -31,7 +28,7 @@ export default function PrivacyPage() {
           className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-slate-900 mb-8 transition-colors"
         >
           <ArrowLeft className="h-4 w-4" />
-          <span>Kembali ke Beranda</span>
+          <span>{t('privacy_back')}</span>
         </Link>
 
         {/* Hero Section of Privacy Page */}
@@ -41,35 +38,35 @@ export default function PrivacyPage() {
           <div className="lg:col-span-7 space-y-6 text-left">
             <div className="inline-flex items-center gap-2 rounded-full border border-stone-200 bg-white px-4 py-1.5 text-xs font-bold text-stone-700 shadow-sm">
               <ShieldCheck className="h-4 w-4 text-[#0D382C]" />
-              <span>Kedaulatan Privasi Pengguna</span>
+              <span>{t('privacy_badge')}</span>
             </div>
 
             <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold text-slate-900 tracking-tight leading-[1.08]">
-              Privasimu Bukan Komoditas,<br />
-              Tapi Hak Mutlak.
+              {t('privacy_hero_title_line1')}<br />
+              {t('privacy_hero_title_line2')}
             </h1>
 
             <p className="text-slate-600 text-base sm:text-lg leading-relaxed font-normal max-w-2xl">
-              Kami merancang LAJU dari fondasi pertama dengan prinsip <em>zero-knowledge</em>: apa yang Anda bicarakan, siapa yang Anda hubungi, dan apa yang Anda bagikan adalah sepenuhnya milik Anda. Kami tidak memiliki kunci untuk mengintip isi percakapan Anda.
+              {t('privacy_hero_desc')}
             </p>
 
             {/* Core Privacy Guarantees */}
             <div className="pt-2 grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs font-semibold text-slate-700">
               <div className="flex items-center gap-2.5">
                 <CheckCircle2 className="h-4 w-4 text-[#0D382C] shrink-0" />
-                <span>Enkripsi End-to-End Bawaan</span>
+                <span>{t('privacy_guarantee1')}</span>
               </div>
               <div className="flex items-center gap-2.5">
                 <CheckCircle2 className="h-4 w-4 text-[#0D382C] shrink-0" />
-                <span>100% Bebas Iklan & Pelacak</span>
+                <span>{t('privacy_guarantee2')}</span>
               </div>
               <div className="flex items-center gap-2.5">
                 <CheckCircle2 className="h-4 w-4 text-[#0D382C] shrink-0" />
-                <span>Kunci Privat Hanya di Perangkat</span>
+                <span>{t('privacy_guarantee3')}</span>
               </div>
               <div className="flex items-center gap-2.5">
                 <CheckCircle2 className="h-4 w-4 text-[#0D382C] shrink-0" />
-                <span>Panggilan P2P Terenkripsi Langsung</span>
+                <span>{t('privacy_guarantee4')}</span>
               </div>
             </div>
 
@@ -79,13 +76,13 @@ export default function PrivacyPage() {
                 className="flex items-center gap-2 rounded-full bg-[#0D382C] px-6 py-3 text-xs sm:text-sm font-semibold text-white shadow hover:bg-[#134E3E] transition-all"
               >
                 <Download className="h-4 w-4" />
-                <span>Unduh Aplikasi Aman</span>
+                <span>{t('privacy_cta_download')}</span>
               </Link>
               <a
                 href="#rincian-kebijakan"
                 className="flex items-center gap-2 rounded-full border border-stone-300 bg-white/80 px-5 py-3 text-xs sm:text-sm font-semibold text-slate-700 hover:bg-white hover:text-slate-900 transition-all"
               >
-                <span>Baca Rincian Kebijakan ↓</span>
+                <span>{t('privacy_cta_details')}</span>
               </a>
             </div>
           </div>
@@ -101,7 +98,7 @@ export default function PrivacyPage() {
               <div className="absolute bottom-4 inset-x-4 p-3.5 rounded-2xl bg-black/40 backdrop-blur-md border border-white/10 text-white text-xs flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Lock className="h-3.5 w-3.5 text-emerald-400" />
-                  <span className="font-semibold text-[11px]">Enkripsi Aktif di Seluruh Pesan</span>
+                  <span className="font-semibold text-[11px]">{t('privacy_image_badge')}</span>
                 </div>
                 <span className="text-[10px] font-mono text-emerald-300 font-bold">256-BIT</span>
               </div>
@@ -110,165 +107,192 @@ export default function PrivacyPage() {
 
         </div>
 
-        {/* 4 Architectural Pillars Grid */}
-        <div className="mb-20">
-          <div className="text-center max-w-2xl mx-auto mb-10">
+        {/* 4 Architectural Pillars */}
+        <div className="mb-16 sm:mb-20 pt-12 border-t border-[#EAE8DE]">
+          <div className="text-left mb-10">
             <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
-              4 Pilar Keamanan Data di LAJU
+              {t('privacy_pillars_title')}
             </h2>
-            <p className="mt-2 text-xs sm:text-sm text-slate-600">
-              Bagaimana kami memastikan percakapan Anda tetap menjadi milik Anda seorang.
+            <p className="mt-1.5 text-xs sm:text-sm text-slate-600">
+              {t('privacy_pillars_sub')}
             </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 text-left">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8 lg:gap-10 text-left">
             {/* Pillar 1 */}
-            <div className="p-6 rounded-3xl bg-white border border-stone-200/80 shadow-sm space-y-3">
-              <div className="h-10 w-10 rounded-2xl bg-stone-100 flex items-center justify-center text-[#0D382C]">
+            <div className="space-y-3">
+              <div className="h-10 w-10 rounded-xl bg-[#0D382C]/8 flex items-center justify-center text-[#0D382C]">
                 <Lock className="h-5 w-5" />
               </div>
-              <h3 className="text-base font-bold text-slate-900">Enkripsi End-to-End</h3>
-              <p className="text-xs text-slate-600 leading-relaxed">
-                Setiap pesan teks, gambar, video, dan dokumen dienkripsi langsung di ponsel pengirim dan hanya dapat didekripsi oleh ponsel penerima.
+              <h3 className="text-base font-bold text-slate-900">{t('privacy_pillar1_title')}</h3>
+              <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
+                {t('privacy_pillar1_desc')}
               </p>
             </div>
 
             {/* Pillar 2 */}
-            <div className="p-6 rounded-3xl bg-white border border-stone-200/80 shadow-sm space-y-3">
-              <div className="h-10 w-10 rounded-2xl bg-stone-100 flex items-center justify-center text-[#0D382C]">
+            <div className="space-y-3">
+              <div className="h-10 w-10 rounded-xl bg-[#0D382C]/8 flex items-center justify-center text-[#0D382C]">
                 <Key className="h-5 w-5" />
               </div>
-              <h3 className="text-base font-bold text-slate-900">Zero-Knowledge</h3>
-              <p className="text-xs text-slate-600 leading-relaxed">
-                Kunci privat Anda tersimpan aman secara lokal di perangkat Anda. Server kami tidak memiliki kunci untuk membaca isi pesan Anda.
+              <h3 className="text-base font-bold text-slate-900">{t('privacy_pillar2_title')}</h3>
+              <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
+                {t('privacy_pillar2_desc')}
               </p>
             </div>
 
             {/* Pillar 3 */}
-            <div className="p-6 rounded-3xl bg-white border border-stone-200/80 shadow-sm space-y-3">
-              <div className="h-10 w-10 rounded-2xl bg-stone-100 flex items-center justify-center text-[#0D382C]">
+            <div className="space-y-3">
+              <div className="h-10 w-10 rounded-xl bg-[#0D382C]/8 flex items-center justify-center text-[#0D382C]">
                 <EyeOff className="h-5 w-5" />
               </div>
-              <h3 className="text-base font-bold text-slate-900">Tanpa Pelacak Iklan</h3>
-              <p className="text-xs text-slate-600 leading-relaxed">
-                Bebas 100% dari SDK analitik pelacak pihak ketiga (seperti AdMob atau Meta). Kami tidak menjual profil Anda kepada siapa pun.
+              <h3 className="text-base font-bold text-slate-900">{t('privacy_pillar3_title')}</h3>
+              <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
+                {t('privacy_pillar3_desc')}
               </p>
             </div>
 
             {/* Pillar 4 */}
-            <div className="p-6 rounded-3xl bg-white border border-stone-200/80 shadow-sm space-y-3">
-              <div className="h-10 w-10 rounded-2xl bg-stone-100 flex items-center justify-center text-[#0D382C]">
+            <div className="space-y-3">
+              <div className="h-10 w-10 rounded-xl bg-[#0D382C]/8 flex items-center justify-center text-[#0D382C]">
                 <Trash2 className="h-5 w-5" />
               </div>
-              <h3 className="text-base font-bold text-slate-900">Penghapusan Bersih</h3>
-              <p className="text-xs text-slate-600 leading-relaxed">
-                Pesan yang sudah diterima langsung dibersihkan dari server. Fitur pesan sementara memungkinkan riwayat terhapus otomatis di kedua sisi.
+              <h3 className="text-base font-bold text-slate-900">{t('privacy_pillar4_title')}</h3>
+              <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
+                {t('privacy_pillar4_desc')}
               </p>
             </div>
           </div>
         </div>
 
         {/* Detailed Legal & Policy Articles */}
-        <div id="rincian-kebijakan" className="max-w-4xl mx-auto space-y-8 text-sm text-slate-600 leading-relaxed text-left">
+        <div id="rincian-kebijakan" className="w-full space-y-10 text-left">
           
-          <div className="border-b border-stone-200 pb-4 mb-8">
-            <h2 className="text-2xl font-extrabold text-slate-900 tracking-tight">
-              Rincian Ketentuan Kebijakan Privasi
+          <div className="border-b border-[#EAE8DE] pb-6">
+            <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
+              {t('privacy_articles_title')}
             </h2>
-            <p className="mt-1 text-xs text-slate-500">
-              Terakhir diperbarui: 26 September 2026 • Berlaku efektif untuk seluruh pengguna platform LAJU
+            <p className="mt-1.5 text-xs sm:text-sm text-slate-500">
+              {t('privacy_articles_sub')}
             </p>
           </div>
 
-          {/* Section 1 */}
-          <section className="p-6 sm:p-8 rounded-3xl bg-white border border-stone-200/80 shadow-sm space-y-4">
-            <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-              <Key className="h-5 w-5 text-[#0D382C]" />
-              <span>1. Registrasi 100% Bebas Identitas Pribadi (Tanpa Email & Nomor Telepon)</span>
-            </h3>
-            <p>
-              LAJU dibangun dengan prinsip privasi radikal: <strong>kami tidak meminta, tidak mengumpulkan, dan tidak memerlukan informasi identitas pribadi (No Personal Identifiable Information / Zero PII)</strong>.
-            </p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-              <div className="p-3 rounded-2xl bg-stone-50 border border-stone-200 flex items-start gap-2.5">
-                <span className="text-rose-600 font-bold">✕</span>
-                <span className="text-xs text-slate-700"><strong>Tanpa Nomor Telepon:</strong> Tidak ada SMS, tidak ada kode OTP seluler, dan nomor ponsel Anda tidak pernah ditanyakan atau disimpan.</span>
-              </div>
-              <div className="p-3 rounded-2xl bg-stone-50 border border-stone-200 flex items-start gap-2.5">
-                <span className="text-rose-600 font-bold">✕</span>
-                <span className="text-xs text-slate-700"><strong>Tanpa Alamat Email:</strong> Anda tidak perlu mendaftarkan, menautkan, atau memverifikasi email apa pun.</span>
-              </div>
-              <div className="p-3 rounded-2xl bg-stone-50 border border-stone-200 flex items-start gap-2.5">
-                <span className="text-rose-600 font-bold">✕</span>
-                <span className="text-xs text-slate-700"><strong>Tanpa Identitas Kependudukan:</strong> Tidak meminta nama asli, KTP/Paspor, data biometrik, ataupun tanggal lahir.</span>
-              </div>
-              <div className="p-3 rounded-2xl bg-stone-50 border border-stone-200 flex items-start gap-2.5">
-                <span className="text-emerald-700 font-bold">✓</span>
-                <span className="text-xs text-slate-700"><strong>Kriptografi Murni:</strong> Akun Anda beroperasi murni melalui pasangan kunci kriptografi publik-privat (Ed25519 & X25519) dan username unik pilihan Anda.</span>
-              </div>
-            </div>
-          </section>
+          <div className="space-y-12">
+            {/* Section 1 */}
+            <section className="space-y-4 pb-8 border-b border-[#EAE8DE]">
+              <h3 className="text-lg sm:text-xl font-bold text-slate-900 flex items-center gap-2.5">
+                <Key className="h-5 w-5 text-[#0D382C]" />
+                <span>{t('privacy_sec1_title')}</span>
+              </h3>
+              <p className="text-sm sm:text-base text-slate-600 leading-relaxed max-w-4xl">
+                {t('privacy_sec1_lead')}
+              </p>
+              
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-3">
+                <div className="flex items-start gap-3">
+                  <span className="text-rose-600 font-bold text-base leading-none mt-0.5">✕</span>
+                  <div className="text-xs text-slate-600 leading-relaxed">
+                    <strong className="text-slate-900 block mb-0.5">{t('privacy_sec1_p1_title')}</strong>
+                    {t('privacy_sec1_p1_desc')}
+                  </div>
+                </div>
 
-          {/* Section 2 */}
-          <section className="p-6 sm:p-8 rounded-3xl bg-white border border-stone-200/80 shadow-sm space-y-4">
-            <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-              <EyeOff className="h-5 w-5 text-[#0D382C]" />
-              <span>2. Data yang Sama Sekali Tidak Pernah Kami Simpan</span>
-            </h3>
-            <ul className="list-disc list-inside space-y-2.5">
-              <li>
-                <strong className="text-slate-900">Isi Percakapan:</strong> Pesan teks, dokumen, rekaman suara, foto, dan video tidak pernah berada dalam bentuk terbuka (plaintext) di infrastruktur server kami. Seluruh pesan dienkripsi end-to-end sebelum dikirimkan.
-              </li>
-              <li>
-                <strong className="text-slate-900">Buku Kontak & Buku Telepon:</strong> Kami tidak pernah mengunggah, menyalin, atau menyimpan buku kontak ponsel Anda. Penambahan kontak dilakukan secara sukarela menggunakan Username, QR Code, atau tautan kontak terenkripsi.
-              </li>
-              <li>
-                <strong className="text-slate-900">Lokasi Real-Time:</strong> Kami tidak meminta izin pelacakan lokasi latar belakang (GPS tracking) dan tidak merekam koordinat geografis Anda.
-              </li>
-              <li>
-                <strong className="text-slate-900">Rekaman Panggilan:</strong> Panggilan suara dan video dialirkan langsung antar-perangkat menggunakan protokol WebRTC Peer-to-Peer terenkripsi. Server hanya memfasilitasi pertukaran sinyal awal (signaling handshake).
-              </li>
-            </ul>
-          </section>
+                <div className="flex items-start gap-3">
+                  <span className="text-rose-600 font-bold text-base leading-none mt-0.5">✕</span>
+                  <div className="text-xs text-slate-600 leading-relaxed">
+                    <strong className="text-slate-900 block mb-0.5">{t('privacy_sec1_p2_title')}</strong>
+                    {t('privacy_sec1_p2_desc')}
+                  </div>
+                </div>
 
-          {/* Section 3 */}
-          <section className="p-6 sm:p-8 rounded-3xl bg-white border border-stone-200/80 shadow-sm space-y-4">
-            <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-              <Server className="h-5 w-5 text-[#0D382C]" />
-              <span>3. Transit Pesan & Antrean Pengiriman</span>
-            </h3>
-            <p>
-              Jika kontak penerima sedang tidak terhubung ke jaringan internet saat pesan dikirimkan, pesan terenkripsi akan disimpan sementara di antrean relay server. Begitu penerima terhubung dan pesan berhasil terkirim, berkas transit terenkripsi tersebut akan segera dihapus permanen dari memori antrean server kami.
-            </p>
-          </section>
+                <div className="flex items-start gap-3">
+                  <span className="text-rose-600 font-bold text-base leading-none mt-0.5">✕</span>
+                  <div className="text-xs text-slate-600 leading-relaxed">
+                    <strong className="text-slate-900 block mb-0.5">{t('privacy_sec1_p3_title')}</strong>
+                    {t('privacy_sec1_p3_desc')}
+                  </div>
+                </div>
 
-          {/* Section 4 */}
-          <section className="p-6 sm:p-8 rounded-3xl bg-white border border-stone-200/80 shadow-sm space-y-4">
-            <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-              <Trash2 className="h-5 w-5 text-[#0D382C]" />
-              <span>4. Hak Penghapusan Akun & Data Pengguna</span>
-            </h3>
-            <p>
-              Kedaulatan privasi ada di tangan Anda. Kapan pun Anda memutuskan untuk berhenti menggunakan LAJU, Anda dapat menggunakan opsi <strong>Hapus Akun</strong> di menu Pengaturan aplikasi.
-            </p>
-            <p>
-              Tindakan ini akan secara permanen dan seketika menghapus profil publik Anda, metadata sesi, kunci publik terkait, dan keanggotaan grup dari basis data kami tanpa opsi pemulihan.
-            </p>
-          </section>
+                <div className="flex items-start gap-3">
+                  <span className="text-emerald-700 font-bold text-base leading-none mt-0.5">✓</span>
+                  <div className="text-xs text-slate-600 leading-relaxed">
+                    <strong className="text-slate-900 block mb-0.5">{t('privacy_sec1_p4_title')}</strong>
+                    {t('privacy_sec1_p4_desc')}
+                  </div>
+                </div>
+              </div>
+            </section>
 
-          {/* Section 5 */}
-          <section className="p-6 sm:p-8 rounded-3xl bg-white border border-stone-200/80 shadow-sm space-y-4">
-            <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-              <HelpCircle className="h-5 w-5 text-[#0D382C]" />
-              <span>5. Hubungi Tim Privasi LAJU</span>
-            </h3>
-            <p>
-              Jika Anda memiliki pertanyaan teknis, audit keamanan, atau masukan terkait perlindungan privasi di platform LAJU, silakan hubungi tim kami melalui email resmi:
-            </p>
-            <div className="p-3.5 rounded-2xl bg-stone-50 border border-stone-200 text-xs font-mono text-slate-800 inline-block font-semibold">
-              privacy@laju.chat
-            </div>
-          </section>
+            {/* Section 2 */}
+            <section className="space-y-4 pb-8 border-b border-[#EAE8DE]">
+              <h3 className="text-lg sm:text-xl font-bold text-slate-900 flex items-center gap-2.5">
+                <EyeOff className="h-5 w-5 text-[#0D382C]" />
+                <span>{t('privacy_sec2_title')}</span>
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-xs sm:text-sm text-slate-600 leading-relaxed">
+                <div>
+                  <strong className="text-slate-900 block mb-1">{t('privacy_sec2_item1_title')}</strong>
+                  {t('privacy_sec2_item1_desc')}
+                </div>
+                <div>
+                  <strong className="text-slate-900 block mb-1">{t('privacy_sec2_item2_title')}</strong>
+                  {t('privacy_sec2_item2_desc')}
+                </div>
+                <div>
+                  <strong className="text-slate-900 block mb-1">{t('privacy_sec2_item3_title')}</strong>
+                  {t('privacy_sec2_item3_desc')}
+                </div>
+                <div>
+                  <strong className="text-slate-900 block mb-1">{t('privacy_sec2_item4_title')}</strong>
+                  {t('privacy_sec2_item4_desc')}
+                </div>
+              </div>
+            </section>
+
+            {/* Section 3 */}
+            <section className="space-y-4 pb-8 border-b border-[#EAE8DE]">
+              <h3 className="text-lg sm:text-xl font-bold text-slate-900 flex items-center gap-2.5">
+                <Server className="h-5 w-5 text-[#0D382C]" />
+                <span>{t('privacy_sec3_title')}</span>
+              </h3>
+              <p className="text-xs sm:text-sm text-slate-600 leading-relaxed max-w-4xl">
+                {t('privacy_sec3_desc')}
+              </p>
+            </section>
+
+            {/* Section 4 */}
+            <section className="space-y-4 pb-8 border-b border-[#EAE8DE]">
+              <h3 className="text-lg sm:text-xl font-bold text-slate-900 flex items-center gap-2.5">
+                <Trash2 className="h-5 w-5 text-[#0D382C]" />
+                <span>{t('privacy_sec4_title')}</span>
+              </h3>
+              <p className="text-xs sm:text-sm text-slate-600 leading-relaxed max-w-4xl">
+                {t('privacy_sec4_desc')}
+              </p>
+            </section>
+
+            {/* Section 5 */}
+            <section className="space-y-4 pb-8">
+              <h3 className="text-lg sm:text-xl font-bold text-slate-900 flex items-center gap-2.5">
+                <HelpCircle className="h-5 w-5 text-[#0D382C]" />
+                <span>{t('privacy_sec5_title')}</span>
+              </h3>
+              <p className="text-xs sm:text-sm text-slate-600 leading-relaxed max-w-4xl">
+                {t('privacy_sec5_desc')}
+              </p>
+              <div className="flex items-center gap-3 pt-1">
+                <div className="p-3 rounded-xl bg-white border border-stone-200 text-xs font-mono text-slate-800 font-semibold shadow-2xs">
+                  privacy@laju.chat
+                </div>
+                <a
+                  href="mailto:privacy@laju.chat"
+                  className="px-4 py-2.5 rounded-xl bg-[#0D382C] text-white text-xs font-bold hover:bg-[#134E3E] transition-colors"
+                >
+                  {t('privacy_sec5_btn')}
+                </a>
+              </div>
+            </section>
+          </div>
 
         </div>
 

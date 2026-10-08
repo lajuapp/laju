@@ -1015,6 +1015,33 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
+  void _addCurrentPeerToContacts() async {
+    final peerId = widget.contactUserId;
+    if (peerId == null || peerId.isEmpty) return;
+    final contact = LajuContactItem(
+      id: peerId,
+      username: widget.title.replaceAll('@', ''),
+      displayName: widget.title,
+      avatarUrl: widget.avatarUrl,
+      about: widget.contactAbout,
+      phoneNumber: widget.contactPhone,
+      addedAt: DateTime.now(),
+    );
+    await AccountController.instance.addSavedContact(contact);
+    if (mounted) {
+      setState(() {});
+      LajuToast.success(context, 'Berhasil menambahkan ke kontak personal');
+    }
+  }
+
+  void _blockCurrentPeer() async {
+    await AccountController.instance.addBlockedContact(widget.title);
+    if (mounted) {
+      LajuToast.info(context, '${widget.title} telah diblokir');
+      Navigator.pop(context);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = ThemeModeController.instance.isDarkMode(context);
@@ -1392,6 +1419,87 @@ class _ChatScreenState extends State<ChatScreen> {
               // Messages & Input Bar
               Column(
                 children: [
+                  // Privacy Safety Banner for Non-Saved Contact
+                  if (!widget.isGroup &&
+                      widget.contactUserId != null &&
+                      widget.contactUserId!.isNotEmpty &&
+                      !AccountController.instance.isContactSaved(widget.contactUserId!))
+                    Container(
+                      margin: const EdgeInsets.fromLTRB(14, 8, 14, 4),
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: isDark ? const Color(0xFF1E293B) : Colors.white,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: isDark ? Colors.amber.withValues(alpha: 0.3) : Colors.amber.shade200,
+                          width: 1,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.05),
+                            blurRadius: 8,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.shield_outlined,
+                                size: 18,
+                                color: Colors.amber.shade700,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  'Pengguna ini belum terdaftar di kontak personal Anda.',
+                                  style: TextStyle(
+                                    fontSize: 12.5,
+                                    fontWeight: FontWeight.w600,
+                                    color: isDark ? Colors.white : const Color(0xFF1E293B),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              TextButton(
+                                style: TextButton.styleFrom(
+                                  foregroundColor: Colors.red.shade400,
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                                  minimumSize: Size.zero,
+                                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                ),
+                                onPressed: _blockCurrentPeer,
+                                child: const Text('Blokir', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                              ),
+                              const SizedBox(width: 8),
+                              ElevatedButton.icon(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: AppColors.primary,
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                  minimumSize: Size.zero,
+                                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                  elevation: 0,
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                ),
+                                icon: const Icon(Icons.person_add_rounded, size: 14),
+                                label: const Text('Tambah Kontak', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                                onPressed: _addCurrentPeerToContacts,
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+
                   // Message List
                   Expanded(
                     child: _messages.isEmpty

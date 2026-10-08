@@ -1,7 +1,12 @@
+'use client';
+
 import Link from 'next/link';
 import { Lock, Database, EyeOff, Server, ChevronRight } from 'lucide-react';
+import { useLanguage } from '@/context/LanguageContext';
 
 export function SecuritySection() {
+  const { t } = useLanguage();
+
   return (
     <section id="privasi" className="py-20 sm:py-28 bg-[#F5F4EF] border-t border-[#EAE8DE] relative overflow-hidden">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
@@ -10,16 +15,16 @@ export function SecuritySection() {
           {/* Left Column: Copy & Link */}
           <div className="lg:col-span-5 space-y-6 text-left">
             <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">
-              KEAMANAN DI SETIAP PESAN
+              {t('sec_tag')}
             </p>
 
             <h2 className="text-4xl sm:text-5xl md:text-6xl font-extrabold text-slate-900 tracking-tight leading-[1.08]">
-              Privasimu,<br />
-              itu prioritas.
+              {t('sec_title_line1')}<br />
+              {t('sec_title_line2')}
             </h2>
 
             <p className="text-slate-600 text-base sm:text-lg max-w-lg leading-relaxed font-normal">
-              Semua pesan, panggilan, dan berkas di LAJU dilindungi dengan enkripsi end-to-end. Hanya kamu dan orang yang kamu ajak bicara yang bisa membacanya.
+              {t('sec_desc')}
             </p>
 
             <div className="pt-2">
@@ -27,7 +32,7 @@ export function SecuritySection() {
                 href="/privacy"
                 className="inline-flex items-center gap-2 rounded-full bg-[#0D382C] px-6 py-3.5 text-xs sm:text-sm font-semibold text-white shadow-sm hover:bg-[#134E3E] transition-all"
               >
-                <span>Pelajari tentang keamanan</span>
+                <span>{t('sec_cta')}</span>
                 <ChevronRight className="h-4 w-4" />
               </Link>
             </div>
@@ -54,8 +59,8 @@ export function SecuritySection() {
                     <Lock className="h-5 w-5" />
                   </div>
                   <div>
-                    <div className="font-bold text-white text-sm">End-to-end encryption</div>
-                    <div className="text-xs text-slate-300">untuk semua pesan</div>
+                    <div className="font-bold text-white text-sm">{t('sec_card1_title')}</div>
+                    <div className="text-xs text-slate-300">{t('sec_card1_sub')}</div>
                   </div>
                 </div>
 
@@ -65,8 +70,8 @@ export function SecuritySection() {
                     <Database className="h-5 w-5" />
                   </div>
                   <div>
-                    <div className="font-bold text-white text-sm">Data minim,</div>
-                    <div className="text-xs text-slate-300">kendali di tanganmu</div>
+                    <div className="font-bold text-white text-sm">{t('sec_card2_title')}</div>
+                    <div className="text-xs text-slate-300">{t('sec_card2_sub')}</div>
                   </div>
                 </div>
 
@@ -76,8 +81,8 @@ export function SecuritySection() {
                     <EyeOff className="h-5 w-5" />
                   </div>
                   <div>
-                    <div className="font-bold text-white text-sm">Tidak ada iklan</div>
-                    <div className="text-xs text-slate-300">tidak melacak aktivitas</div>
+                    <div className="font-bold text-white text-sm">{t('sec_card3_title')}</div>
+                    <div className="text-xs text-slate-300">{t('sec_card3_sub')}</div>
                   </div>
                 </div>
 
@@ -87,8 +92,8 @@ export function SecuritySection() {
                     <Server className="h-5 w-5" />
                   </div>
                   <div>
-                    <div className="font-bold text-white text-sm">Server dengan standar</div>
-                    <div className="text-xs text-slate-300">keamanan modern</div>
+                    <div className="font-bold text-white text-sm">{t('sec_card4_title')}</div>
+                    <div className="text-xs text-slate-300">{t('sec_card4_sub')}</div>
                   </div>
                 </div>
               </div>

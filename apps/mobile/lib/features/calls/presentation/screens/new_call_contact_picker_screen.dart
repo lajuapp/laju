@@ -3,6 +3,8 @@ import '../../../../core/core.dart';
 import '../../../conversations/domain/conversation_service.dart';
 import 'active_call_screen.dart';
 import 'group_call_picker_screen.dart';
+import '../../../settings/domain/account_controller.dart';
+import '../../../settings/presentation/screens/my_qr_code_screen.dart';
 
 class CallContactItem {
   final String id;
@@ -39,47 +41,34 @@ class _NewCallContactPickerScreenState extends State<NewCallContactPickerScreen>
   @override
   void initState() {
     super.initState();
-    _loadInitialUsers();
+    AccountController.instance.addListener(_loadSavedContacts);
+    _loadSavedContacts();
   }
 
-  void _loadInitialUsers() async {
-    setState(() => _isSearching = true);
-    final results = await ConversationService.instance.searchUsers('');
+  void _loadSavedContacts() {
+    final saved = AccountController.instance.savedContacts;
     if (mounted) {
       setState(() {
-        _contacts = results.map((u) => CallContactItem(
-          id: u.id,
-          name: u.username,
-          status: u.status ?? 'Pengguna Terverifikasi LAJU',
-          phone: '@${u.username}',
-          avatarUrl: u.avatarUrl,
-          isOnline: true,
-          isVerified: true,
-        )).toList();
-        _isSearching = false;
-      });
-    }
-  }
-
-  void _onSearchQueryChanged(String query) async {
-    final results = await ConversationService.instance.searchUsers(query.trim());
-    if (mounted) {
-      setState(() {
-        _contacts = results.map((u) => CallContactItem(
-          id: u.id,
-          name: u.username,
-          status: u.status ?? 'Pengguna Terverifikasi LAJU',
-          phone: '@${u.username}',
-          avatarUrl: u.avatarUrl,
-          isOnline: true,
-          isVerified: true,
+        _contacts = saved.map((c) => CallContactItem(
+          id: c.id,
+          name: (c.displayName != null && c.displayName!.isNotEmpty) ? c.displayName! : c.username,
+          status: (c.about != null && c.about!.isNotEmpty) ? c.about! : 'Kontak Personal Terverifikasi',
+          phone: '@${c.username}',
+          avatarUrl: c.avatarUrl,
+          isOnline: false,
+          isVerified: c.isVerified,
         )).toList();
       });
     }
+  }
+
+  void _onSearchQueryChanged(String query) {
+    setState(() {});
   }
 
   @override
   void dispose() {
+    AccountController.instance.removeListener(_loadSavedContacts);
     _searchController.dispose();
     super.dispose();
   }
@@ -174,6 +163,18 @@ class _NewCallContactPickerScreenState extends State<NewCallContactPickerScreen>
               });
             },
           ),
+          IconButton(
+            icon: const Icon(Icons.qr_code_scanner_rounded, color: AppColors.primary, size: 23),
+            tooltip: 'Pindai Kode QR',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const MyQrCodeScreen(initialTabIndex: 1),
+                ),
+              );
+            },
+          ),
         ],
       ),
       body: LajuGlassBackground(
@@ -238,14 +239,29 @@ class _NewCallContactPickerScreenState extends State<NewCallContactPickerScreen>
 
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-                child: Text(
-                  context.tr('contactsInLaju'),
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: isDark ? AppColors.darkTextSecondary : const Color(0xFF6B7280),
-                    letterSpacing: 0.3,
-                  ),
+                child: Row(
+                  children: [
+                    Text(
+                      'Kontak Personal',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: isDark ? AppColors.darkTextSecondary : const Color(0xFF6B7280),
+                        letterSpacing: 0.3,
+                      ),
+                    ),
+                    const Spacer(),
+                    Icon(Icons.lock_outline_rounded, size: 14, color: isDark ? AppColors.darkTextSecondary : const Color(0xFF9CA3AF)),
+                    const SizedBox(width: 4),
+                    Text(
+                      'Zero-Knowledge',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: isDark ? AppColors.darkTextSecondary : const Color(0xFF9CA3AF),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
@@ -290,7 +306,7 @@ class _NewCallContactPickerScreenState extends State<NewCallContactPickerScreen>
                               ),
                             ),
                             subtitle: Text(
-                              '@${contact.name} • ${contact.status}',
+                              '${contact.phone} • ${contact.status}',
                               style: TextStyle(fontSize: 12.5, color: isDark ? AppColors.darkTextSecondary : const Color(0xFF6B7280)),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
@@ -324,6 +340,102 @@ class _NewCallContactPickerScreenState extends State<NewCallContactPickerScreen>
                       ],
                     );
                   }),
+                ),
+              )
+            else if (_contacts.isEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 16),
+                child: LajuGlassCard(
+                  padding: const EdgeInsets.all(24),
+                  borderRadius: 20,
+                  blurSigma: 16,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 60,
+                        height: 60,
+                        decoration: BoxDecoration(
+                          color: AppColors.primary.withValues(alpha: 0.12),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.qr_code_scanner_rounded,
+                          color: AppColors.primary,
+                          size: 32,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        'Belum Ada Kontak Personal',
+                        style: TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w700,
+                          color: isDark ? Colors.white : const Color(0xFF111827),
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Panggilan hanya dapat dilakukan ke kontak personal yang telah Anda scan demi privasi Zero-Knowledge.',
+                        style: TextStyle(
+                          fontSize: 13,
+                          height: 1.45,
+                          color: isDark ? AppColors.darkTextSecondary : const Color(0xFF6B7280),
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 20),
+                      ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.primary,
+                          foregroundColor: Colors.white,
+                          minimumSize: const Size.fromHeight(46),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          elevation: 0,
+                        ),
+                        icon: const Icon(Icons.qr_code_scanner_rounded, size: 20),
+                        label: const Text(
+                          'Pindai Kode QR Teman',
+                          style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+                        ),
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const MyQrCodeScreen(initialTabIndex: 1),
+                            ),
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              )
+            else
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
+                child: Center(
+                  child: Column(
+                    children: [
+                      Icon(
+                        Icons.search_off_rounded,
+                        size: 44,
+                        color: isDark ? AppColors.darkTextSecondary : const Color(0xFF9CA3AF),
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        'Kontak tidak ditemukan',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          color: isDark ? Colors.white : const Color(0xFF374151),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
           ],

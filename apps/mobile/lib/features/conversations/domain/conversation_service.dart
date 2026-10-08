@@ -348,10 +348,15 @@ class ConversationService {
 
   /// Search users in the backend directory for new chats or group members
   Future<List<UserDirectoryItem>> searchUsers(String query) async {
+    final cleanQ = query.trim();
+    // Zero-Knowledge Privacy Policy: Do not query public directory with empty or short string
+    if (cleanQ.isEmpty || cleanQ.length < 3) {
+      return [];
+    }
     try {
       final response = await ApiClient.instance.get(
         ApiEndpoints.users,
-        queryParams: {'q': query.trim()},
+        queryParams: {'q': cleanQ},
       );
 
       if (response.isSuccess && response.rawJson is Map) {

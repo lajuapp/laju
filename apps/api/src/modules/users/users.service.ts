@@ -152,18 +152,25 @@ export class UsersService {
     const offset = offsetStr ? parseInt(offsetStr, 10) : 0;
     const q = query?.trim();
 
+    // Zero-Knowledge Privacy Policy:
+    // Disallow public directory browsing. Search requires at least 3 characters.
+    if (!q || q.length < 3) {
+      return {
+        users: [],
+        total: 0,
+        limit,
+        offset
+      };
+    }
+
     const whereClause: any = {
       status: 'ACTIVE',
-      id: { not: currentUserId }
+      id: { not: currentUserId },
+      OR: [
+        { username: { equals: q, mode: 'insensitive' } },
+        { username: { startsWith: q, mode: 'insensitive' } }
+      ]
     };
-
-    if (q && q.length > 0) {
-      whereClause.OR = [
-        { username: { contains: q, mode: 'insensitive' } },
-        { email: { contains: q, mode: 'insensitive' } },
-        { phoneNumber: { contains: q } }
-      ];
-    }
 
     const [users, total] = await Promise.all([
       this.prisma.user.findMany({
@@ -171,8 +178,6 @@ export class UsersService {
         select: {
           id: true,
           username: true,
-          email: true,
-          phoneNumber: true,
           status: true,
           avatarUrl: true,
           createdAt: true
@@ -212,8 +217,6 @@ export class UsersService {
       select: {
         id: true,
         username: true,
-        phoneNumber: true,
-        email: true,
         status: true,
         trustScore: true,
         avatarUrl: true,
@@ -227,8 +230,6 @@ export class UsersService {
         select: {
           id: true,
           username: true,
-          phoneNumber: true,
-          email: true,
           status: true,
           trustScore: true,
           avatarUrl: true,

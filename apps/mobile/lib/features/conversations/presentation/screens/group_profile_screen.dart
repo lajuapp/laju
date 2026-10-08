@@ -11,6 +11,7 @@ import '../../domain/conversation_service.dart';
 import '../../domain/models/conversation_model.dart';
 import 'group_settings_screen.dart';
 import 'user_profile_screen.dart';
+import '../../../settings/domain/account_controller.dart';
 
 class GroupProfileScreen extends StatefulWidget {
   final String groupId;
@@ -92,7 +93,7 @@ class _GroupProfileScreenState extends State<GroupProfileScreen> {
 
   void _showAddMemberSheet() async {
     final isDark = ThemeModeController.instance.isDarkMode(context);
-    final users = await ConversationService.instance.searchUsers('');
+    final users = AccountController.instance.savedContacts;
     final currentGroup = GroupController.instance.getGroup(widget.groupId);
     final existingIds = currentGroup?.members.map((m) => m.id).toSet() ?? {};
     final candidates = users.where((u) => !existingIds.contains(u.id)).toList();
@@ -114,7 +115,7 @@ class _GroupProfileScreenState extends State<GroupProfileScreen> {
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 child: Text(
-                  'Pilih Kontak untuk Ditambahkan',
+                  'Pilih Kontak Personal untuk Ditambahkan',
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
@@ -125,29 +126,29 @@ class _GroupProfileScreenState extends State<GroupProfileScreen> {
               if (candidates.isEmpty)
                 const Padding(
                   padding: EdgeInsets.all(24),
-                  child: Text('Semua kontak sudah bergabung ke dalam grup'),
+                  child: Text('Tidak ada kontak personal baru untuk ditambahkan'),
                 )
               else
                 ...candidates.map((u) => ListTile(
                       leading: ModernAvatar(name: u.username, imagePath: u.avatarUrl, radius: 20),
                       title: Text(
-                        u.username,
+                        u.displayName?.isNotEmpty == true ? u.displayName! : u.username,
                         style: TextStyle(
                           fontWeight: FontWeight.w600,
                           color: isDark ? Colors.white : const Color(0xFF111827),
                         ),
                       ),
-                      subtitle: Text(u.status ?? 'Pengguna Terverifikasi LAJU'),
+                      subtitle: Text(u.about ?? 'Kontak Personal Terverifikasi'),
                       onTap: () async {
                         Navigator.pop(bCtx);
                         await GroupController.instance.addMembers(widget.groupId, [
                           GroupMemberItem(
                             id: u.id,
-                            name: u.username,
+                            name: u.displayName?.isNotEmpty == true ? u.displayName! : u.username,
                             phone: '@${u.username}',
                             role: 'Anggota',
                             isAdmin: false,
-                            isOnline: true,
+                            isOnline: false,
                           ),
                         ]);
                         if (mounted) {

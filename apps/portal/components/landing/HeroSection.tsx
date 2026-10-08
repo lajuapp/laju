@@ -1,3 +1,5 @@
+'use client';
+
 import Link from 'next/link';
 import { 
   Download, 
@@ -7,8 +9,11 @@ import {
   Users, 
   Laptop 
 } from 'lucide-react';
+import { useLanguage } from '@/context/LanguageContext';
 
 export function HeroSection() {
+  const { t } = useLanguage();
+
   return (
     <section className="relative overflow-hidden bg-[#F5F4EF] pt-6 pb-16 md:pt-10 md:pb-20">
       {/* Background Lifestyle Photography for Large Screens */}
@@ -33,18 +38,18 @@ export function HeroSection() {
           <div className="lg:col-span-6 xl:col-span-6 space-y-6 text-left z-10 py-4 lg:py-10">
             {/* Tag */}
             <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">
-              PESAN YANG LEBIH TENANG
+              {t('hero_tag')}
             </p>
 
             {/* Title */}
             <h1 className="text-5xl sm:text-6xl md:text-7xl font-extrabold tracking-tight text-slate-900 leading-[1.05]">
-              Chat, tanpa<br />
-              banyak suara.
+              {t('hero_title_part1')}<br />
+              {t('hero_title_part2')}
             </h1>
 
             {/* Subtitle */}
             <p className="text-slate-600 text-base sm:text-lg max-w-md leading-relaxed font-normal">
-              LAJU adalah aplikasi pesan yang fokus pada privasi, keamanan, dan kenyamanan berkumpul dengan orang-orang terdekat.
+              {t('hero_subtitle')}
             </p>
 
             {/* Buttons */}
@@ -54,7 +59,7 @@ export function HeroSection() {
                 className="flex items-center gap-2.5 rounded-full bg-[#0D382C] px-7 py-3.5 text-sm font-semibold text-white shadow-sm hover:bg-[#134E3E] transition-all active:scale-95"
               >
                 <Download className="h-4 w-4" />
-                <span>Unduh untuk Android</span>
+                <span>{t('hero_cta_android')}</span>
               </Link>
 
               <a
@@ -62,7 +67,7 @@ export function HeroSection() {
                 className="flex items-center gap-2 px-4 py-3.5 text-sm font-semibold text-slate-800 hover:text-slate-950 transition-colors"
               >
                 <PlayCircle className="h-5 w-5 text-slate-700" />
-                <span>Lihat bagaimana</span>
+                <span>{t('hero_cta_learn')}</span>
               </a>
             </div>
 
@@ -71,32 +76,32 @@ export function HeroSection() {
               <div className="space-y-2">
                 <Lock className="h-5 w-5 text-slate-800 stroke-[1.5]" />
                 <div className="font-semibold text-slate-900 leading-snug">
-                  Privasi<br />
-                  <span className="font-normal text-slate-600">end-to-end</span>
+                  {t('hero_prop_privacy')}<br />
+                  <span className="font-normal text-slate-600">{t('hero_prop_privacy_sub')}</span>
                 </div>
               </div>
 
               <div className="space-y-2">
                 <Zap className="h-5 w-5 text-slate-800 stroke-[1.5]" />
                 <div className="font-semibold text-slate-900 leading-snug">
-                  Ringan<br />
-                  <span className="font-normal text-slate-600">dan cepat</span>
+                  {t('hero_prop_lightweight')}<br />
+                  <span className="font-normal text-slate-600">{t('hero_prop_lightweight_sub')}</span>
                 </div>
               </div>
 
               <div className="space-y-2">
                 <Users className="h-5 w-5 text-slate-800 stroke-[1.5]" />
                 <div className="font-semibold text-slate-900 leading-snug">
-                  Grup yang<br />
-                  <span className="font-normal text-slate-600">lebih aman</span>
+                  {t('hero_prop_groups')}<br />
+                  <span className="font-normal text-slate-600">{t('hero_prop_groups_sub')}</span>
                 </div>
               </div>
 
               <div className="space-y-2">
                 <Laptop className="h-5 w-5 text-slate-800 stroke-[1.5]" />
                 <div className="font-semibold text-slate-900 leading-snug">
-                  Lintas perangkat<br />
-                  <span className="font-normal text-slate-600">dengan kendali penuh</span>
+                  {t('hero_prop_crossdevice')}<br />
+                  <span className="font-normal text-slate-600">{t('hero_prop_crossdevice_sub')}</span>
                 </div>
               </div>
             </div>

@@ -1,7 +1,12 @@
+'use client';
+
 import Link from 'next/link';
 import { Smartphone } from 'lucide-react';
+import { useLanguage } from '@/context/LanguageContext';
 
 export function DownloadCTA() {
+  const { t } = useLanguage();
+
   return (
     <section className="py-20 sm:py-28 bg-[#F5F4EF] border-t border-[#EAE8DE] relative overflow-hidden">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
@@ -10,17 +15,17 @@ export function DownloadCTA() {
           {/* Left Column: Copy & Action Buttons */}
           <div className="lg:col-span-5 space-y-6 text-left">
             <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">
-              UNDUH SEKARANG
+              {t('cta_tag')}
             </p>
 
             <h2 className="text-4xl sm:text-5xl md:text-6xl font-extrabold text-slate-900 tracking-tight leading-[1.08]">
-              Mulai percakapan<br />
-              yang lebih aman.
+              {t('cta_title_line1')}<br />
+              {t('cta_title_line2')}
             </h2>
 
             <p className="text-slate-600 text-base sm:text-lg leading-relaxed font-normal">
-              Tersedia untuk Android.<br />
-              Versi lainnya segera hadir.
+              {t('cta_subtitle_line1')}<br />
+              {t('cta_subtitle_line2')}
             </p>
 
             {/* Buttons */}
@@ -30,14 +35,14 @@ export function DownloadCTA() {
                 className="flex items-center gap-2.5 rounded-full bg-[#0D382C] px-7 py-3.5 text-xs sm:text-sm font-semibold text-white shadow-sm hover:bg-[#134E3E] transition-all active:scale-95"
               >
                 <Smartphone className="h-4 w-4" />
-                <span>Unduh untuk Android</span>
+                <span>{t('cta_download_btn')}</span>
               </Link>
 
               <Link
                 href="/#fitur"
                 className="flex items-center gap-2 rounded-full border border-stone-300 bg-white/80 px-6 py-3.5 text-xs sm:text-sm font-semibold text-slate-800 hover:bg-white hover:text-slate-950 transition-all shadow-sm"
               >
-                <span>Pantau pembaruan</span>
+                <span>{t('cta_monitor_btn')}</span>
               </Link>
             </div>
           </div>

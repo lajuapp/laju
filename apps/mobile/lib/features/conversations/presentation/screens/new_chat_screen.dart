@@ -4,6 +4,7 @@ import '../../../messaging/presentation/screens/chat_screen.dart';
 import '../../domain/conversation_service.dart';
 import 'create_group_screen.dart';
 import '../../../settings/presentation/screens/my_qr_code_screen.dart';
+import '../../../settings/domain/account_controller.dart';
 
 class ContactItem {
   final String id;
@@ -40,24 +41,23 @@ class _NewChatScreenState extends State<NewChatScreen> {
   @override
   void initState() {
     super.initState();
-    _loadInitialUsers();
+    AccountController.instance.addListener(_loadSavedContacts);
+    _loadSavedContacts();
   }
 
-  void _loadInitialUsers() async {
-    setState(() => _isSearching = true);
-    final results = await ConversationService.instance.searchUsers('');
+  void _loadSavedContacts() {
+    final saved = AccountController.instance.savedContacts;
     if (mounted) {
       setState(() {
-        _contacts = results.map((u) => ContactItem(
-          id: u.id,
-          name: u.username,
-          status: u.status ?? 'Pengguna Terverifikasi LAJU',
-          phone: '@${u.username}',
-          isVerified: true,
-          isOnline: true,
-          avatarUrl: u.avatarUrl,
+        _contacts = saved.map((c) => ContactItem(
+          id: c.id,
+          name: (c.displayName != null && c.displayName!.isNotEmpty) ? c.displayName! : c.username,
+          status: (c.about != null && c.about!.isNotEmpty) ? c.about! : 'Kontak Personal Terverifikasi',
+          phone: '@${c.username}',
+          isVerified: c.isVerified,
+          isOnline: false,
+          avatarUrl: c.avatarUrl,
         )).toList();
-        _isSearching = false;
       });
     }
   }
@@ -69,25 +69,12 @@ class _NewChatScreenState extends State<NewChatScreen> {
         .where((c) =>
             c.name.toLowerCase().contains(q) ||
             c.status.toLowerCase().contains(q) ||
-            c.phone.contains(q))
+            c.phone.toLowerCase().contains(q))
         .toList();
   }
 
-  void _onSearchQueryChanged(String query) async {
-    final results = await ConversationService.instance.searchUsers(query.trim());
-    if (mounted) {
-      setState(() {
-        _contacts = results.map((u) => ContactItem(
-          id: u.id,
-          name: u.username,
-          status: u.status ?? 'Pengguna Terverifikasi LAJU',
-          phone: '@${u.username}',
-          isVerified: true,
-          isOnline: true,
-          avatarUrl: u.avatarUrl,
-        )).toList();
-      });
-    }
+  void _onSearchQueryChanged(String query) {
+    setState(() {});
   }
 
   void _openChatWith(ContactItem contact) async {
@@ -118,6 +105,7 @@ class _NewChatScreenState extends State<NewChatScreen> {
 
   @override
   void dispose() {
+    AccountController.instance.removeListener(_loadSavedContacts);
     _searchController.dispose();
     super.dispose();
   }
@@ -142,7 +130,7 @@ class _NewChatScreenState extends State<NewChatScreen> {
                 autofocus: true,
                 style: TextStyle(fontSize: 16, color: isDark ? Colors.white : const Color(0xFF111827)),
                 decoration: InputDecoration(
-                  hintText: 'Search name or number...',
+                  hintText: 'Cari nama atau username kontak...',
                   border: InputBorder.none,
                   hintStyle: TextStyle(color: isDark ? AppColors.darkTextSecondary : const Color(0xFF9CA3AF), fontSize: 15),
                 ),
@@ -152,7 +140,7 @@ class _NewChatScreenState extends State<NewChatScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Select contact',
+                    'Pesan Baru',
                     style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.w700,
@@ -160,7 +148,7 @@ class _NewChatScreenState extends State<NewChatScreen> {
                     ),
                   ),
                   Text(
-                    '${_contacts.length} contacts',
+                    '${_contacts.length} kontak personal',
                     style: TextStyle(
                       fontSize: 12,
                       color: isDark ? AppColors.darkTextSecondary : const Color(0xFF6B7280),
@@ -184,17 +172,16 @@ class _NewChatScreenState extends State<NewChatScreen> {
               });
             },
           ),
-          PopupMenuButton<String>(
-            color: isDark ? AppColors.darkSurfaceElevated : Colors.white,
-            icon: Icon(Icons.more_vert_rounded, color: isDark ? Colors.white : const Color(0xFF374151)),
-            itemBuilder: (context) => const [
-              PopupMenuItem(value: 'invite', child: Text('Invite a friend')),
-              PopupMenuItem(value: 'contacts', child: Text('Contacts')),
-              PopupMenuItem(value: 'refresh', child: Text('Refresh')),
-              PopupMenuItem(value: 'help', child: Text('Help')),
-            ],
-            onSelected: (val) {
-              LajuToast.info(context, 'Option $val selected');
+          IconButton(
+            icon: const Icon(Icons.qr_code_scanner_rounded, color: AppColors.primary, size: 23),
+            tooltip: 'Pindai Kode QR',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const MyQrCodeScreen(initialTabIndex: 1),
+                ),
+              );
             },
           ),
         ],
@@ -219,7 +206,7 @@ class _NewChatScreenState extends State<NewChatScreen> {
                 ),
               ),
               title: Text(
-                'Create Group',
+                'Grup Baru',
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w700,
@@ -227,7 +214,7 @@ class _NewChatScreenState extends State<NewChatScreen> {
                 ),
               ),
               subtitle: Text(
-                'New encrypted group conversation',
+                'Buat percakapan grup terenkripsi',
                 style: TextStyle(fontSize: 12.5, color: isDark ? AppColors.darkTextSecondary : const Color(0xFF6B7280)),
               ),
               onTap: () {
@@ -238,7 +225,7 @@ class _NewChatScreenState extends State<NewChatScreen> {
               },
             ),
 
-            // Create Chat / New Contact
+            // Scan QR / Tambah Kontak
             ListTile(
               leading: Container(
                 width: 44,
@@ -248,13 +235,13 @@ class _NewChatScreenState extends State<NewChatScreen> {
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(
-                  Icons.person_add_rounded,
+                  Icons.qr_code_scanner_rounded,
                   color: AppColors.primaryDark,
                   size: 22,
                 ),
               ),
               title: Text(
-                'Create Chat',
+                'Pindai Kode QR',
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w700,
@@ -262,23 +249,17 @@ class _NewChatScreenState extends State<NewChatScreen> {
                 ),
               ),
               subtitle: Text(
-                'Start secret direct conversation',
+                'Scan QR teman untuk menambah kontak personal',
                 style: TextStyle(fontSize: 12.5, color: isDark ? AppColors.darkTextSecondary : const Color(0xFF6B7280)),
               ),
-              trailing: IconButton(
-                icon: const Icon(Icons.qr_code_scanner_rounded, color: AppColors.primaryDark, size: 22),
-                tooltip: 'Scan QR to add',
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const MyQrCodeScreen(initialTabIndex: 1),
-                    ),
-                  );
-                },
-              ),
+              trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 16, color: Color(0xFF9CA3AF)),
               onTap: () {
-                LajuToast.info(context, 'Select a contact below to start chat');
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const MyQrCodeScreen(initialTabIndex: 1),
+                  ),
+                );
               },
             ),
 
@@ -287,17 +268,32 @@ class _NewChatScreenState extends State<NewChatScreen> {
               child: Divider(height: 1, color: isDark ? AppColors.darkSurfaceBorder : const Color(0xFFE5E7EB)),
             ),
 
-            // Section Header: Contacts on LAJU
+            // Section Header: Kontak Personal
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
-              child: Text(
-                'Contacts on LAJU',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  color: isDark ? AppColors.darkTextSecondary : const Color(0xFF6B7280),
-                  letterSpacing: 0.3,
-                ),
+              child: Row(
+                children: [
+                  Text(
+                    'Kontak Personal',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: isDark ? AppColors.darkTextSecondary : const Color(0xFF6B7280),
+                      letterSpacing: 0.3,
+                    ),
+                  ),
+                  const Spacer(),
+                  Icon(Icons.lock_outline_rounded, size: 14, color: isDark ? AppColors.darkTextSecondary : const Color(0xFF9CA3AF)),
+                  const SizedBox(width: 4),
+                  Text(
+                    'Zero-Knowledge',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: isDark ? AppColors.darkTextSecondary : const Color(0xFF9CA3AF),
+                    ),
+                  ),
+                ],
               ),
             ),
           ],
@@ -334,13 +330,140 @@ class _NewChatScreenState extends State<NewChatScreen> {
             );
           }),
 
-          if (contacts.isEmpty)
-            const Padding(
-              padding: EdgeInsets.all(32),
+          // Empty state when no contacts saved
+          if (_contacts.isEmpty)
+            Padding(
+              padding: const EdgeInsets.all(24.0),
+              child: Container(
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  color: isDark ? AppColors.darkSurfaceElevated : const Color(0xFFF9FAFB),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: isDark ? AppColors.darkSurfaceBorder : const Color(0xFFE5E7EB),
+                  ),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 60,
+                      height: 60,
+                      decoration: BoxDecoration(
+                        color: AppColors.primary.withValues(alpha: 0.12),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.qr_code_scanner_rounded,
+                        color: AppColors.primary,
+                        size: 32,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Belum Ada Kontak Personal',
+                      style: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w700,
+                        color: isDark ? Colors.white : const Color(0xFF111827),
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Untuk melindungi privasi Zero-Knowledge, LAJU tidak mengekspos direktori member secara publik. Pindai kode QR teman Anda untuk memulai obrolan terenkripsi.',
+                      style: TextStyle(
+                        fontSize: 13,
+                        height: 1.45,
+                        color: isDark ? AppColors.darkTextSecondary : const Color(0xFF6B7280),
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 20),
+                    ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.primary,
+                        foregroundColor: Colors.white,
+                        minimumSize: const Size.fromHeight(46),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        elevation: 0,
+                      ),
+                      icon: const Icon(Icons.qr_code_scanner_rounded, size: 20),
+                      label: const Text(
+                        'Pindai Kode QR Teman',
+                        style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+                      ),
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const MyQrCodeScreen(initialTabIndex: 1),
+                          ),
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 10),
+                    OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: isDark ? Colors.white : const Color(0xFF374151),
+                        side: BorderSide(
+                          color: isDark ? AppColors.darkSurfaceBorder : const Color(0xFFD1D5DB),
+                        ),
+                        minimumSize: const Size.fromHeight(44),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      icon: const Icon(Icons.qr_code_rounded, size: 20),
+                      label: const Text(
+                        'Bagikan Kode QR Saya',
+                        style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                      ),
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const MyQrCodeScreen(initialTabIndex: 0),
+                          ),
+                        );
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            )
+          else if (contacts.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
               child: Center(
-                child: Text(
-                  'No contacts found',
-                  style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 14),
+                child: Column(
+                  children: [
+                    Icon(
+                      Icons.search_off_rounded,
+                      size: 44,
+                      color: isDark ? AppColors.darkTextSecondary : const Color(0xFF9CA3AF),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      'Kontak tidak ditemukan',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        color: isDark ? Colors.white : const Color(0xFF374151),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Hanya kontak personal yang telah di-scan yang dapat dicari di sini.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        color: isDark ? AppColors.darkTextSecondary : const Color(0xFF6B7280),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),

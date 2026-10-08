@@ -13,7 +13,7 @@ class BlockedContactsScreen extends StatefulWidget {
 class _BlockedContactsScreenState extends State<BlockedContactsScreen> {
   void _showAddBlockModal(BuildContext context) async {
     final isDark = ThemeModeController.instance.isDarkMode(context);
-    final users = await ConversationService.instance.searchUsers('');
+    final users = AccountController.instance.savedContacts;
     final customController = TextEditingController();
 
     if (!context.mounted) return;
@@ -108,7 +108,9 @@ class _BlockedContactsScreenState extends State<BlockedContactsScreen> {
                           children: users.map((user) {
                             final isAlreadyBlocked = AccountController.instance.isContactBlocked(user.username) ||
                                 AccountController.instance.isContactBlocked(user.id);
-                            final subtitle = user.phoneNumber ?? user.email ?? user.id;
+                            final subtitle = (user.phoneNumber != null && user.phoneNumber!.isNotEmpty)
+                                ? user.phoneNumber!
+                                : '@${user.username}';
                             return ListTile(
                               contentPadding: EdgeInsets.zero,
                               leading: CircleAvatar(

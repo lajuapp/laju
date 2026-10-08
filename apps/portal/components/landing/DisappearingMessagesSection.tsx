@@ -1,4 +1,10 @@
+'use client';
+
+import { useLanguage } from '@/context/LanguageContext';
+
 export function DisappearingMessagesSection() {
+  const { t } = useLanguage();
+
   return (
     <section className="relative min-h-[520px] lg:min-h-[600px] flex items-center overflow-hidden text-white">
       {/* Twilight Alpine Lake Background Photo */}
@@ -18,16 +24,16 @@ export function DisappearingMessagesSection() {
           {/* Left Column: Headline and Philosophy */}
           <div className="lg:col-span-6 space-y-6 text-left max-w-xl">
             <p className="text-xs font-bold text-emerald-400 uppercase tracking-widest">
-              LEBIH DARI SEKEDAR CHAT
+              {t('disappear_tag')}
             </p>
 
             <h2 className="text-4xl sm:text-5xl md:text-6xl font-extrabold text-white tracking-tight leading-[1.08]">
-              Ruang yang<br />
-              tetap terjaga.
+              {t('disappear_title_line1')}<br />
+              {t('disappear_title_line2')}
             </h2>
 
             <p className="text-slate-200 text-base sm:text-lg leading-relaxed font-normal">
-              Dari obrolan sehari-hari sampai diskusi penting. LAJU hadir sebagai ruang yang lebih tenang, aman, dan bebas distraksi.
+              {t('disappear_desc')}
             </p>
           </div>
 

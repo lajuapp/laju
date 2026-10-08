@@ -3,6 +3,7 @@ import '../../../../core/core.dart';
 import '../../../conversations/domain/group_controller.dart';
 import '../../../conversations/domain/conversation_service.dart';
 import 'active_group_call_screen.dart';
+import '../../../settings/domain/account_controller.dart';
 
 class GroupCallItem {
   final String id;
@@ -54,37 +55,34 @@ class _GroupCallPickerScreenState extends State<GroupCallPickerScreen> {
   @override
   void initState() {
     super.initState();
-    _loadInitialUsers();
+    AccountController.instance.addListener(_loadSavedContacts);
+    _loadSavedContacts();
   }
 
-  void _loadInitialUsers() async {
-    final results = await ConversationService.instance.searchUsers('');
+  void _loadSavedContacts() {
+    final saved = AccountController.instance.savedContacts;
     if (mounted) {
       setState(() {
-        _availableContacts = results.map((u) => GroupCallContactItem(
-          id: u.id,
-          name: u.username,
-          phone: '@${u.username}',
-          avatarUrl: u.avatarUrl,
-          isOnline: true,
+        _availableContacts = saved.map((c) => GroupCallContactItem(
+          id: c.id,
+          name: (c.displayName != null && c.displayName!.isNotEmpty) ? c.displayName! : c.username,
+          phone: '@${c.username}',
+          avatarUrl: c.avatarUrl,
+          isOnline: false,
         )).toList();
       });
     }
   }
 
-  void _onSearchQueryChanged(String query) async {
-    final results = await ConversationService.instance.searchUsers(query.trim());
-    if (mounted) {
-      setState(() {
-        _availableContacts = results.map((u) => GroupCallContactItem(
-          id: u.id,
-          name: u.username,
-          phone: '@${u.username}',
-          avatarUrl: u.avatarUrl,
-          isOnline: true,
-        )).toList();
-      });
-    }
+  void _onSearchQueryChanged(String query) {
+    setState(() {});
+  }
+
+  @override
+  void dispose() {
+    AccountController.instance.removeListener(_loadSavedContacts);
+    _searchController.dispose();
+    super.dispose();
   }
 
   List<GroupCallItem> get _existingGroups {
@@ -102,12 +100,6 @@ class _GroupCallPickerScreenState extends State<GroupCallPickerScreen> {
         memberIds: otherMembers.map((m) => m.id).toList(),
       );
     }).toList();
-  }
-
-  @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
   }
 
   void _startGroupCall(

@@ -4,6 +4,8 @@ import '../../../../core/core.dart';
 import '../../../conversations/domain/conversation_service.dart';
 import '../../domain/models/message_model.dart';
 
+import '../../../settings/domain/account_controller.dart';
+
 class LajuContactPickerBottomSheet extends StatefulWidget {
   const LajuContactPickerBottomSheet({super.key});
 
@@ -22,8 +24,7 @@ class LajuContactPickerBottomSheet extends StatefulWidget {
 
 class _LajuContactPickerBottomSheetState extends State<LajuContactPickerBottomSheet> {
   final TextEditingController _searchController = TextEditingController();
-  Timer? _debounce;
-  bool _isLoading = true;
+  bool _isLoading = false;
   List<LajuContactData> _contacts = [];
   List<LajuContactData> _filteredContacts = [];
 
@@ -36,43 +37,32 @@ class _LajuContactPickerBottomSheetState extends State<LajuContactPickerBottomSh
 
   @override
   void dispose() {
-    _debounce?.cancel();
     _searchController.dispose();
     super.dispose();
   }
 
-  Future<void> _loadContacts([String query = '']) async {
-    setState(() => _isLoading = true);
-    try {
-      final results = await ConversationService.instance.searchUsers(query.trim());
-      if (!mounted) return;
+  void _loadContacts() {
+    final saved = AccountController.instance.savedContacts;
+    final items = saved.map((c) {
+      final displayName = (c.displayName != null && c.displayName!.isNotEmpty) ? c.displayName! : c.username;
+      return LajuContactData(
+        userId: c.id,
+        name: displayName,
+        username: c.username,
+        phoneNumber: '@${c.username}',
+        avatarUrl: c.avatarUrl,
+        status: c.about ?? 'Kontak Personal Terverifikasi',
+      );
+    }).toList();
 
-      final items = results.map((u) {
-        final displayName = (u.username.isNotEmpty) ? u.username : 'Pengguna LAJU';
-        return LajuContactData(
-          userId: u.id,
-          name: displayName,
-          username: u.username,
-          phoneNumber: u.phoneNumber,
-          avatarUrl: u.avatarUrl,
-          status: u.status ?? 'Pengguna Terverifikasi LAJU',
-        );
-      }).toList();
-
-      setState(() {
-        _contacts = items;
-        _filteredContacts = items;
-        _isLoading = false;
-      });
-    } catch (_) {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
-    }
+    setState(() {
+      _contacts = items;
+      _filteredContacts = items;
+      _isLoading = false;
+    });
   }
 
   void _onSearchChanged() {
-    _debounce?.cancel();
     final query = _searchController.text.trim().toLowerCase();
 
     if (query.isEmpty) {
@@ -82,39 +72,14 @@ class _LajuContactPickerBottomSheetState extends State<LajuContactPickerBottomSh
       return;
     }
 
-    // Local quick filter first
     final localMatches = _contacts.where((c) {
       return c.name.toLowerCase().contains(query) ||
           c.username.toLowerCase().contains(query) ||
-          (c.phoneNumber != null && c.phoneNumber!.contains(query));
+          (c.phoneNumber != null && c.phoneNumber!.toLowerCase().contains(query));
     }).toList();
 
     setState(() {
       _filteredContacts = localMatches;
-    });
-
-    // Remote debounce query to ensure complete directory search
-    _debounce = Timer(const Duration(milliseconds: 350), () async {
-      try {
-        final remoteResults = await ConversationService.instance.searchUsers(query);
-        if (!mounted) return;
-
-        final items = remoteResults.map((u) {
-          final displayName = (u.username.isNotEmpty) ? u.username : 'Pengguna LAJU';
-          return LajuContactData(
-            userId: u.id,
-            name: displayName,
-            username: u.username,
-            phoneNumber: u.phoneNumber,
-            avatarUrl: u.avatarUrl,
-            status: u.status ?? 'Pengguna Terverifikasi LAJU',
-          );
-        }).toList();
-
-        setState(() {
-          _filteredContacts = items;
-        });
-      } catch (_) {}
     });
   }
 

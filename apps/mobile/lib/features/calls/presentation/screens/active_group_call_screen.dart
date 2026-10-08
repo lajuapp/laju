@@ -1297,35 +1297,18 @@ class _ActiveGroupCallScreenState extends State<ActiveGroupCallScreen>
       context: context,
       builder: (dialogCtx) {
         String searchQuery = '';
-        List<dynamic> users = [];
-        bool isLoading = true;
+        final savedContacts = AccountController.instance.savedContacts;
 
         return StatefulBuilder(
           builder: (context, setDialogState) {
-            void loadUsers(String query) async {
-              setDialogState(() => isLoading = true);
-              try {
-                final results = await ConversationService.instance.searchUsers(query.trim());
-                if (context.mounted) {
-                  setDialogState(() {
-                    users = results.where((u) => !_participants.any((p) => p.name == u.username)).toList();
-                    isLoading = false;
-                  });
-                }
-              } catch (_) {
-                if (context.mounted) {
-                  setDialogState(() {
-                    users = [];
-                    isLoading = false;
-                  });
-                }
-              }
-            }
-
-            // Initial load
-            if (isLoading && users.isEmpty && searchQuery.isEmpty) {
-              loadUsers('');
-            }
+            final q = searchQuery.toLowerCase().trim();
+            final users = savedContacts.where((c) {
+              final inCall = _participants.any((p) => p.name == c.username || (c.displayName != null && p.name == c.displayName));
+              if (inCall) return false;
+              if (q.isEmpty) return true;
+              return c.username.toLowerCase().contains(q) ||
+                  (c.displayName != null && c.displayName!.toLowerCase().contains(q));
+            }).toList();
 
             return AlertDialog(
               backgroundColor: cardColor,
@@ -1355,28 +1338,18 @@ class _ActiveGroupCallScreenState extends State<ActiveGroupCallScreen>
                         ),
                       ),
                       onChanged: (val) {
-                        searchQuery = val;
-                        loadUsers(val);
+                        setDialogState(() {
+                          searchQuery = val;
+                        });
                       },
                     ),
                     const SizedBox(height: 12),
-                    if (isLoading)
-                      const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 24),
-                        child: Center(
-                          child: SizedBox(
-                            width: 24,
-                            height: 24,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          ),
-                        ),
-                      )
-                    else if (users.isEmpty)
+                    if (users.isEmpty)
                       Padding(
                         padding: const EdgeInsets.symmetric(vertical: 20),
                         child: Center(
                           child: Text(
-                            'Tidak ada kontak ditemukan',
+                            'Tidak ada kontak personal ditemukan',
                             style: TextStyle(color: textSecondary, fontSize: 13),
                           ),
                         ),
@@ -1388,7 +1361,7 @@ class _ActiveGroupCallScreenState extends State<ActiveGroupCallScreen>
                           itemCount: users.length,
                           itemBuilder: (context, idx) {
                             final user = users[idx];
-                            final name = user.username as String;
+                            final name = (user.displayName != null && user.displayName!.isNotEmpty) ? user.displayName! : user.username;
                             return ListTile(
                               contentPadding: EdgeInsets.zero,
                               leading: ModernAvatar(name: name, imagePath: user.avatarUrl, radius: 18),

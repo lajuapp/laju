@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import './globals.css';
 import { Navbar } from '@/components/landing/Navbar';
 import { Footer } from '@/components/landing/Footer';
+import { LanguageProvider } from '@/context/LanguageContext';
 
 function getSafeAppUrl(): URL {
   const raw = (process.env.NEXT_PUBLIC_APP_URL || '').trim();
@@ -49,9 +50,11 @@ export default function RootLayout({
   return (
     <html lang="id" className="scroll-smooth">
       <body className="min-h-screen flex flex-col bg-[#F5F4EF] text-slate-900 antialiased selection:bg-pine-800 selection:text-white">
-        <Navbar />
-        <main className="flex-1">{children}</main>
-        <Footer />
+        <LanguageProvider>
+          <Navbar />
+          <main className="flex-1">{children}</main>
+          <Footer />
+        </LanguageProvider>
       </body>
     </html>
   );

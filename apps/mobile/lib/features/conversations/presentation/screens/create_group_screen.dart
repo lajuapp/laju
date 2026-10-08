@@ -3,6 +3,8 @@ import '../../../../core/core.dart';
 import '../../domain/group_controller.dart';
 import '../../domain/conversation_service.dart';
 import 'create_group_details_screen.dart';
+import '../../../settings/domain/account_controller.dart';
+import '../../../settings/presentation/screens/my_qr_code_screen.dart';
 
 class CreateGroupScreen extends StatefulWidget {
   const CreateGroupScreen({super.key});
@@ -20,43 +22,33 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
   @override
   void initState() {
     super.initState();
-    _loadInitialUsers();
+    AccountController.instance.addListener(_loadSavedContacts);
+    _loadSavedContacts();
   }
 
-  void _loadInitialUsers() async {
-    final results = await ConversationService.instance.searchUsers('');
+  void _loadSavedContacts() {
+    final saved = AccountController.instance.savedContacts;
     if (mounted) {
       setState(() {
-        _availableContacts = results.map((u) => GroupMemberItem(
-          id: u.id,
-          name: u.username,
-          phone: (u.phoneNumber != null && u.phoneNumber!.isNotEmpty) ? u.phoneNumber! : '@${u.username}',
-          role: u.status ?? 'Pengguna Terverifikasi LAJU',
-          avatarUrl: u.avatarUrl,
-          isOnline: true,
+        _availableContacts = saved.map((c) => GroupMemberItem(
+          id: c.id,
+          name: (c.displayName != null && c.displayName!.isNotEmpty) ? c.displayName! : c.username,
+          phone: '@${c.username}',
+          role: (c.about != null && c.about!.isNotEmpty) ? c.about! : 'Kontak Personal Terverifikasi',
+          avatarUrl: c.avatarUrl,
+          isOnline: false,
         )).toList();
       });
     }
   }
 
-  void _onSearchQueryChanged(String query) async {
-    final results = await ConversationService.instance.searchUsers(query.trim());
-    if (mounted) {
-      setState(() {
-        _availableContacts = results.map((u) => GroupMemberItem(
-          id: u.id,
-          name: u.username,
-          phone: (u.phoneNumber != null && u.phoneNumber!.isNotEmpty) ? u.phoneNumber! : '@${u.username}',
-          role: u.status ?? 'Pengguna Terverifikasi LAJU',
-          avatarUrl: u.avatarUrl,
-          isOnline: true,
-        )).toList();
-      });
-    }
+  void _onSearchQueryChanged(String query) {
+    setState(() => _searchQuery = query);
   }
 
   @override
   void dispose() {
+    AccountController.instance.removeListener(_loadSavedContacts);
     _searchController.dispose();
     super.dispose();
   }
@@ -255,44 +247,130 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
 
           // Contacts List
           Expanded(
-            child: ListView.builder(
-              itemCount: filteredContacts.length,
-              itemBuilder: (context, index) {
-                final contact = filteredContacts[index];
-                final isSelected = _selectedContactIds.contains(contact.id);
-
-                return ListTile(
-                  onTap: () => _toggleContact(contact.id),
-                  leading: ModernAvatar(
-                    name: contact.name,
-                    imagePath: contact.avatarUrl,
-                    radius: 22,
-                    isOnline: contact.isOnline,
-                    isVerified: true,
-                  ),
-                  title: Text(
-                    contact.name,
-                    style: TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 15,
-                      color: textPrimary,
+            child: _availableContacts.isEmpty
+                ? Padding(
+                    padding: const EdgeInsets.all(24.0),
+                    child: Center(
+                      child: Container(
+                        padding: const EdgeInsets.all(24),
+                        decoration: BoxDecoration(
+                          color: isDark ? AppColors.darkSurfaceElevated : const Color(0xFFF9FAFB),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                            color: isDark ? AppColors.darkSurfaceBorder : const Color(0xFFE5E7EB),
+                          ),
+                        ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              width: 60,
+                              height: 60,
+                              decoration: BoxDecoration(
+                                color: AppColors.primary.withValues(alpha: 0.12),
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(
+                                Icons.qr_code_scanner_rounded,
+                                color: AppColors.primary,
+                                size: 32,
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              'Belum Ada Kontak untuk Ditambahkan',
+                              style: TextStyle(
+                                fontSize: 17,
+                                fontWeight: FontWeight.w700,
+                                color: textPrimary,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Untuk menjaga privasi platform, anggota grup harus sudah saling menyimpan kontak personal melalui pemindaian QR code.',
+                              style: TextStyle(
+                                fontSize: 13,
+                                height: 1.45,
+                                color: textSecondary,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                            const SizedBox(height: 20),
+                            ElevatedButton.icon(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: AppColors.primary,
+                                foregroundColor: Colors.white,
+                                minimumSize: const Size.fromHeight(46),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                elevation: 0,
+                              ),
+                              icon: const Icon(Icons.qr_code_scanner_rounded, size: 20),
+                              label: const Text(
+                                'Pindai Kode QR Teman',
+                                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+                              ),
+                              onPressed: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => const MyQrCodeScreen(initialTabIndex: 1),
+                                  ),
+                                );
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
-                  ),
-                  subtitle: Text(
-                    contact.role,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 12.5, color: textSecondary),
-                  ),
-                  trailing: Checkbox(
-                    activeColor: AppColors.primary,
-                    shape: const CircleBorder(),
-                    value: isSelected,
-                    onChanged: (_) => _toggleContact(contact.id),
-                  ),
-                );
-              },
-            ),
+                  )
+                : filteredContacts.isEmpty
+                    ? Center(
+                        child: Text(
+                          'Kontak tidak ditemukan',
+                          style: TextStyle(color: textSecondary, fontSize: 14),
+                        ),
+                      )
+                    : ListView.builder(
+                        itemCount: filteredContacts.length,
+                        itemBuilder: (context, index) {
+                          final contact = filteredContacts[index];
+                          final isSelected = _selectedContactIds.contains(contact.id);
+
+                          return ListTile(
+                            onTap: () => _toggleContact(contact.id),
+                            leading: ModernAvatar(
+                              name: contact.name,
+                              imagePath: contact.avatarUrl,
+                              radius: 22,
+                              isOnline: contact.isOnline,
+                              isVerified: true,
+                            ),
+                            title: Text(
+                              contact.name,
+                              style: TextStyle(
+                                fontWeight: FontWeight.w600,
+                                fontSize: 15,
+                                color: textPrimary,
+                              ),
+                            ),
+                            subtitle: Text(
+                              contact.role,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(fontSize: 12.5, color: textSecondary),
+                            ),
+                            trailing: Checkbox(
+                              activeColor: AppColors.primary,
+                              shape: const CircleBorder(),
+                              value: isSelected,
+                              onChanged: (_) => _toggleContact(contact.id),
+                            ),
+                          );
+                        },
+                      ),
           ),
         ],
       ),

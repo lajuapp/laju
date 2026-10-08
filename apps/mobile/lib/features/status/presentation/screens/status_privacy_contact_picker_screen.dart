@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../../core/core.dart';
 import '../../../conversations/domain/conversation_service.dart';
+import '../../../settings/domain/account_controller.dart';
 
 enum PrivacyPickerMode {
   exclude, // "My contacts except..." -> Hide status from...
@@ -47,35 +48,23 @@ class _StatusPrivacyContactPickerScreenState
   void initState() {
     super.initState();
     _selectedIds = Set<String>.from(widget.initialSelectedIds);
-    _loadInitialUsers();
+    _loadSavedContacts();
   }
 
-  void _loadInitialUsers() async {
-    final results = await ConversationService.instance.searchUsers('');
-    if (mounted) {
-      setState(() {
-        _allContacts = results.map((u) => PrivacyContact(
-          id: u.id,
-          name: u.username,
-          status: u.status ?? 'Pengguna Terverifikasi LAJU',
-          phone: '@${u.username}',
-        )).toList();
-      });
-    }
+  void _loadSavedContacts() {
+    final saved = AccountController.instance.savedContacts;
+    setState(() {
+      _allContacts = saved.map((c) => PrivacyContact(
+        id: c.id,
+        name: (c.displayName != null && c.displayName!.isNotEmpty) ? c.displayName! : c.username,
+        status: (c.about != null && c.about!.isNotEmpty) ? c.about! : 'Kontak Personal Terverifikasi',
+        phone: '@${c.username}',
+      )).toList();
+    });
   }
 
-  void _onSearchQueryChanged(String query) async {
-    final results = await ConversationService.instance.searchUsers(query.trim());
-    if (mounted) {
-      setState(() {
-        _allContacts = results.map((u) => PrivacyContact(
-          id: u.id,
-          name: u.username,
-          status: u.status ?? 'Pengguna Terverifikasi LAJU',
-          phone: '@${u.username}',
-        )).toList();
-      });
-    }
+  void _onSearchQueryChanged(String query) {
+    setState(() {});
   }
 
   @override
