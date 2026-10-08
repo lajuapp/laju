@@ -66,6 +66,7 @@ class _LinkedDevicesScreenState extends State<LinkedDevicesScreen> {
   Future<void> _loadDevices() async {
     setState(() => _isLoading = true);
     try {
+      await AuthController.instance.getDetectedDeviceModelAsync();
       final response = await ApiClient.instance.get(
         ApiEndpoints.devices,
       );

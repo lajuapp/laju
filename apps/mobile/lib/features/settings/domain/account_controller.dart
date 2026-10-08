@@ -146,7 +146,7 @@ class AccountController extends ChangeNotifier {
   List<String> get blockedContacts => List.unmodifiable(_blockedContacts);
   List<LajuContactItem> get savedContacts => List.unmodifiable(_savedContacts);
 
-  String getDetectedDeviceModel() => 'Android Device';
+  String getDetectedDeviceModel() => AuthController.instance.getDetectedDeviceModel();
 
   /// Initializes profile and account settings from SharedPreferences
   Future<void> init() async {

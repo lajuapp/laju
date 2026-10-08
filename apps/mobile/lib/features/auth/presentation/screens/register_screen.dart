@@ -31,7 +31,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   Future<void> _initIdentitySecret() async {
     final secret = await AuthController.instance.getOrGenerateIdentitySecret();
-    final model = AuthController.instance.getDetectedDeviceModel();
+    final model = await AuthController.instance.getDetectedDeviceModelAsync();
     final location = AuthController.instance.getDetectedRegistrationLocation();
     final token = await AuthController.instance.getOrCreatePushToken();
     if (mounted) {

@@ -991,18 +991,62 @@ class AuthController extends ChangeNotifier {
     return bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
   }
 
-  /// Detects hardware device model string
+  String _cachedDeviceModel = '';
+
+  /// Asynchronously queries native platform to detect real device hardware manufacturer & model
+  Future<String> getDetectedDeviceModelAsync() async {
+    if (_cachedDeviceModel.isNotEmpty && !_cachedDeviceModel.contains('Samsung Galaxy S24 Ultra')) {
+      return _cachedDeviceModel;
+    }
+
+    try {
+      if (kIsWeb) {
+        _cachedDeviceModel = 'Web Client (Browser)';
+        return _cachedDeviceModel;
+      }
+
+      if (Platform.isAndroid) {
+        final String? model = await _deviceChannel.invokeMethod<String>('getDeviceModelName');
+        if (model != null && model.trim().isNotEmpty && model.trim() != 'Android Device') {
+          _cachedDeviceModel = model.trim();
+          return _cachedDeviceModel;
+        }
+      } else if (Platform.isIOS) {
+        _cachedDeviceModel = 'Apple iPhone';
+        return _cachedDeviceModel;
+      } else if (Platform.isMacOS) {
+        _cachedDeviceModel = 'Apple Mac';
+        return _cachedDeviceModel;
+      } else if (Platform.isWindows) {
+        _cachedDeviceModel = 'Windows PC';
+        return _cachedDeviceModel;
+      } else if (Platform.isLinux) {
+        _cachedDeviceModel = 'Linux Workstation';
+        return _cachedDeviceModel;
+      }
+    } catch (e) {
+      debugPrint('[AuthController] getDetectedDeviceModelAsync error: $e');
+    }
+
+    _cachedDeviceModel = getDetectedDeviceModel();
+    return _cachedDeviceModel;
+  }
+
+  /// Detects hardware device model string (returns cached real model if available)
   String getDetectedDeviceModel() {
+    if (_cachedDeviceModel.isNotEmpty && !_cachedDeviceModel.contains('Samsung Galaxy S24 Ultra')) {
+      return _cachedDeviceModel;
+    }
     try {
       if (kIsWeb) return 'Web Client (Encrypted Browser)';
-      if (Platform.isAndroid) return 'Samsung Galaxy S24 Ultra (Android TEE)';
-      if (Platform.isIOS) return 'Apple iPhone 15 Pro (Secure Enclave)';
-      if (Platform.isMacOS) return 'Apple Mac Studio (Apple Silicon T2)';
-      if (Platform.isWindows) return 'Windows Workstation (TPM 2.0)';
-      if (Platform.isLinux) return 'Linux Workstation (LUKS/TEE)';
-      return 'Mobile Device (Hardware Keystore)';
+      if (Platform.isAndroid) return 'Android Device';
+      if (Platform.isIOS) return 'Apple iPhone';
+      if (Platform.isMacOS) return 'Apple Mac';
+      if (Platform.isWindows) return 'Windows Workstation';
+      if (Platform.isLinux) return 'Linux Workstation';
+      return 'Mobile Device';
     } catch (_) {
-      return 'Android Device (Hardware Keystore)';
+      return 'Android Device';
     }
   }
 
@@ -1096,7 +1140,9 @@ class AuthController extends ChangeNotifier {
       final deviceUuid = await getOrCreateLocalDeviceUuid();
       final deviceKey = await getOrCreateLocalDeviceKey();
       final cleanUsername = username.trim().isEmpty ? 'User' : username.trim();
-      final resolvedModel = deviceModel ?? getDetectedDeviceModel();
+      final resolvedModel = (deviceModel != null && deviceModel.trim().isNotEmpty && !deviceModel.contains('Samsung Galaxy S24 Ultra'))
+          ? deviceModel.trim()
+          : await getDetectedDeviceModelAsync();
       final resolvedLocation = registrationLocation ?? getDetectedRegistrationLocation();
       final resolvedPushToken = pushToken ?? await getOrCreatePushToken();
       final resolvedOs = getDetectedOsVersion();
@@ -1246,6 +1292,9 @@ class AuthController extends ChangeNotifier {
       debugPrint('[AuthController] Session unauthorized (401) — checking if displaced by another device');
       handleDeviceReplaced();
     };
+
+    // Warm up real hardware device model from native layer asynchronously
+    getDetectedDeviceModelAsync().catchError((_) => '');
 
     try {
       final prefs = await SharedPreferences.getInstance();
