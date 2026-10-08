@@ -23,6 +23,7 @@ import {
 import {
   useStickerPacksList,
   useCreateStickerPack,
+  useUpdateStickerPack,
   useDeleteStickerPack,
   useAddStickerItem,
   useAddBulkStickers,
@@ -60,6 +61,7 @@ type StickerItemFormData = z.infer<typeof stickerItemSchema>;
 export function StickersPage() {
   const { data: packs, isLoading } = useStickerPacksList();
   const createPack = useCreateStickerPack();
+  const updatePack = useUpdateStickerPack();
   const deletePack = useDeleteStickerPack();
   const addSticker = useAddStickerItem();
   const addBulkStickers = useAddBulkStickers();
@@ -68,6 +70,7 @@ export function StickersPage() {
   const mediaUpload = useMediaUpload();
 
   const [isPackModalOpen, setIsPackModalOpen] = useState(false);
+  const [editingPack, setEditingPack] = useState<StickerPackItem | null>(null);
   const [selectedPack, setSelectedPack] = useState<StickerPackItem | null>(null);
   const [isAddStickerModalOpen, setIsAddStickerModalOpen] = useState(false);
   const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
@@ -105,6 +108,7 @@ export function StickersPage() {
     register: registerPack,
     handleSubmit: handleSubmitPack,
     reset: resetPack,
+    setValue: setPackValue,
     formState: { errors: packErrors },
   } = useForm<PackFormData>({
     resolver: zodResolver(packSchema),
@@ -118,6 +122,38 @@ export function StickersPage() {
   } = useForm<StickerItemFormData>({
     resolver: zodResolver(stickerItemSchema),
   });
+
+  const handleOpenCreatePack = () => {
+    setEditingPack(null);
+    resetPack({
+      name: '',
+      publisher: '',
+      description: '',
+    });
+    setPackCoverFile(null);
+    setPackCoverPreview(null);
+    setErrorMessage(null);
+    setIsPackModalOpen(true);
+  };
+
+  const handleOpenEditPack = (pack: StickerPackItem) => {
+    setEditingPack(pack);
+    setPackValue('name', pack.name);
+    setPackValue('publisher', pack.publisher || '');
+    setPackValue('description', pack.description || '');
+    setPackCoverFile(null);
+    setPackCoverPreview(pack.coverUrl ? resolveMediaUrl(pack.coverUrl) : null);
+    setErrorMessage(null);
+    setIsPackModalOpen(true);
+  };
+
+  const handleClosePackModal = () => {
+    setIsPackModalOpen(false);
+    setEditingPack(null);
+    resetPack();
+    setPackCoverFile(null);
+    setPackCoverPreview(null);
+  };
 
   const handlePackCoverChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -138,23 +174,47 @@ export function StickersPage() {
   const onSubmitPack = async (data: PackFormData) => {
     setErrorMessage(null);
     try {
-      let coverUrl: string | undefined = undefined;
-      if (packCoverFile) {
-        const uploadRes = await mediaUpload.mutateAsync(packCoverFile);
-        coverUrl = uploadRes.url;
+      if (editingPack) {
+        let coverUrl = editingPack.coverUrl;
+        if (packCoverFile) {
+          const uploadRes = await mediaUpload.mutateAsync(packCoverFile);
+          coverUrl = uploadRes.url;
+        }
+
+        const updated = await updatePack.mutateAsync({
+          id: editingPack.id,
+          name: data.name,
+          publisher: data.publisher,
+          description: data.description,
+          coverUrl: coverUrl || undefined,
+        });
+
+        // Update active selection if current is updated
+        if (selectedPack?.id === editingPack.id) {
+          setSelectedPack(updated);
+        }
+
+        handleClosePackModal();
+      } else {
+        let coverUrl: string | undefined = undefined;
+        if (packCoverFile) {
+          const uploadRes = await mediaUpload.mutateAsync(packCoverFile);
+          coverUrl = uploadRes.url;
+        }
+
+        const created = await createPack.mutateAsync({
+          ...data,
+          coverUrl,
+        });
+
+        if (created) {
+          setSelectedPack(created);
+        }
+
+        handleClosePackModal();
       }
-
-      await createPack.mutateAsync({
-        ...data,
-        coverUrl,
-      });
-
-      setIsPackModalOpen(false);
-      resetPack();
-      setPackCoverFile(null);
-      setPackCoverPreview(null);
     } catch (err: any) {
-      setErrorMessage(err.response?.data?.message || 'Gagal membuat paket stiker');
+      setErrorMessage(err.response?.data?.message || 'Gagal menyimpan paket stiker');
     }
   };
 
@@ -354,12 +414,7 @@ export function StickersPage() {
         <Button
           variant="primary"
           icon={<Plus className="w-4 h-4" />}
-          onClick={() => {
-            setErrorMessage(null);
-            setPackCoverFile(null);
-            setPackCoverPreview(null);
-            setIsPackModalOpen(true);
-          }}
+          onClick={handleOpenCreatePack}
         >
           Buat Paket Stiker Baru
         </Button>
@@ -416,7 +471,24 @@ export function StickersPage() {
                       </div>
                     </div>
 
-                    <ChevronRight className={`w-4 h-4 ${isSelected ? 'text-white' : 'text-neutral-400'}`} />
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleOpenEditPack(pack);
+                        }}
+                        className={`p-1 rounded-md transition-colors ${
+                          isSelected
+                            ? 'text-white/70 hover:text-white hover:bg-white/10'
+                            : 'text-neutral-400 hover:text-indigo-600 hover:bg-neutral-200/60'
+                        }`}
+                        title="Edit thumbnail & informasi paket"
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                      </button>
+                      <ChevronRight className={`w-4 h-4 ${isSelected ? 'text-white' : 'text-neutral-400'}`} />
+                    </div>
                   </div>
                 );
               })
@@ -475,6 +547,16 @@ export function StickersPage() {
                 </div>
 
                 <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    icon={<Pencil className="w-3.5 h-3.5 text-indigo-600" />}
+                    onClick={() => handleOpenEditPack(currentActivePack)}
+                    title="Edit thumbnail cover dan informasi paket stiker"
+                  >
+                    Edit Paket & Thumbnail
+                  </Button>
+
                   <Button
                     size="sm"
                     variant="outline"
@@ -660,12 +742,16 @@ export function StickersPage() {
         </div>
       </div>
 
-      {/* Modal: Create Sticker Pack */}
+      {/* Modal: Create or Edit Sticker Pack */}
       <Modal
         isOpen={isPackModalOpen}
-        onClose={() => setIsPackModalOpen(false)}
-        title="Buat Paket Stiker Baru"
-        description="Daftarkan paket stiker baru sebelum mengunggah aset gambar stikernya"
+        onClose={handleClosePackModal}
+        title={editingPack ? 'Edit Thumbnail & Informasi Paket' : 'Buat Paket Stiker Baru'}
+        description={
+          editingPack
+            ? `Perbarui thumbnail cover dan detail untuk paket "${editingPack.name}"`
+            : 'Daftarkan paket stiker baru sebelum mengunggah aset gambar stikernya'
+        }
       >
         {errorMessage && (
           <div className="mb-4 p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2">
@@ -695,15 +781,15 @@ export function StickersPage() {
             {...registerPack('description')}
           />
 
-          {/* Cover Upload */}
+          {/* Cover / Thumbnail Upload */}
           <div className="space-y-1.5">
             <label className="block text-xs font-semibold text-neutral-700">
-              Ikon Cover Paket
+              Thumbnail / Ikon Cover Paket
             </label>
             <div className="border-2 border-dashed border-neutral-200 rounded-xl p-3 text-center hover:border-neutral-400 transition-colors cursor-pointer relative bg-neutral-50/50">
               <input
                 type="file"
-                accept="image/png,image/webp"
+                accept="image/png,image/webp,image/jpeg,image/gif"
                 onChange={handlePackCoverChange}
                 className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
               />
@@ -712,17 +798,20 @@ export function StickersPage() {
                   <img
                     src={packCoverPreview}
                     alt="Preview"
-                    className="w-12 h-12 rounded-lg object-contain border border-neutral-200"
+                    className="w-12 h-12 rounded-lg object-contain border border-neutral-200 bg-white"
                   />
                   <div className="text-left text-xs text-neutral-600">
-                    <p className="font-bold truncate max-w-[200px]">{packCoverFile?.name}</p>
-                    <p className="text-[10px] text-neutral-400">Klik untuk ganti icon</p>
+                    <p className="font-bold truncate max-w-[200px]">
+                      {packCoverFile?.name || (editingPack ? 'Thumbnail saat ini' : 'Cover terpilih')}
+                    </p>
+                    <p className="text-[10px] text-neutral-400">Klik untuk mengganti thumbnail</p>
                   </div>
                 </div>
               ) : (
                 <div className="space-y-0.5 text-neutral-500">
                   <Upload className="w-4 h-4 mx-auto text-neutral-400" />
-                  <p className="text-xs font-medium">Pilih cover icon (PNG / WEBP)</p>
+                  <p className="text-xs font-medium">Pilih thumbnail / cover (PNG, WEBP, JPG)</p>
+                  <p className="text-[10px] text-neutral-400">Dimensi kotak persegi disarankan</p>
                 </div>
               )}
             </div>
@@ -732,16 +821,16 @@ export function StickersPage() {
             <Button
               type="button"
               variant="outline"
-              onClick={() => setIsPackModalOpen(false)}
+              onClick={handleClosePackModal}
             >
               Batal
             </Button>
             <Button
               type="submit"
               variant="primary"
-              isLoading={createPack.isPending || mediaUpload.isPending}
+              isLoading={createPack.isPending || updatePack.isPending || mediaUpload.isPending}
             >
-              Simpan Paket Stiker
+              {editingPack ? 'Simpan Perubahan' : 'Simpan Paket Stiker'}
             </Button>
           </div>
         </form>
