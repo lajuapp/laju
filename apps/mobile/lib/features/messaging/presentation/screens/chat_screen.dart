@@ -94,6 +94,7 @@ class _ChatScreenState extends State<ChatScreen> {
     _scrollController.addListener(_onScroll);
     ChatWebSocketService.instance.connect();
     ConversationService.instance.currentActiveConversationId = _conversationId;
+    ConversationService.instance.markConversationAsRead(_conversationId);
     final mem = ConversationService.instance.getMemoryMessages(_conversationId);
     _messages = mem != null ? List<MessageModel>.from(mem) : [];
     _resolveBackendConversation();
@@ -115,6 +116,7 @@ class _ChatScreenState extends State<ChatScreen> {
           _conversationId = msg.conversationId;
           ConversationService.instance.currentActiveConversationId = msg.conversationId;
         }
+        ConversationService.instance.markConversationAsRead(_conversationId);
         _mergeAndSetMessages([msg]);
       }
     });
@@ -187,6 +189,7 @@ class _ChatScreenState extends State<ChatScreen> {
           _conversationId = backendId;
         });
         ConversationService.instance.currentActiveConversationId = backendId;
+        ConversationService.instance.markConversationAsRead(backendId);
         _loadMessagesFromApi();
       }
     }
@@ -295,6 +298,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _markIncomingAsRead(List<MessageModel> msgs) {
+    ConversationService.instance.markConversationAsRead(_conversationId);
     if (!PrivacyController.instance.readReceipts) {
       return;
     }

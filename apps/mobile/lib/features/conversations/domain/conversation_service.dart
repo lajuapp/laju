@@ -120,10 +120,11 @@ class ConversationService {
     _realtimeMessageStreamController.add(msg);
 
     if (inMemoryConversations != null) {
-      final idx = inMemoryConversations!.indexWhere((c) => c.id == conversationId);
+      final realId = resolveConversationId(conversationId);
+      final idx = inMemoryConversations!.indexWhere((c) => c.id == conversationId || c.id == realId);
       if (idx != -1) {
         final conv = inMemoryConversations![idx];
-        final isCurOpen = currentActiveConversationId == conversationId;
+        final isCurOpen = isConversationOpen(conv.id) || isConversationOpen(conversationId);
         final updated = conv.copyWith(
           lastMessage: msg.displaySnippet,
           lastMessageTime: msg.timestamp,
@@ -196,6 +197,49 @@ class ConversationService {
 
   /// Current conversation screen open by user to prevent banner popup for active chat
   String? currentActiveConversationId;
+
+  /// Check whether a conversation is currently open and visible on screen
+  bool isConversationOpen(String conversationId) {
+    if (currentActiveConversationId == null || currentActiveConversationId!.isEmpty) {
+      return false;
+    }
+    if (currentActiveConversationId == conversationId) return true;
+    final resolvedOpen = resolveConversationId(currentActiveConversationId!);
+    final resolvedTarget = resolveConversationId(conversationId);
+    return resolvedOpen == resolvedTarget ||
+        resolvedOpen == conversationId ||
+        currentActiveConversationId == resolvedTarget;
+  }
+
+  /// Mark all messages in a conversation as read: resets unread count to 0 locally & in cache
+  Future<void> markConversationAsRead(String conversationId) async {
+    if (conversationId.isEmpty) return;
+    final realId = resolveConversationId(conversationId);
+
+    final list = inMemoryConversations ?? conversationsNotifier.value;
+    final idx = list.indexWhere((c) => c.id == conversationId || c.id == realId);
+    if (idx != -1) {
+      final conv = list[idx];
+      if (conv.unreadCount > 0) {
+        final updated = conv.copyWith(unreadCount: 0);
+        final nextList = List<ConversationModel>.from(list);
+        nextList[idx] = updated;
+        inMemoryConversations = nextList;
+        conversationsNotifier.value = List.unmodifiable(nextList);
+        await LocalDatabase.instance.upsertConversations([updated]);
+      }
+    } else {
+      // Also ensure SQLite is updated if not yet loaded in inMemoryConversations
+      try {
+        final cached = await LocalDatabase.instance.getConversations();
+        final cIdx = cached.indexWhere((c) => c.id == conversationId || c.id == realId);
+        if (cIdx != -1 && cached[cIdx].unreadCount > 0) {
+          final updated = cached[cIdx].copyWith(unreadCount: 0);
+          await LocalDatabase.instance.upsertConversations([updated]);
+        }
+      } catch (_) {}
+    }
+  }
 
   bool _isInitialSyncComplete = false;
   final Map<String, String> _tempToRealConvMap = {};

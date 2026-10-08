@@ -34,6 +34,9 @@ class _LockedChatsScreenState extends State<LockedChatsScreen> {
   }
 
   void _openChat(ConversationModel conv) async {
+    if (conv.unreadCount > 0) {
+      ConversationService.instance.markConversationAsRead(conv.id);
+    }
     if (conv.isGroup) {
       await Navigator.push(
         context,

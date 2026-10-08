@@ -63,6 +63,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
     _scrollController.addListener(_onScroll);
     ChatWebSocketService.instance.connect();
     ConversationService.instance.currentActiveConversationId = widget.groupId;
+    ConversationService.instance.markConversationAsRead(widget.groupId);
     final mem = ConversationService.instance.getMemoryMessages(widget.groupId);
     if (mem != null) {
       _messages = List<MessageModel>.from(mem);
@@ -75,6 +76,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
       if (!mounted) return;
       final realId = ConversationService.instance.resolveConversationId(widget.groupId);
       if (msg.conversationId == widget.groupId || msg.conversationId == realId) {
+        ConversationService.instance.markConversationAsRead(widget.groupId);
         _mergeAndSetMessages([msg]);
       }
     });
@@ -226,6 +228,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
   }
 
   void _markIncomingAsRead(List<MessageModel> msgs) {
+    ConversationService.instance.markConversationAsRead(widget.groupId);
     for (final m in msgs) {
       if (!m.isOutgoing && m.status != MessageDeliveryStatus.read) {
         ConversationService.instance.markMessageRead(m.id);
