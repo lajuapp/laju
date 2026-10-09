@@ -1,8 +1,8 @@
-import 'dart:io';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 import '../../../../core/core.dart';
 import '../../../auth/domain/auth_controller.dart';
 import '../../domain/account_controller.dart';
@@ -43,30 +43,172 @@ class _MyQrCodeScreenState extends State<MyQrCodeScreen> with TickerProviderStat
     LajuToast.success(context, context.tr('contactLinkCopied'));
   }
 
-  Future<Uint8List?> _captureQrBytes() async {
-    // If currently on scan code tab, animate to my code tab first so card is in tree
+  Future<Uint8List> _generateQrCardImage({
+    required String name,
+    required String qrData,
+    required bool isDark,
+  }) async {
+    const double width = 720;
+    const double height = 940;
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder, const Rect.fromLTWH(0, 0, width, height));
+
+    // 1. Clean Canvas Background
+    final bgPaint = Paint()..color = isDark ? const Color(0xFF0F172A) : const Color(0xFFF1F5F9);
+    canvas.drawRect(const Rect.fromLTWH(0, 0, width, height), bgPaint);
+
+    // 2. Main Card Surface (High Contrast)
+    final cardRect = RRect.fromRectAndRadius(
+      const Rect.fromLTWH(36, 40, width - 72, height - 80),
+      const Radius.circular(32),
+    );
+    final cardPaint = Paint()..color = isDark ? const Color(0xFF1E293B) : Colors.white;
+    canvas.drawRRect(cardRect, cardPaint);
+
+    final borderPaint = Paint()
+      ..color = isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.0;
+    canvas.drawRRect(cardRect, borderPaint);
+
+    // 3. User Avatar Circle with Initials
+    final avatarCenter = const Offset(width / 2, 130);
+    final avatarPaint = Paint()..color = const Color(0xFF2563EB);
+    canvas.drawCircle(avatarCenter, 42, avatarPaint);
+
+    final initial = name.trim().isNotEmpty ? name.trim()[0].toUpperCase() : 'L';
+    final initialPainter = TextPainter(
+      text: TextSpan(
+        text: initial,
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 38,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    initialPainter.paint(
+      canvas,
+      avatarCenter - Offset(initialPainter.width / 2, initialPainter.height / 2),
+    );
+
+    // 4. Display Name
+    final namePainter = TextPainter(
+      text: TextSpan(
+        text: name,
+        style: TextStyle(
+          color: isDark ? Colors.white : const Color(0xFF0F172A),
+          fontSize: 26,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout(maxWidth: width - 120);
+    namePainter.paint(canvas, Offset(width / 2 - namePainter.width / 2, 190));
+
+    // 5. Subtitle
+    final subPainter = TextPainter(
+      text: const TextSpan(
+        text: 'Kontak Terenkripsi LAJU',
+        style: TextStyle(
+          color: Color(0xFF64748B),
+          fontSize: 16,
+          fontWeight: FontWeight.w500,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    subPainter.paint(canvas, Offset(width / 2 - subPainter.width / 2, 228));
+
+    // 6. QR Code Container Box & QR Code Matrix
+    const double qrContainerSize = 420;
+    const double qrCodeSize = 380;
+    final qrBoxRect = RRect.fromRectAndRadius(
+      Rect.fromCenter(center: const Offset(width / 2, 490), width: qrContainerSize, height: qrContainerSize),
+      const Radius.circular(24),
+    );
+    final qrBoxPaint = Paint()..color = Colors.white;
+    canvas.drawRRect(qrBoxRect, qrBoxPaint);
+    final qrBoxBorder = Paint()
+      ..color = const Color(0xFFE2E8F0)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.5;
+    canvas.drawRRect(qrBoxRect, qrBoxBorder);
+
+    final qrPainter = QrPainter(
+      data: qrData,
+      version: QrVersions.auto,
+      errorCorrectionLevel: QrErrorCorrectLevel.H,
+      eyeStyle: const QrEyeStyle(
+        eyeShape: QrEyeShape.square,
+        color: Color(0xFF0F172A),
+      ),
+      dataModuleStyle: const QrDataModuleStyle(
+        dataModuleShape: QrDataModuleShape.square,
+        color: Color(0xFF0F172A),
+      ),
+      gapless: true,
+    );
+    canvas.save();
+    canvas.translate(width / 2 - qrCodeSize / 2, 490 - qrCodeSize / 2);
+    qrPainter.paint(canvas, const Size(qrCodeSize, qrCodeSize));
+    canvas.restore();
+
+    // 7. Footer Text
+    final footerPainter = TextPainter(
+      text: const TextSpan(
+        text: 'laju.chat • Pindai untuk menambahkan teman',
+        style: TextStyle(
+          color: Color(0xFF2563EB),
+          fontSize: 16,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    footerPainter.paint(canvas, Offset(width / 2 - footerPainter.width / 2, 740));
+
+    final picture = recorder.endRecording();
+    final img = await picture.toImage(width.toInt(), height.toInt());
+    final byteData = await img.toByteData(format: ui.ImageByteFormat.png);
+    return byteData!.buffer.asUint8List();
+  }
+
+  Future<Uint8List> _captureQrBytes() async {
+    final isDark = ThemeModeController.instance.isDarkMode(context);
+
+    // If currently on scan code tab, animate to my code tab first
     if (_tabController.index != 0) {
       _tabController.animateTo(0);
       await Future.delayed(const Duration(milliseconds: 250));
     }
 
+    final ctrl = AccountController.instance;
+    final myUserId = AuthController.instance.currentUser?.id ?? '';
+    final qrData = 'laju://contact?u=${Uri.encodeComponent(ctrl.userName)}&id=$myUserId&v=$_qrVersion';
+
+    // Try RepaintBoundary first
     try {
       final boundary =
           _qrCardKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
       if (boundary != null) {
-        if (boundary.debugNeedsPaint) {
-          await Future.delayed(const Duration(milliseconds: 100));
-        }
-        final uiImage = await boundary.toImage(pixelRatio: 3.0);
+        final uiImage = await boundary.toImage(pixelRatio: 2.5);
         final byteData = await uiImage.toByteData(format: ui.ImageByteFormat.png);
-        if (byteData != null) {
+        if (byteData != null && byteData.lengthInBytes > 0) {
           return byteData.buffer.asUint8List();
         }
       }
     } catch (e) {
-      debugPrint('[MyQrCodeScreen] Error capturing QR card: $e');
+      debugPrint('[MyQrCodeScreen] Boundary capture notice: $e');
     }
-    return null;
+
+    // Direct Canvas generator fallback (100% guaranteed)
+    return await _generateQrCardImage(
+      name: ctrl.userName,
+      qrData: qrData,
+      isDark: isDark,
+    );
   }
 
   Future<void> _shareQrCode() async {
@@ -93,200 +235,23 @@ class _MyQrCodeScreenState extends State<MyQrCodeScreen> with TickerProviderStat
     }
   }
 
-  Future<bool> _ensureStoragePermission() async {
-    final hasNative = await DeviceMediaService.hasStoragePermission();
-    if (hasNative) return true;
-
-    if (!mounted) return false;
-    final isDark = ThemeModeController.instance.isDarkMode(context);
-
-    // Show Educational Bottom Sheet
-    final shouldRequest = await showModalBottomSheet<bool>(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (sheetCtx) {
-        return Container(
-          decoration: BoxDecoration(
-            color: isDark ? const Color(0xFF1E293B) : Colors.white,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-          ),
-          padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: isDark ? Colors.white24 : Colors.black12,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              const SizedBox(height: 20),
-              Container(
-                width: 60,
-                height: 60,
-                decoration: BoxDecoration(
-                  color: AppColors.primary.withValues(alpha: 0.15),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  Icons.photo_library_rounded,
-                  color: AppColors.primary,
-                  size: 30,
-                ),
-              ),
-              const SizedBox(height: 16),
-              Text(
-                context.tr('storagePermissionTitle'),
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: isDark ? Colors.white : const Color(0xFF0F172A),
-                ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 10),
-              Text(
-                context.tr('storagePermissionSaveDesc'),
-                style: TextStyle(
-                  fontSize: 14,
-                  height: 1.45,
-                  color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
-                ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 24),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: isDark ? Colors.white70 : const Color(0xFF64748B),
-                        side: BorderSide(
-                          color: isDark ? const Color(0xFF334155) : const Color(0xFFCBD5E1),
-                        ),
-                        padding: const EdgeInsets.symmetric(vertical: 13),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
-                      onPressed: () => Navigator.pop(sheetCtx, false),
-                      child: Text(context.tr('cancel'), style: const TextStyle(fontWeight: FontWeight.w600)),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.primary,
-                        foregroundColor: Colors.white,
-                        elevation: 0,
-                        padding: const EdgeInsets.symmetric(vertical: 13),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
-                      onPressed: () => Navigator.pop(sheetCtx, true),
-                      child: Text(context.tr('grantPermission'), style: const TextStyle(fontWeight: FontWeight.bold)),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        );
-      },
-    );
-
-    if (shouldRequest != true) {
-      return false;
-    }
-
-    // Now request actual native OS permission
-    final granted = await DeviceMediaService.requestStoragePermission();
-    return granted;
-  }
-
-  void _showPermissionDeniedDialog() {
-    final isDark = ThemeModeController.instance.isDarkMode(context);
-
-    showDialog(
-      context: context,
-      builder: (dialogCtx) => AlertDialog(
-        backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Row(
-          children: [
-            const Icon(Icons.info_outline_rounded, color: AppColors.warning, size: 22),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                context.tr('permissionDeniedTitle'),
-                style: TextStyle(
-                  fontSize: 16.5,
-                  fontWeight: FontWeight.bold,
-                  color: isDark ? Colors.white : const Color(0xFF0F172A),
-                ),
-              ),
-            ),
-          ],
-        ),
-        content: Text(
-          context.tr('permissionDeniedDesc'),
-          style: TextStyle(
-            fontSize: 13.5,
-            height: 1.4,
-            color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.pop(dialogCtx);
-              _shareQrCode();
-            },
-            child: Text(
-              context.tr('shareQrInstead'),
-              style: const TextStyle(color: AppColors.primary, fontWeight: FontWeight.w600),
-            ),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.primary,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-            ),
-            onPressed: () {
-              Navigator.pop(dialogCtx);
-              DeviceMediaService.openAppSettings();
-            },
-            child: Text(
-              context.tr('openSettings'),
-              style: const TextStyle(fontWeight: FontWeight.bold),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Future<void> _saveQrToGallery() async {
     HapticFeedback.selectionClick();
     final ctrl = AccountController.instance;
 
-    final hasPermission = await _ensureStoragePermission();
-    if (!hasPermission) {
-      if (mounted) {
-        _showPermissionDeniedDialog();
+    // Direct OS default permission check/request - no custom dialogs
+    final hasPerm = await DeviceMediaService.hasStoragePermission();
+    if (!hasPerm) {
+      final granted = await DeviceMediaService.requestStoragePermission();
+      if (!granted) {
+        if (mounted) {
+          LajuToast.error(context, context.tr('saveGalleryFailed'));
+        }
+        return;
       }
-      return;
     }
 
     final imageBytes = await _captureQrBytes();
-    if (imageBytes == null) {
-      if (mounted) {
-        LajuToast.error(context, context.tr('saveGalleryFailed'));
-      }
-      return;
-    }
 
     final success = await DeviceMediaService.saveImageToGallery(
       imageBytes: imageBytes,

@@ -3,6 +3,7 @@ package com.laju.laju_mobile
 import android.Manifest
 import android.app.Activity
 import android.content.ClipData
+import android.content.ClipDescription
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
@@ -289,55 +290,57 @@ class MainActivity : FlutterFragmentActivity() {
     }
 
     private fun saveToGallery(imageBytes: ByteArray, fileName: String): Boolean {
-        return try {
+        try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val now = System.currentTimeMillis()
                 val contentValues = android.content.ContentValues().apply {
                     put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
                     put(MediaStore.MediaColumns.MIME_TYPE, "image/png")
                     put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + java.io.File.separator + "LAJU")
-                    put(MediaStore.MediaColumns.IS_PENDING, 1)
+                    put(MediaStore.Images.Media.DATE_ADDED, now / 1000)
+                    put(MediaStore.Images.Media.DATE_TAKEN, now)
                 }
-                val collection = MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
-                val uri = contentResolver.insert(collection, contentValues)
-                    ?: contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
-                    ?: return false
+                val uri = contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
+                    ?: contentResolver.insert(MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY), contentValues)
 
-                contentResolver.openOutputStream(uri)?.use { stream ->
-                    stream.write(imageBytes)
-                    stream.flush()
+                if (uri != null) {
+                    contentResolver.openOutputStream(uri)?.use { stream ->
+                        stream.write(imageBytes)
+                        stream.flush()
+                    }
+                    return true
                 }
-
-                contentValues.clear()
-                contentValues.put(MediaStore.MediaColumns.IS_PENDING, 0)
-                try {
-                    contentResolver.update(uri, contentValues, null, null)
-                } catch (pendingEx: Exception) {
-                    android.util.Log.w("MainActivity", "IS_PENDING update warning: ${pendingEx.message}")
-                }
-                true
-            } else {
-                val picturesDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES)
-                val lajuDir = java.io.File(picturesDir, "LAJU").apply { if (!exists()) mkdirs() }
-                val file = java.io.File(lajuDir, fileName)
-                file.writeBytes(imageBytes)
-                val mediaScanIntent = Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE).apply {
-                    data = Uri.fromFile(file)
-                }
-                sendBroadcast(mediaScanIntent)
-                true
             }
+
+            // Legacy Android <= 9 or fallback
+            val picturesDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES)
+            val lajuDir = java.io.File(picturesDir, "LAJU").apply { if (!exists()) mkdirs() }
+            val file = java.io.File(lajuDir, fileName)
+            file.writeBytes(imageBytes)
+            android.media.MediaScannerConnection.scanFile(
+                applicationContext,
+                arrayOf(file.absolutePath),
+                arrayOf("image/png"),
+                null
+            )
+            return true
         } catch (e: Exception) {
-            android.util.Log.e("MainActivity", "saveToGallery exception: ${e.message}", e)
+            android.util.Log.e("MainActivity", "saveToGallery error: ${e.message}", e)
             try {
                 val picturesDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES)
                 val lajuDir = java.io.File(picturesDir, "LAJU").apply { if (!exists()) mkdirs() }
                 val file = java.io.File(lajuDir, fileName)
                 file.writeBytes(imageBytes)
-                sendBroadcast(Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE, Uri.fromFile(file)))
-                true
+                android.media.MediaScannerConnection.scanFile(
+                    applicationContext,
+                    arrayOf(file.absolutePath),
+                    arrayOf("image/png"),
+                    null
+                )
+                return true
             } catch (fallbackEx: Exception) {
                 android.util.Log.e("MainActivity", "saveToGallery fallback failed: ${fallbackEx.message}", fallbackEx)
-                false
+                return false
             }
         }
     }
@@ -594,9 +597,11 @@ class MainActivity : FlutterFragmentActivity() {
                     try {
                         var targetFile: File? = null
                         val storageDir = externalCacheDir ?: cacheDir
+                        val sharedDir = File(storageDir, "shared").apply { if (!exists()) mkdirs() }
                         if (imageBytes != null && imageBytes.isNotEmpty()) {
-                            val file = File(storageDir, "laju_qr_${System.currentTimeMillis()}.png")
+                            val file = File(sharedDir, "laju_qr_${System.currentTimeMillis()}.png")
                             file.writeBytes(imageBytes)
+                            file.setReadable(true, false)
                             targetFile = file
                         } else if (filePath != null && File(filePath).exists()) {
                             targetFile = File(filePath)
@@ -615,13 +620,19 @@ class MainActivity : FlutterFragmentActivity() {
                                 if (text != null) {
                                     putExtra(Intent.EXTRA_TEXT, text)
                                 }
-                                clipData = ClipData.newUri(contentResolver, "qr_share", photoUri)
+                                val clipItem = ClipData.Item(photoUri)
+                                clipData = ClipData(
+                                    ClipDescription("LAJU QR Code", arrayOf("image/png")),
+                                    clipItem
+                                )
                                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
 
                                 val resInfoList = packageManager.queryIntentActivities(this, PackageManager.MATCH_DEFAULT_ONLY)
                                 for (resolveInfo in resInfoList) {
                                     val pkg = resolveInfo.activityInfo.packageName
-                                    grantUriPermission(pkg, photoUri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                    try {
+                                        grantUriPermission(pkg, photoUri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                    } catch (_: Exception) {}
                                 }
 
                                 val wellKnown = listOf("com.whatsapp", "com.whatsapp.w4b", "org.telegram.messenger")
@@ -645,7 +656,11 @@ class MainActivity : FlutterFragmentActivity() {
                                     "${applicationContext.packageName}.fileprovider",
                                     targetFile
                                 )
-                                clipData = ClipData.newUri(contentResolver, "qr_share", photoUri)
+                                val clipItem = ClipData.Item(photoUri)
+                                clipData = ClipData(
+                                    ClipDescription("LAJU QR Code", arrayOf("image/png")),
+                                    clipItem
+                                )
                             }
                         }
                         startActivity(chooser)
@@ -671,9 +686,7 @@ class MainActivity : FlutterFragmentActivity() {
                     }
                 }
                 "hasStoragePermission" -> {
-                    val hasPerm = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                        ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_IMAGES) == PackageManager.PERMISSION_GRANTED
-                    } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    val hasPerm = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                         true
                     } else {
                         ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
@@ -681,19 +694,7 @@ class MainActivity : FlutterFragmentActivity() {
                     result.success(hasPerm)
                 }
                 "requestStoragePermission" -> {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                        val granted = ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_IMAGES) == PackageManager.PERMISSION_GRANTED
-                        if (granted) {
-                            result.success(true)
-                        } else {
-                            pendingStoragePermissionResult = result
-                            ActivityCompat.requestPermissions(
-                                this,
-                                arrayOf(Manifest.permission.READ_MEDIA_IMAGES),
-                                STORAGE_PERMISSION_REQUEST_CODE
-                            )
-                        }
-                    } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                         result.success(true)
                     } else {
                         val granted = ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
