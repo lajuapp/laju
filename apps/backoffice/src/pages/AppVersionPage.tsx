@@ -417,6 +417,68 @@ export function AppVersionPage() {
         </div>
       ) : (
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+          {/* Card: Kebijakan Versi Aplikasi */}
+          <div className="bg-white rounded-2xl border border-neutral-200/80 shadow-xs p-6 space-y-5">
+            <div className="flex items-center gap-2.5 border-b border-neutral-100 pb-3">
+              <Smartphone className="w-4 h-4 text-brand-600" />
+              <h2 className="text-xs font-bold text-neutral-900 uppercase tracking-wider">
+                Kebijakan Versi Aplikasi (Version Policy & Enforcement)
+              </h2>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-[11px] font-bold text-neutral-700 mb-1 uppercase tracking-wider">
+                  Nomor Versi Terbaru (Latest Version)
+                </label>
+                <Input
+                  {...register('latestAndroidVersion')}
+                  placeholder="Contoh: 1.0.1"
+                />
+                {errors.latestAndroidVersion && (
+                  <p className="text-[10px] text-rose-500 mt-1">{errors.latestAndroidVersion.message}</p>
+                )}
+                <p className="text-[10px] text-neutral-400 mt-1">
+                  Versi rilis terkini yang ditawarkan kepada pengguna aplikasi
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-neutral-700 mb-1 uppercase tracking-wider">
+                  Versi Minimum Wajib (Minimum Supported Version)
+                </label>
+                <Input
+                  {...register('minAndroidVersion')}
+                  placeholder="Contoh: 1.0.1"
+                />
+                {errors.minAndroidVersion && (
+                  <p className="text-[10px] text-rose-500 mt-1">{errors.minAndroidVersion.message}</p>
+                )}
+                <p className="text-[10px] text-neutral-400 mt-1">
+                  Aplikasi dengan versi di bawah ini akan diblokir dan diwajibkan update
+                </p>
+              </div>
+            </div>
+
+            <div>
+              <label className="flex items-start gap-3 p-3 rounded-xl bg-neutral-50/70 border border-neutral-200/60 cursor-pointer hover:bg-neutral-50 transition-colors">
+                <input
+                  type="checkbox"
+                  {...register('forceUpdate')}
+                  className="rounded border-neutral-300 text-neutral-900 focus:ring-neutral-900 h-4 w-4 mt-0.5"
+                />
+                <div>
+                  <p className="text-xs font-bold text-neutral-900">
+                    Wajibkan Pembaruan Aplikasi (Force Update)
+                  </p>
+                  <p className="text-[11px] text-neutral-500 mt-0.5">
+                    Jika aktif, setiap pengguna yang versinya di bawah versi terbaru akan langsung diminta memperbarui aplikasi secara wajib.
+                  </p>
+                </div>
+              </label>
+            </div>
+          </div>
+
           {/* Card: Mode Pemeliharaan (Maintenance Mode) */}
           <div className="bg-white rounded-2xl border border-neutral-200/80 shadow-xs p-6 space-y-5">
             <div className="flex items-center gap-2.5 border-b border-neutral-100 pb-3">
@@ -462,11 +524,11 @@ export function AppVersionPage() {
             <div className="flex justify-end pt-2">
               <Button
                 type="submit"
-                variant="secondary"
+                variant="primary"
                 icon={<Save className="w-4 h-4" />}
                 isLoading={updateConfig.isPending}
               >
-                Simpan Mode Pemeliharaan
+                Simpan Kebijakan Versi & Pemeliharaan
               </Button>
             </div>
           </div>
