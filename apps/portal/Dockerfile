@@ -29,7 +29,9 @@ FROM node:20-slim AS runner
 
 WORKDIR /app
 
-RUN corepack enable && corepack prepare pnpm@8.15.3 --activate
+RUN apt-get update && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && corepack enable && corepack prepare pnpm@8.15.3 --activate
 
 ENV NODE_ENV=production
 ENV HOSTNAME="0.0.0.0"
@@ -44,5 +46,8 @@ COPY --chown=node:node --from=builder /app/apps/portal ./apps/portal
 WORKDIR /app/apps/portal
 
 EXPOSE 3002
+
+HEALTHCHECK --interval=5s --timeout=3s --start-period=15s --retries=5 \
+  CMD curl -f http://127.0.0.1:3002/ || exit 1
 
 CMD ["node_modules/.bin/next", "start", "-H", "0.0.0.0", "-p", "3002"]

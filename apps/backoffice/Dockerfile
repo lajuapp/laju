@@ -30,4 +30,7 @@ COPY --from=builder /app/apps/backoffice/dist ./dist
 
 EXPOSE 3000
 
+HEALTHCHECK --interval=5s --timeout=3s --start-period=5s --retries=5 \
+  CMD wget -q --spider http://127.0.0.1:3000/ || exit 1
+
 CMD ["serve", "-s", "dist", "-l", "3000"]
