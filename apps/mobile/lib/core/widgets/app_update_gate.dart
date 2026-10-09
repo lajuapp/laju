@@ -52,9 +52,9 @@ class _AppUpdateGateState extends State<AppUpdateGate> with WidgetsBindingObserv
             if (shouldShow)
               Positioned.fill(
                 child: PopScope(
-                  canPop: isOptional,
+                  canPop: isOptional && !_updateCtrl.isDownloading,
                   onPopInvokedWithResult: (didPop, _) {
-                    if (!didPop && isOptional) {
+                    if (!didPop && isOptional && !_updateCtrl.isDownloading) {
                       _updateCtrl.dismissOptionalUpdate();
                     }
                   },
@@ -92,6 +92,8 @@ class _AppUpdateOverlay extends StatelessWidget {
     final config = controller.serverConfig;
     final isOptional = status == AppUpdateStatus.optionalUpdate;
     final isMaintenance = status == AppUpdateStatus.maintenance;
+    final isDownloading = controller.isDownloading;
+    final isDownloadComplete = controller.isDownloadComplete;
 
     final accentColor = isMaintenance
         ? const Color(0xFFF59E0B) // Amber
@@ -109,7 +111,7 @@ class _AppUpdateOverlay extends StatelessWidget {
           // Frosted Backdrop Blur
           Positioned.fill(
             child: GestureDetector(
-              onTap: isOptional ? controller.dismissOptionalUpdate : null,
+              onTap: (isOptional && !isDownloading) ? controller.dismissOptionalUpdate : null,
               behavior: HitTestBehavior.opaque,
               child: BackdropFilter(
                 filter: ui.ImageFilter.blur(sigmaX: 18, sigmaY: 18),
@@ -174,10 +176,14 @@ class _AppUpdateOverlay extends StatelessWidget {
                             child: Icon(
                               isMaintenance
                                   ? Icons.engineering_rounded
-                                  : (isOptional
-                                      ? Icons.new_releases_rounded
-                                      : Icons.system_update_rounded),
-                              color: accentColor,
+                                  : (isDownloadComplete
+                                      ? Icons.check_circle_outline_rounded
+                                      : (isDownloading
+                                          ? Icons.downloading_rounded
+                                          : (isOptional
+                                              ? Icons.new_releases_rounded
+                                              : Icons.system_update_rounded))),
+                              color: isDownloadComplete ? AppColors.primary : accentColor,
                               size: 38,
                             ),
                           ),
@@ -196,11 +202,15 @@ class _AppUpdateOverlay extends StatelessWidget {
                             child: Text(
                               isMaintenance
                                   ? 'PEMELIHARAAN SISTEM'
-                                  : (isOptional
-                                      ? 'PEMBARUAN TERSEDIA'
-                                      : 'PEMBARUAN WAJIB'),
+                                  : (isDownloadComplete
+                                      ? 'SIAP DIPASANG'
+                                      : (isDownloading
+                                          ? 'MENGUNDUH PEMBARUAN'
+                                          : (isOptional
+                                              ? 'PEMBARUAN TERSEDIA'
+                                              : 'PEMBARUAN WAJIB'))),
                               style: TextStyle(
-                                color: accentColor,
+                                color: isDownloadComplete ? AppColors.primary : accentColor,
                                 fontSize: 11,
                                 fontWeight: FontWeight.w700,
                                 letterSpacing: 1.2,
@@ -213,9 +223,13 @@ class _AppUpdateOverlay extends StatelessWidget {
                           Text(
                             isMaintenance
                                 ? 'Sistem Sedang Ditingkatkan'
-                                : (isOptional
-                                    ? 'Versi Baru Tersedia'
-                                    : 'Aplikasi Perlu Diperbarui'),
+                                : (isDownloadComplete
+                                    ? 'Berkas Siap Dipasang'
+                                    : (isDownloading
+                                        ? 'Mengunduh Pembaruan OTA'
+                                        : (isOptional
+                                            ? 'Versi Baru Tersedia'
+                                            : 'Aplikasi Perlu Diperbarui'))),
                             textAlign: TextAlign.center,
                             style: const TextStyle(
                               color: Colors.white,
@@ -232,9 +246,13 @@ class _AppUpdateOverlay extends StatelessWidget {
                                 ? (config?.maintenanceMessage?.isNotEmpty == true
                                     ? config!.maintenanceMessage!
                                     : 'Sistem LAJU sedang dalam pemeliharaan berkala demi stabilitas dan keamanan. Silakan coba kembali beberapa saat lagi.')
-                                : (isOptional
-                                    ? 'Versi terbaru LAJU hadir dengan peningkatan performa, perbaikan keamanan, dan fitur komunikasi terkini.'
-                                    : 'Versi aplikasi Anda sudah tidak didukung oleh server. Harap perbarui sekarang untuk melanjutkan penggunaan LAJU.'),
+                                : (isDownloadComplete
+                                    ? 'Pembaruan LAJU telah berhasil diunduh secara langsung. Ketuk tombol di bawah untuk memasang ke perangkat Anda.'
+                                    : (isDownloading
+                                        ? 'Sedang mengunduh berkas APK langsung dari server. Jangan tutup aplikasi hingga unduhan selesai.'
+                                        : (isOptional
+                                            ? 'Versi terbaru LAJU hadir dengan peningkatan performa, perbaikan keamanan, dan fitur komunikasi terkini.'
+                                            : 'Versi aplikasi Anda sudah tidak didukung oleh server. Harap perbarui sekarang untuk melanjutkan penggunaan LAJU.'))),
                             textAlign: TextAlign.center,
                             style: TextStyle(
                               color: Colors.white.withValues(alpha: 0.78),
@@ -245,7 +263,7 @@ class _AppUpdateOverlay extends StatelessWidget {
                           const SizedBox(height: 20),
 
                           // Version & Size Info Card (For Updates)
-                          if (!isMaintenance) ...[
+                          if (!isMaintenance && !isDownloading) ...[
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                               decoration: BoxDecoration(
@@ -346,7 +364,8 @@ class _AppUpdateOverlay extends StatelessWidget {
 
                             // Release Notes (if present)
                             if (config?.releaseNotes != null &&
-                                config!.releaseNotes!.trim().isNotEmpty) ...[
+                                config!.releaseNotes!.trim().isNotEmpty &&
+                                !isDownloadComplete) ...[
                               const SizedBox(height: 14),
                               Container(
                                 width: double.infinity,
@@ -398,6 +417,111 @@ class _AppUpdateOverlay extends StatelessWidget {
                             const SizedBox(height: 24),
                           ],
 
+                          // Progress Bar Card (During in-app OTA download)
+                          if (isDownloading) ...[
+                            Container(
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.05),
+                                borderRadius: BorderRadius.circular(18),
+                                border: Border.all(
+                                  color: AppColors.primary.withValues(alpha: 0.2),
+                                ),
+                              ),
+                              child: Column(
+                                children: [
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text(
+                                        'Mengunduh APK...',
+                                        style: TextStyle(
+                                          color: Colors.white.withValues(alpha: 0.7),
+                                          fontSize: 12.5,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                      Text(
+                                        '${(controller.downloadProgress * 100).toStringAsFixed(0)}%',
+                                        style: const TextStyle(
+                                          color: AppColors.primary,
+                                          fontSize: 15,
+                                          fontWeight: FontWeight.w800,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 10),
+                                  ClipRRect(
+                                    borderRadius: BorderRadius.circular(8),
+                                    child: LinearProgressIndicator(
+                                      value: controller.downloadProgress > 0
+                                          ? controller.downloadProgress
+                                          : null,
+                                      minHeight: 8,
+                                      backgroundColor: Colors.white.withValues(alpha: 0.1),
+                                      valueColor: const AlwaysStoppedAnimation<Color>(
+                                        AppColors.primary,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text(
+                                        _formatFileSize(controller.downloadedBytes),
+                                        style: TextStyle(
+                                          color: Colors.white.withValues(alpha: 0.5),
+                                          fontSize: 11,
+                                        ),
+                                      ),
+                                      Text(
+                                        _formatFileSize(controller.totalBytes),
+                                        style: TextStyle(
+                                          color: Colors.white.withValues(alpha: 0.5),
+                                          fontSize: 11,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 20),
+                          ],
+
+                          // Error Display (if download fails)
+                          if (controller.downloadError != null) ...[
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.all(12),
+                              margin: const EdgeInsets.only(bottom: 16),
+                              decoration: BoxDecoration(
+                                color: Colors.red.withValues(alpha: 0.15),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: Colors.red.withValues(alpha: 0.3),
+                                ),
+                              ),
+                              child: Row(
+                                children: [
+                                  const Icon(Icons.error_outline_rounded, color: Colors.red, size: 20),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      controller.downloadError!,
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+
                           // Action Buttons
                           if (isMaintenance) ...[
                             LajuButton(
@@ -406,6 +530,22 @@ class _AppUpdateOverlay extends StatelessWidget {
                               variant: LajuButtonVariant.primary,
                               isLoading: controller.isChecking,
                               onPressed: () => controller.checkForUpdates(),
+                            ),
+                          ] else if (isDownloadComplete) ...[
+                            // Ready to install
+                            LajuButton(
+                              label: 'Pasang Sekarang',
+                              icon: Icons.install_mobile_rounded,
+                              variant: LajuButtonVariant.primary,
+                              onPressed: () => controller.installDownloadedApk(),
+                            ),
+                          ] else if (isDownloading) ...[
+                            // Downloading indicator
+                            LajuButton(
+                              label: 'Mengunduh (${(controller.downloadProgress * 100).toStringAsFixed(0)}%)...',
+                              variant: LajuButtonVariant.secondary,
+                              isLoading: true,
+                              onPressed: null,
                             ),
                           ] else if (isOptional) ...[
                             Row(
@@ -421,9 +561,9 @@ class _AppUpdateOverlay extends StatelessWidget {
                                 Expanded(
                                   child: LajuButton(
                                     label: 'Perbarui',
-                                    icon: Icons.download_rounded,
+                                    icon: Icons.system_update_rounded,
                                     variant: LajuButtonVariant.primary,
-                                    onPressed: () => controller.downloadAndInstallApk(),
+                                    onPressed: () => controller.startInAppOtaUpdate(),
                                   ),
                                 ),
                               ],
@@ -432,17 +572,22 @@ class _AppUpdateOverlay extends StatelessWidget {
                             // Force Update
                             LajuButton(
                               label: 'Perbarui Sekarang',
-                              icon: Icons.download_rounded,
+                              icon: Icons.system_update_rounded,
                               variant: LajuButtonVariant.primary,
-                              onPressed: () => controller.downloadAndInstallApk(),
+                              onPressed: () => controller.startInAppOtaUpdate(),
                             ),
-                            const SizedBox(height: 10),
-                            Text(
-                              'Aplikasi akan mengunduh berkas APK versi terbaru melalui peramban.',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                color: Colors.white.withValues(alpha: 0.45),
-                                fontSize: 11,
+                            const SizedBox(height: 12),
+                            // Optional fallback to browser
+                            GestureDetector(
+                              onTap: () => controller.openExternalBrowserDownload(),
+                              child: Text(
+                                'Atau unduh manual melalui peramban web',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  color: Colors.white.withValues(alpha: 0.5),
+                                  fontSize: 11.5,
+                                  decoration: TextDecoration.underline,
+                                ),
                               ),
                             ),
                           ],
