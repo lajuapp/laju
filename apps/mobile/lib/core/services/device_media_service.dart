@@ -240,6 +240,41 @@ class DeviceMediaService {
     }
   }
 
+  /// Check whether app currently has storage/gallery write or read permission
+  static Future<bool> hasStoragePermission() async {
+    try {
+      final bool? res = await _channel.invokeMethod<bool>('hasStoragePermission');
+      return res ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Request runtime permission for storage / photo gallery from the OS
+  static Future<bool> requestStoragePermission() async {
+    try {
+      AppLockController.instance.markExternalIntentStarted();
+      final bool? res = await _channel.invokeMethod<bool>('requestStoragePermission');
+      return res ?? false;
+    } catch (_) {
+      return false;
+    } finally {
+      AppLockController.instance.markExternalIntentFinished();
+    }
+  }
+
+  /// Open application details in system settings
+  static Future<void> openAppSettings() async {
+    try {
+      AppLockController.instance.markExternalIntentStarted();
+      await _channel.invokeMethod('openAppSettings');
+    } catch (_) {
+      // Ignore
+    } finally {
+      AppLockController.instance.markExternalIntentFinished();
+    }
+  }
+
   /// Saves raw PNG/JPEG image bytes directly to the device Gallery/Photos under Pictures/LAJU
   static Future<bool> saveImageToGallery({
     required Uint8List imageBytes,

@@ -120,6 +120,7 @@ class MainActivity : FlutterFragmentActivity() {
     private val CONTACT_REQUEST_CODE = 1006
     private val CAMERA_PERMISSION_REQUEST_CODE = 1007
     private val LOCATION_PERMISSION_REQUEST_CODE = 1008
+    private val STORAGE_PERMISSION_REQUEST_CODE = 1009
     private val VIDEO_CAMERA_REQUEST_CODE = 1010
     private val VIDEO_GALLERY_REQUEST_CODE = 1011
 
@@ -129,6 +130,7 @@ class MainActivity : FlutterFragmentActivity() {
     private var pendingAudioPermissionResult: MethodChannel.Result? = null
     private var pendingCameraPermissionResult: MethodChannel.Result? = null
     private var pendingLocationPermissionResult: MethodChannel.Result? = null
+    private var pendingStoragePermissionResult: MethodChannel.Result? = null
 
     private var mediaRecorder: MediaRecorder? = null
     private var currentRecordingFile: File? = null
@@ -295,18 +297,27 @@ class MainActivity : FlutterFragmentActivity() {
                     put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + java.io.File.separator + "LAJU")
                     put(MediaStore.MediaColumns.IS_PENDING, 1)
                 }
-                val uri = contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues) ?: return false
+                val collection = MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+                val uri = contentResolver.insert(collection, contentValues)
+                    ?: contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
+                    ?: return false
+
                 contentResolver.openOutputStream(uri)?.use { stream ->
                     stream.write(imageBytes)
                     stream.flush()
                 }
+
                 contentValues.clear()
                 contentValues.put(MediaStore.MediaColumns.IS_PENDING, 0)
-                contentResolver.update(uri, contentValues, null, null)
+                try {
+                    contentResolver.update(uri, contentValues, null, null)
+                } catch (pendingEx: Exception) {
+                    android.util.Log.w("MainActivity", "IS_PENDING update warning: ${pendingEx.message}")
+                }
                 true
             } else {
                 val picturesDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES)
-                val lajuDir = java.io.File(picturesDir, "LAJU").apply { mkdirs() }
+                val lajuDir = java.io.File(picturesDir, "LAJU").apply { if (!exists()) mkdirs() }
                 val file = java.io.File(lajuDir, fileName)
                 file.writeBytes(imageBytes)
                 val mediaScanIntent = Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE).apply {
@@ -317,7 +328,17 @@ class MainActivity : FlutterFragmentActivity() {
             }
         } catch (e: Exception) {
             android.util.Log.e("MainActivity", "saveToGallery exception: ${e.message}", e)
-            false
+            try {
+                val picturesDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES)
+                val lajuDir = java.io.File(picturesDir, "LAJU").apply { if (!exists()) mkdirs() }
+                val file = java.io.File(lajuDir, fileName)
+                file.writeBytes(imageBytes)
+                sendBroadcast(Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE, Uri.fromFile(file)))
+                true
+            } catch (fallbackEx: Exception) {
+                android.util.Log.e("MainActivity", "saveToGallery fallback failed: ${fallbackEx.message}", fallbackEx)
+                false
+            }
         }
     }
 
@@ -647,6 +668,58 @@ class MainActivity : FlutterFragmentActivity() {
                     } catch (e: Exception) {
                         android.util.Log.e("MainActivity", "saveImageToGallery error: ${e.message}", e)
                         result.error("SAVE_FAILED", e.message, null)
+                    }
+                }
+                "hasStoragePermission" -> {
+                    val hasPerm = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_IMAGES) == PackageManager.PERMISSION_GRANTED
+                    } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        true
+                    } else {
+                        ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
+                    }
+                    result.success(hasPerm)
+                }
+                "requestStoragePermission" -> {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        val granted = ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_IMAGES) == PackageManager.PERMISSION_GRANTED
+                        if (granted) {
+                            result.success(true)
+                        } else {
+                            pendingStoragePermissionResult = result
+                            ActivityCompat.requestPermissions(
+                                this,
+                                arrayOf(Manifest.permission.READ_MEDIA_IMAGES),
+                                STORAGE_PERMISSION_REQUEST_CODE
+                            )
+                        }
+                    } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        result.success(true)
+                    } else {
+                        val granted = ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
+                        if (granted) {
+                            result.success(true)
+                        } else {
+                            pendingStoragePermissionResult = result
+                            ActivityCompat.requestPermissions(
+                                this,
+                                arrayOf(Manifest.permission.WRITE_EXTERNAL_STORAGE, Manifest.permission.READ_EXTERNAL_STORAGE),
+                                STORAGE_PERMISSION_REQUEST_CODE
+                            )
+                        }
+                    }
+                }
+                "openAppSettings" -> {
+                    try {
+                        val intent = Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                            data = Uri.fromParts("package", packageName, null)
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                        startActivity(intent)
+                        result.success(true)
+                    } catch (e: Exception) {
+                        android.util.Log.e("MainActivity", "openAppSettings error: ${e.message}", e)
+                        result.success(false)
                     }
                 }
                 else -> {
@@ -1992,6 +2065,10 @@ class MainActivity : FlutterFragmentActivity() {
             val granted = grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED
             pendingLocationPermissionResult?.success(granted)
             pendingLocationPermissionResult = null
+        } else if (requestCode == STORAGE_PERMISSION_REQUEST_CODE) {
+            val granted = grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED
+            pendingStoragePermissionResult?.success(granted)
+            pendingStoragePermissionResult = null
         }
     }
 

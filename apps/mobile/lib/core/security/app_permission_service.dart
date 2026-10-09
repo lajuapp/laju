@@ -70,9 +70,18 @@ class AppPermissionService {
         return nativeGranted;
 
       case AppPermissionType.storage:
+        final hasNative = await DeviceMediaService.hasStoragePermission();
+        if (hasNative) {
+          instance.setGranted(type, true);
+          return true;
+        }
+        final nativeGranted = await DeviceMediaService.requestStoragePermission();
+        instance.setGranted(type, nativeGranted);
+        return nativeGranted;
+
       case AppPermissionType.contacts:
       case AppPermissionType.notification:
-        // Storage, Contacts, and Media access are handled natively via system intents (SAF, System Contact Picker)
+        // Contacts and Notifications are handled natively via system intents (System Contact Picker / system push)
         instance.setGranted(type, true);
         return true;
     }

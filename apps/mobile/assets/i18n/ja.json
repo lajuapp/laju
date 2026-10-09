@@ -489,5 +489,12 @@
   "copyContactLink": "連絡先リンクをコピー",
   "contactLinkCopied": "連絡先リンクをクリップボードにコピーしました",
   "qrSavedToGallery": "QRコードがギャラリーに保存されました",
-  "saveGalleryFailed": "画像の保存に失敗しました"
+  "saveGalleryFailed": "画像の保存に失敗しました",
+  "storagePermissionTitle": "ストレージとギャラリーへのアクセス",
+  "storagePermissionSaveDesc": "端末のギャラリー内のLAJUアルバムに連絡先QRコードカードを保存するには、ストレージの権限が必要です。",
+  "permissionDeniedTitle": "ストレージ権限が拒否されました",
+  "permissionDeniedDesc": "画像を保存するには写真・ギャラリーへのアクセス権限が必要です。設定から有効にするか、QRコードを直接共有できます。",
+  "openSettings": "設定を開く",
+  "shareQrInstead": "QRを共有",
+  "grantPermission": "権限を許可"
 }

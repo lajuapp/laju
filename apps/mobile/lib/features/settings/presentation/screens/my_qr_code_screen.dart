@@ -93,9 +93,192 @@ class _MyQrCodeScreenState extends State<MyQrCodeScreen> with TickerProviderStat
     }
   }
 
+  Future<bool> _ensureStoragePermission() async {
+    final hasNative = await DeviceMediaService.hasStoragePermission();
+    if (hasNative) return true;
+
+    if (!mounted) return false;
+    final isDark = ThemeModeController.instance.isDarkMode(context);
+
+    // Show Educational Bottom Sheet
+    final shouldRequest = await showModalBottomSheet<bool>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (sheetCtx) {
+        return Container(
+          decoration: BoxDecoration(
+            color: isDark ? const Color(0xFF1E293B) : Colors.white,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: isDark ? Colors.white24 : Colors.black12,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 20),
+              Container(
+                width: 60,
+                height: 60,
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withValues(alpha: 0.15),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.photo_library_rounded,
+                  color: AppColors.primary,
+                  size: 30,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                context.tr('storagePermissionTitle'),
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: isDark ? Colors.white : const Color(0xFF0F172A),
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 10),
+              Text(
+                context.tr('storagePermissionSaveDesc'),
+                style: TextStyle(
+                  fontSize: 14,
+                  height: 1.45,
+                  color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 24),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: isDark ? Colors.white70 : const Color(0xFF64748B),
+                        side: BorderSide(
+                          color: isDark ? const Color(0xFF334155) : const Color(0xFFCBD5E1),
+                        ),
+                        padding: const EdgeInsets.symmetric(vertical: 13),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                      onPressed: () => Navigator.pop(sheetCtx, false),
+                      child: Text(context.tr('cancel'), style: const TextStyle(fontWeight: FontWeight.w600)),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.primary,
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        padding: const EdgeInsets.symmetric(vertical: 13),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                      onPressed: () => Navigator.pop(sheetCtx, true),
+                      child: Text(context.tr('grantPermission'), style: const TextStyle(fontWeight: FontWeight.bold)),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
+    );
+
+    if (shouldRequest != true) {
+      return false;
+    }
+
+    // Now request actual native OS permission
+    final granted = await DeviceMediaService.requestStoragePermission();
+    return granted;
+  }
+
+  void _showPermissionDeniedDialog() {
+    final isDark = ThemeModeController.instance.isDarkMode(context);
+
+    showDialog(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            const Icon(Icons.info_outline_rounded, color: AppColors.warning, size: 22),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                context.tr('permissionDeniedTitle'),
+                style: TextStyle(
+                  fontSize: 16.5,
+                  fontWeight: FontWeight.bold,
+                  color: isDark ? Colors.white : const Color(0xFF0F172A),
+                ),
+              ),
+            ),
+          ],
+        ),
+        content: Text(
+          context.tr('permissionDeniedDesc'),
+          style: TextStyle(
+            fontSize: 13.5,
+            height: 1.4,
+            color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(dialogCtx);
+              _shareQrCode();
+            },
+            child: Text(
+              context.tr('shareQrInstead'),
+              style: const TextStyle(color: AppColors.primary, fontWeight: FontWeight.w600),
+            ),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            onPressed: () {
+              Navigator.pop(dialogCtx);
+              DeviceMediaService.openAppSettings();
+            },
+            child: Text(
+              context.tr('openSettings'),
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _saveQrToGallery() async {
     HapticFeedback.selectionClick();
     final ctrl = AccountController.instance;
+
+    final hasPermission = await _ensureStoragePermission();
+    if (!hasPermission) {
+      if (mounted) {
+        _showPermissionDeniedDialog();
+      }
+      return;
+    }
 
     final imageBytes = await _captureQrBytes();
     if (imageBytes == null) {

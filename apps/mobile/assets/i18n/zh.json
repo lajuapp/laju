@@ -489,5 +489,12 @@
   "copyContactLink": "复制联系人链接",
   "contactLinkCopied": "联系人链接已复制到剪贴板",
   "qrSavedToGallery": "二维码已成功保存到相册",
-  "saveGalleryFailed": "保存图片到相册失败"
+  "saveGalleryFailed": "保存图片到相册失败",
+  "storagePermissionTitle": "存储与相册权限",
+  "storagePermissionSaveDesc": "需要存储权限才能将您的联系人二维码卡片保存到设备的 LAJU 相册中。",
+  "permissionDeniedTitle": "存储权限被拒绝",
+  "permissionDeniedDesc": "应用需要相册/存储权限才能保存图片。您可以在“设置”中启用该权限，或直接分享二维码。",
+  "openSettings": "打开设置",
+  "shareQrInstead": "分享二维码",
+  "grantPermission": "授予权限"
 }
