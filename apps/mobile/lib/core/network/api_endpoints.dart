@@ -33,6 +33,7 @@ class ApiEndpoints {
   static String conversationMessages(String id) => '/conversations/$id/messages';
   static String conversationTyping(String id) => '/conversations/$id/typing';
   static String conversationDestructiveWipe(String id) => '/conversations/$id/destructive-wipe';
+  static String conversationDeleteGroup(String id) => '/conversations/$id/delete-group';
   static String conversationClearForMe(String id) => '/conversations/$id/clear-for-me';
   static String conversationClearAll(String id) => '/conversations/$id/clear-all';
 

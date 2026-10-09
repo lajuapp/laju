@@ -20,7 +20,10 @@ import {
   AlertTriangle,
   ChevronRight,
   ShieldCheck,
+  Download,
+  BarChart3,
 } from 'lucide-react';
+
 import { useDashboardStats } from '../hooks/useDashboardStats';
 import { Badge } from '../components/ui/Badge';
 import { NavLink } from 'react-router-dom';
@@ -156,8 +159,38 @@ export function DashboardPage() {
         </div>
       </div>
 
-      {/* 4 Core Growth & Activity Metric Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* Core Growth, Marketing & Activity Metric Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+        {/* 0. Total Unduhan APK (Marketing & Download Analytics) */}
+        <NavLink
+          to="/marketing-analytics"
+          className="bg-white rounded-2xl border border-neutral-200/80 p-5 shadow-xs hover:border-brand-400 hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 group flex flex-col justify-between"
+        >
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <div className="w-9 h-9 rounded-xl flex items-center justify-center shadow-2xs text-brand-600 bg-brand-50">
+                <Download className="w-4 h-4" />
+              </div>
+              <span className="inline-flex items-center gap-0.5 text-[11px] font-bold px-2 py-0.5 rounded-full bg-brand-50 text-brand-700 border border-brand-200">
+                +{overview?.downloadsToday ?? 0} hari ini
+              </span>
+            </div>
+
+            <p className="text-xs font-semibold text-neutral-500">Total Unduhan APK</p>
+            <div className="text-3xl font-black text-neutral-900 mt-1 tracking-tight">
+              {isLoading ? '...' : (overview?.totalDownloads ?? 0)}
+              <span className="text-xs font-semibold text-neutral-400 ml-1.5">kali</span>
+            </div>
+          </div>
+
+          <div className="mt-4 pt-3 border-t border-neutral-100 flex items-center justify-between text-[11px] text-neutral-500">
+            <span className="text-brand-600 font-semibold group-hover:underline flex items-center gap-1">
+              Lihat Analitik Pemasaran
+              <ArrowUpRight className="w-3 h-3" />
+            </span>
+          </div>
+        </NavLink>
+
         {/* 1. Pengguna Baru (New Users) */}
         <NavLink
           to="/users"

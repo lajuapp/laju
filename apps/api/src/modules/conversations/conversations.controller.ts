@@ -15,8 +15,10 @@ import {
   AddMemberDto,
   ChangeMemberRoleDto,
   UpdateConversationDto,
-  DestructiveWipeDto
+  DestructiveWipeDto,
+  DeleteGroupDto
 } from './dto/conversation.dto';
+
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 
@@ -127,6 +129,16 @@ export class ConversationsController {
   ) {
     return this.conversationsService.destructiveWipe(userId, conversationId, dto.pin);
   }
+
+  @Post(':id/delete-group')
+  deleteGroup(
+    @CurrentUser('userId') userId: string,
+    @Param('id') conversationId: string,
+    @Body() dto: DeleteGroupDto
+  ) {
+    return this.conversationsService.deleteGroup(userId, conversationId, dto.pin);
+  }
+
 
   @Post(':id/clear-for-me')
   clearForMe(

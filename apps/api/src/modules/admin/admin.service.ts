@@ -194,6 +194,8 @@ export class AdminService {
       totalMessages,
       totalWallpapers,
       totalStickerPacks,
+      totalDownloads,
+      downloadsToday,
       recentAuditLogs,
       onlineDevicesCount,
       activeCallsCount,
@@ -234,6 +236,8 @@ export class AdminService {
       this.prisma.message.count(),
       this.prisma.chatWallpaper.count(),
       this.prisma.stickerPack.count(),
+      (this.prisma as any).downloadAnalyticsEvent?.count().catch(() => 0) ?? Promise.resolve(0),
+      (this.prisma as any).downloadAnalyticsEvent?.count({ where: { createdAt: { gte: todayStart } } }).catch(() => 0) ?? Promise.resolve(0),
       this.prisma.adminAuditEvent.findMany({
         orderBy: { createdAt: 'desc' },
         take: 6
@@ -377,11 +381,14 @@ export class AdminService {
         messagesToday,
         totalWallpapers,
         totalStickerPacks,
+        totalDownloads: totalDownloads || 0,
+        downloadsToday: downloadsToday || 0,
         onlineUsers,
         communicatingUsers,
         activeCalls: activeCallsCount,
         totalCallsToday,
         totalCalls
+
       },
       growth: {
         newUsersToday,
@@ -424,7 +431,178 @@ export class AdminService {
     };
   }
 
+  async trackDownloadEvent(data: {
+    version?: string;
+    source?: string;
+    ip?: string;
+    userAgent?: string;
+    referrer?: string;
+  }) {
+    const userAgent = data.userAgent || '';
+    let os = 'Android';
+    if (/Windows/i.test(userAgent)) os = 'Windows';
+    else if (/Macintosh|Mac OS/i.test(userAgent)) os = 'macOS';
+    else if (/Linux/i.test(userAgent) && !/Android/i.test(userAgent)) os = 'Linux';
+    else if (/iPhone|iPad|iPod/i.test(userAgent)) os = 'iOS';
+
+    let browser = 'Browser';
+    if (/Chrome/i.test(userAgent) && !/Edge|OPR/i.test(userAgent)) browser = 'Chrome';
+    else if (/Firefox/i.test(userAgent)) browser = 'Firefox';
+    else if (/Safari/i.test(userAgent) && !/Chrome/i.test(userAgent)) browser = 'Safari';
+    else if (/Edge/i.test(userAgent)) browser = 'Edge';
+    else if (/Opera|OPR/i.test(userAgent)) browser = 'Opera';
+
+    try {
+      if ((this.prisma as any).downloadAnalyticsEvent) {
+        await (this.prisma as any).downloadAnalyticsEvent.create({
+          data: {
+            version: data.version || '1.0.0',
+            source: data.source || 'PORTAL',
+            ip: data.ip,
+            userAgent: data.userAgent,
+            os,
+            browser,
+            referrer: data.referrer,
+          }
+        });
+      }
+    } catch (_) {}
+
+    return { success: true };
+  }
+
+  async getMarketingStats() {
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const sevenDaysAgo = new Date(todayStart.getTime() - 6 * 24 * 60 * 60 * 1000);
+    const fourteenDaysAgo = new Date(todayStart.getTime() - 13 * 24 * 60 * 60 * 1000);
+    const thirtyDaysAgo = new Date(todayStart.getTime() - 29 * 24 * 60 * 60 * 1000);
+    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+    const [
+      totalDownloads,
+      downloadsToday,
+      downloadsThisWeek,
+      downloadsThisMonth,
+      totalUsers,
+      newUsersToday,
+      newUsersThisWeek,
+      newUsersThisMonth,
+      dauCount,
+      deviceModelsRaw,
+      osVersionsRaw,
+      appVersionsRaw,
+      recentDownloads14d,
+      recentUsers14d,
+      downloadSourcesRaw
+    ] = await Promise.all([
+      (this.prisma as any).downloadAnalyticsEvent?.count().catch(() => 0) ?? Promise.resolve(0),
+      (this.prisma as any).downloadAnalyticsEvent?.count({ where: { createdAt: { gte: todayStart } } }).catch(() => 0) ?? Promise.resolve(0),
+      (this.prisma as any).downloadAnalyticsEvent?.count({ where: { createdAt: { gte: sevenDaysAgo } } }).catch(() => 0) ?? Promise.resolve(0),
+      (this.prisma as any).downloadAnalyticsEvent?.count({ where: { createdAt: { gte: thirtyDaysAgo } } }).catch(() => 0) ?? Promise.resolve(0),
+      this.prisma.user.count(),
+      this.prisma.user.count({ where: { createdAt: { gte: todayStart } } }),
+      this.prisma.user.count({ where: { createdAt: { gte: sevenDaysAgo } } }),
+      this.prisma.user.count({ where: { createdAt: { gte: thirtyDaysAgo } } }),
+      this.prisma.device.findMany({
+        where: { lastSeenAt: { gte: twentyFourHoursAgo } },
+        select: { userId: true },
+        distinct: ['userId']
+      }).then(list => list.length).catch(() => 0),
+      this.prisma.device.groupBy({
+        by: ['deviceModel'],
+        _count: { id: true },
+        where: { deviceModel: { not: null } },
+        orderBy: { _count: { id: 'desc' } },
+        take: 10
+      }).catch(() => []),
+      this.prisma.device.groupBy({
+        by: ['osVersion'],
+        _count: { id: true },
+        where: { osVersion: { not: null } },
+        orderBy: { _count: { id: 'desc' } },
+        take: 8
+      }).catch(() => []),
+      this.prisma.device.groupBy({
+        by: ['appVersion'],
+        _count: { id: true },
+        where: { appVersion: { not: null } },
+        orderBy: { _count: { id: 'desc' } },
+        take: 8
+      }).catch(() => []),
+      (this.prisma as any).downloadAnalyticsEvent?.findMany({
+        where: { createdAt: { gte: fourteenDaysAgo } },
+        select: { createdAt: true, source: true, os: true, browser: true }
+      }).catch(() => []) ?? Promise.resolve([]),
+      this.prisma.user.findMany({
+        where: { createdAt: { gte: fourteenDaysAgo } },
+        select: { createdAt: true }
+      }).catch(() => []),
+      (this.prisma as any).downloadAnalyticsEvent?.groupBy({
+        by: ['source'],
+        _count: { id: true },
+        orderBy: { _count: { id: 'desc' } }
+      }).catch(() => []) ?? Promise.resolve([])
+    ]);
+
+    // Build 14-day download & registration trend
+    const trend: { date: string; label: string; downloads: number; registrations: number }[] = [];
+    for (let i = 13; i >= 0; i--) {
+      const d = new Date(todayStart.getTime() - i * 24 * 60 * 60 * 1000);
+      const nextD = new Date(d.getTime() + 24 * 60 * 60 * 1000);
+      const dateStr = d.toISOString().split('T')[0];
+      const dlCount = (recentDownloads14d || []).filter((item: any) => item.createdAt >= d && item.createdAt < nextD).length;
+      const regCount = (recentUsers14d || []).filter((item: any) => item.createdAt >= d && item.createdAt < nextD).length;
+      trend.push({
+        date: dateStr,
+        label: d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' }),
+        downloads: dlCount,
+        registrations: regCount
+      });
+    }
+
+    // Funnel calculations: Downloads -> Registered Users -> Active Users
+    const conversionRatePercent = totalDownloads > 0 ? Math.min(100, Math.round((totalUsers / totalDownloads) * 100)) : 0;
+    const activeRetentionPercent = totalUsers > 0 ? Math.min(100, Math.round((dauCount / totalUsers) * 100)) : 0;
+
+    return {
+      overview: {
+        totalDownloads,
+        downloadsToday,
+        downloadsThisWeek,
+        downloadsThisMonth,
+        totalUsers,
+        newUsersToday,
+        newUsersThisWeek,
+        newUsersThisMonth,
+        dauCount,
+        conversionRatePercent,
+        activeRetentionPercent
+      },
+      trend,
+      distributions: {
+        deviceModels: (deviceModelsRaw || []).map((m: any) => ({
+          model: m.deviceModel || 'Lainnya',
+          count: m._count.id
+        })),
+        osVersions: (osVersionsRaw || []).map((o: any) => ({
+          os: o.osVersion || 'Android',
+          count: o._count.id
+        })),
+        appVersions: (appVersionsRaw || []).map((v: any) => ({
+          version: v.appVersion || 'v1.0.0',
+          count: v._count.id
+        })),
+        sources: (downloadSourcesRaw || []).map((s: any) => ({
+          source: s.source || 'PORTAL',
+          count: s._count.id
+        }))
+      }
+    };
+  }
+
   async createAdminSession(roleName: string, adminId: string) {
+
     const role = await this.prisma.adminRole.findUnique({
       where: { name: roleName },
       include: { permissions: { include: { permission: true } } }

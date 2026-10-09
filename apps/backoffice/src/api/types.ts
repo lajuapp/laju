@@ -47,6 +47,8 @@ export interface DashboardStats {
     messagesToday?: number;
     totalWallpapers: number;
     totalStickerPacks: number;
+    totalDownloads?: number;
+    downloadsToday?: number;
     onlineUsers?: number;
     communicatingUsers?: number;
     activeCalls?: number;
@@ -83,6 +85,35 @@ export interface DashboardStats {
   };
   recentAuditLogs: AdminAuditEvent[];
 }
+
+export interface MarketingStats {
+  overview: {
+    totalDownloads: number;
+    downloadsToday: number;
+    downloadsThisWeek: number;
+    downloadsThisMonth: number;
+    totalUsers: number;
+    newUsersToday: number;
+    newUsersThisWeek: number;
+    newUsersThisMonth: number;
+    dauCount: number;
+    conversionRatePercent: number;
+    activeRetentionPercent: number;
+  };
+  trend: {
+    date: string;
+    label: string;
+    downloads: number;
+    registrations: number;
+  }[];
+  distributions: {
+    deviceModels: { model: string; count: number }[];
+    osVersions: { os: string; count: number }[];
+    appVersions: { version: string; count: number }[];
+    sources: { source: string; count: number }[];
+  };
+}
+
 
 export interface UserItem {
   id: string;

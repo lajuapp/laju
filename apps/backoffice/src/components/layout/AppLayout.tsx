@@ -14,7 +14,9 @@ import {
   Settings2,
   LifeBuoy,
   Database,
+  BarChart3,
 } from 'lucide-react';
+
 import { useAdminMe, useLogout } from '../../hooks/useAdminAuth';
 import { useDashboardStats } from '../../hooks/useDashboardStats';
 import { Badge } from '../ui/Badge';
@@ -38,8 +40,10 @@ export function AppLayout() {
       group: 'Utama',
       items: [
         { label: 'Dashboard', to: '/', icon: LayoutDashboard },
+        { label: 'Statistik & Pemasaran', to: '/marketing-analytics', icon: BarChart3 },
       ],
     },
+
     {
       group: 'Konten',
       items: [

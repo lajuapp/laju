@@ -64,6 +64,12 @@ class ConversationService {
       StreamController<String>.broadcast();
   Stream<String> get realtimePurgedStream => _realtimePurgedController.stream;
 
+  /// Realtime stream of deleted group conversation IDs
+  final StreamController<String> _realtimeGroupDeletedController =
+      StreamController<String>.broadcast();
+  Stream<String> get realtimeGroupDeletedStream => _realtimeGroupDeletedController.stream;
+
+
   bool _isWsInitialized = false;
 
   void initWebSocket() {
@@ -94,6 +100,15 @@ class ConversationService {
       clearChatForMe(convId);
       _realtimePurgedController.add(convId);
     };
+
+    ws.onGroupDeleted = (convId) {
+      _inMemoryMessages.remove(convId);
+      LocalDatabase.instance.deleteConversation(convId);
+      _realtimeGroupDeletedController.add(convId);
+      fetchConversations();
+    };
+
+
 
     ws.onMessageReaction = (convId, msgId, userId, emoji, action) {
       _handleRealtimeMessageReaction(convId, msgId, userId, emoji, action);
@@ -964,7 +979,35 @@ class ConversationService {
     }
   }
 
+  /// Permanently delete a group and evict all members
+  Future<bool> deleteGroup(String conversationId, String pin) async {
+    try {
+      final response = await ApiClient.instance.post(
+        ApiEndpoints.conversationDeleteGroup(conversationId),
+        body: {'pin': pin.trim()},
+      );
+
+      if (response.isSuccess) {
+        _inMemoryMessages.remove(conversationId);
+        await LocalDatabase.instance.deleteConversation(conversationId);
+        await LocalDatabase.instance.clearMessages(conversationId);
+        _realtimeGroupDeletedController.add(conversationId);
+        await fetchConversations();
+        return true;
+
+      } else {
+        final msg = response.errorMessage ?? 'Gagal menghapus grup';
+        debugPrint('[ConversationService] deleteGroup failed: ${response.statusCode} $msg');
+        throw Exception(msg);
+      }
+    } catch (e) {
+      debugPrint('[ConversationService] deleteGroup error: $e');
+      rethrow;
+    }
+  }
+
   /// Update group info (title, description, permissions)
+
   Future<bool> updateGroup({
     required String conversationId,
     String? title,

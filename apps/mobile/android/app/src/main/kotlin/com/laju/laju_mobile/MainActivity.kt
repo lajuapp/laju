@@ -248,6 +248,77 @@ class MainActivity : FlutterFragmentActivity() {
         } else if (type != null && id != null) {
             launchPayload = mapOf("type" to type, "id" to id, "isVideo" to isVideo, "action" to action)
         }
+
+        // Handle Deep Link / App Link URIs (laju:// and https://laju.chat/u/...)
+        val uri = intent.data
+        if (uri != null) {
+            val scheme = uri.scheme
+            val host = uri.host
+            val path = uri.path ?: ""
+            var contactUsername: String? = null
+            var contactId: String? = null
+
+            if (scheme == "laju") {
+                if (host == "contact" || path.startsWith("/contact")) {
+                    contactUsername = uri.getQueryParameter("u") ?: uri.getQueryParameter("username")
+                    contactId = uri.getQueryParameter("id") ?: uri.getQueryParameter("userId")
+                } else if (host == "u" || path.startsWith("/u/")) {
+                    contactUsername = if (host == "u") path.removePrefix("/") else path.removePrefix("/u/")
+                }
+            } else if (scheme == "https" || scheme == "http") {
+                if (path.startsWith("/u/")) {
+                    contactUsername = path.removePrefix("/u/").split("?").first()
+                    contactId = uri.getQueryParameter("id")
+                } else if (path.startsWith("/contact")) {
+                    contactUsername = uri.getQueryParameter("u")
+                    contactId = uri.getQueryParameter("id")
+                }
+            }
+
+            if (!contactUsername.isNullOrEmpty()) {
+                val cleanUser = Uri.decode(contactUsername).trim().removePrefix("@")
+                launchPayload = mapOf(
+                    "type" to "contact",
+                    "username" to cleanUser,
+                    "id" to (contactId ?: "")
+                )
+            }
+        }
+    }
+
+    private fun saveToGallery(imageBytes: ByteArray, fileName: String): Boolean {
+        return try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val contentValues = android.content.ContentValues().apply {
+                    put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+                    put(MediaStore.MediaColumns.MIME_TYPE, "image/png")
+                    put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + java.io.File.separator + "LAJU")
+                    put(MediaStore.MediaColumns.IS_PENDING, 1)
+                }
+                val uri = contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues) ?: return false
+                contentResolver.openOutputStream(uri)?.use { stream ->
+                    stream.write(imageBytes)
+                    stream.flush()
+                }
+                contentValues.clear()
+                contentValues.put(MediaStore.MediaColumns.IS_PENDING, 0)
+                contentResolver.update(uri, contentValues, null, null)
+                true
+            } else {
+                val picturesDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES)
+                val lajuDir = java.io.File(picturesDir, "LAJU").apply { mkdirs() }
+                val file = java.io.File(lajuDir, fileName)
+                file.writeBytes(imageBytes)
+                val mediaScanIntent = Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE).apply {
+                    data = Uri.fromFile(file)
+                }
+                sendBroadcast(mediaScanIntent)
+                true
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("MainActivity", "saveToGallery exception: ${e.message}", e)
+            false
+        }
     }
 
     private fun createNotificationChannels() {
@@ -495,25 +566,35 @@ class MainActivity : FlutterFragmentActivity() {
                 }
                 "shareContent" -> {
                     val text = call.argument<String>("text")
+                    val imageBytes = call.argument<ByteArray>("imageBytes")
                     val filePath = call.argument<String>("filePath")
                     val title = call.argument<String>("title") ?: "Bagikan Kode QR LAJU"
 
                     try {
+                        var targetFile: File? = null
+                        val storageDir = externalCacheDir ?: cacheDir
+                        if (imageBytes != null && imageBytes.isNotEmpty()) {
+                            val file = File(storageDir, "laju_qr_${System.currentTimeMillis()}.png")
+                            file.writeBytes(imageBytes)
+                            targetFile = file
+                        } else if (filePath != null && File(filePath).exists()) {
+                            targetFile = File(filePath)
+                        }
+
                         val sendIntent = Intent().apply {
                             action = Intent.ACTION_SEND
-                            if (text != null) {
-                                putExtra(Intent.EXTRA_TEXT, text)
-                            }
-                            if (filePath != null && File(filePath).exists()) {
-                                val file = File(filePath)
+                            if (targetFile != null && targetFile.exists()) {
                                 val photoUri = FileProvider.getUriForFile(
                                     this@MainActivity,
                                     "${applicationContext.packageName}.fileprovider",
-                                    file
+                                    targetFile
                                 )
-                                clipData = ClipData.newUri(contentResolver, "qr_share", photoUri)
+                                type = "image/png"
                                 putExtra(Intent.EXTRA_STREAM, photoUri)
-                                type = "image/*"
+                                if (text != null) {
+                                    putExtra(Intent.EXTRA_TEXT, text)
+                                }
+                                clipData = ClipData.newUri(contentResolver, "qr_share", photoUri)
                                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
 
                                 val resInfoList = packageManager.queryIntentActivities(this, PackageManager.MATCH_DEFAULT_ONLY)
@@ -521,18 +602,51 @@ class MainActivity : FlutterFragmentActivity() {
                                     val pkg = resolveInfo.activityInfo.packageName
                                     grantUriPermission(pkg, photoUri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
                                 }
+
+                                val wellKnown = listOf("com.whatsapp", "com.whatsapp.w4b", "org.telegram.messenger")
+                                for (pkg in wellKnown) {
+                                    try {
+                                        grantUriPermission(pkg, photoUri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                    } catch (_: Exception) {}
+                                }
                             } else {
                                 type = "text/plain"
+                                if (text != null) {
+                                    putExtra(Intent.EXTRA_TEXT, text)
+                                }
                             }
                         }
                         val chooser = Intent.createChooser(sendIntent, title).apply {
                             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            if (targetFile != null && targetFile.exists()) {
+                                val photoUri = FileProvider.getUriForFile(
+                                    this@MainActivity,
+                                    "${applicationContext.packageName}.fileprovider",
+                                    targetFile
+                                )
+                                clipData = ClipData.newUri(contentResolver, "qr_share", photoUri)
+                            }
                         }
                         startActivity(chooser)
                         result.success(true)
                     } catch (e: Exception) {
                         android.util.Log.e("MainActivity", "shareContent error: ${e.message}", e)
                         result.error("SHARE_ERROR", e.message, null)
+                    }
+                }
+                "saveImageToGallery" -> {
+                    val imageBytes = call.argument<ByteArray>("imageBytes")
+                    val fileName = call.argument<String>("fileName") ?: "laju_qr_${System.currentTimeMillis()}.png"
+                    if (imageBytes == null || imageBytes.isEmpty()) {
+                        result.error("EMPTY_BYTES", "Image bytes cannot be empty", null)
+                        return@setMethodCallHandler
+                    }
+                    try {
+                        val saved = saveToGallery(imageBytes, fileName)
+                        result.success(saved)
+                    } catch (e: Exception) {
+                        android.util.Log.e("MainActivity", "saveImageToGallery error: ${e.message}", e)
+                        result.error("SAVE_FAILED", e.message, null)
                     }
                 }
                 else -> {

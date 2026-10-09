@@ -822,3 +822,21 @@ model SupportTicket {
   @@map("support_tickets")
 }
 
+model DownloadAnalyticsEvent {
+  id          String   @id @default(uuid())
+  version     String?
+  source      String?  @default("PORTAL") // PORTAL, DIRECT, DEEPLINK
+  ip          String?
+  userAgent   String?  @map("user_agent")
+  os          String?
+  browser     String?
+  referrer    String?
+  country     String?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([createdAt])
+  @@index([source])
+  @@map("download_analytics_events")
+}
+
+

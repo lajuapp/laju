@@ -36,6 +36,7 @@ class ChatWebSocketService {
   Function(String conversationId, String messageId)? onMessageDeleted;
   Function(String conversationId, String userId, String? username, bool isTyping)? onTyping;
   Function(String conversationId)? onConversationPurged;
+  Function(String conversationId)? onGroupDeleted;
   Function(String conversationId, String messageId, String userId, String emoji, String action)? onMessageReaction;
   Function(Map<String, dynamic> payload)? onCallIncoming;
   Function(Map<String, dynamic> payload)? onStatusUpdate;
@@ -141,6 +142,14 @@ class ChatWebSocketService {
             onConversationPurged?.call(convId);
           }
           break;
+
+        case 'GROUP_DELETED':
+          final deletedConvId = map['conversationId'] as String? ?? '';
+          if (deletedConvId.isNotEmpty) {
+            onGroupDeleted?.call(deletedConvId);
+          }
+          break;
+
 
         case 'MESSAGE_REACTION':
           final convId = map['conversationId'] as String? ?? '';

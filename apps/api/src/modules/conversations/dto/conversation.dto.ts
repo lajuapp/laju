@@ -92,3 +92,10 @@ export class DestructiveWipeDto {
   pin: string;
 }
 
+export class DeleteGroupDto {
+  @IsString()
+  @IsNotEmpty()
+  pin: string;
+}
+
+

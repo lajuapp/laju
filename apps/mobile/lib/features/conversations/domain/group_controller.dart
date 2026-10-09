@@ -93,7 +93,18 @@ class GroupModel {
     if (userId == creatorId || userId == 'm-you') return true;
     return authorizedWipeUserIds.contains(userId);
   }
+
+  bool get isCurrentUserOwner {
+    final curUserId = ApiClient.instance.userId;
+    if (creatorId == curUserId || (curUserId == null && creatorId == 'm-you')) return true;
+    final user = members.firstWhere(
+      (m) => (curUserId != null && m.id == curUserId) || m.id == 'm-you',
+      orElse: () => const GroupMemberItem(id: '', name: '', phone: '', role: ''),
+    );
+    return user.isOwner;
+  }
 }
+
 
 class GroupController extends ChangeNotifier {
   static const String currentUserId = 'm-you';

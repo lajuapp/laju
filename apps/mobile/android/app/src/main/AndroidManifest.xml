@@ -66,6 +66,25 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
+
+            <!-- Deep linking for laju:// custom scheme -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="laju" />
+            </intent-filter>
+
+            <!-- Deep linking for https://laju.chat/u/* and /contact -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="laju.chat" android:pathPrefix="/u/" />
+                <data android:scheme="https" android:host="laju.chat" android:pathPrefix="/contact" />
+                <data android:scheme="http" android:host="laju.chat" android:pathPrefix="/u/" />
+                <data android:scheme="http" android:host="laju.chat" android:pathPrefix="/contact" />
+            </intent-filter>
         </activity>
         <provider
             android:name="androidx.core.content.FileProvider"
@@ -101,6 +120,10 @@
 
          In particular, this is used by the Flutter engine in io.flutter.plugin.text.ProcessTextPlugin. -->
     <queries>
+        <intent>
+            <action android:name="android.intent.action.SEND"/>
+            <data android:mimeType="*/*"/>
+        </intent>
         <intent>
             <action android:name="android.media.action.IMAGE_CAPTURE"/>
         </intent>

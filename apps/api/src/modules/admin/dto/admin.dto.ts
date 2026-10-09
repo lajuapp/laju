@@ -458,4 +458,19 @@ export class MaintenanceResetDto {
   confirmationCode: string;
 }
 
+export class TrackDownloadEventDto {
+  @IsString()
+  @IsOptional()
+  version?: string;
+
+  @IsString()
+  @IsOptional()
+  source?: string;
+
+  @IsString()
+  @IsOptional()
+  referrer?: string;
+}
+
+
 

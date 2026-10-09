@@ -14,6 +14,7 @@ import { AppVersionPage } from './pages/AppVersionPage';
 import { ReportsPage } from './pages/ReportsPage';
 import { TicketsPage } from './pages/TicketsPage';
 import { MaintenancePage } from './pages/MaintenancePage';
+import { MarketingAnalyticsPage } from './pages/MarketingAnalyticsPage';
 
 export function App() {
   return (
@@ -22,7 +23,9 @@ export function App() {
 
       <Route path="/" element={<AppLayout />}>
         <Route index element={<DashboardPage />} />
+        <Route path="marketing-analytics" element={<MarketingAnalyticsPage />} />
         <Route path="admins" element={<AdminsPage />} />
+
         <Route path="users" element={<UsersPage />} />
         <Route path="devices" element={<DevicesPage />} />
         <Route path="tickets" element={<TicketsPage />} />

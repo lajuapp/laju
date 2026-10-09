@@ -41,8 +41,10 @@ import {
   UpdateAppConfigDto,
   ReviewReportDto,
   UpdateTicketDto,
-  MaintenanceResetDto
+  MaintenanceResetDto,
+  TrackDownloadEventDto
 } from './dto/admin.dto';
+
 import { AdminAuthGuard } from '../../common/guards/admin-auth.guard';
 import { RequirePermissions } from '../../common/decorators/permissions.decorator';
 import { AdminAuditInterceptor } from '../../common/interceptors/admin-audit.interceptor';
@@ -100,12 +102,33 @@ export class AdminController {
     return this.adminService.createAdminSession(dto.roleName, dto.adminIdentifier);
   }
 
-  // ─── DASHBOARD STATS ────────────────────────────────────────────
+  // ─── DASHBOARD & MARKETING STATS ──────────────────────────────
   @Get('stats')
   @UseGuards(AdminAuthGuard)
   getDashboardStats() {
     return this.adminService.getDashboardStats();
   }
+
+  @Get('marketing-stats')
+  @UseGuards(AdminAuthGuard)
+  getMarketingStats() {
+    return this.adminService.getMarketingStats();
+  }
+
+  @Post('app-config/track-download')
+  trackDownload(@Body() dto: TrackDownloadEventDto, @Req() req: Request) {
+    const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip || 'unknown';
+    const userAgent = (req.headers['user-agent'] as string) || '';
+    const referrer = (req.headers['referer'] as string) || dto.referrer || '';
+    return this.adminService.trackDownloadEvent({
+      version: dto.version,
+      source: dto.source || 'PORTAL',
+      ip,
+      userAgent,
+      referrer,
+    });
+  }
+
 
   // ─── ADMIN TEAM MANAGEMENT ──────────────────────────────────────
   @Get('admins')
@@ -844,7 +867,22 @@ export class AdminController {
     const config = await this.adminService.getAppConfig();
     const filename = config.apkFilename || 'laju-latest.apk';
 
+    // Track download event
+    const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip || 'unknown';
+    const userAgent = (req.headers['user-agent'] as string) || '';
+    const referrer = (req.headers['referer'] as string) || '';
+    this.adminService
+      .trackDownloadEvent({
+        version: config.latestAndroidVersion || '1.0.0',
+        source: referrer ? 'REFERRAL' : 'DIRECT',
+        ip,
+        userAgent,
+        referrer,
+      })
+      .catch(() => {});
+
     // 1. Primary: Stream langsung dari SeaweedFS
+
     if (this.seaweedFs) {
       res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
       const streamed = await this.seaweedFs.streamBlob(filename, req, res, 'application/vnd.android.package-archive');

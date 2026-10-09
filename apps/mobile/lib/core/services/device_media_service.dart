@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/services.dart';
 import '../security/app_lock_controller.dart';
 
@@ -212,9 +213,10 @@ class DeviceMediaService {
     }
   }
 
-  /// Shares text and optionally an image file via native OS share sheet (WhatsApp, Telegram, etc.)
+  /// Shares text and optionally an image file or raw image bytes via native OS share sheet (WhatsApp, Telegram, etc.)
   static Future<bool> shareContent({
     required String text,
+    Uint8List? imageBytes,
     String? filePath,
     String? title,
   }) async {
@@ -222,6 +224,7 @@ class DeviceMediaService {
       AppLockController.instance.markExternalIntentStarted();
       final bool? res = await _channel.invokeMethod<bool>('shareContent', {
         'text': text,
+        'imageBytes': imageBytes,
         'filePath': filePath,
         'title': title ?? 'Bagikan Kode QR LAJU',
       });
@@ -231,6 +234,25 @@ class DeviceMediaService {
       return false;
     } catch (_) {
       await Clipboard.setData(ClipboardData(text: text));
+      return false;
+    } finally {
+      AppLockController.instance.markExternalIntentFinished();
+    }
+  }
+
+  /// Saves raw PNG/JPEG image bytes directly to the device Gallery/Photos under Pictures/LAJU
+  static Future<bool> saveImageToGallery({
+    required Uint8List imageBytes,
+    String? fileName,
+  }) async {
+    try {
+      AppLockController.instance.markExternalIntentStarted();
+      final bool? res = await _channel.invokeMethod<bool>('saveImageToGallery', {
+        'imageBytes': imageBytes,
+        'fileName': fileName ?? 'laju_qr_${DateTime.now().millisecondsSinceEpoch}.png',
+      });
+      return res ?? false;
+    } catch (_) {
       return false;
     } finally {
       AppLockController.instance.markExternalIntentFinished();

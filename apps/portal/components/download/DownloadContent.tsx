@@ -24,8 +24,27 @@ export function DownloadContent({
   const badgeText = t('download_badge').replace('{version}', version);
   const releaseNotesTitle = t('download_release_notes').replace('{version}', version);
 
+  const handleDownloadClick = () => {
+    try {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://api.laju.chat';
+      const cleanApiUrl = apiUrl.startsWith('http://') || apiUrl.startsWith('https://')
+        ? apiUrl.replace(/\/+$/, '')
+        : `https://${apiUrl.replace(/\/+$/, '')}`;
+      fetch(`${cleanApiUrl}/admin/app-config/track-download`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          version,
+          source: 'PORTAL_DOWNLOAD_PAGE',
+          referrer: typeof document !== 'undefined' ? document.referrer : '',
+        }),
+      }).catch(() => {});
+    } catch (_) {}
+  };
+
   return (
     <div className="py-16 sm:py-24 bg-[#F5F4EF]">
+
       <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8">
         {/* Back Link */}
         <Link
@@ -81,11 +100,13 @@ export function DownloadContent({
             <a
               href={apkDownloadUrl}
               download
+              onClick={handleDownloadClick}
               className="w-full md:w-auto flex items-center justify-center gap-3 rounded-full bg-[#0D382C] px-8 py-4 text-sm font-bold text-white shadow hover:bg-[#134E3E] hover:-translate-y-0.5 transition-all active:translate-y-0"
             >
               <Download className="h-5 w-5" />
               <span>{t('download_btn')} (v{version})</span>
             </a>
+
           </div>
 
           {releaseNotes && (

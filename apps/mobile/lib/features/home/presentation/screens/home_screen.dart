@@ -1,5 +1,6 @@
 import 'dart:ui' as ui;
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
@@ -51,6 +52,44 @@ class _HomeScreenState extends State<HomeScreen> {
     _loadConversations();
     _loadCallLogs();
     _startConversationsSyncTimer();
+    _checkBatteryOptimization();
+    _checkDeepLinkPayload();
+  }
+
+  void _checkDeepLinkPayload() {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      try {
+        const channel = MethodChannel('com.laju/system_notifications');
+        final payload = await channel.invokeMapMethod<String, dynamic>('getLaunchPayload');
+        if (payload != null && mounted) {
+          if (payload['type'] == 'contact') {
+            final username = (payload['username'] as String?)?.trim() ?? '';
+            if (username.isNotEmpty) {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => NewChatScreen(initialSearchQuery: username)),
+              );
+            }
+          }
+        }
+      } catch (e) {
+        debugPrint('[HomeScreen] _checkDeepLinkPayload error: $e');
+      }
+    });
+  }
+
+  void _checkBatteryOptimization() {
+    if (!Platform.isAndroid) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      try {
+        final isIgnored = await PushNotificationService.instance.isIgnoringBatteryOptimizations();
+        if (!isIgnored && mounted) {
+          await PushNotificationService.instance.requestIgnoreBatteryOptimizations();
+        }
+      } catch (e) {
+        debugPrint('[HomeScreen] _checkBatteryOptimization error: $e');
+      }
+    });
   }
 
   void _startConversationsSyncTimer() {

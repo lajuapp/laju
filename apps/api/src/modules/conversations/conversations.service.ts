@@ -6,7 +6,9 @@ import {
   Optional
 } from '@nestjs/common';
 import * as crypto from 'crypto';
+import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../../infrastructure/prisma/prisma.service';
+
 import { RedisService } from '../../infrastructure/redis/redis.service';
 import { SeaweedFsService } from '../../infrastructure/seaweedfs/seaweedfs.service';
 import { CreateConversationDto, AddMemberDto, ChangeMemberRoleDto, UpdateConversationDto } from './dto/conversation.dto';
@@ -1172,14 +1174,141 @@ export class ConversationsService {
       }
     } catch (_) {}
 
+      return {
+        success: true,
+        deletedCount: deleteResult.count,
+        message: 'Seluruh riwayat obrolan grup telah dihancurkan secara permanen'
+      };
+    }
+
+  async deleteGroup(userId: string, conversationId: string, pin: string) {
+    if (!pin || typeof pin !== 'string') {
+      throw new BadRequestException('Sandi / PIN wajib diisi');
+    }
+
+    const conv = await this.prisma.conversation.findUnique({
+      where: { id: conversationId },
+      include: {
+        members: true
+      }
+    });
+
+    if (!conv) {
+      throw new NotFoundException('Grup tidak ditemukan');
+    }
+
+    if (conv.type !== 'GROUP') {
+      throw new BadRequestException('Hanya percakapan grup yang dapat dihapus');
+    }
+
+    // Check membership and OWNER role
+    const currentMember = conv.members.find((m) => m.userId === userId && m.leftAt === null);
+    if (!currentMember) {
+      throw new ForbiddenException('Bukan anggota dari obrolan grup ini');
+    }
+
+    if (currentMember.role !== 'OWNER') {
+      throw new ForbiddenException('Hanya Pemilik Grup (Owner) yang berhak menghapus grup');
+    }
+
+    // Verify PIN: Prioritize killPinHash if set; fallback to user's twoFactorPin
+    const killPinHash = await this.redis?.get(`conversation:${conversationId}:killPinHash`).catch(() => null);
+    if (killPinHash) {
+      const inputHash = crypto.createHash('sha256').update(pin.trim()).digest('hex');
+      if (inputHash !== killPinHash) {
+        throw new ForbiddenException('Sandi darurat grup salah');
+      }
+    } else {
+      // Fallback: check user's twoFactorPin
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { twoFactorPin: true }
+      });
+      if (user?.twoFactorPin) {
+        const storedPin = user.twoFactorPin.trim();
+        let valid = false;
+        if (storedPin.startsWith('$2a$') || storedPin.startsWith('$2b$')) {
+          valid = await bcrypt.compare(pin.trim(), storedPin);
+        } else {
+          valid = storedPin === pin.trim();
+        }
+        if (!valid) {
+          throw new ForbiddenException('PIN akun salah');
+        }
+      } else {
+        // If no PIN has been set anywhere, check for default or require length >= 4
+        if (pin.trim().length < 4) {
+          throw new BadRequestException('PIN minimal 4 digit');
+        }
+      }
+    }
+
+    // 1. Clean up attachments from SeaweedFS
+    try {
+      const attachments = await this.prisma.attachment.findMany({
+        where: { message: { conversationId } },
+        select: { blobId: true }
+      });
+      if (this.seaweedFs && attachments.length > 0) {
+        for (const att of attachments) {
+          if (att.blobId) {
+            this.seaweedFs.deleteBlob(att.blobId).catch(() => {});
+          }
+        }
+      }
+    } catch (_) {}
+
+    // 2. Broadcast realtime GROUP_DELETED event to all active members BEFORE deleting records
+    const activeMembers = conv.members.filter((m) => m.leftAt === null);
+    try {
+      const publisher = this.redis?.getClient();
+      if (publisher) {
+        const payload = JSON.stringify({
+          type: 'GROUP_DELETED',
+          conversationId,
+          deletedBy: userId,
+          timestamp: new Date().toISOString()
+        });
+        for (const m of activeMembers) {
+          publisher.publish(`user:${m.userId}`, payload).catch(() => {});
+        }
+      }
+    } catch (_) {}
+
+    // 3. Clean up Redis keys
+    if (this.redis) {
+      try {
+        await Promise.all([
+          this.redis.del(`conversation:${conversationId}:description`),
+          this.redis.del(`conversation:${conversationId}:avatarUrl`),
+          this.redis.del(`conversation:${conversationId}:wallpaperId`),
+          this.redis.del(`conversation:${conversationId}:killPinHash`),
+          this.redis.del(`conversation:${conversationId}:authorizedWipeUserIds`),
+          this.redis.del(`conversation:${conversationId}:permissions`),
+          this.redis.del(`conversation:${conversationId}:messages`),
+          this.redis.del(`conversation:${conversationId}:lastMessage`),
+          this.redis.del(`conversation:${conversationId}:purgedAt`)
+        ]);
+      } catch (_) {}
+    }
+
+    // 4. Cascade delete database records (messages, members, events, and conversation itself)
+    await this.prisma.$transaction(async (tx) => {
+      await tx.message.deleteMany({ where: { conversationId } });
+      await tx.conversationMember.deleteMany({ where: { conversationId } });
+      await tx.conversationEvent.deleteMany({ where: { conversationId } });
+      await tx.conversationAccessGrant.deleteMany({ where: { conversationId } });
+      await tx.conversation.delete({ where: { id: conversationId } });
+    });
+
     return {
       success: true,
-      deletedCount: deleteResult.count,
-      message: 'Seluruh riwayat obrolan grup telah dihancurkan secara permanen'
+      message: 'Grup berhasil dihapus secara permanen untuk semua anggota'
     };
   }
 
   async clearChatForMe(userId: string, conversationId: string) {
+
     let effectiveConversationId = conversationId;
     let member = await this.prisma.conversationMember.findFirst({
       where: { conversationId: effectiveConversationId, userId, leftAt: null }

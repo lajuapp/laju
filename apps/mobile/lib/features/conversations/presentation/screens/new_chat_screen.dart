@@ -27,7 +27,8 @@ class ContactItem {
 }
 
 class NewChatScreen extends StatefulWidget {
-  const NewChatScreen({super.key});
+  final String? initialSearchQuery;
+  const NewChatScreen({super.key, this.initialSearchQuery});
 
   @override
   State<NewChatScreen> createState() => _NewChatScreenState();
@@ -43,6 +44,10 @@ class _NewChatScreenState extends State<NewChatScreen> {
     super.initState();
     AccountController.instance.addListener(_loadSavedContacts);
     _loadSavedContacts();
+    if (widget.initialSearchQuery != null && widget.initialSearchQuery!.trim().isNotEmpty) {
+      _isSearching = true;
+      _searchController.text = widget.initialSearchQuery!.trim();
+    }
   }
 
   void _loadSavedContacts() {

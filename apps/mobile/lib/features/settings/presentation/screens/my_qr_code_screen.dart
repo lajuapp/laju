@@ -31,30 +31,25 @@ class _MyQrCodeScreenState extends State<MyQrCodeScreen> with TickerProviderStat
     );
   }
 
-  void _copyContactLink() {
-    HapticFeedback.selectionClick();
+  String _getContactWebLink() {
     final ctrl = AccountController.instance;
-    final myUserId = AuthController.instance.currentUser?.id ?? '';
-    final link = 'laju://contact?u=${Uri.encodeComponent(ctrl.userName)}&id=$myUserId&v=$_qrVersion';
-    Clipboard.setData(ClipboardData(text: link));
-    LajuToast.success(context, 'Tautan kontak disalin ke papan klip');
+    return 'https://laju.chat/u/${Uri.encodeComponent(ctrl.userName)}';
   }
 
-  Future<void> _shareQrCode() async {
+  void _copyContactLink() {
     HapticFeedback.selectionClick();
-    final ctrl = AccountController.instance;
-    final myUserId = AuthController.instance.currentUser?.id ?? '';
-    final link = 'laju://contact?u=${Uri.encodeComponent(ctrl.userName)}&id=$myUserId&v=$_qrVersion';
-    final shareText =
-        'Pindai kode QR saya untuk menambahkan kontak terenkripsi di LAJU:\n$link';
+    final link = _getContactWebLink();
+    Clipboard.setData(ClipboardData(text: link));
+    LajuToast.success(context, context.tr('contactLinkCopied'));
+  }
 
+  Future<Uint8List?> _captureQrBytes() async {
     // If currently on scan code tab, animate to my code tab first so card is in tree
     if (_tabController.index != 0) {
       _tabController.animateTo(0);
       await Future.delayed(const Duration(milliseconds: 250));
     }
 
-    String? imagePath;
     try {
       final boundary =
           _qrCardKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
@@ -65,32 +60,61 @@ class _MyQrCodeScreenState extends State<MyQrCodeScreen> with TickerProviderStat
         final uiImage = await boundary.toImage(pixelRatio: 3.0);
         final byteData = await uiImage.toByteData(format: ui.ImageByteFormat.png);
         if (byteData != null) {
-          final tempDir = Directory.systemTemp;
-          final file = File('${tempDir.path}/laju_qr_${ctrl.userName}.png');
-          await file.writeAsBytes(byteData.buffer.asUint8List(), flush: true);
-          if (file.existsSync()) {
-            imagePath = file.path;
-          }
+          return byteData.buffer.asUint8List();
         }
       }
     } catch (e) {
       debugPrint('[MyQrCodeScreen] Error capturing QR card: $e');
     }
+    return null;
+  }
+
+  Future<void> _shareQrCode() async {
+    HapticFeedback.selectionClick();
+    final webLink = _getContactWebLink();
+    final shareText =
+        'Pindai kode QR atau buka tautan untuk menambahkan kontak terenkripsi di LAJU:\n$webLink';
+
+    final imageBytes = await _captureQrBytes();
 
     final success = await DeviceMediaService.shareContent(
       text: shareText,
-      filePath: imagePath,
+      imageBytes: imageBytes,
       title: 'Bagikan Kode QR Kontak LAJU',
     );
 
     if (mounted) {
-      if (success) {
-        LajuToast.success(context, 'Membuka menu bagikan...');
-      } else {
+      if (!success) {
         await Clipboard.setData(ClipboardData(text: shareText));
         if (mounted) {
-          LajuToast.success(context, 'Tautan kontak disalin ke papan klip');
+          LajuToast.success(context, context.tr('contactLinkCopied'));
         }
+      }
+    }
+  }
+
+  Future<void> _saveQrToGallery() async {
+    HapticFeedback.selectionClick();
+    final ctrl = AccountController.instance;
+
+    final imageBytes = await _captureQrBytes();
+    if (imageBytes == null) {
+      if (mounted) {
+        LajuToast.error(context, context.tr('saveGalleryFailed'));
+      }
+      return;
+    }
+
+    final success = await DeviceMediaService.saveImageToGallery(
+      imageBytes: imageBytes,
+      fileName: 'laju_qr_${ctrl.userName}.png',
+    );
+
+    if (mounted) {
+      if (success) {
+        LajuToast.success(context, context.tr('qrSavedToGallery'));
+      } else {
+        LajuToast.error(context, context.tr('saveGalleryFailed'));
       }
     }
   }
@@ -182,7 +206,9 @@ class _MyQrCodeScreenState extends State<MyQrCodeScreen> with TickerProviderStat
             icon: Icon(Icons.more_vert_rounded, color: isDark ? Colors.white : const Color(0xFF111827)),
             color: isDark ? AppColors.darkSurfaceElevated : Colors.white,
             onSelected: (val) {
-              if (val == 'reset') {
+              if (val == 'save') {
+                _saveQrToGallery();
+              } else if (val == 'reset') {
                 _confirmResetQrCode(context);
               } else if (val == 'copy') {
                 _copyContactLink();
@@ -190,12 +216,22 @@ class _MyQrCodeScreenState extends State<MyQrCodeScreen> with TickerProviderStat
             },
             itemBuilder: (ctx) => [
               PopupMenuItem(
+                value: 'save',
+                child: Row(
+                  children: [
+                    const Icon(Icons.download_rounded, size: 20),
+                    const SizedBox(width: 10),
+                    Text(context.tr('saveToGallery')),
+                  ],
+                ),
+              ),
+              PopupMenuItem(
                 value: 'copy',
                 child: Row(
                   children: [
                     const Icon(Icons.copy_rounded, size: 20),
                     const SizedBox(width: 10),
-                    const Text('Salin Tautan Kontak'),
+                    Text(context.tr('copyContactLink')),
                   ],
                 ),
               ),
@@ -327,16 +363,47 @@ class _MyQrCodeScreenState extends State<MyQrCodeScreen> with TickerProviderStat
 
             const SizedBox(height: 20),
 
-            OutlinedButton.icon(
-              style: OutlinedButton.styleFrom(
-                foregroundColor: AppColors.primary,
-                side: const BorderSide(color: AppColors.primary, width: 1.5),
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-              ),
-              icon: const Icon(Icons.share_outlined, size: 18),
-              label: Text(context.tr('shareQrCode'), style: const TextStyle(fontWeight: FontWeight.w700)),
-              onPressed: _shareQrCode,
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: isDark ? Colors.white : const Color(0xFF1F2937),
+                      side: BorderSide(
+                        color: isDark ? AppColors.darkSurfaceBorder : const Color(0xFFD1D5DB),
+                        width: 1.2,
+                      ),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    ),
+                    icon: const Icon(Icons.download_rounded, size: 18),
+                    label: Text(
+                      context.tr('saveToGallery'),
+                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5),
+                    ),
+                    onPressed: _saveQrToGallery,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    ),
+                    icon: const Icon(Icons.share_outlined, size: 18),
+                    label: Text(
+                      context.tr('shareQrCode'),
+                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5),
+                    ),
+                    onPressed: _shareQrCode,
+                  ),
+                ),
+              ],
             ),
           ],
         ),

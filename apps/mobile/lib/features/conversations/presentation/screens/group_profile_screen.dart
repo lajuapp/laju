@@ -403,7 +403,7 @@ class _GroupProfileScreenState extends State<GroupProfileScreen> {
           backgroundColor: isDark ? AppColors.darkSurface : Colors.white,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           title: Text(
-            'Keluar dari grup $groupName?',
+            '${context.tr('exitGroup')} $groupName?',
             style: TextStyle(
               color: isDark ? Colors.white : const Color(0xFF111827),
               fontWeight: FontWeight.bold,
@@ -414,13 +414,13 @@ class _GroupProfileScreenState extends State<GroupProfileScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Anda adalah Pemilik grup ini. Saat Anda keluar, kepemilikan grup akan otomatis diserahkan ke admin atau anggota paling senior.',
+                context.tr('ownerExitGroupWarning'),
                 style: TextStyle(color: isDark ? Colors.white70 : const Color(0xFF4B5563)),
               ),
               const SizedBox(height: 12),
-              const Text(
-                'Anda tidak akan dapat mengirim atau menerima pesan lagi di grup ini.',
-                style: TextStyle(color: AppColors.danger, fontSize: 13),
+              Text(
+                context.tr('exitGroupConfirmDesc'),
+                style: const TextStyle(color: AppColors.danger, fontSize: 13),
               ),
             ],
           ),
@@ -437,10 +437,10 @@ class _GroupProfileScreenState extends State<GroupProfileScreen> {
                 if (mounted) {
                   Navigator.pop(context);
                   Navigator.pop(context);
-                  LajuToast.info(context, 'Anda telah keluar dari $groupName');
+                  LajuToast.info(context, context.tr('leftGroupSuccess'));
                 }
               },
-              child: const Text('Keluar & Serahkan', style: TextStyle(color: Colors.white)),
+              child: Text(context.tr('exitAndTransfer'), style: const TextStyle(color: Colors.white)),
             ),
           ],
         ),
@@ -454,14 +454,14 @@ class _GroupProfileScreenState extends State<GroupProfileScreen> {
         backgroundColor: isDark ? AppColors.darkSurface : Colors.white,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Text(
-          'Keluar dari grup $groupName?',
+          '${context.tr('exitGroup')} $groupName?',
           style: TextStyle(
             color: isDark ? Colors.white : const Color(0xFF111827),
             fontWeight: FontWeight.bold,
           ),
         ),
-        content: const Text(
-          'Anda tidak akan dapat mengirim atau menerima pesan lagi di grup ini setelah keluar.',
+        content: Text(
+          context.tr('exitGroupConfirmDesc'),
         ),
         actions: [
           TextButton(
@@ -476,10 +476,10 @@ class _GroupProfileScreenState extends State<GroupProfileScreen> {
               if (mounted) {
                 Navigator.pop(context); // Exit group profile
                 Navigator.pop(context); // Exit group chat screen back to home
-                LajuToast.info(context, 'Anda telah keluar dari $groupName');
+                LajuToast.info(context, context.tr('leftGroupSuccess'));
               }
             },
-            child: const Text('Keluar', style: TextStyle(color: Colors.white)),
+            child: Text(context.tr('exitGroup'), style: const TextStyle(color: Colors.white)),
           ),
         ],
       ),
@@ -512,7 +512,7 @@ class _GroupProfileScreenState extends State<GroupProfileScreen> {
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  'Hancurkan Chat Grup?',
+                  context.tr('destructiveWipeConfirmTitle'),
                   style: TextStyle(
                     fontSize: 16.5,
                     fontWeight: FontWeight.bold,
@@ -527,7 +527,7 @@ class _GroupProfileScreenState extends State<GroupProfileScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'PERINGATAN: Tindakan ini akan menghapus SEMUA riwayat obrolan grup ini secara permanen dari server dan semua perangkat anggota. Pesan tidak dapat dipulihkan.',
+                context.tr('destructiveWipeConfirmDesc'),
                 style: TextStyle(
                   fontSize: 12.5,
                   color: isDark ? const Color(0xFFFCA5A5) : const Color(0xFFB91C1C),
@@ -537,7 +537,7 @@ class _GroupProfileScreenState extends State<GroupProfileScreen> {
               ),
               const SizedBox(height: 14),
               Text(
-                'Masukkan PIN Darurat untuk melanjutkan:',
+                context.tr('destructiveWipePinPrompt'),
                 style: TextStyle(
                   fontSize: 12.5,
                   color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
@@ -561,10 +561,10 @@ class _GroupProfileScreenState extends State<GroupProfileScreen> {
                   letterSpacing: 4.0,
                 ),
                 decoration: InputDecoration(
-                  hintText: 'PIN (4-6 Digit)',
+                  hintText: '••••••',
                   hintStyle: TextStyle(
                     color: isDark ? const Color(0xFF64748B) : const Color(0xFF94A3B8),
-                    letterSpacing: 0,
+                    letterSpacing: 4,
                   ),
                   prefixIcon: const Icon(Icons.pin_rounded, color: AppColors.danger),
                   suffixIcon: IconButton(
@@ -598,7 +598,7 @@ class _GroupProfileScreenState extends State<GroupProfileScreen> {
             TextButton(
               onPressed: isWiping ? null : () => Navigator.pop(dialogCtx),
               child: Text(
-                'Batal',
+                context.tr('cancel'),
                 style: TextStyle(
                   color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
                 ),
@@ -615,7 +615,7 @@ class _GroupProfileScreenState extends State<GroupProfileScreen> {
                   : () async {
                       final pin = pinController.text.trim();
                       if (pin.length < 4 || pin.length > 6) {
-                        LajuToast.error(context, 'Masukkan 4-6 digit PIN');
+                        LajuToast.error(context, context.tr('enterValidPin'));
                         return;
                       }
 
@@ -627,7 +627,7 @@ class _GroupProfileScreenState extends State<GroupProfileScreen> {
                           Navigator.pop(dialogCtx);
                         }
                         if (context.mounted) {
-                          LajuToast.success(context, 'Riwayat obrolan grup berhasil dihancurkan untuk semua orang');
+                          LajuToast.success(context, context.tr('destructiveWipeSuccess'));
                         }
                       } catch (e) {
                         setDialogState(() => isWiping = false);
@@ -643,9 +643,9 @@ class _GroupProfileScreenState extends State<GroupProfileScreen> {
                       height: 18,
                       child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
                     )
-                  : const Text(
-                      'Hancurkan Riwayat',
-                      style: TextStyle(fontWeight: FontWeight.bold),
+                  : Text(
+                      context.tr('delete'),
+                      style: const TextStyle(fontWeight: FontWeight.bold),
                     ),
             ),
           ],
@@ -654,7 +654,174 @@ class _GroupProfileScreenState extends State<GroupProfileScreen> {
     );
   }
 
+
+  void _showDeleteGroupDialog() {
+    final isDark = ThemeModeController.instance.isDarkMode(context);
+    final pinController = TextEditingController();
+    bool obscurePin = true;
+    bool isDeleting = false;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogCtx) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppColors.danger.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(Icons.delete_forever_rounded, color: AppColors.danger, size: 22),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  context.tr('deleteGroupConfirmTitle'),
+                  style: TextStyle(
+                    fontSize: 16.5,
+                    fontWeight: FontWeight.bold,
+                    color: isDark ? Colors.white : const Color(0xFF0F172A),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                context.tr('deleteGroupConfirmDesc'),
+                style: TextStyle(
+                  fontSize: 13,
+                  color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+                  height: 1.4,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                context.tr('deleteGroupPinPrompt'),
+                style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w600,
+                  color: isDark ? const Color(0xFFCBD5E1) : const Color(0xFF334155),
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: pinController,
+                obscureText: obscurePin,
+                keyboardType: TextInputType.number,
+                maxLength: 6,
+                style: TextStyle(
+                  color: isDark ? Colors.white : const Color(0xFF0F172A),
+                  letterSpacing: 4,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+                decoration: InputDecoration(
+                  hintText: '••••••',
+                  hintStyle: TextStyle(
+                    color: isDark ? const Color(0xFF64748B) : const Color(0xFF94A3B8),
+                    letterSpacing: 4,
+                  ),
+                  suffixIcon: IconButton(
+                    icon: Icon(
+                      obscurePin ? Icons.visibility_off : Icons.visibility,
+                      color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+                      size: 20,
+                    ),
+                    onPressed: () {
+                      setDialogState(() => obscurePin = !obscurePin);
+                    },
+                  ),
+                  counterText: '',
+                  filled: true,
+                  fillColor: isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(
+                      color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
+                    ),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: AppColors.danger, width: 1.5),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: isDeleting ? null : () => Navigator.pop(dialogCtx),
+              child: Text(
+                context.tr('cancel'),
+                style: TextStyle(
+                  color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+                ),
+              ),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.danger,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+              onPressed: isDeleting
+                  ? null
+                  : () async {
+                      final pin = pinController.text.trim();
+                      if (pin.length < 4 || pin.length > 6) {
+                        LajuToast.error(context, context.tr('enterValidPin'));
+                        return;
+                      }
+
+                      setDialogState(() => isDeleting = true);
+
+                      try {
+                        await ConversationService.instance.deleteGroup(widget.groupId, pin);
+                        if (dialogCtx.mounted) {
+                          Navigator.pop(dialogCtx);
+                        }
+                        if (context.mounted) {
+                          Navigator.pop(context); // Pop profile
+                          Navigator.pop(context); // Pop chat screen back to home
+                          LajuToast.success(context, context.tr('deleteGroupSuccess'));
+                        }
+                      } catch (e) {
+                        setDialogState(() => isDeleting = false);
+                        final msg = e.toString().replaceAll('Exception: ', '');
+                        if (context.mounted) {
+                          LajuToast.error(context, msg);
+                        }
+                      }
+                    },
+              child: isDeleting
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                    )
+                  : Text(
+                      context.tr('deleteGroup'),
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+
   void _confirmTransferOwnership(GroupMemberItem member) {
+
     final isDark = ThemeModeController.instance.isDarkMode(context);
 
     showDialog(
@@ -1297,9 +1464,9 @@ class _GroupProfileScreenState extends State<GroupProfileScreen> {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          const Text(
-                            'Deskripsi Grup',
-                            style: TextStyle(
+                          Text(
+                            context.tr('groupDescription'),
+                            style: const TextStyle(
                               fontSize: 13,
                               fontWeight: FontWeight.w700,
                               color: AppColors.primary,
@@ -1319,7 +1486,7 @@ class _GroupProfileScreenState extends State<GroupProfileScreen> {
                       Text(
                         group.description.isNotEmpty
                             ? group.description
-                            : 'Tambahkan deskripsi grup...',
+                            : context.tr('groupDescriptionHint'),
                         style: TextStyle(
                           fontSize: 14.5,
                           color: group.description.isNotEmpty ? textPrimary : textSecondary,
@@ -1328,7 +1495,7 @@ class _GroupProfileScreenState extends State<GroupProfileScreen> {
                       ),
                       const SizedBox(height: 6),
                       Text(
-                        'Dibuat oleh Anda',
+                        context.tr('createdByYou'),
                         style: TextStyle(fontSize: 12, color: textSecondary),
                       ),
                     ],
@@ -1377,11 +1544,11 @@ class _GroupProfileScreenState extends State<GroupProfileScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Padding(
-                        padding: EdgeInsets.fromLTRB(16, 8, 16, 4),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
                         child: Text(
-                          'Enkripsi & Keamanan Grup',
-                          style: TextStyle(
+                          context.tr('groupSecurity'),
+                          style: const TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.w700,
                             color: AppColors.primary,
@@ -1417,7 +1584,7 @@ class _GroupProfileScreenState extends State<GroupProfileScreen> {
                           child: const Icon(Icons.timer_outlined, color: AppColors.cyan, size: 20),
                         ),
                         title: Text(
-                          'Pesan Sementara',
+                          context.tr('disappearingMessages'),
                           style: TextStyle(fontWeight: FontWeight.w600, color: textPrimary, fontSize: 14.5),
                         ),
                         subtitle: Text(
@@ -1478,7 +1645,7 @@ class _GroupProfileScreenState extends State<GroupProfileScreen> {
                       child: const Icon(Icons.perm_media_rounded, color: Colors.purpleAccent, size: 20),
                     ),
                     title: Text(
-                      'Media, Tautan, dan Dokumen',
+                      context.tr('groupMediaTitle'),
                       style: TextStyle(fontWeight: FontWeight.w600, color: textPrimary, fontSize: 14.5),
                     ),
                     subtitle: Text(
@@ -1637,32 +1804,49 @@ class _GroupProfileScreenState extends State<GroupProfileScreen> {
                       if (group.hasKillPin && group.canUserWipe(curUserId)) ...[
                         ListTile(
                           leading: const Icon(Icons.warning_amber_rounded, color: AppColors.danger),
-                          title: const Text(
-                            'Hancurkan Riwayat Grup',
-                            style: TextStyle(fontWeight: FontWeight.w600, color: AppColors.danger, fontSize: 14.5),
+                          title: Text(
+                            context.tr('destructiveWipeGroup'),
+                            style: const TextStyle(fontWeight: FontWeight.w600, color: AppColors.danger, fontSize: 14.5),
                           ),
-                          subtitle: const Text(
-                            'Hapus seluruh riwayat pesan untuk semua anggota secara permanen',
-                            style: TextStyle(fontSize: 12, color: AppColors.danger),
+                          subtitle: Text(
+                            context.tr('destructiveWipeSubtitle'),
+                            style: const TextStyle(fontSize: 12, color: AppColors.danger),
                           ),
                           onTap: _showDestructiveWipeDialog,
                         ),
                         Divider(height: 1, indent: 56, color: isDark ? Colors.white10 : Colors.black12),
                       ],
+                      if (group.isCurrentUserOwner) ...[
+                        ListTile(
+                          leading: const Icon(Icons.delete_forever_rounded, color: AppColors.danger),
+                          title: Text(
+                            context.tr('deleteGroup'),
+                            style: const TextStyle(fontWeight: FontWeight.w600, color: AppColors.danger, fontSize: 14.5),
+                          ),
+                          subtitle: Text(
+                            context.tr('deleteGroupSubtitle'),
+                            style: const TextStyle(fontSize: 12, color: AppColors.danger),
+                          ),
+                          onTap: _showDeleteGroupDialog,
+                        ),
+                        Divider(height: 1, indent: 56, color: isDark ? Colors.white10 : Colors.black12),
+                      ],
                       ListTile(
                         leading: const Icon(Icons.exit_to_app_rounded, color: AppColors.danger),
-                        title: const Text(
-                          'Keluar dari Grup',
-                          style: TextStyle(fontWeight: FontWeight.w600, color: AppColors.danger, fontSize: 14.5),
+                        title: Text(
+                          context.tr('exitGroup'),
+                          style: const TextStyle(fontWeight: FontWeight.w600, color: AppColors.danger, fontSize: 14.5),
                         ),
                         onTap: () => _confirmExitGroup(group.name),
                       ),
                       Divider(height: 1, indent: 56, color: isDark ? Colors.white10 : Colors.black12),
+
+
                       ListTile(
                         leading: const Icon(Icons.thumb_down_alt_rounded, color: AppColors.danger),
-                        title: const Text(
-                          'Laporkan Grup',
-                          style: TextStyle(fontWeight: FontWeight.w600, color: AppColors.danger, fontSize: 14.5),
+                        title: Text(
+                          context.tr('reportGroup'),
+                          style: const TextStyle(fontWeight: FontWeight.w600, color: AppColors.danger, fontSize: 14.5),
                         ),
                         onTap: () {
                           showReportUserSheet(
