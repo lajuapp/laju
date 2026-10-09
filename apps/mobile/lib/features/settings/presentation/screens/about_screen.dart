@@ -57,11 +57,13 @@ class AboutScreen extends StatelessWidget {
                     ListenableBuilder(
                       listenable: AppUpdateController.instance,
                       builder: (context, _) {
-                        final v = AppUpdateController.instance.currentVersion;
-                        final template = context.tr('aboutVersion');
-                        final formatted = template.replaceAll(RegExp(r'\d+\.\d+\.\d+'), v);
+                        final v = AppUpdateController.instance.currentVersion.isNotEmpty
+                            ? AppUpdateController.instance.currentVersion
+                            : AppConstants.appVersion;
+                        final versionLabel = context.tr('version');
+                        final edition = context.tr('openSourceEdition');
                         return Text(
-                          formatted,
+                          '$versionLabel $v ($edition)',
                           style: TextStyle(
                             fontSize: 13,
                             color: isDark ? AppColors.darkTextSecondary : const Color(0xFF64748B),
