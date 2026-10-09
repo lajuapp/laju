@@ -1165,7 +1165,7 @@ class AuthController extends ChangeNotifier {
           'platform': Platform.isIOS ? 'ios' : 'android',
           'deviceModel': resolvedModel,
           'osVersion': resolvedOs,
-          'appVersion': '1.0.0-tactical',
+          'appVersion': AppUpdateController.instance.currentVersion,
           'registrationLocation': resolvedLocation,
           'pushToken': resolvedPushToken,
           if (pin != null && pin.trim().isNotEmpty) 'pin': pin.trim(),

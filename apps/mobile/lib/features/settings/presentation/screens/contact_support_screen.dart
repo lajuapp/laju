@@ -48,7 +48,7 @@ class _ContactSupportScreenState extends State<ContactSupportScreen> {
           'subject': _subjectController.text.trim(),
           'message': _messageController.text.trim(),
           'category': _selectedCategoryKey,
-          'appVersion': '1.0.0-tactical',
+          'appVersion': AppUpdateController.instance.currentVersion,
         },
       );
 

@@ -3,6 +3,7 @@ import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import '../config/env_config.dart';
+import '../constants/app_constants.dart';
 import '../network/api_client.dart';
 import '../network/api_endpoints.dart';
 
@@ -64,8 +65,8 @@ class AppUpdateController extends ChangeNotifier {
 
   static const MethodChannel _deviceChannel = MethodChannel('com.laju/device');
 
-  String _currentVersion = '1.0.1';
-  int _currentVersionCode = 2;
+  String _currentVersion = AppConstants.appVersion;
+  int _currentVersionCode = AppConstants.appBuildNumber;
   AppSystemConfig? _serverConfig;
   AppUpdateStatus _status = AppUpdateStatus.upToDate;
   bool _isChecking = false;

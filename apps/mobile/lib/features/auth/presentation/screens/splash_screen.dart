@@ -96,12 +96,15 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
                   ),
                 ),
                 const Spacer(),
-                Text(
-                  'Version ${AppVersionController.instance.currentVersion}',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: Colors.white.withValues(alpha: 0.4),
-                    letterSpacing: 0.5,
+                ListenableBuilder(
+                  listenable: AppUpdateController.instance,
+                  builder: (context, _) => Text(
+                    'Version ${AppUpdateController.instance.currentVersion}',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Colors.white.withValues(alpha: 0.4),
+                      letterSpacing: 0.5,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 20),

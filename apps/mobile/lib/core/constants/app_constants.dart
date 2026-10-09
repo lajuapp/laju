@@ -1,5 +1,7 @@
 class AppConstants {
   static const String appName = 'LAJU';
+  static const String appVersion = '1.0.1';
+  static const int appBuildNumber = 2;
   static const String appTagline = 'High-Assurance Secure Communications';
   static const String e2eeActiveText = 'E2EE ACTIVE';
   static const String encryptedPlaceholder = 'LAJU encrypted message...';

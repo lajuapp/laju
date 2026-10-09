@@ -54,13 +54,21 @@ class AboutScreen extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 4),
-                    Text(
-                      context.tr('aboutVersion'),
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: isDark ? AppColors.darkTextSecondary : const Color(0xFF64748B),
-                        fontWeight: FontWeight.w500,
-                      ),
+                    ListenableBuilder(
+                      listenable: AppUpdateController.instance,
+                      builder: (context, _) {
+                        final v = AppUpdateController.instance.currentVersion;
+                        final template = context.tr('aboutVersion');
+                        final formatted = template.replaceAll(RegExp(r'\d+\.\d+\.\d+'), v);
+                        return Text(
+                          formatted,
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: isDark ? AppColors.darkTextSecondary : const Color(0xFF64748B),
+                            fontWeight: FontWeight.w500,
+                          ),
+                        );
+                      },
                     ),
                     const SizedBox(height: 12),
                     Container(
