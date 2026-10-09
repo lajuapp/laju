@@ -9,7 +9,7 @@ import 'package:laju_mobile/features/settings/presentation/screens/biometric_set
 import 'device_migration_screen.dart';
 import 'backup_identity_screen.dart';
 import 'package:laju_mobile/features/settings/presentation/screens/passkeys_screen.dart';
-import '../../settings/domain/account_controller.dart';
+import 'package:laju_mobile/features/settings/domain/account_controller.dart';
 
 class SecurityScreen extends StatefulWidget {
   const SecurityScreen({super.key});

@@ -1366,8 +1366,8 @@ class _ActiveGroupCallScreenState extends State<ActiveGroupCallScreen>
                               contentPadding: EdgeInsets.zero,
                               leading: ModernAvatar(name: name, imagePath: user.avatarUrl, radius: 18),
                               title: Text(name, style: TextStyle(color: textPrimary, fontSize: 14)),
-                              subtitle: user.phoneNumber != null
-                                  ? Text(user.phoneNumber, style: TextStyle(color: textSecondary, fontSize: 11))
+                              subtitle: (user.phoneNumber != null && user.phoneNumber!.isNotEmpty)
+                                  ? Text(user.phoneNumber!, style: TextStyle(color: textSecondary, fontSize: 11))
                                   : null,
                               trailing: IconButton(
                                 icon: const Icon(Icons.add_call, color: AppColors.primary),
