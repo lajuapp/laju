@@ -316,7 +316,7 @@ class AboutScreen extends StatelessWidget {
                         showLicensePage(
                           context: context,
                           applicationName: 'LAJU',
-                          applicationVersion: '1.0.1',
+                          applicationVersion: AppUpdateController.instance.currentVersion,
                         );
                       },
                     ),

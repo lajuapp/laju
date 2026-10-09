@@ -107,6 +107,10 @@ class ApiEndpoints {
   // Dynamic Content (Wallpapers & Stickers from Backoffice)
   static const String publicWallpapers = '/admin/wallpapers/public';
   static const String publicStickers = '/admin/stickers/public';
+
+  // App System Config & Update
+  static const String publicAppConfig = '/admin/app-config/public';
+  static const String downloadApk = '/admin/app-config/download-apk';
 }
 
 

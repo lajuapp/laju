@@ -37,6 +37,8 @@ export 'services/local_database.dart';
 export 'services/push_notification_service.dart';
 export 'services/foreground_sync_service.dart';
 export 'services/location_service.dart';
+export 'widgets/app_update_gate.dart';
+export 'services/app_update_controller.dart';
 export 'services/call_permission_service.dart';
 
 export 'config/env_config.dart';

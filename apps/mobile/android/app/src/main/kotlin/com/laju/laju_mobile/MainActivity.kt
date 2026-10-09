@@ -1290,6 +1290,32 @@ class MainActivity : FlutterFragmentActivity() {
                         result.success("Android Device")
                     }
                 }
+                "getAppVersion" -> {
+                    try {
+                        val pInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                            packageManager.getPackageInfo(packageName, PackageManager.PackageInfoFlags.of(0))
+                        } else {
+                            @Suppress("DEPRECATION")
+                            packageManager.getPackageInfo(packageName, 0)
+                        }
+                        val vName = pInfo.versionName ?: "1.0.0"
+                        val vCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                            pInfo.longVersionCode
+                        } else {
+                            @Suppress("DEPRECATION")
+                            pInfo.versionCode.toLong()
+                        }
+                        result.success(mapOf(
+                            "versionName" to vName,
+                            "versionCode" to vCode
+                        ))
+                    } catch (e: Exception) {
+                        result.success(mapOf(
+                            "versionName" to "1.0.0",
+                            "versionCode" to 1L
+                        ))
+                    }
+                }
                 "getStorageStats" -> {
                     try {
                         val path = Environment.getDataDirectory()

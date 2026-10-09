@@ -22,6 +22,7 @@ void main() async {
   await AppLockController.instance.init();
   await AccountController.instance.init();
   await PrivacyController.instance.init();
+  await AppVersionController.instance.init();
   ChatWebSocketService.instance; // Ensure WS callbacks are registered on ApiClient
   await AuthController.instance.initSession();
   if (AuthController.instance.isAuthenticated) {
@@ -68,7 +69,9 @@ class LajuApp extends StatelessWidget {
           darkTheme: AppTheme.darkTheme,
           themeMode: currentThemeMode,
           builder: (context, child) => FloatingCallOverlay(
-            child: AppLockGate(child: child ?? const SizedBox.shrink()),
+            child: AppUpdateGate(
+              child: AppLockGate(child: child ?? const SizedBox.shrink()),
+            ),
           ),
           home: AuthController.instance.isSuspended
               ? SuspendedAccountScreen(reason: AuthController.instance.suspendedReason)
