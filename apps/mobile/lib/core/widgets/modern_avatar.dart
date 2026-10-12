@@ -69,16 +69,25 @@ class ModernAvatar extends StatelessWidget {
       } catch (_) {
         normalizedPath = trimmed.replaceFirst('file://', '');
       }
+    // Never treat video URLs or video data as avatar images
+    final isVideo = normalizedPath.endsWith('.mp4') ||
+        normalizedPath.endsWith('.mov') ||
+        normalizedPath.endsWith('.webm') ||
+        normalizedPath.startsWith('data:video');
+    if (isVideo) {
+      return null;
     }
 
-    final isNetwork = normalizedPath.startsWith('http://') ||
-        normalizedPath.startsWith('https://') ||
-        normalizedPath.startsWith('/attachments/') ||
-        normalizedPath.startsWith('attachments/') ||
-        normalizedPath.startsWith('/admin/') ||
-        normalizedPath.startsWith('admin/');
     final isBase64 = normalizedPath.startsWith('data:image') || normalizedPath.startsWith('data:application');
-    final isLocalFile = !isNetwork && !isBase64 && File(normalizedPath).existsSync();
+    final isLocalFile = !isBase64 &&
+        !normalizedPath.startsWith('http://') &&
+        !normalizedPath.startsWith('https://') &&
+        File(normalizedPath).existsSync();
+    final isNetwork = !isBase64 && !isLocalFile && (
+        normalizedPath.startsWith('http://') ||
+        normalizedPath.startsWith('https://') ||
+        normalizedPath.startsWith('/') ||
+        normalizedPath.contains('/'));
 
     ImageProvider? provider;
     if (isNetwork) {

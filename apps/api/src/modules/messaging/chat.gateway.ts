@@ -91,7 +91,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect, On
 
       // Subscribe to Redis channel for this user
       try {
-        await this.redisService.getSubscriber().subscribe(`user:${userId}`);
+        await this.redisService.subscribeChannel(`user:${userId}`);
       } catch (_) {}
 
       // Setup raw message listener
@@ -121,7 +121,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect, On
         userSids.delete(socketId);
         if (userSids.size === 0) {
           this.userSockets.delete(client.userId);
-          this.redisService.getSubscriber().unsubscribe(`user:${client.userId}`).catch(() => {});
+          this.redisService.unsubscribeChannel(`user:${client.userId}`).catch(() => {});
         }
       }
       this.clients.delete(socketId);

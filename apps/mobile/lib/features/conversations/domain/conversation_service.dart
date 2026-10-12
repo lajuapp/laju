@@ -231,29 +231,38 @@ class ConversationService {
     if (conversationId.isEmpty) return;
     final realId = resolveConversationId(conversationId);
 
-    final list = inMemoryConversations ?? conversationsNotifier.value;
-    final idx = list.indexWhere((c) => c.id == conversationId || c.id == realId);
-    if (idx != -1) {
-      final conv = list[idx];
-      if (conv.unreadCount > 0) {
-        final updated = conv.copyWith(unreadCount: 0);
-        final nextList = List<ConversationModel>.from(list);
-        nextList[idx] = updated;
-        inMemoryConversations = nextList;
-        conversationsNotifier.value = List.unmodifiable(nextList);
-        await LocalDatabase.instance.upsertConversations([updated]);
+    final allIds = <String>{conversationId, realId};
+    _tempToRealConvMap.forEach((tempId, rId) {
+      if (rId == conversationId || rId == realId) {
+        allIds.add(tempId);
       }
-    } else {
-      // Also ensure SQLite is updated if not yet loaded in inMemoryConversations
-      try {
-        final cached = await LocalDatabase.instance.getConversations();
-        final cIdx = cached.indexWhere((c) => c.id == conversationId || c.id == realId);
-        if (cIdx != -1 && cached[cIdx].unreadCount > 0) {
-          final updated = cached[cIdx].copyWith(unreadCount: 0);
-          await LocalDatabase.instance.upsertConversations([updated]);
+      if (tempId == conversationId || tempId == realId) {
+        allIds.add(rId);
+      }
+    });
+
+    // 1. Reset in-memory conversation list immediately
+    final list = List<ConversationModel>.from(inMemoryConversations ?? conversationsNotifier.value);
+    bool changed = false;
+    for (int i = 0; i < list.length; i++) {
+      final c = list[i];
+      final isMatch = allIds.contains(c.id) ||
+          (c.participantUserId != null && allIds.contains('conv-${c.participantUserId}'));
+      if (isMatch) {
+        if (c.unreadCount > 0) {
+          list[i] = c.copyWith(unreadCount: 0);
+          changed = true;
         }
-      } catch (_) {}
+      }
     }
+
+    if (changed || inMemoryConversations == null) {
+      inMemoryConversations = list;
+      conversationsNotifier.value = List.unmodifiable(list);
+    }
+
+    // 2. Persist unread_count = 0 atomically in SQLite local database for all aliases
+    await LocalDatabase.instance.resetUnreadCount(allIds);
   }
 
   bool _isInitialSyncComplete = false;
@@ -599,7 +608,7 @@ class ConversationService {
 
                   // If initial sync is complete and user is not currently in this chat, trigger notification!
                   final isConvMuted = cachedMap[convId]?.isMuted ?? false;
-                  if (_isInitialSyncComplete && currentActiveConversationId != convId && !isConvMuted) {
+                  if (_isInitialSyncComplete && !isConversationOpen(convId) && !isConvMuted) {
                   final isGroup = item['type'] == 'GROUP';
                   String notifTitle = item['title'] ?? '';
                   String? avatarUrl;
@@ -743,7 +752,19 @@ class ConversationService {
               final parsed = jsonDecode(lastMsg);
               final msgType = parsed['type'] as String?;
               final cap = (parsed['caption'] ?? '') as String;
-              if (msgType == 'wallpaper_change') {
+              if (msgType == 'call_log') {
+                final isVideo = parsed['isVideo'] == true;
+                final status = (parsed['status'] ?? 'COMPLETED') as String;
+                final dur = (parsed['durationSeconds'] as num?)?.toInt() ?? 0;
+                final durStr = dur > 0 ? ' (${dur ~/ 60}:${(dur % 60).toString().padLeft(2, '0')})' : '';
+                if (status == 'MISSED') {
+                  lastMsg = isVideo ? '📹 Panggilan video tak terjawab' : '📞 Panggilan tak terjawab';
+                } else if (status == 'REJECTED') {
+                  lastMsg = '❌ Panggilan ditolak';
+                } else {
+                  lastMsg = isVideo ? '📹 Panggilan video$durStr' : '📞 Panggilan suara$durStr';
+                }
+              } else if (msgType == 'wallpaper_change') {
                 final wpName = (parsed['wallpaperName'] ?? '') as String;
                 lastMsg = wpName == 'Default Polos'
                     ? 'Menyetel wallpaper ke default'
@@ -786,8 +807,8 @@ class ConversationService {
           final isPinned = old?.isPinned ?? false;
           final isLocked = old?.isLocked ?? false;
           final isArchived = old?.isArchived ?? false;
-          final isMuted = old?.isMuted ?? false;
-          final unreadCount = old?.unreadCount ?? 0;
+          final isCurOpen = isConversationOpen(convId);
+          final unreadCount = isCurOpen ? 0 : (old?.unreadCount ?? 0);
 
           return ConversationModel(
             id: convId,
@@ -808,6 +829,7 @@ class ConversationService {
             participantPhone: participantPhone,
             participantAbout: participantAbout,
             participantTrustScore: participantTrustScore,
+            isOutgoingLatest: isOutgoingLatest,
           );
         }).toList();
 
@@ -819,7 +841,7 @@ class ConversationService {
               orElse: () => ConversationModel(id: '', title: '', lastMessage: '', lastMessageTime: DateTime.fromMillisecondsSinceEpoch(0)),
             );
             if (old.id.isNotEmpty && conv.lastMessageTime.isAfter(old.lastMessageTime) && conv.lastMessage != old.lastMessage) {
-              if (!conv.isMuted) {
+              if (!conv.isMuted && !conv.isOutgoingLatest && !isConversationOpen(conv.id)) {
                 PushNotificationService.showMessageNotification(
                   conversationId: conv.id,
                   title: conv.title,
@@ -1453,7 +1475,9 @@ class ConversationService {
         contentType = MessageContentType.attachment;
         mediaData = rawCiphertext.startsWith('data:') ? rawCiphertext : null;
         attName = 'Dokumen';
-        contentText = '';
+      } else if (rawCiphertext.contains('"type":"call_log"') || rawCiphertext.contains('"type": "call_log"')) {
+        contentType = MessageContentType.callLog;
+        contentText = rawCiphertext;
       } else if (msgType == 'LOCATION' || rawCiphertext.contains('"type":"location"') || rawCiphertext.contains('"type": "location"')) {
         contentType = MessageContentType.location;
         contentText = rawCiphertext;

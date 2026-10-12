@@ -144,8 +144,9 @@ class ApiClient {
     String path, {
     Map<String, String>? queryParams,
     T Function(dynamic json)? fromJson,
+    Duration? timeout,
   }) async {
-    return _sendRequest<T>('GET', path, queryParams: queryParams, fromJson: fromJson);
+    return _sendRequest<T>('GET', path, queryParams: queryParams, fromJson: fromJson, timeoutOverride: timeout);
   }
 
   Future<ApiResponse<T>> post<T>(
@@ -153,8 +154,9 @@ class ApiClient {
     dynamic body,
     Map<String, String>? queryParams,
     T Function(dynamic json)? fromJson,
+    Duration? timeout,
   }) async {
-    return _sendRequest<T>('POST', path, body: body, queryParams: queryParams, fromJson: fromJson);
+    return _sendRequest<T>('POST', path, body: body, queryParams: queryParams, fromJson: fromJson, timeoutOverride: timeout);
   }
 
   Future<ApiResponse<T>> patch<T>(
@@ -162,8 +164,9 @@ class ApiClient {
     dynamic body,
     Map<String, String>? queryParams,
     T Function(dynamic json)? fromJson,
+    Duration? timeout,
   }) async {
-    return _sendRequest<T>('PATCH', path, body: body, queryParams: queryParams, fromJson: fromJson);
+    return _sendRequest<T>('PATCH', path, body: body, queryParams: queryParams, fromJson: fromJson, timeoutOverride: timeout);
   }
 
   Future<ApiResponse<T>> delete<T>(
@@ -171,8 +174,9 @@ class ApiClient {
     dynamic body,
     Map<String, String>? queryParams,
     T Function(dynamic json)? fromJson,
+    Duration? timeout,
   }) async {
-    return _sendRequest<T>('DELETE', path, body: body, queryParams: queryParams, fromJson: fromJson);
+    return _sendRequest<T>('DELETE', path, body: body, queryParams: queryParams, fromJson: fromJson, timeoutOverride: timeout);
   }
 
   Future<ApiResponse<T>> _sendRequest<T>(
@@ -181,9 +185,10 @@ class ApiClient {
     dynamic body,
     Map<String, String>? queryParams,
     T Function(dynamic json)? fromJson,
+    Duration? timeoutOverride,
   }) async {
     final uri = _buildUri(path, queryParams);
-    final timeout = EnvConfig.instance.apiTimeout;
+    final timeout = timeoutOverride ?? EnvConfig.instance.apiTimeout;
 
     try {
       final HttpClientRequest request;

@@ -276,6 +276,7 @@ class StatusScreenState extends State<StatusScreen> with AutomaticKeepAliveClien
 
     final path = res['path'] as String?;
     final durationMs = (res['durationMs'] as num?)?.toInt() ?? 0;
+    final thumbPath = res['thumbnailPath'] as String?;
 
     if (path != null && File(path).existsSync()) {
       final result = await Navigator.push<StatusStoryItem>(
@@ -284,6 +285,7 @@ class StatusScreenState extends State<StatusScreen> with AutomaticKeepAliveClien
           builder: (_) => VideoStatusComposerScreen(
             videoPath: path,
             durationMs: durationMs,
+            thumbnailPath: thumbPath,
           ),
         ),
       );
@@ -309,6 +311,7 @@ class StatusScreenState extends State<StatusScreen> with AutomaticKeepAliveClien
 
     final path = res['path'] as String?;
     final durationMs = (res['durationMs'] as num?)?.toInt() ?? 0;
+    final thumbPath = res['thumbnailPath'] as String?;
 
     if (path != null && File(path).existsSync()) {
       final result = await Navigator.push<StatusStoryItem>(
@@ -317,6 +320,7 @@ class StatusScreenState extends State<StatusScreen> with AutomaticKeepAliveClien
           builder: (_) => VideoStatusComposerScreen(
             videoPath: path,
             durationMs: durationMs,
+            thumbnailPath: thumbPath,
           ),
         ),
       );
@@ -1065,6 +1069,13 @@ class StatusScreenState extends State<StatusScreen> with AutomaticKeepAliveClien
                                         messageType: 'IMAGE',
                                         attachmentPath: story.imageAsset,
                                         text: story.text.isNotEmpty ? story.text : 'Diteruskan dari status',
+                                      );
+                                    } else if (story.isVideo && (story.videoUrl != null || story.imageAsset != null)) {
+                                      await ConversationService.instance.sendMessage(
+                                        conversationId: conv.id,
+                                        messageType: 'VIDEO',
+                                        attachmentPath: story.videoUrl ?? story.imageAsset,
+                                        text: story.text.isNotEmpty ? story.text : 'Diteruskan dari status video',
                                       );
                                     } else {
                                       await ConversationService.instance.sendMessage(

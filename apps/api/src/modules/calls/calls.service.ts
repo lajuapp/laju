@@ -4,7 +4,8 @@ import {
   ForbiddenException,
   BadRequestException,
   ConflictException,
-  Optional
+  Optional,
+  Logger
 } from '@nestjs/common';
 import { PrismaService } from '../../infrastructure/prisma/prisma.service';
 import { RedisService } from '../../infrastructure/redis/redis.service';
@@ -13,6 +14,7 @@ import { CallSignalingGateway } from './calls.gateway';
 
 @Injectable()
 export class CallsService {
+  private readonly logger = new Logger(CallsService.name);
   // In-memory real-time media exchange for zero-latency audio & video streaming
   private audioBuffers = new Map<string, Map<string, string[]>>(); // callId -> (userId -> chunks[])
   private videoFrames = new Map<string, Map<string, { frame: string; updatedAt: number }>>(); // callId -> (userId -> frame)
@@ -145,12 +147,43 @@ export class CallsService {
         }
       });
 
-      // Store call metadata (e.g. isVideo) in Redis
+      // Find or create personal conversation between caller and callee
+      let conv = await tx.conversation.findFirst({
+        where: {
+          type: 'PERSONAL',
+          AND: [
+            { members: { some: { userId: callerUserId, leftAt: null } } },
+            { members: { some: { userId: resolvedCalleeUserId, leftAt: null } } }
+          ]
+        }
+      });
+
+      if (!conv) {
+        conv = await tx.conversation.create({
+          data: {
+            type: 'PERSONAL'
+          }
+        });
+        await tx.conversationMember.createMany({
+          data: [
+            { conversationId: conv.id, userId: callerUserId, role: 'MEMBER' },
+            { conversationId: conv.id, userId: resolvedCalleeUserId, role: 'MEMBER' }
+          ]
+        });
+      }
+
+      // Store call metadata (e.g. isVideo, conversationId, participants) in Redis
       await this.redis.set(
         `call:${call.id}:meta`,
-        JSON.stringify({ isVideo: !!isVideo }),
+        JSON.stringify({
+          isVideo: !!isVideo,
+          conversationId: conv.id,
+          callerUserId,
+          calleeUserId: resolvedCalleeUserId,
+          safeCallerDeviceId
+        }),
         'EX',
-        3600
+        86400
       );
 
       const caller = await tx.user.findUnique({
@@ -161,9 +194,10 @@ export class CallsService {
       const incomingPayload = {
         type: 'CALL_INCOMING',
         callId: call.id,
+        conversationId: conv.id,
         initiatorId: callerUserId,
         initiatorName: caller?.username || 'Kontak',
-        callerDeviceId,
+        callerDeviceId: safeCallerDeviceId,
         isVideo: !!isVideo
       };
 
@@ -175,15 +209,33 @@ export class CallsService {
       // Notify callee via WebSocket gateway directly (instant, no polling needed)
       this.callGateway?.notifyUser(resolvedCalleeUserId, incomingPayload);
 
-      // Trigger high-priority push notification (Priority 8 - Call Wakeup)
+      // Trigger high-priority push notification across all registered tokens for callee
       if (this.gotifyService) {
-        this.gotifyService.sendPushNotification({
-          targetToken: calleeDevice?.pushToken || undefined,
-          title: `Panggilan Masuk dari ${caller?.username || 'Kontak'}`,
-          message: isVideo ? 'Panggilan Video Masuk' : 'Panggilan Suara Masuk',
-          conversationId: call.id,
-          priority: 8
-        }).catch(() => {});
+        const calleeDevices = await tx.device.findMany({
+          where: { userId: resolvedCalleeUserId, status: 'ACTIVE' },
+          include: { pushDevices: true }
+        });
+        const pushTokens: string[] = [];
+        for (const d of calleeDevices) {
+          if (d.pushToken && !pushTokens.includes(d.pushToken)) pushTokens.push(d.pushToken);
+          if (d.pushDevices) {
+            for (const pd of d.pushDevices) {
+              if (pd.clientToken && !pushTokens.includes(pd.clientToken)) {
+                pushTokens.push(pd.clientToken);
+              }
+            }
+          }
+        }
+
+        for (const tok of pushTokens) {
+          this.gotifyService.sendPushNotification({
+            targetToken: tok,
+            title: `Panggilan Masuk dari ${caller?.username || 'Kontak'}`,
+            message: isVideo ? 'Panggilan Video Masuk' : 'Panggilan Suara Masuk',
+            conversationId: conv.id,
+            priority: 8
+          }).catch(() => {});
+        }
       }
 
       return call;
@@ -422,6 +474,10 @@ export class CallsService {
       }
     } catch (_) {}
 
+    this.recordCallLogMessage(callId, 'REJECTED', 0).catch((err) => {
+      this.logger.warn(`Failed to record rejected call log: ${err.message}`);
+    });
+
     return { success: true };
   }
 
@@ -498,7 +554,165 @@ export class CallsService {
     this.videoFrames.delete(callId);
     this.callParticipantsCache.delete(callId);
 
+    const calleeParticipant = call.participants.find((p) => p.userId !== call.initiatorId);
+    const isMissed = !calleeParticipant || calleeParticipant.state === 'RINGING' || !calleeParticipant.joinedAt;
+    const status = isMissed ? 'MISSED' : 'COMPLETED';
+    const durationSeconds = isMissed
+      ? 0
+      : Math.max(0, Math.round((Date.now() - (calleeParticipant.joinedAt || call.startedAt).getTime()) / 1000));
+
+    this.recordCallLogMessage(callId, status, durationSeconds).catch((err) => {
+      this.logger.warn(`Failed to record call log: ${err.message}`);
+    });
+
     return { success: true };
+  }
+
+  private async recordCallLogMessage(
+    callId: string,
+    status: 'COMPLETED' | 'MISSED' | 'REJECTED' | 'CANCELLED',
+    durationSeconds: number
+  ) {
+    try {
+      const metaStr = await this.redis.get(`call:${callId}:meta`);
+      if (!metaStr) return;
+      let meta: any = {};
+      try {
+        meta = JSON.parse(metaStr);
+      } catch (_) {
+        return;
+      }
+
+      const conversationId = meta.conversationId;
+      const callerUserId = meta.callerUserId;
+      const calleeUserId = meta.calleeUserId;
+      const safeCallerDeviceId = meta.safeCallerDeviceId;
+      const isVideo = !!meta.isVideo;
+
+      if (!conversationId || !callerUserId) return;
+
+      const caller = await this.prisma.user.findUnique({
+        where: { id: callerUserId },
+        select: { username: true }
+      });
+      const callerName = caller?.username || 'Kontak';
+
+      // Find valid caller device
+      let activeDeviceId = safeCallerDeviceId;
+      const dev = await this.prisma.device.findFirst({
+        where: { id: activeDeviceId }
+      });
+      if (!dev) {
+        const anyDev = await this.prisma.device.findFirst({
+          where: { userId: callerUserId, status: 'ACTIVE' },
+          orderBy: { lastSeenAt: 'desc' }
+        });
+        if (anyDev) {
+          activeDeviceId = anyDev.id;
+        } else {
+          return;
+        }
+      }
+
+      const clientMessageId = `call-log-${callId}`;
+
+      // Avoid duplicate log if already created
+      const existing = await this.prisma.message.findFirst({
+        where: { conversationId, clientMessageId }
+      });
+      if (existing) return;
+
+      const callLogPayload = {
+        type: 'call_log',
+        callId,
+        isVideo,
+        status,
+        durationSeconds,
+        initiatorId: callerUserId,
+        callerName
+      };
+
+      const ciphertext = JSON.stringify(callLogPayload);
+
+      const createdMessage = await this.prisma.$transaction(async (tx) => {
+        const message = await tx.message.create({
+          data: {
+            conversationId,
+            senderUserId: callerUserId,
+            senderDeviceId: activeDeviceId,
+            clientMessageId,
+            ciphertext,
+            nonce: 'call-log',
+            messageType: 'CONTROL',
+            state: 'SENT'
+          }
+        });
+
+        await tx.conversation.update({
+          where: { id: conversationId },
+          data: { updatedAt: new Date() }
+        });
+
+        await tx.conversationEvent.create({
+          data: {
+            conversationId,
+            eventType: 'MESSAGE_CREATED',
+            payload: JSON.stringify({
+              messageId: message.id,
+              sequence: message.sequence,
+              senderUserId: callerUserId,
+              senderDeviceId: activeDeviceId,
+              messageType: message.messageType,
+              createdAt: message.createdAt
+            })
+          }
+        });
+
+        return message;
+      });
+
+      const messagePreview = isVideo
+        ? (status === 'MISSED' ? '📹 Panggilan video tak terjawab' : '📹 Panggilan video')
+        : (status === 'MISSED' ? '📞 Panggilan suara tak terjawab' : '📞 Panggilan suara');
+
+      const messageEventPayload = {
+        type: 'NEW_MESSAGE',
+        conversationId,
+        senderName: callerName,
+        preview: messagePreview,
+        messageId: createdMessage.id,
+        message: {
+          id: createdMessage.id,
+          conversationId,
+          senderUserId: callerUserId,
+          senderDeviceId: activeDeviceId,
+          ciphertext,
+          nonce: 'call-log',
+          messageType: 'CONTROL',
+          state: 'SENT',
+          createdAt: createdMessage.createdAt,
+          sequence: createdMessage.sequence,
+          senderUser: {
+            id: callerUserId,
+            username: callerName
+          }
+        }
+      };
+
+      const strPayload = JSON.stringify(messageEventPayload);
+      if (this.redis) {
+        const client = this.redis.getClient();
+        if (client) {
+          // Send silent sync to caller, and full event to callee
+          client.publish(`user:${callerUserId}`, JSON.stringify({ ...messageEventPayload, type: 'MESSAGE_SYNC', isSilent: true })).catch(() => {});
+          if (calleeUserId) {
+            client.publish(`user:${calleeUserId}`, strPayload).catch(() => {});
+          }
+        }
+      }
+    } catch (e: any) {
+      this.logger.warn(`Failed to record call log message: ${e.message}`);
+    }
   }
 
   async exchangeSignal(userId: string, deviceId: string, callId: string, signalData: any, clientIp?: string) {

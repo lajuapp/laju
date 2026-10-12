@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../../../core/core.dart';
 
 class AboutScreen extends StatelessWidget {
@@ -322,22 +323,13 @@ class AboutScreen extends StatelessWidget {
                         ),
                       ),
                       trailing: Icon(Icons.arrow_forward_ios_rounded, size: 14, color: isDark ? AppColors.darkTextSecondary : const Color(0xFF9CA3AF)),
-                      onTap: () {
-                        showLicensePage(
-                          context: context,
-                          applicationName: 'LAJU',
-                          applicationVersion: AppUpdateController.instance.currentVersion,
-                        );
-                      },
+                      onTap: () => _showLajuLicenseSheet(context, isDark),
                     ),
                   ),
                   _buildDivider(isDark),
                   Material(
                     color: Colors.transparent,
                     child: ListTile(
-                      shape: const RoundedRectangleBorder(
-                        borderRadius: BorderRadius.vertical(bottom: Radius.circular(20)),
-                      ),
                       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                       leading: const Icon(Icons.verified_user_outlined, color: AppColors.cyan),
                       title: Text(
@@ -351,6 +343,41 @@ class AboutScreen extends StatelessWidget {
                       trailing: Icon(Icons.arrow_forward_ios_rounded, size: 14, color: isDark ? AppColors.darkTextSecondary : const Color(0xFF9CA3AF)),
                       onTap: () {
                         LajuToast.success(context, context.tr('aboutAuditPassed'));
+                      },
+                    ),
+                  ),
+                  _buildDivider(isDark),
+                  Material(
+                    color: Colors.transparent,
+                    child: ListTile(
+                      shape: const RoundedRectangleBorder(
+                        borderRadius: BorderRadius.vertical(bottom: Radius.circular(20)),
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                      leading: Icon(Icons.code_rounded, color: isDark ? Colors.white70 : const Color(0xFF0F172A)),
+                      title: Text(
+                        context.tr('aboutGithub'),
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 15,
+                          color: isDark ? Colors.white : const Color(0xFF111827),
+                        ),
+                      ),
+                      subtitle: Text(
+                        context.tr('aboutGithubSub'),
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: isDark ? AppColors.darkTextSecondary : const Color(0xFF6B7280),
+                        ),
+                      ),
+                      trailing: const Icon(Icons.open_in_new_rounded, size: 16, color: AppColors.primary),
+                      onTap: () async {
+                        const url = 'https://github.com/lajuapp/laju';
+                        try {
+                          await const MethodChannel('com.laju/device').invokeMethod('openUrl', {'url': url});
+                        } catch (e) {
+                          debugPrint('[AboutScreen] openUrl error: $e');
+                        }
                       },
                     ),
                   ),
@@ -423,6 +450,175 @@ class AboutScreen extends StatelessWidget {
                     fontSize: 13.5,
                     color: isDark ? Colors.white : const Color(0xFF111827),
                     fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showLajuLicenseSheet(BuildContext context, bool isDark) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: isDark ? const Color(0xFF0F172A) : Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(20, 14, 20, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 16),
+                  decoration: BoxDecoration(
+                    color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(Icons.verified_rounded, color: AppColors.primary, size: 24),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          context.tr('licenseModalTitle'),
+                          style: TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.w800,
+                            color: isDark ? Colors.white : const Color(0xFF0F172A),
+                          ),
+                        ),
+                        Text(
+                          context.tr('licenseModalSubtitle'),
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.primary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 18),
+              _buildLicensePillar(
+                isDark: isDark,
+                icon: Icons.check_circle_outline_rounded,
+                iconColor: const Color(0xFF10B981),
+                title: context.tr('licensePermittedTitle'),
+                desc: context.tr('licensePermittedDesc'),
+              ),
+              const SizedBox(height: 10),
+              _buildLicensePillar(
+                isDark: isDark,
+                icon: Icons.shield_outlined,
+                iconColor: const Color(0xFFF59E0B),
+                title: context.tr('licenseRestrictionTitle'),
+                desc: context.tr('licenseRestrictionDesc'),
+              ),
+              const SizedBox(height: 10),
+              _buildLicensePillar(
+                isDark: isDark,
+                icon: Icons.auto_awesome_rounded,
+                iconColor: const Color(0xFF06B6D4),
+                title: context.tr('licenseSunsetTitle'),
+                desc: context.tr('licenseSunsetDesc'),
+              ),
+              const SizedBox(height: 20),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    showLicensePage(
+                      context: context,
+                      applicationName: 'LAJU',
+                      applicationVersion: AppUpdateController.instance.currentVersion,
+                    );
+                  },
+                  icon: const Icon(Icons.menu_book_rounded, size: 18),
+                  label: Text(
+                    context.tr('licenseViewThirdParty'),
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 13),
+                    side: BorderSide(
+                      color: isDark ? Colors.white24 : const Color(0xFFCBD5E1),
+                    ),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLicensePillar({
+    required bool isDark,
+    required IconData icon,
+    required Color iconColor,
+    required String title,
+    required String desc,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: isDark ? Colors.white.withValues(alpha: 0.08) : const Color(0xFFE2E8F0),
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: iconColor, size: 22),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: isDark ? Colors.white : const Color(0xFF0F172A),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  desc,
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    height: 1.45,
+                    color: isDark ? AppColors.darkTextSecondary : const Color(0xFF64748B),
                   ),
                 ),
               ],

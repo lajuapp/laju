@@ -49,13 +49,16 @@ class LajuPushService : Service() {
                 putExtra(KEY_TOKEN, token)
             }
             try {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    context.startForegroundService(intent)
-                } else {
-                    context.startService(intent)
-                }
+                // Prefer standard background service - silent, no persistent notification in status bar like WhatsApp!
+                context.startService(intent)
             } catch (e: Exception) {
-                e.printStackTrace()
+                try {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        context.startForegroundService(intent)
+                    }
+                } catch (e2: Exception) {
+                    e2.printStackTrace()
+                }
             }
         }
 
@@ -72,6 +75,8 @@ class LajuPushService : Service() {
     }
 
     @Volatile private var isRunning = false
+    @Volatile private var currentToken = ""
+    @Volatile private var currentBaseUrl = ""
     private var streamThread: Thread? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -116,8 +121,8 @@ class LajuPushService : Service() {
             return START_NOT_STICKY
         }
 
-        // Always promote to foreground service within 5 seconds of startForegroundService
-        startForegroundSyncNotification()
+        // Satisfy startForeground contract if started via startForegroundService, then immediately dismiss
+        dismissForegroundSyncNotification()
 
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val baseUrl = intent?.getStringExtra(KEY_BASE_URL) ?: prefs.getString(KEY_BASE_URL, "") ?: ""
@@ -130,59 +135,55 @@ class LajuPushService : Service() {
         return START_STICKY
     }
 
-    private fun startForegroundSyncNotification() {
+    private fun dismissForegroundSyncNotification() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
             val syncChannel = NotificationChannel(
                 CHANNEL_BACKGROUND,
                 "Layanan Latar Belakang LAJU",
-                NotificationManager.IMPORTANCE_LOW
+                NotificationManager.IMPORTANCE_MIN
             ).apply {
-                description = "Menjaga koneksi aman untuk menerima panggilan dan pesan saat aplikasi ditutup"
+                description = "Layanan latar belakang senyap"
                 setShowBadge(false)
+                enableLights(false)
+                enableVibration(false)
             }
             nm.createNotificationChannel(syncChannel)
-        }
 
-        val launchIntent = Intent(this, MainActivity::class.java).apply {
-            action = Intent.ACTION_MAIN
-            addCategory(Intent.CATEGORY_LAUNCHER)
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-        }
-        val pendingIntent = PendingIntent.getActivity(
-            this,
-            0,
-            launchIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
+            val emptyNotif = NotificationCompat.Builder(this, CHANNEL_BACKGROUND)
+                .setSmallIcon(R.mipmap.ic_launcher)
+                .setContentTitle("")
+                .setContentText("")
+                .setPriority(NotificationCompat.PRIORITY_MIN)
+                .setSilent(true)
+                .build()
 
-        val notif = NotificationCompat.Builder(this, CHANNEL_BACKGROUND)
-            .setSmallIcon(R.mipmap.ic_launcher)
-            .setContentTitle("LAJU Messenger Aktif")
-            .setContentText("Layanan pesan & panggilan terenkripsi tetap terhubung")
-            .setPriority(NotificationCompat.PRIORITY_LOW)
-            .setOngoing(true)
-            .setContentIntent(pendingIntent)
-            .build()
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                    startForeground(
+                        NOTIFICATION_ID_SYNC,
+                        emptyNotif,
+                        ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+                    )
+                } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    startForeground(
+                        NOTIFICATION_ID_SYNC,
+                        emptyNotif,
+                        ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+                    )
+                } else {
+                    startForeground(NOTIFICATION_ID_SYNC, emptyNotif)
+                }
 
-        try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                startForeground(
-                    NOTIFICATION_ID_SYNC,
-                    notif,
-                    ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
-                )
-            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                startForeground(
-                    NOTIFICATION_ID_SYNC,
-                    notif,
-                    ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
-                )
-            } else {
-                startForeground(NOTIFICATION_ID_SYNC, notif)
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
+                // Immediately remove from notification bar & drawer like WhatsApp
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                    stopForeground(STOP_FOREGROUND_REMOVE)
+                } else {
+                    @Suppress("DEPRECATION")
+                    stopForeground(true)
+                }
+                nm.cancel(NOTIFICATION_ID_SYNC)
+            } catch (_: Exception) {}
         }
     }
 
@@ -233,8 +234,11 @@ class LajuPushService : Service() {
     }
 
     private fun startPushStream(baseUrl: String, token: String) {
-        if (isRunning) return
+        if (isRunning && token == currentToken && baseUrl == currentBaseUrl) return
+        stopStream()
         isRunning = true
+        currentToken = token
+        currentBaseUrl = baseUrl
 
         streamThread = thread(start = true, isDaemon = true) {
             var retryDelay = 3000L
@@ -311,15 +315,44 @@ class LajuPushService : Service() {
                     val callId = obj.optString("callId", "")
                     val callerName = obj.optString("initiatorName", "Kontak")
                     val isVideo = obj.optBoolean("isVideo", false)
+                    try {
+                        val pm = getSystemService(Context.POWER_SERVICE) as? android.os.PowerManager
+                        val wl = pm?.newWakeLock(
+                            android.os.PowerManager.SCREEN_BRIGHT_WAKE_LOCK or android.os.PowerManager.ACQUIRE_CAUSES_WAKEUP,
+                            "laju:incoming_call_wake"
+                        )
+                        wl?.acquire(10000L)
+                    } catch (_: Exception) {}
                     if (!MainActivity.isAppInForeground) {
                         showIncomingCallNotification(callId, callerName, isVideo)
                     }
                 }
                 "NEW_MESSAGE" -> {
+                    val isSilent = obj.optBoolean("isSilent", false)
+                    if (isSilent) return
+
+                    val msgObj = obj.optJSONObject("message")
+                    val senderUserId = msgObj?.optString("senderUserId", "") ?: ""
+
+                    val flutterPrefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+                    val currentUserId = flutterPrefs.getString("flutter.laju_user_id", "") 
+                        ?: getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getString("current_user_id", "") ?: ""
+
+                    if (currentUserId.isNotEmpty() && senderUserId == currentUserId) {
+                        // Silent sync: sender must NOT get a notification banner for their own outgoing messages!
+                        return
+                    }
+
                     val convId = obj.optString("conversationId", "")
                     val senderName = obj.optString("senderName", "Pesan Baru")
                     val preview = obj.optString("preview", "Pesan baru terenkripsi")
                     showMessageNotification(convId, senderName, preview)
+                    MainActivity.instance?.dispatchPushMessage(convId, senderName, preview)
+                }
+                "MESSAGE_SYNC" -> {
+                    val convId = obj.optString("conversationId", "")
+                    val senderName = obj.optString("senderName", "")
+                    val preview = obj.optString("preview", "")
                     MainActivity.instance?.dispatchPushMessage(convId, senderName, preview)
                 }
                 "CALL_ENDED", "CALL_REJECTED" -> {

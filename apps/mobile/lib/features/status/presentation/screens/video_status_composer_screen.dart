@@ -9,11 +9,13 @@ import 'status_view_screen.dart';
 class VideoStatusComposerScreen extends StatefulWidget {
   final String videoPath;
   final int durationMs;
+  final String? thumbnailPath;
 
   const VideoStatusComposerScreen({
     super.key,
     required this.videoPath,
     required this.durationMs,
+    this.thumbnailPath,
   });
 
   @override
@@ -68,9 +70,9 @@ class _VideoStatusComposerScreenState extends State<VideoStatusComposerScreen> {
           id: 'local_${DateTime.now().millisecondsSinceEpoch}',
           text: caption,
           time: 'Baru saja',
-          imageAsset: widget.videoPath,
+          imageAsset: widget.thumbnailPath,
           videoUrl: widget.videoPath,
-          isPhoto: true,
+          isPhoto: false,
           isVideo: true,
           createdAt: DateTime.now(),
         );

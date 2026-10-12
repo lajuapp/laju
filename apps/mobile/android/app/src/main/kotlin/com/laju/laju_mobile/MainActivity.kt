@@ -1351,6 +1351,11 @@ class MainActivity : FlutterFragmentActivity() {
                 "startBackgroundService" -> {
                     val baseUrl = call.argument<String>("baseUrl") ?: ""
                     val token = call.argument<String>("token") ?: ""
+                    try {
+                        val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+                        nm.cancel(LajuPushService.NOTIFICATION_ID_SYNC)
+                        nm.cancel(9001)
+                    } catch (_: Exception) {}
                     LajuPushService.startService(applicationContext, baseUrl, token)
                     result.success(true)
                 }
@@ -3186,6 +3191,20 @@ class NativeVideoPlayerView(
 
     private fun setSource(source: String) {
         try {
+            if (source.startsWith("data:")) {
+                try {
+                    val rawB64 = if (source.contains(",")) source.substringAfter(",") else source
+                    val videoBytes = android.util.Base64.decode(rawB64, android.util.Base64.DEFAULT)
+                    val tempFile = File(context.cacheDir, "status_temp_video_${System.currentTimeMillis()}.mp4")
+                    FileOutputStream(tempFile).use { out ->
+                        out.write(videoBytes)
+                    }
+                    videoView.setVideoPath(tempFile.absolutePath)
+                    return
+                } catch (b64Err: Exception) {
+                    android.util.Log.e("NativeVideoPlayerView", "Base64 video decode error: ${b64Err.message}")
+                }
+            }
             if (source.startsWith("http://") || source.startsWith("https://")) {
                 videoView.setVideoURI(Uri.parse(source))
             } else {

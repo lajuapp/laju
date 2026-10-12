@@ -58,6 +58,12 @@ export function Navbar() {
           >
             {t('nav_help')}
           </Link>
+          <Link
+            href="/about"
+            className="px-4 py-1.5 rounded-full text-slate-600 hover:text-slate-900 font-medium text-xs sm:text-sm transition-colors"
+          >
+            {t('nav_about')}
+          </Link>
         </nav>
 
         {/* Right Actions: Language Switcher, Unduh button */}

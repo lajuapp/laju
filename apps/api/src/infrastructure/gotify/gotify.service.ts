@@ -81,8 +81,8 @@ export class GotifyService {
     const { targetToken, title, message, conversationId, priority = 6 } = params;
     let delivered = false;
 
-    // 1. Try sending via Gotify if token or default token available
-    let activeGotifyToken = targetToken && !targetToken.startsWith('fcm_') ? targetToken : this.token;
+    // 1. Try sending via Gotify only if a valid specific target client token is provided
+    let activeGotifyToken = targetToken && !targetToken.startsWith('fcm_') && !targetToken.startsWith('gotify_device_') ? targetToken : null;
     if (activeGotifyToken) {
       try {
         const payload: any = {
@@ -103,18 +103,6 @@ export class GotifyService {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
         });
-
-        if (res.status === 401) {
-          const renewed = await this.getOrProvisionAppToken();
-          if (renewed) {
-            activeGotifyToken = renewed;
-            res = await fetch(`${this.gotifyUrl}/message?token=${activeGotifyToken}`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(payload)
-            });
-          }
-        }
 
         if (res.ok) {
           delivered = true;

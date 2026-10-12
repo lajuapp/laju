@@ -24,6 +24,7 @@ class ConversationModel {
   final String? participantPhone;
   final String? participantAbout;
   final int? participantTrustScore;
+  final bool isOutgoingLatest;
 
   const ConversationModel({
     required this.id,
@@ -46,6 +47,7 @@ class ConversationModel {
     this.participantPhone,
     this.participantAbout,
     this.participantTrustScore,
+    this.isOutgoingLatest = false,
   });
 
   ConversationModel copyWith({
@@ -69,6 +71,7 @@ class ConversationModel {
     String? participantPhone,
     String? participantAbout,
     int? participantTrustScore,
+    bool? isOutgoingLatest,
   }) {
     return ConversationModel(
       id: id ?? this.id,
@@ -91,6 +94,7 @@ class ConversationModel {
       participantPhone: participantPhone ?? this.participantPhone,
       participantAbout: participantAbout ?? this.participantAbout,
       participantTrustScore: participantTrustScore ?? this.participantTrustScore,
+      isOutgoingLatest: isOutgoingLatest ?? this.isOutgoingLatest,
     );
   }
 

@@ -27,12 +27,37 @@ class StatusService {
       String processedContent = content;
 
       if (type == 'IMAGE' && !content.startsWith('http') && !content.startsWith('data:image')) {
-        // Read local file as base64 data URI for instant cross-device delivery
-        final file = File(content);
+        // Compress image first for fast, lightweight transfer
+        String imagePath = content;
+        try {
+          imagePath = await DeviceMediaService.compressImage(content, maxDimension: 1280, quality: 82);
+        } catch (_) {}
+
+        final file = File(imagePath);
         if (await file.exists()) {
           final bytes = await file.readAsBytes();
           final b64 = base64Encode(bytes);
-          processedContent = 'data:image/jpeg;base64,$b64';
+          final rawExt = file.path.split('.').last.toLowerCase();
+          final mimeType = (rawExt == 'png') ? 'image/png' : 'image/jpeg';
+
+          // Try uploading to server endpoint first for optimal streaming & storage
+          try {
+            final uploadRes = await ApiClient.instance.post(
+              ApiEndpoints.statusUpload,
+              body: {
+                'filename': file.path.split('/').last,
+                'mimeType': mimeType,
+                'base64Data': b64,
+              },
+            );
+            if (uploadRes.isSuccess && uploadRes.rawJson is Map && uploadRes.rawJson['url'] != null) {
+              processedContent = uploadRes.rawJson['url'].toString();
+            } else {
+              processedContent = 'data:$mimeType;base64,$b64';
+            }
+          } catch (_) {
+            processedContent = 'data:$mimeType;base64,$b64';
+          }
         }
       } else if (type == 'VIDEO' && !content.startsWith('http') && !content.startsWith('data:video')) {
         final file = File(content);
@@ -48,6 +73,7 @@ class StatusService {
                 'mimeType': 'video/mp4',
                 'base64Data': b64,
               },
+              timeout: const Duration(seconds: 120),
             );
             if (uploadRes.isSuccess && uploadRes.rawJson is Map && uploadRes.rawJson['url'] != null) {
               processedContent = uploadRes.rawJson['url'].toString();
@@ -283,7 +309,7 @@ class StatusService {
     }
 
     final isVideo = mediaType == 'VIDEO' && mediaUrl != null && mediaUrl.isNotEmpty;
-    final isPhoto = (mediaType == 'IMAGE' || isVideo) && mediaUrl != null && mediaUrl.isNotEmpty;
+    final isPhoto = mediaType == 'IMAGE' && mediaUrl != null && mediaUrl.isNotEmpty;
     final resolvedUrl = (isPhoto || isVideo) ? resolveMediaUrl(mediaUrl!) : null;
 
     final viewers = isViewed
@@ -301,7 +327,7 @@ class StatusService {
       text: (isPhoto || isVideo) ? (content.isNotEmpty ? content : title) : '$title\n\n$content',
       time: timeStr,
       backgroundColor: bgColor,
-      imageAsset: resolvedUrl,
+      imageAsset: isPhoto ? resolvedUrl : null,
       isPhoto: isPhoto,
       isVideo: isVideo,
       videoUrl: isVideo ? resolvedUrl : null,
@@ -379,15 +405,15 @@ class StatusService {
         .toList();
 
     final isVideo = type == 'VIDEO';
-    final isPhoto = type == 'IMAGE' || isVideo;
+    final isPhoto = type == 'IMAGE';
     final resolvedMedia = (isPhoto || isVideo) ? resolveMediaUrl(content) : null;
 
     return StatusStoryItem(
       id: id,
-      text: isPhoto ? (caption ?? '') : content,
+      text: (isPhoto || isVideo) ? (caption ?? '') : content,
       time: timeStr,
       backgroundColor: bgColor,
-      imageAsset: resolvedMedia,
+      imageAsset: isPhoto ? resolvedMedia : null,
       isPhoto: isPhoto,
       isVideo: isVideo,
       videoUrl: isVideo ? resolvedMedia : null,

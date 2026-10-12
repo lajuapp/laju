@@ -232,6 +232,20 @@ class LocalDatabase {
     await _database.delete('messages', where: 'conversation_id = ?', whereArgs: [id]);
   }
 
+  /// Reset unread count for conversation IDs in local SQLite cache.
+  Future<void> resetUnreadCount(Set<String> conversationIds) async {
+    if (conversationIds.isEmpty) return;
+    try {
+      final placeholders = List.filled(conversationIds.length, '?').join(', ');
+      await _database.rawUpdate(
+        'UPDATE conversations SET unread_count = 0 WHERE id IN ($placeholders)',
+        conversationIds.toList(),
+      );
+    } catch (e) {
+      debugPrint('[LocalDatabase] resetUnreadCount error: $e');
+    }
+  }
+
   // ── Messages ──────────────────────────────────────────────────────────────
 
   /// Returns cached messages for a conversation, ordered by timestamp ascending.
@@ -561,10 +575,15 @@ class LocalDatabase {
       try {
         final parsed = jsonDecode(content);
         if (parsed is Map) {
-          content = (parsed['caption'] ?? '') as String;
-          attName ??= parsed['fileName'] as String?;
-          attSize ??= parsed['fileSize'] as String?;
-          attPath ??= parsed['media'] as String?;
+          final t = parsed['type'] as String?;
+          if (t == 'call_log' || t == 'location' || t == 'contact') {
+            // Keep full JSON content for structured message widgets
+          } else {
+            content = (parsed['caption'] ?? '') as String;
+            attName ??= parsed['fileName'] as String?;
+            attSize ??= parsed['fileSize'] as String?;
+            attPath ??= parsed['media'] as String?;
+          }
         }
       } catch (_) {
         content = '';

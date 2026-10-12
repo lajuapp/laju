@@ -9,6 +9,7 @@ import '../../domain/services/sticker_service.dart';
 import '../../../settings/domain/privacy_controller.dart';
 import '../../../conversations/domain/conversation_service.dart';
 import '../../../conversations/presentation/screens/user_profile_screen.dart';
+import '../../../calls/presentation/screens/active_call_screen.dart';
 import '../screens/chat_screen.dart';
 import 'voice_note_player.dart';
 
@@ -346,6 +347,12 @@ class ChatBubble extends StatelessWidget {
     final isDark = ThemeModeController.instance.isDarkMode(context);
     final timeStr = DateFormat('HH:mm').format(message.timestamp.toLocal());
 
+    if (message.contentType == MessageContentType.callLog ||
+        message.content.contains('"type":"call_log"') ||
+        message.content.contains('"type": "call_log"')) {
+      return _buildCallLogBubble(context, isDark, isOut, timeStr);
+    }
+
     if (message.isRecalled) {
       return _buildRecalledBubble(context, isDark, isOut, timeStr);
     }
@@ -565,6 +572,218 @@ class ChatBubble extends StatelessWidget {
       isDark: isDark,
       onReply: onReply != null ? () => onReply!(message) : null,
       child: bubbleWidget,
+    );
+  }
+
+  Widget _buildCallLogBubble(BuildContext context, bool isDark, bool isOut, String timeStr) {
+    bool isVideo = false;
+    String status = 'COMPLETED';
+    int durationSeconds = 0;
+    String callerName = message.senderName;
+    String targetId = message.senderUserId ?? '';
+
+    try {
+      if (message.content.startsWith('{')) {
+        final parsed = jsonDecode(message.content);
+        if (parsed is Map) {
+          isVideo = parsed['isVideo'] == true;
+          status = (parsed['status'] ?? 'COMPLETED') as String;
+          durationSeconds = (parsed['durationSeconds'] as num?)?.toInt() ?? 0;
+          if (parsed['callerName'] != null) callerName = parsed['callerName'].toString();
+          if (parsed['initiatorId'] != null) targetId = parsed['initiatorId'].toString();
+        }
+      }
+    } catch (_) {}
+
+    final isMissed = status == 'MISSED';
+    final isRejected = status == 'REJECTED';
+    final isCancelled = status == 'CANCELLED';
+
+    // Status title & subtitle
+    String titleText;
+    if (isMissed) {
+      titleText = isVideo ? 'Panggilan video tak terjawab' : 'Panggilan suara tak terjawab';
+    } else if (isRejected) {
+      titleText = 'Panggilan ditolak';
+    } else if (isCancelled) {
+      titleText = 'Panggilan dibatalkan';
+    } else {
+      titleText = isVideo ? 'Panggilan Video' : 'Panggilan Suara';
+    }
+
+    String subtitleText;
+    if (durationSeconds > 0) {
+      final m = durationSeconds ~/ 60;
+      final s = durationSeconds % 60;
+      final durFormat = '$m:${s.toString().padLeft(2, '0')}';
+      subtitleText = '$durFormat • $timeStr';
+    } else {
+      subtitleText = isMissed
+          ? 'Tak terjawab • $timeStr'
+          : (isRejected ? 'Ditolak • $timeStr' : 'Batal • $timeStr');
+    }
+
+    // Colors & Icons
+    final Color iconColor = (isMissed || isRejected)
+        ? AppColors.danger
+        : (isDark ? const Color(0xFF10B981) : const Color(0xFF059669));
+
+    IconData statusIcon;
+    if (isMissed) {
+      statusIcon = isOut ? Icons.call_missed_outgoing_rounded : Icons.call_missed_rounded;
+    } else if (isRejected || isCancelled) {
+      statusIcon = Icons.call_end_rounded;
+    } else if (isOut) {
+      statusIcon = Icons.call_made_rounded;
+    } else {
+      statusIcon = Icons.call_received_rounded;
+    }
+
+    final bubbleBg = isDark
+        ? (isOut ? const Color(0xFF0F392B) : const Color(0xFF1E293B))
+        : (isOut ? const Color(0xFFDCF8C6) : Colors.white);
+
+    return Align(
+      alignment: isOut ? Alignment.centerRight : Alignment.centerLeft,
+      child: Container(
+        constraints: BoxConstraints(
+          maxWidth: MediaQuery.of(context).size.width * 0.82,
+          minWidth: 220,
+        ),
+        margin: EdgeInsets.only(
+          top: topMargin + 2,
+          bottom: bottomMargin + 2,
+          left: isOut ? 48 : 8,
+          right: isOut ? 8 : 48,
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: bubbleBg,
+          borderRadius: BorderRadius.only(
+            topLeft: const Radius.circular(16),
+            topRight: const Radius.circular(16),
+            bottomLeft: Radius.circular(isOut ? 16 : 4),
+            bottomRight: Radius.circular(isOut ? 4 : 16),
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.06),
+              blurRadius: 4,
+              offset: const Offset(0, 1.5),
+            ),
+          ],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            // Circular Icon Badge
+            Container(
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(
+                color: iconColor.withValues(alpha: 0.15),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                statusIcon,
+                color: iconColor,
+                size: 22,
+              ),
+            ),
+            const SizedBox(width: 12),
+            // Call Details
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    titleText,
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: isDark ? Colors.white : const Color(0xFF0F172A),
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 2),
+                  Row(
+                    children: [
+                      Icon(
+                        isVideo ? Icons.videocam_rounded : Icons.phone_rounded,
+                        size: 13,
+                        color: isDark ? AppColors.textSecondary : const Color(0xFF64748B),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        subtitleText,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: (isMissed || isRejected)
+                              ? AppColors.danger
+                              : (isDark ? AppColors.textSecondary : const Color(0xFF64748B)),
+                          fontWeight: (isMissed || isRejected) ? FontWeight.w500 : FontWeight.normal,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            // Callback Button (Panggil Balik)
+            Material(
+              color: Colors.transparent,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(20),
+                onTap: () {
+                  final targetCallUser = isOut ? message.conversationId : (targetId.isNotEmpty ? targetId : message.senderName);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => ActiveCallScreen(
+                        contactName: callerName,
+                        calleeUserId: targetCallUser,
+                        avatarUrl: null,
+                        isVideo: isVideo,
+                      ),
+                    ),
+                  );
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: AppColors.primary.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: AppColors.primary.withValues(alpha: 0.3), width: 0.8),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        isVideo ? Icons.videocam_rounded : Icons.call_rounded,
+                        size: 14,
+                        color: AppColors.primary,
+                      ),
+                      const SizedBox(width: 4),
+                      const Text(
+                        'Panggil',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.primary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 

@@ -58,6 +58,8 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
   final TextEditingController _inGroupSearchController = TextEditingController();
   String _inGroupSearchQuery = '';
   bool _initialScrollDone = false;
+  bool _initialLoaded = false;
+  final DateTime _screenOpenedAt = DateTime.now();
 
   @override
   void initState() {
@@ -205,6 +207,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
   void dispose() {
     ConversationService.instance.sendTypingStatus(widget.groupId, false);
     ConversationService.instance.setTyping(widget.groupId, false);
+    ConversationService.instance.markConversationAsRead(widget.groupId);
     if (ConversationService.instance.currentActiveConversationId == widget.groupId) {
       ConversationService.instance.currentActiveConversationId = null;
     }
@@ -225,7 +228,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
     // Step 1: Load from SQLite cache instantly (offline-ready)
     final cached = await ConversationService.instance.getMessagesFromCache(widget.groupId);
     if (mounted && cached.isNotEmpty) {
-      _mergeAndSetMessages(cached);
+      _mergeAndSetMessages(cached, isInitialLoad: true);
       if (!_initialScrollDone) {
         _initialScrollDone = true;
         _scrollToBottom(immediate: true);
@@ -233,10 +236,13 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
     }
 
     // Step 2: Fetch fresh messages from API
-    await _syncMessages();
-    if (mounted && !_initialScrollDone) {
-      _initialScrollDone = true;
-      _scrollToBottom(immediate: true);
+    await _syncMessages(isInitialLoad: true);
+    if (mounted) {
+      _initialLoaded = true;
+      if (!_initialScrollDone) {
+        _initialScrollDone = true;
+        _scrollToBottom(immediate: true);
+      }
     }
   }
 
@@ -258,7 +264,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
     });
   }
 
-  Future<void> _syncMessages() async {
+  Future<void> _syncMessages({bool isInitialLoad = false}) async {
     if (!mounted) return;
     try {
       final msgs = await ConversationService.instance.fetchMessages(widget.groupId);
@@ -278,12 +284,12 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
           ConversationService.instance.updateMemoryMessages(widget.groupId, []);
         }
       } else {
-        _mergeAndSetMessages(msgs);
+        _mergeAndSetMessages(msgs, isInitialLoad: isInitialLoad || !_initialLoaded);
       }
     } catch (_) {}
   }
 
-  void _mergeAndSetMessages(List<MessageModel> incoming) {
+  void _mergeAndSetMessages(List<MessageModel> incoming, {bool isInitialLoad = false}) {
     if (!mounted) return;
     if (incoming.isEmpty) {
       if (_messages.isNotEmpty) {
@@ -304,7 +310,10 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
     bool hasNewIncoming = false;
     for (final inc in incoming) {
       if (!inc.isOutgoing && !existingIds.contains(inc.id)) {
-        hasNewIncoming = true;
+        // Only trigger subtle chime for live incoming messages when chat was already open & loaded
+        if (!isInitialLoad && _initialLoaded && inc.timestamp.isAfter(_screenOpenedAt.subtract(const Duration(seconds: 2)))) {
+          hasNewIncoming = true;
+        }
         break;
       }
     }
@@ -364,7 +373,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
     }
 
     if (hasNewIncoming) {
-      LajuSoundService.playIncomingNotification(isGroup: true);
+      LajuSoundService.playInChatIncomingChime();
     }
   }
 

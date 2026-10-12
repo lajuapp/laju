@@ -630,6 +630,10 @@ export class DevicesService {
     return this.redisService.getSubscriber();
   }
 
+  getRedisService() {
+    return this.redisService;
+  }
+
   async getGotifyConfig() {
     return {
       gotifyUrl: process.env.GOTIFY_URL || 'http://gotify:80',

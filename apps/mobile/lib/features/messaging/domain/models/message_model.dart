@@ -16,6 +16,44 @@ enum MessageContentType {
   location,
   sticker,
   contact,
+  callLog,
+}
+
+class LajuCallLogData {
+  final String callId;
+  final bool isVideo;
+  final String status; // 'COMPLETED', 'MISSED', 'REJECTED', 'CANCELLED'
+  final int durationSeconds;
+  final String initiatorId;
+  final String callerName;
+
+  const LajuCallLogData({
+    required this.callId,
+    required this.isVideo,
+    required this.status,
+    required this.durationSeconds,
+    required this.initiatorId,
+    required this.callerName,
+  });
+
+  factory LajuCallLogData.fromJson(Map<String, dynamic> json) => LajuCallLogData(
+    callId: json['callId']?.toString() ?? '',
+    isVideo: json['isVideo'] == true,
+    status: json['status']?.toString() ?? 'COMPLETED',
+    durationSeconds: (json['durationSeconds'] as num?)?.toInt() ?? 0,
+    initiatorId: json['initiatorId']?.toString() ?? '',
+    callerName: json['callerName']?.toString() ?? 'Kontak',
+  );
+
+  Map<String, dynamic> toJson() => {
+    'type': 'call_log',
+    'callId': callId,
+    'isVideo': isVideo,
+    'status': status,
+    'durationSeconds': durationSeconds,
+    'initiatorId': initiatorId,
+    'callerName': callerName,
+  };
 }
 
 class LajuContactData {
@@ -150,6 +188,26 @@ class MessageModel {
   String get displaySnippet {
     if (isRecalled) {
       return isOutgoing ? 'Anda menarik pesan ini' : 'Pesan ini telah ditarik';
+    }
+    if (contentType == MessageContentType.callLog ||
+        content.contains('"type":"call_log"') ||
+        content.contains('"type": "call_log"')) {
+      try {
+        final parsed = jsonDecode(content);
+        if (parsed is Map) {
+          final isVid = parsed['isVideo'] == true;
+          final st = parsed['status']?.toString() ?? 'COMPLETED';
+          final dur = (parsed['durationSeconds'] as num?)?.toInt() ?? 0;
+          final durStr = dur > 0 ? ' (${dur ~/ 60}:${(dur % 60).toString().padLeft(2, '0')})' : '';
+          if (st == 'MISSED') {
+            return isVid ? '📹 Panggilan video tak terjawab' : '📞 Panggilan tak terjawab';
+          } else if (st == 'REJECTED') {
+            return '❌ Panggilan ditolak';
+          }
+          return isVid ? '📹 Panggilan video$durStr' : '📞 Panggilan suara$durStr';
+        }
+      } catch (_) {}
+      return 'Panggilan Suara';
     }
     if (contentType == MessageContentType.sticker ||
         content.startsWith('sticker:') ||

@@ -524,8 +524,9 @@ export class StatusService implements OnModuleInit, OnModuleDestroy {
       ? body.base64Data.split(',')[1]
       : body.base64Data;
     const buffer = Buffer.from(rawData, 'base64');
-    const rawExt = body.filename?.split('.').pop()?.toLowerCase() || 'mp4';
-    const cleanExt = rawExt.replace(/[^a-zA-Z0-9]/g, '') || 'mp4';
+    const defaultExt = body.mimeType?.startsWith('image/') ? 'jpg' : 'mp4';
+    const rawExt = body.filename?.split('.').pop()?.toLowerCase() || defaultExt;
+    const cleanExt = rawExt.replace(/[^a-zA-Z0-9]/g, '') || defaultExt;
     const blobId = `status-${crypto.randomBytes(12).toString('hex')}.${cleanExt}`;
     const contentType = body.mimeType || (cleanExt === 'mp4' ? 'video/mp4' : 'image/jpeg');
 

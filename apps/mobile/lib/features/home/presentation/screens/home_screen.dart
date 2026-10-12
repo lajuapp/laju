@@ -682,15 +682,13 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _openChat(ConversationModel conv) async {
     // Clear unread badge immediately and optimistically
-    if (conv.unreadCount > 0) {
-      final idx = _conversations.indexWhere((c) => c.id == conv.id);
-      if (idx != -1) {
-        setState(() {
-          _conversations[idx] = _conversations[idx].copyWith(unreadCount: 0);
-        });
-      }
-      ConversationService.instance.markConversationAsRead(conv.id);
+    final idx = _conversations.indexWhere((c) => c.id == conv.id);
+    if (idx != -1) {
+      setState(() {
+        _conversations[idx] = _conversations[idx].copyWith(unreadCount: 0);
+      });
     }
+    ConversationService.instance.markConversationAsRead(conv.id);
 
     if (conv.isGroup) {
       await Navigator.push(
@@ -720,6 +718,7 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       );
     }
+    ConversationService.instance.markConversationAsRead(conv.id);
     _loadConversations();
     _loadCallLogs();
   }

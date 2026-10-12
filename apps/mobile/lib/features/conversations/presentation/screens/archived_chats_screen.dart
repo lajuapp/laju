@@ -35,9 +35,7 @@ class _ArchivedChatsScreenState extends State<ArchivedChatsScreen> {
   }
 
   void _openChat(ConversationModel conv) async {
-    if (conv.unreadCount > 0) {
-      ConversationService.instance.markConversationAsRead(conv.id);
-    }
+    ConversationService.instance.markConversationAsRead(conv.id);
     if (conv.isGroup) {
       await Navigator.push(
         context,
@@ -66,6 +64,7 @@ class _ArchivedChatsScreenState extends State<ArchivedChatsScreen> {
         ),
       );
     }
+    ConversationService.instance.markConversationAsRead(conv.id);
     _loadArchivedChats();
   }
 

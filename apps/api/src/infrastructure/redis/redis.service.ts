@@ -55,6 +55,34 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     return this.client.publish(channel, message);
   }
 
+  private readonly channelSubscribers = new Map<string, number>();
+
+  async subscribeChannel(channel: string): Promise<void> {
+    const current = this.channelSubscribers.get(channel) || 0;
+    this.channelSubscribers.set(channel, current + 1);
+    if (current === 0) {
+      try {
+        await this.subscriber.subscribe(channel);
+      } catch (err: any) {
+        this.logger.warn(`Redis subscribeChannel error for ${channel}: ${err.message}`);
+      }
+    }
+  }
+
+  async unsubscribeChannel(channel: string): Promise<void> {
+    const current = this.channelSubscribers.get(channel) || 0;
+    if (current <= 1) {
+      this.channelSubscribers.delete(channel);
+      try {
+        await this.subscriber.unsubscribe(channel);
+      } catch (err: any) {
+        this.logger.warn(`Redis unsubscribeChannel error for ${channel}: ${err.message}`);
+      }
+    } else {
+      this.channelSubscribers.set(channel, current - 1);
+    }
+  }
+
   async ping(): Promise<string> {
     return this.client.ping();
   }

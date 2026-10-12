@@ -23,8 +23,12 @@ class LajuPushReceiver : BroadcastReceiver() {
                     putExtra(LajuPushService.KEY_TOKEN, token)
                 }
                 try {
-                    ContextCompat.startForegroundService(context, serviceIntent)
-                } catch (_: Exception) {}
+                    context.startService(serviceIntent)
+                } catch (_: Exception) {
+                    try {
+                        ContextCompat.startForegroundService(context, serviceIntent)
+                    } catch (_: Exception) {}
+                }
             }
         }
     }

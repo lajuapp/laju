@@ -76,6 +76,7 @@ export class DevicesController {
 
     const channel = `user:${userId}`;
     const globalChannel = 'announcements:global';
+    const redisService = this.devicesService.getRedisService();
     const subscriber = this.devicesService.getRedisSubscriber();
 
     const onMessage = (chan: string, msg: string) => {
@@ -84,8 +85,9 @@ export class DevicesController {
       }
     };
 
-    if (subscriber) {
-      subscriber.subscribe(channel, globalChannel).catch(() => {});
+    if (subscriber && redisService) {
+      await redisService.subscribeChannel(channel);
+      await redisService.subscribeChannel(globalChannel);
       subscriber.on('message', onMessage);
     }
 
@@ -95,8 +97,10 @@ export class DevicesController {
 
     req.on('close', () => {
       clearInterval(heartbeat);
-      if (subscriber) {
+      if (subscriber && redisService) {
         subscriber.removeListener('message', onMessage);
+        redisService.unsubscribeChannel(channel).catch(() => {});
+        redisService.unsubscribeChannel(globalChannel).catch(() => {});
       }
       res.end();
     });

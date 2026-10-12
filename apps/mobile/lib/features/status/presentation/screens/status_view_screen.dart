@@ -154,10 +154,19 @@ class _StatusViewScreenState extends State<StatusViewScreen>
     _animController.reset();
     if (story.isVideo) {
       _animController.duration = const Duration(seconds: 15);
+      // Wait for onVideoPrepared to start progress from 0.0 with the exact video duration
+      // Fallback timer starts animation if onPrepared is delayed (e.g. slow network)
+      Future.delayed(const Duration(milliseconds: 1500), () {
+        if (mounted && !_isPopping && _currentIndex < _stories.length && _stories[_currentIndex].isVideo) {
+          if (!_animController.isAnimating && !_animController.isCompleted) {
+            _animController.forward();
+          }
+        }
+      });
     } else {
       _animController.duration = const Duration(seconds: 5);
+      _animController.forward();
     }
-    _animController.forward();
     _preloadUpcomingStories();
   }
 
@@ -175,9 +184,8 @@ class _StatusViewScreenState extends State<StatusViewScreen>
     final story = _stories[_currentIndex];
     if (story.isVideo && durationMs > 0) {
       final safeMs = durationMs.clamp(1000, 60000);
-      final currentProgress = _animController.value;
       _animController.duration = Duration(milliseconds: safeMs);
-      _animController.forward(from: currentProgress);
+      _animController.forward(from: 0.0);
     }
   }
 
@@ -234,6 +242,7 @@ class _StatusViewScreenState extends State<StatusViewScreen>
 
   void _nextStory() {
     if (_isPopping || _stories.isEmpty) return;
+    _videoPlayerController.pause();
     if (_currentIndex < _stories.length - 1) {
       setState(() {
         _currentIndex++;
@@ -247,6 +256,7 @@ class _StatusViewScreenState extends State<StatusViewScreen>
 
   void _previousStory() {
     if (_isPopping || _stories.isEmpty) return;
+    _videoPlayerController.pause();
     if (_currentIndex > 0) {
       setState(() {
         _currentIndex--;
@@ -471,10 +481,10 @@ class _StatusViewScreenState extends State<StatusViewScreen>
       senderName: 'Status • ${widget.contactName}',
       content: story.isPhoto
           ? (story.text.isNotEmpty ? story.text : 'Foto')
-          : story.text,
-      contentType: story.isPhoto ? MessageContentType.attachment : MessageContentType.text,
-      attachmentPath: story.isPhoto ? story.imageAsset : null,
-      attachmentName: story.isPhoto ? 'status_photo.jpg' : null,
+          : (story.isVideo ? (story.text.isNotEmpty ? story.text : 'Video') : story.text),
+      contentType: (story.isPhoto || story.isVideo) ? MessageContentType.attachment : MessageContentType.text,
+      attachmentPath: story.isVideo ? (story.videoUrl ?? story.imageAsset) : (story.isPhoto ? story.imageAsset : null),
+      attachmentName: story.isVideo ? 'status_video.mp4' : (story.isPhoto ? 'status_photo.jpg' : null),
       timestamp: DateTime.now(),
       isOutgoing: false,
     );
@@ -949,6 +959,13 @@ class _StatusViewScreenState extends State<StatusViewScreen>
                                         attachmentPath: story.imageAsset,
                                         text: story.text.isNotEmpty ? story.text : 'Diteruskan dari status',
                                       );
+                                    } else if (story.isVideo && (story.videoUrl != null || story.imageAsset != null)) {
+                                      await ConversationService.instance.sendMessage(
+                                        conversationId: conv.id,
+                                        messageType: 'VIDEO',
+                                        attachmentPath: story.videoUrl ?? story.imageAsset,
+                                        text: story.text.isNotEmpty ? story.text : 'Diteruskan dari status video',
+                                      );
                                     } else {
                                       await ConversationService.instance.sendMessage(
                                         conversationId: conv.id,
@@ -1279,6 +1296,13 @@ class _StatusViewScreenState extends State<StatusViewScreen>
         controller: _videoPlayerController,
         onPrepared: _onVideoPrepared,
         onCompleted: _onVideoCompleted,
+        onError: (err) {
+          debugPrint('[StatusViewScreen] Video playback error: $err');
+          if (mounted && !_isPopping) {
+            _animController.duration = const Duration(seconds: 5);
+            _animController.forward();
+          }
+        },
       );
     }
     return _buildStoryImage(story);

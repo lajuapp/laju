@@ -69,6 +69,27 @@ class _LajuCachedImageState extends State<LajuCachedImage> with SingleTickerProv
     // Instant synchronous cache resolution before first frame render
     final raw = widget.imageUrlOrPath?.trim();
     if (raw != null && raw.isNotEmpty && !raw.startsWith('data:image') && !raw.startsWith('assets/')) {
+      // Check local filesystem file first for zero-frame render
+      String checkPath = raw;
+      if (raw.startsWith('file://')) {
+        try {
+          checkPath = Uri.parse(raw).toFilePath();
+        } catch (_) {
+          checkPath = raw.replaceFirst('file://', '');
+        }
+      }
+      if (!raw.startsWith('http://') && !raw.startsWith('https://')) {
+        try {
+          final localSync = File(checkPath);
+          if (localSync.existsSync()) {
+            _cachedFile = localSync;
+            _isLoading = false;
+            _fadeController.value = 1.0;
+            return;
+          }
+        } catch (_) {}
+      }
+
       final resolved = resolveMediaUrl(raw);
       final syncFile = LajuMediaCacheManager.instance.getCachedFileIfPresentSync(resolved);
       if (syncFile != null) {
@@ -100,6 +121,18 @@ class _LajuCachedImageState extends State<LajuCachedImage> with SingleTickerProv
     final raw = widget.imageUrlOrPath?.trim();
     if (raw == null || raw.isEmpty) {
       if (mounted) setState(() => _hasError = true);
+      return;
+    }
+
+    // Never decode video URLs as images
+    final isVideo = raw.endsWith('.mp4') || raw.endsWith('.mov') || raw.endsWith('.webm') || raw.startsWith('data:video');
+    if (isVideo) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _hasError = true;
+        });
+      }
       return;
     }
 
@@ -145,17 +178,21 @@ class _LajuCachedImageState extends State<LajuCachedImage> with SingleTickerProv
       }
     }
 
-    final localFile = File(filePath);
-    if (!raw.startsWith('http://') && !raw.startsWith('https://') && !raw.startsWith('/') && localFile.existsSync()) {
-      if (mounted) {
-        setState(() {
-          _cachedFile = localFile;
-          _isLoading = false;
-          _hasError = false;
-        });
-        _fadeController.forward(from: 0);
-      }
-      return;
+    if (!raw.startsWith('http://') && !raw.startsWith('https://')) {
+      try {
+        final localFile = File(filePath);
+        if (localFile.existsSync()) {
+          if (mounted) {
+            setState(() {
+              _cachedFile = localFile;
+              _isLoading = false;
+              _hasError = false;
+            });
+            _fadeController.forward(from: 0);
+          }
+          return;
+        }
+      } catch (_) {}
     }
 
     // 4. Remote / Server-Relative Network Image

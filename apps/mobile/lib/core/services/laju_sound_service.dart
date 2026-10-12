@@ -90,4 +90,17 @@ class LajuSoundService {
       await SystemSound.play(SystemSoundType.click);
     } catch (_) {}
   }
+
+  /// Plays subtle in-chat chime when a new message arrives while chat is actively open
+  static Future<void> playInChatIncomingChime() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final conversationTones = prefs.getBool('notif_conversation_tones') ?? true;
+      if (!conversationTones) return;
+
+      await HapticFeedback.lightImpact();
+      await SystemSound.play(SystemSoundType.click);
+    } catch (_) {}
+  }
 }
+

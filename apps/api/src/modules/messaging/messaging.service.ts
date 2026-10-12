@@ -301,8 +301,14 @@ export class MessagingService {
         try {
           const client = this.redisService.getClient();
           const strPayload = JSON.stringify(messagePayload);
-          // Broadcast to sender (other active sessions)
-          client.publish(`user:${senderUserId}`, strPayload).catch(() => {});
+          // Broadcast silent sync to sender (for other active sessions to sync message without showing a push notification alert)
+          const senderSyncPayload = JSON.stringify({
+            ...messagePayload,
+            type: 'MESSAGE_SYNC',
+            isSilent: true
+          });
+          client.publish(`user:${senderUserId}`, senderSyncPayload).catch(() => {});
+
           // Broadcast to all recipients
           for (const member of recipientMembers) {
             client.publish(`user:${member.userId}`, strPayload).catch(() => {});
@@ -311,7 +317,6 @@ export class MessagingService {
       }
 
       for (const member of recipientMembers) {
-
         for (const device of member.user.devices) {
           const tokens: string[] = [];
           if (device.pushDevices && device.pushDevices.length > 0) {
@@ -323,15 +328,7 @@ export class MessagingService {
             tokens.push(device.pushToken);
           }
 
-          if (tokens.length === 0) {
-            // Fallback to conversation wakeup via default Gotify channel
-            await this.gotifyService.sendPushNotification({
-              title: senderName,
-              message: messagePreview,
-              conversationId,
-              priority: 6
-            });
-          } else {
+          if (tokens.length > 0) {
             for (const token of tokens) {
               await this.gotifyService.sendPushNotification({
                 targetToken: token,

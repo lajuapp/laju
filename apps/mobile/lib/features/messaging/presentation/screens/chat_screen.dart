@@ -73,6 +73,8 @@ class _ChatScreenState extends State<ChatScreen> {
   late String _conversationId;
   late String _derivedSafetyNumber;
   String? _chatDisappearingTimer;
+  bool _initialLoaded = false;
+  final DateTime _screenOpenedAt = DateTime.now();
 
   bool get _isCurrentPeerOnline {
     final live = ConversationService.instance.peerOnlineStatusNotifier.value[_conversationId] ??
@@ -216,24 +218,27 @@ class _ChatScreenState extends State<ChatScreen> {
     });
   }
 
-  Future<void> _syncMessages() async {
+  Future<void> _syncMessages({bool isInitialLoad = false}) async {
     if (!mounted) return;
     try {
       final apiMsgs = await ConversationService.instance.fetchMessages(_conversationId);
       if (mounted && apiMsgs.isNotEmpty) {
-        _mergeAndSetMessages(apiMsgs);
+        _mergeAndSetMessages(apiMsgs, isInitialLoad: isInitialLoad || !_initialLoaded);
       }
     } catch (_) {}
   }
 
-  void _mergeAndSetMessages(List<MessageModel> incoming) {
+  void _mergeAndSetMessages(List<MessageModel> incoming, {bool isInitialLoad = false}) {
     if (!mounted || incoming.isEmpty) return;
 
     final existingIds = _messages.map((m) => m.id).toSet();
     bool hasNewIncoming = false;
     for (final inc in incoming) {
       if (!inc.isOutgoing && !existingIds.contains(inc.id)) {
-        hasNewIncoming = true;
+        // Only trigger subtle chime for live incoming messages when chat was already open & loaded
+        if (!isInitialLoad && _initialLoaded && inc.timestamp.isAfter(_screenOpenedAt.subtract(const Duration(seconds: 2)))) {
+          hasNewIncoming = true;
+        }
         break;
       }
     }
@@ -293,7 +298,7 @@ class _ChatScreenState extends State<ChatScreen> {
     }
 
     if (hasNewIncoming) {
-      LajuSoundService.playIncomingNotification();
+      LajuSoundService.playInChatIncomingChime();
     }
   }
 
@@ -313,6 +318,7 @@ class _ChatScreenState extends State<ChatScreen> {
   void dispose() {
     ConversationService.instance.sendTypingStatus(_conversationId, false);
     ConversationService.instance.setTyping(_conversationId, false);
+    ConversationService.instance.markConversationAsRead(_conversationId);
     if (ConversationService.instance.currentActiveConversationId == _conversationId) {
       ConversationService.instance.currentActiveConversationId = null;
     }
@@ -331,7 +337,7 @@ class _ChatScreenState extends State<ChatScreen> {
     // Step 1: Load from SQLite cache instantly (offline-ready)
     final cached = await ConversationService.instance.getMessagesFromCache(_conversationId);
     if (mounted && cached.isNotEmpty) {
-      _mergeAndSetMessages(cached);
+      _mergeAndSetMessages(cached, isInitialLoad: true);
       if (!_initialScrollDone) {
         _initialScrollDone = true;
         _scrollToBottom(immediate: true);
@@ -339,10 +345,13 @@ class _ChatScreenState extends State<ChatScreen> {
     }
 
     // Step 2: Fetch fresh messages from API
-    await _syncMessages();
-    if (mounted && !_initialScrollDone) {
-      _initialScrollDone = true;
-      _scrollToBottom(immediate: true);
+    await _syncMessages(isInitialLoad: true);
+    if (mounted) {
+      _initialLoaded = true;
+      if (!_initialScrollDone) {
+        _initialScrollDone = true;
+        _scrollToBottom(immediate: true);
+      }
     }
   }
 
