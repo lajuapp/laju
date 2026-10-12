@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../theme/app_colors.dart';
 import 'laju_toast.dart';
+import 'laju_cached_image.dart';
 
 class LajuImageViewer extends StatefulWidget {
   final String imagePath;
@@ -101,6 +102,12 @@ class _LajuImageViewerState extends State<LajuImageViewer> with SingleTickerProv
         File(path),
         fit: BoxFit.contain,
         errorBuilder: (context, error, stackTrace) => _buildError(),
+      );
+    } else if (path.startsWith('http://') || path.startsWith('https://') || path.startsWith('/') || path.startsWith('admin/media')) {
+      return LajuCachedImage(
+        imageUrlOrPath: path,
+        fit: BoxFit.contain,
+        errorWidget: _buildError(),
       );
     } else {
       return _buildError();

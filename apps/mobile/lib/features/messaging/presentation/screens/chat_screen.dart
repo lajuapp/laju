@@ -1147,6 +1147,7 @@ class _ChatScreenState extends State<ChatScreen> {
                           isOnline: _isCurrentPeerOnline && PrivacyController.instance.isOnlineVisible,
                           showOfflineDot: true,
                           isVerified: true,
+                          heroTag: widget.conversationId.isNotEmpty ? 'avatar_${widget.conversationId}' : null,
                         );
                       },
                     ),

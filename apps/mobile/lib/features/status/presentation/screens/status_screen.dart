@@ -1,6 +1,7 @@
 // ignore_for_file: deprecated_member_use
 import 'dart:io';
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import '../../../../core/core.dart';
 import '../../../settings/domain/account_controller.dart';
@@ -157,6 +158,21 @@ class StatusScreenState extends State<StatusScreen> with AutomaticKeepAliveClien
             ..clear()
             ..addAll(newViewed);
         });
+      }
+
+      // Preload first media of unread contact updates for instant playback when tapped
+      for (final group in newRecent.take(5)) {
+        if (group.stories.isNotEmpty) {
+          final first = group.stories.first;
+          if (first.isPhoto && first.imageAsset != null && first.imageAsset!.isNotEmpty) {
+            LajuMediaCacheManager.instance.preload(first.imageAsset!);
+          } else if (first.isVideo) {
+            final vUrl = first.videoUrl ?? first.imageAsset;
+            if (vUrl != null && vUrl.isNotEmpty) {
+              LajuMediaCacheManager.instance.preload(vUrl);
+            }
+          }
+        }
       }
     } catch (e) {
       debugPrint('[StatusScreen] _loadStatuses error: $e');
@@ -582,147 +598,96 @@ class StatusScreenState extends State<StatusScreen> with AutomaticKeepAliveClien
 
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       backgroundColor: isDark ? AppColors.darkSurface : Colors.white,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.remove_red_eye_outlined, color: AppColors.primary),
-              title: Text('Lihat Status Saya', style: TextStyle(color: isDark ? Colors.white : const Color(0xFF111827))),
-              onTap: () {
-                final myAvatarUrl = AccountController.instance.avatarUrl;
-                final myName = AccountController.instance.userName;
-                final storyPhotos = _myStories.where((s) => s.isPhoto && s.imageAsset != null && s.imageAsset!.isNotEmpty).toList();
-                final effectiveMyAvatar = myAvatarUrl.isNotEmpty
-                    ? myAvatarUrl
-                    : (storyPhotos.isNotEmpty ? storyPhotos.first.imageAsset : null);
-
-                Navigator.pop(ctx);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => StatusViewScreen(
-                      contactName: myName.isNotEmpty ? myName : 'My Status (You)',
-                      avatarUrl: effectiveMyAvatar,
-                      stories: _myStories,
-                      isMyStatus: true,
-                      onStatusDeleted: _loadStatuses,
-                    ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Center(
+                child: Container(
+                  width: 38,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 8),
+                  decoration: BoxDecoration(
+                    color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(2),
                   ),
-                );
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.people_alt_outlined, color: Color(0xFF00A884)),
-              title: Text('Siapa yang Melihat Status', style: TextStyle(color: isDark ? Colors.white : const Color(0xFF111827))),
-              subtitle: Text(
-                '${_myStories.fold<int>(0, (sum, s) => sum + s.viewers.length)} total pemirsa',
-                style: TextStyle(color: isDark ? Colors.white54 : Colors.black54, fontSize: 12),
+                ),
               ),
-              onTap: () {
-                Navigator.pop(ctx);
-                _showAllMyStatusViewersSheet();
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.forward_rounded, color: Colors.blueAccent),
-              title: Text('Teruskan Status ke Obrolan', style: TextStyle(color: isDark ? Colors.white : const Color(0xFF111827))),
-              onTap: () {
-                Navigator.pop(ctx);
-                if (_myStories.isNotEmpty) {
-                  _forwardMyStatusPicker(_myStories.first);
-                }
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.photo_library_outlined, color: Color(0xFFEC4899)),
-              title: Text('Buka Galeri Foto HP', style: TextStyle(color: isDark ? Colors.white : const Color(0xFF111827))),
-              onTap: () async {
-                Navigator.pop(ctx);
-                await Future.delayed(const Duration(milliseconds: 100));
-                if (mounted) {
-                  _openGalleryStatus();
-                }
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.video_library_outlined, color: Color(0xFF06B6D4)),
-              title: Text('Buka Galeri Video HP (Maks 1m)', style: TextStyle(color: isDark ? Colors.white : const Color(0xFF111827))),
-              onTap: () async {
-                Navigator.pop(ctx);
-                await Future.delayed(const Duration(milliseconds: 100));
-                if (mounted) {
-                  _openVideoGalleryStatus();
-                }
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.camera_alt_outlined, color: Colors.green),
-              title: Text('Tambah Status Kamera Foto', style: TextStyle(color: isDark ? Colors.white : const Color(0xFF111827))),
-              onTap: () async {
-                Navigator.pop(ctx);
-                await Future.delayed(const Duration(milliseconds: 100));
-                if (mounted) {
-                  _openCameraStatus();
-                }
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.videocam_outlined, color: Color(0xFF8B5CF6)),
-              title: Text('Rekam Video Status (Maks 1m)', style: TextStyle(color: isDark ? Colors.white : const Color(0xFF111827))),
-              onTap: () async {
-                Navigator.pop(ctx);
-                await Future.delayed(const Duration(milliseconds: 100));
-                if (mounted) {
-                  _recordVideoStatus();
-                }
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.edit_outlined, color: Colors.blueAccent),
-              title: Text('Tambah Status Teks', style: TextStyle(color: isDark ? Colors.white : const Color(0xFF111827))),
-              onTap: () async {
-                Navigator.pop(ctx);
-                await Future.delayed(const Duration(milliseconds: 100));
-                if (mounted) {
-                  _openTextStatusComposer();
-                }
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.folder_shared_outlined, color: Color(0xFF8B5CF6)),
-              title: Text('Pilih Berkas dari Penyimpanan', style: TextStyle(color: isDark ? Colors.white : const Color(0xFF111827))),
-              onTap: () async {
-                Navigator.pop(ctx);
-                await Future.delayed(const Duration(milliseconds: 100));
-                if (mounted) {
-                  _openStorageStatus();
-                }
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.delete_outline_rounded, color: AppColors.danger),
-              title: const Text('Hapus Semua Status', style: TextStyle(color: AppColors.danger)),
-              onTap: () async {
-                Navigator.pop(ctx);
-                final storiesToDelete = List<StatusStoryItem>.from(_myStories);
-                setState(() => _myStories.clear());
-                for (final story in storiesToDelete) {
-                  if (story.id != null) {
-                    await StatusService.instance.deleteStatus(story.id!);
+              ListTile(
+                leading: const Icon(Icons.remove_red_eye_outlined, color: AppColors.primary),
+                title: Text(
+                  'Lihat Status Saya',
+                  style: TextStyle(
+                    color: isDark ? Colors.white : const Color(0xFF111827),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                onTap: () {
+                  final myAvatarUrl = AccountController.instance.avatarUrl;
+                  final myName = AccountController.instance.userName;
+                  final storyPhotos = _myStories.where((s) => s.isPhoto && s.imageAsset != null && s.imageAsset!.isNotEmpty).toList();
+                  final effectiveMyAvatar = myAvatarUrl.isNotEmpty
+                      ? myAvatarUrl
+                      : (storyPhotos.isNotEmpty ? storyPhotos.first.imageAsset : null);
+
+                  Navigator.pop(ctx);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => StatusViewScreen(
+                        contactName: myName.isNotEmpty ? myName : 'My Status (You)',
+                        avatarUrl: effectiveMyAvatar,
+                        stories: _myStories,
+                        isMyStatus: true,
+                        onStatusDeleted: _loadStatuses,
+                      ),
+                    ),
+                  );
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.people_alt_outlined, color: Color(0xFF00A884)),
+                title: Text(
+                  'Siapa yang Melihat Status',
+                  style: TextStyle(
+                    color: isDark ? Colors.white : const Color(0xFF111827),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                subtitle: Text(
+                  '${_myStories.fold<int>(0, (sum, s) => sum + s.viewers.length)} total pemirsa',
+                  style: TextStyle(color: isDark ? Colors.white54 : Colors.black54, fontSize: 12),
+                ),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _showAllMyStatusViewersSheet();
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.share_rounded, color: Color(0xFF10B981)),
+                title: Text(
+                  'Teruskan Status ke Obrolan',
+                  style: TextStyle(
+                    color: isDark ? Colors.white : const Color(0xFF111827),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  if (_myStories.isNotEmpty) {
+                    _forwardMyStatusPicker(_myStories.first);
                   }
-                }
-                if (mounted) {
-                  LajuToast.info(context, 'Status saya telah dihapus');
-                  _loadStatuses();
-                }
-              },
-            ),
-          ],
+                },
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -956,7 +921,7 @@ class StatusScreenState extends State<StatusScreen> with AutomaticKeepAliveClien
                       padding: const EdgeInsets.symmetric(horizontal: 18),
                       child: Row(
                         children: [
-                          const Icon(Icons.forward_rounded, color: Color(0xFF00A884), size: 22),
+                          const Icon(Icons.share_rounded, color: Color(0xFF00A884), size: 22),
                           const SizedBox(width: 8),
                           Expanded(
                             child: Text(
@@ -1063,27 +1028,36 @@ class StatusScreenState extends State<StatusScreen> with AutomaticKeepAliveClien
                                   ),
                                   onTap: () async {
                                     Navigator.pop(sheetCtx);
-                                    if (story.isPhoto && story.imageAsset != null) {
-                                      await ConversationService.instance.sendMessage(
-                                        conversationId: conv.id,
-                                        messageType: 'IMAGE',
-                                        attachmentPath: story.imageAsset,
-                                        text: story.text.isNotEmpty ? story.text : 'Diteruskan dari status',
-                                      );
-                                    } else if (story.isVideo && (story.videoUrl != null || story.imageAsset != null)) {
-                                      await ConversationService.instance.sendMessage(
-                                        conversationId: conv.id,
-                                        messageType: 'VIDEO',
-                                        attachmentPath: story.videoUrl ?? story.imageAsset,
-                                        text: story.text.isNotEmpty ? story.text : 'Diteruskan dari status video',
-                                      );
-                                    } else {
-                                      await ConversationService.instance.sendMessage(
-                                        conversationId: conv.id,
-                                        messageType: 'TEXT',
-                                        text: '*Status:*\n${story.text}',
-                                      );
-                                    }
+                                    final effectiveExpiresAt = story.expiresAt ??
+                                        (story.createdAt != null
+                                            ? story.createdAt!.add(const Duration(hours: 24))
+                                            : DateTime.now().add(const Duration(hours: 24)));
+
+                                    final statusPayload = jsonEncode({
+                                      'type': 'status_forward',
+                                      'statusId': story.id ?? '',
+                                      'statusType': story.isVideo ? 'video' : (story.isPhoto ? 'image' : 'text'),
+                                      'mediaUrl': story.isVideo
+                                          ? (story.videoUrl ?? story.imageAsset ?? '')
+                                          : (story.imageAsset ?? ''),
+                                      'thumbnailUrl': story.imageAsset ?? '',
+                                      'caption': story.text,
+                                      'authorName': 'Anda',
+                                      'createdAt': story.createdAt?.toIso8601String() ?? DateTime.now().toIso8601String(),
+                                      'expiresAt': effectiveExpiresAt.toIso8601String(),
+                                    });
+
+                                    await ConversationService.instance.sendMessage(
+                                      conversationId: conv.id,
+                                      messageType: 'STATUS',
+                                      attachmentPath: story.isVideo
+                                          ? (story.videoUrl ?? story.imageAsset)
+                                          : (story.isPhoto ? story.imageAsset : null),
+                                      attachmentName: story.isVideo
+                                          ? 'status_video.mp4'
+                                          : (story.isPhoto ? 'status_photo.jpg' : null),
+                                      text: statusPayload,
+                                    );
                                     if (mounted) {
                                       LajuToast.success(context, 'Status diteruskan ke ${conv.title}');
                                     }
@@ -1151,6 +1125,7 @@ class StatusScreenState extends State<StatusScreen> with AutomaticKeepAliveClien
 
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       backgroundColor: isDark ? AppColors.darkSurface : Colors.white,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
@@ -1161,13 +1136,18 @@ class StatusScreenState extends State<StatusScreen> with AutomaticKeepAliveClien
             final excludedCount = _excludedContactIds.length;
             final onlyShareCount = _onlyShareContactIds.length;
 
-            return SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
+            return Container(
+              constraints: BoxConstraints(
+                maxHeight: MediaQuery.of(context).size.height * 0.85,
+              ),
+              child: SafeArea(
+                child: SingleChildScrollView(
+                  physics: const BouncingScrollPhysics(),
+                  padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
@@ -1343,11 +1323,12 @@ class StatusScreenState extends State<StatusScreen> with AutomaticKeepAliveClien
                   ],
                 ),
               ),
-            );
-          },
-        );
-      },
-    );
+            ),
+          );
+        },
+      );
+    },
+  );
   }
 
   @override

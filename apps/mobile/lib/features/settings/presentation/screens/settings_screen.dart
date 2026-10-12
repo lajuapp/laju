@@ -322,7 +322,7 @@ class SettingsScreen extends StatelessWidget {
                     context,
                     Icons.logout_rounded,
                     const Color(0xFFEF4444),
-                    context.tr('logout') == 'logout' ? 'Keluar dari Akun' : context.tr('logout'),
+                    context.tr('logout'),
                     () => _showLogoutConfirmation(context),
                   ),
                 ),
@@ -343,14 +343,14 @@ class SettingsScreen extends StatelessWidget {
         backgroundColor: isDark ? AppColors.darkSurface : Colors.white,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Text(
-          'Keluar dari Akun?',
+          context.tr('logoutConfirmTitle'),
           style: TextStyle(
             color: isDark ? Colors.white : const Color(0xFF111827),
             fontWeight: FontWeight.bold,
           ),
         ),
         content: Text(
-          'Sesi Anda akan diakhiri pada perangkat ini. Anda harus masuk kembali untuk mengakses pesan.',
+          context.tr('logoutConfirmDesc'),
           style: TextStyle(
             color: isDark ? AppColors.darkTextSecondary : const Color(0xFF6B7280),
             fontSize: 14,
@@ -379,7 +379,7 @@ class SettingsScreen extends StatelessWidget {
                 (route) => false,
               );
             },
-            child: const Text('Keluar'),
+            child: Text(context.tr('logoutConfirmButton')),
           ),
         ],
       ),

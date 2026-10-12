@@ -807,6 +807,7 @@ class ConversationService {
           final isPinned = old?.isPinned ?? false;
           final isLocked = old?.isLocked ?? false;
           final isArchived = old?.isArchived ?? false;
+          final isMuted = old?.isMuted ?? false;
           final isCurOpen = isConversationOpen(convId);
           final unreadCount = isCurOpen ? 0 : (old?.unreadCount ?? 0);
 
@@ -1471,6 +1472,32 @@ class ConversationService {
         attName = 'Voice Note';
         contentText = 'Pesan Suara';
         attSize = '0:00';
+      } else if (msgType == 'VIDEO' || rawCiphertext.contains('"type":"video"') || rawCiphertext.contains('"type": "video"')) {
+        contentType = MessageContentType.attachment;
+        if (rawCiphertext.startsWith('{')) {
+          try {
+            final parsed = jsonDecode(rawCiphertext);
+            if (parsed is Map) {
+              mediaData = (parsed['media'] ?? parsed['mediaUrl'] ?? parsed['videoUrl']) as String?;
+              attName = (parsed['fileName'] ?? 'Video.mp4') as String;
+              contentText = (parsed['caption'] ?? '') as String;
+            }
+          } catch (_) {}
+        }
+        if (mediaData == null && rawCiphertext.startsWith('http')) {
+          mediaData = rawCiphertext;
+          attName = 'Video.mp4';
+        }
+      } else if (rawCiphertext.contains('"type":"status_forward"') || rawCiphertext.contains('"type": "status_forward"')) {
+        contentType = MessageContentType.attachment;
+        contentText = rawCiphertext;
+        try {
+          final parsed = jsonDecode(rawCiphertext);
+          if (parsed is Map) {
+            mediaData = (parsed['mediaUrl'] ?? parsed['media'] ?? parsed['thumbnailUrl']) as String?;
+            attName = parsed['statusType'] == 'video' ? 'status_video.mp4' : 'status_photo.jpg';
+          }
+        } catch (_) {}
       } else if (msgType == 'DOCUMENT' || rawCiphertext.startsWith('data:') || rawCiphertext.startsWith('Dokumen')) {
         contentType = MessageContentType.attachment;
         mediaData = rawCiphertext.startsWith('data:') ? rawCiphertext : null;
@@ -1600,11 +1627,23 @@ class ConversationService {
         'caption': text.trim(),
         if (replyToMap != null) 'replyTo': replyToMap,
       });
-    } else if (attachmentPath != null && (type == 'IMAGE' || type == 'AUDIO' || type == 'DOCUMENT')) {
+    } else if (type == 'STATUS' || payloadCiphertext.contains('"type":"status_forward"') || payloadCiphertext.contains('"type": "status_forward"')) {
+      // Status forward payload is already encoded JSON
+      if (replyToMap != null) {
+        try {
+          final parsed = jsonDecode(payloadCiphertext);
+          if (parsed is Map<String, dynamic>) {
+            parsed['replyTo'] = replyToMap;
+            payloadCiphertext = jsonEncode(parsed);
+          }
+        } catch (_) {}
+      }
+    } else if (attachmentPath != null && (type == 'IMAGE' || type == 'VIDEO' || type == 'AUDIO' || type == 'DOCUMENT')) {
       try {
         String effectivePath = attachmentPath;
         final detectedMime = detectMimeType(effectivePath, fileName: attachmentName);
         final isImg = type == 'IMAGE' || isImageFile(attachmentName ?? '') || isImageFile(effectivePath) || detectedMime.startsWith('image/');
+        final isVid = type == 'VIDEO' || (attachmentName ?? '').toLowerCase().endsWith('.mp4') || effectivePath.toLowerCase().endsWith('.mp4') || detectedMime.startsWith('video/');
 
         if (type == 'IMAGE') {
           effectivePath = await DeviceMediaService.compressImage(attachmentPath);
@@ -1615,15 +1654,26 @@ class ConversationService {
           final b64 = base64Encode(bytes);
           final mime = isImg
               ? (detectedMime.startsWith('image/') ? detectedMime : 'image/jpeg')
-              : (type == 'AUDIO'
-                  ? (detectedMime.startsWith('audio/') ? detectedMime : 'audio/m4a')
-                  : (detectedMime.isNotEmpty ? detectedMime : 'application/octet-stream'));
+              : (isVid
+                  ? (detectedMime.startsWith('video/') ? detectedMime : 'video/mp4')
+                  : (type == 'AUDIO'
+                      ? (detectedMime.startsWith('audio/') ? detectedMime : 'audio/m4a')
+                      : (detectedMime.isNotEmpty ? detectedMime : 'application/octet-stream')));
 
           if (isImg) {
             payloadCiphertext = jsonEncode({
               'type': 'image',
               'media': 'data:$mime;base64,$b64',
               'fileName': attachmentName ?? 'Foto.jpg',
+              'fileSize': attachmentSize ?? '',
+              'caption': text.trim(),
+              if (replyToMap != null) 'replyTo': replyToMap,
+            });
+          } else if (isVid) {
+            payloadCiphertext = jsonEncode({
+              'type': 'video',
+              'media': 'data:$mime;base64,$b64',
+              'fileName': attachmentName ?? 'Video.mp4',
               'fileSize': attachmentSize ?? '',
               'caption': text.trim(),
               if (replyToMap != null) 'replyTo': replyToMap,
@@ -1642,6 +1692,26 @@ class ConversationService {
               'type': 'document',
               'media': 'data:$mime;base64,$b64',
               'fileName': attachmentName ?? 'Dokumen',
+              'fileSize': attachmentSize ?? '',
+              'caption': text.trim(),
+              if (replyToMap != null) 'replyTo': replyToMap,
+            });
+          }
+        } else if (effectivePath.startsWith('http://') || effectivePath.startsWith('https://') || effectivePath.startsWith('admin/media')) {
+          if (isVid) {
+            payloadCiphertext = jsonEncode({
+              'type': 'video',
+              'media': effectivePath,
+              'fileName': attachmentName ?? 'Video.mp4',
+              'fileSize': attachmentSize ?? '',
+              'caption': text.trim(),
+              if (replyToMap != null) 'replyTo': replyToMap,
+            });
+          } else if (isImg) {
+            payloadCiphertext = jsonEncode({
+              'type': 'image',
+              'media': effectivePath,
+              'fileName': attachmentName ?? 'Foto.jpg',
               'fileSize': attachmentSize ?? '',
               'caption': text.trim(),
               if (replyToMap != null) 'replyTo': replyToMap,
@@ -1674,7 +1744,7 @@ class ConversationService {
     }
 
     try {
-      final backendMessageType = (type == 'IMAGE' || type == 'AUDIO' || type == 'DOCUMENT' || type == 'ATTACHMENT' || type == 'STICKER' || type == 'CONTACT')
+      final backendMessageType = (type == 'IMAGE' || type == 'VIDEO' || type == 'STATUS' || type == 'AUDIO' || type == 'DOCUMENT' || type == 'ATTACHMENT' || type == 'STICKER' || type == 'CONTACT')
           ? 'ATTACHMENT'
           : (type == 'LOCATION' ? 'LOCATION' : 'TEXT');
 
@@ -1726,7 +1796,7 @@ class ConversationService {
               ? MessageContentType.sticker
               : (type == 'AUDIO'
                   ? MessageContentType.voiceNote
-                  : (type == 'IMAGE' || type == 'DOCUMENT'
+                  : (type == 'IMAGE' || type == 'DOCUMENT' || type == 'VIDEO' || type == 'STATUS'
                       ? MessageContentType.attachment
                       : (type == 'LOCATION'
                           ? MessageContentType.location

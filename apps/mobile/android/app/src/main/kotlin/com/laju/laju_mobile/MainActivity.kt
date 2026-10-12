@@ -3128,7 +3128,7 @@ class MainActivity : FlutterFragmentActivity() {
 }
 
 class NativeVideoPlayerView(
-    context: Context,
+    private val context: Context,
     id: Int,
     private val params: Map<String, Any?>?,
     messenger: BinaryMessenger
@@ -3138,6 +3138,8 @@ class NativeVideoPlayerView(
     private val videoView = VideoView(context)
     private val channel = MethodChannel(messenger, "com.laju/native_video_view_$id")
     private var mediaPlayer: MediaPlayer? = null
+    private var currentSource: String? = null
+    private var isPrepared: Boolean = false
 
     init {
         channel.setMethodCallHandler(this)
@@ -3152,6 +3154,7 @@ class NativeVideoPlayerView(
         container.addView(videoView)
 
         videoView.setOnPreparedListener { mp ->
+            isPrepared = true
             mediaPlayer = mp
             val loop = (params?.get("loop") as? Boolean) ?: false
             mp.isLooping = loop
@@ -3184,13 +3187,28 @@ class NativeVideoPlayerView(
         }
 
         val videoSource = params?.get("url") as? String
+        val token = params?.get("token") as? String
         if (!videoSource.isNullOrEmpty()) {
-            setSource(videoSource)
+            setSource(videoSource, token)
         }
     }
 
-    private fun setSource(source: String) {
+    private fun setSource(source: String, tokenParam: String? = null) {
+        if (source == currentSource && isPrepared) {
+            val autoPlay = (params?.get("autoPlay") as? Boolean) ?: true
+            if (autoPlay) {
+                videoView.start()
+            }
+            return
+        }
+        currentSource = source
+        isPrepared = false
+
         try {
+            try {
+                videoView.stopPlayback()
+            } catch (_: Exception) {}
+
             if (source.startsWith("data:")) {
                 try {
                     val rawB64 = if (source.contains(",")) source.substringAfter(",") else source
@@ -3205,19 +3223,77 @@ class NativeVideoPlayerView(
                     android.util.Log.e("NativeVideoPlayerView", "Base64 video decode error: ${b64Err.message}")
                 }
             }
-            if (source.startsWith("http://") || source.startsWith("https://")) {
-                videoView.setVideoURI(Uri.parse(source))
-            } else {
-                val f = File(source)
-                if (f.exists()) {
-                    videoView.setVideoPath(f.absolutePath)
-                } else {
-                    videoView.setVideoURI(Uri.parse(source))
+            if (source.startsWith("file://")) {
+                val cleanPath = Uri.parse(source).path
+                if (cleanPath != null && File(cleanPath).exists()) {
+                    videoView.setVideoPath(cleanPath)
+                    return
                 }
             }
+            val f = File(source)
+            if (f.exists()) {
+                videoView.setVideoPath(f.absolutePath)
+                return
+            }
+
+            if (source.startsWith("http://") || source.startsWith("https://")) {
+                val token = tokenParam ?: (params?.get("token") as? String)
+                val headers = HashMap<String, String>()
+                headers["User-Agent"] = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
+                headers["Accept"] = "*/*"
+                if (!token.isNullOrEmpty()) {
+                    headers["Authorization"] = "Bearer $token"
+                }
+
+                try {
+                    videoView.setVideoURI(Uri.parse(source), headers)
+                } catch (_: Exception) {
+                    videoView.setVideoURI(Uri.parse(source))
+                }
+
+                // Also trigger background download as fallback
+                downloadAndSetLocalSource(source, token)
+            } else {
+                videoView.setVideoURI(Uri.parse(source))
+            }
         } catch (e: Exception) {
+            android.util.Log.e("NativeVideoPlayerView", "setSource error: ${e.message}")
             channel.invokeMethod("onError", mapOf("error" to (e.message ?: "Failed to set source")))
         }
+    }
+
+    private fun downloadAndSetLocalSource(sourceUrl: String, token: String?) {
+        Thread {
+            try {
+                val url = URL(sourceUrl)
+                val conn = url.openConnection() as HttpURLConnection
+                conn.connectTimeout = 12000
+                conn.readTimeout = 25000
+                conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36")
+                conn.setRequestProperty("Accept", "*/*")
+                if (!token.isNullOrEmpty()) {
+                    conn.setRequestProperty("Authorization", "Bearer $token")
+                }
+                conn.connect()
+                if (conn.responseCode in 200..299) {
+                    val tempFile = File(context.cacheDir, "status_net_${sourceUrl.hashCode()}.mp4")
+                    conn.inputStream.use { input ->
+                        FileOutputStream(tempFile).use { output ->
+                            input.copyTo(output)
+                        }
+                    }
+                    if (tempFile.exists() && tempFile.length() > 0 && currentSource == sourceUrl && !isPrepared) {
+                        Handler(Looper.getMainLooper()).post {
+                            try {
+                                if (!isPrepared) {
+                                    videoView.setVideoPath(tempFile.absolutePath)
+                                }
+                            } catch (_: Exception) {}
+                        }
+                    }
+                }
+            } catch (_: Exception) {}
+        }.start()
     }
 
     override fun getView(): View = container
@@ -3247,6 +3323,16 @@ class NativeVideoPlayerView(
                     }
                 } catch (_: Exception) {}
                 result.success(true)
+            }
+            "setSource" -> {
+                val newUrl = call.argument<String>("url")
+                val token = call.argument<String>("token")
+                if (!newUrl.isNullOrEmpty()) {
+                    setSource(newUrl, token)
+                    result.success(true)
+                } else {
+                    result.error("INVALID_URL", "URL cannot be empty", null)
+                }
             }
             else -> result.notImplemented()
         }

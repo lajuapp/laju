@@ -39,6 +39,9 @@ class _HomeScreenState extends State<HomeScreen> {
   final TextEditingController _searchController = TextEditingController();
   final List<String> _filters = ['All', 'Unread', 'Groups', 'Favorites'];
 
+  bool _isSearchingCalls = false;
+  final TextEditingController _callSearchController = TextEditingController();
+
   List<Map<String, dynamic>> _callLogs = [];
   Timer? _conversationsSyncTimer;
 
@@ -262,6 +265,10 @@ class _HomeScreenState extends State<HomeScreen> {
     if (mounted && _currentBottomNavIndex != HomeScreen.activeTabNotifier.value) {
       setState(() {
         _currentBottomNavIndex = HomeScreen.activeTabNotifier.value;
+        if (_currentBottomNavIndex != 2 && _isSearchingCalls) {
+          _isSearchingCalls = false;
+          _callSearchController.clear();
+        }
       });
       if (_currentBottomNavIndex == 2) {
         _loadCallLogs();
@@ -275,6 +282,8 @@ class _HomeScreenState extends State<HomeScreen> {
     ConversationService.instance.conversationsNotifier.removeListener(_onConversationsSync);
     CallSessionController.instance.removeListener(_onCallSessionChanged);
     HomeScreen.activeTabNotifier.removeListener(_onTabChanged);
+    _searchController.dispose();
+    _callSearchController.dispose();
     super.dispose();
   }
 
@@ -683,7 +692,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void _openChat(ConversationModel conv) async {
     // Clear unread badge immediately and optimistically
     final idx = _conversations.indexWhere((c) => c.id == conv.id);
-    if (idx != -1) {
+    if (idx != -1 && _conversations[idx].unreadCount > 0) {
       setState(() {
         _conversations[idx] = _conversations[idx].copyWith(unreadCount: 0);
       });
@@ -727,9 +736,24 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     final isDark = ThemeModeController.instance.isDarkMode(context);
 
-    return Scaffold(
-      extendBody: true,
-      backgroundColor: isDark ? AppColors.darkBackground : const Color(0xFFF1F5F9),
+    return PopScope(
+      canPop: !_isSearchingCalls && _currentBottomNavIndex == 0,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        if (_isSearchingCalls) {
+          setState(() {
+            _isSearchingCalls = false;
+            _callSearchController.clear();
+          });
+          return;
+        }
+        if (_currentBottomNavIndex != 0) {
+          HomeScreen.activeTabNotifier.value = 0;
+        }
+      },
+      child: Scaffold(
+        extendBody: true,
+        backgroundColor: isDark ? AppColors.darkBackground : const Color(0xFFF1F5F9),
       appBar: _currentBottomNavIndex == 0
           ? LajuGlassAppBar(
               titleSpacing: 16,
@@ -868,8 +892,9 @@ class _HomeScreenState extends State<HomeScreen> {
                     : null)),
       ),
       bottomNavigationBar: _buildFloatingGlassDock(isDark),
-    );
-  }
+    ),
+  );
+}
 
   Widget _buildFloatingGlassDock(bool isDark) {
     final navItems = [
@@ -992,8 +1017,8 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       ),
     ),
-  );
-}
+    );
+  }
 
   Widget _buildBody() {
     return IndexedStack(
@@ -1379,62 +1404,150 @@ class _HomeScreenState extends State<HomeScreen> {
     return '${m}m ${s}d';
   }
 
+  List<Map<String, dynamic>> get _filteredCallLogs {
+    final query = _callSearchController.text.trim().toLowerCase();
+    if (query.isEmpty) return _callLogs;
+
+    return _callLogs.where((call) {
+      final name = (call['contact_name'] as String?)?.toLowerCase() ?? '';
+      final phone = (call['contact_phone'] as String?)?.toLowerCase() ?? '';
+      final status = (call['status'] as String?)?.toLowerCase() ?? '';
+      final isOutgoing = call['is_outgoing'] == 1 || call['is_outgoing'] == true || call['direction'] == 'outgoing';
+      final isIncoming = !isOutgoing || call['direction'] == 'incoming';
+      final isVideo = call['is_video'] == 1 || call['is_video'] == true || call['call_type'] == 'video';
+
+      String statusDesc = '';
+      if (status == 'rejected') {
+        statusDesc = isIncoming ? 'panggilan ditolak ditolak' : 'ditolak';
+      } else if (status == 'missed') {
+        statusDesc = isIncoming ? 'panggilan tak terjawab tidak terjawab' : 'tidak terjawab';
+      } else if (status == 'cancelled') {
+        statusDesc = 'dibatalkan';
+      } else {
+        statusDesc = isIncoming ? 'panggilan masuk masuk' : 'panggilan keluar keluar';
+      }
+
+      final typeStr = isVideo ? 'video video call' : 'suara voice telepon audio';
+
+      return name.contains(query) ||
+          phone.contains(query) ||
+          status.contains(query) ||
+          statusDesc.contains(query) ||
+          typeStr.contains(query);
+    }).toList();
+  }
+
   Widget _buildCallsTab() {
     final isDark = ThemeModeController.instance.isDarkMode(context);
+    final displayCalls = _filteredCallLogs;
 
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: LajuGlassAppBar(
-        titleSpacing: 16,
-        title: Text(
-          context.tr('calls'),
-          style: TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.w800,
-            color: isDark ? Colors.white : const Color(0xFF111827),
-          ),
-        ),
-        actions: [
-          IconButton(
-            icon: Icon(
-              Icons.search_rounded,
-              size: 22,
-              color: isDark ? Colors.white : const Color(0xFF374151),
-            ),
-            onPressed: () {},
-            tooltip: context.tr('search'),
-          ),
-          PopupMenuButton<String>(
-            color: isDark ? AppColors.darkSurfaceElevated : Colors.white,
-            icon: Icon(
-              Icons.more_vert_rounded,
-              color: isDark ? Colors.white : const Color(0xFF374151),
-            ),
-            onSelected: (value) async {
-              if (value == 'clear') {
-                await LocalDatabase.instance.clearCallLogs();
-                if (mounted) {
+        leading: _isSearchingCalls
+            ? IconButton(
+                icon: Icon(
+                  Icons.arrow_back_rounded,
+                  size: 22,
+                  color: isDark ? Colors.white : const Color(0xFF111827),
+                ),
+                onPressed: () {
                   setState(() {
-                    _callLogs = [];
+                    _isSearchingCalls = false;
+                    _callSearchController.clear();
                   });
-                }
-                try {
-                  if (ApiClient.instance.authToken != null) {
-                    await ApiClient.instance.delete(ApiEndpoints.callHistory);
+                },
+                tooltip: 'Kembali',
+              )
+            : null,
+        titleSpacing: _isSearchingCalls ? 0 : 16,
+        title: _isSearchingCalls
+            ? TextField(
+                controller: _callSearchController,
+                autofocus: true,
+                style: TextStyle(
+                  fontSize: 16,
+                  color: isDark ? Colors.white : const Color(0xFF111827),
+                ),
+                decoration: InputDecoration(
+                  hintText: 'Cari riwayat panggilan...',
+                  border: InputBorder.none,
+                  hintStyle: TextStyle(
+                    color: isDark ? AppColors.darkTextSecondary : const Color(0xFF9CA3AF),
+                    fontSize: 15,
+                  ),
+                ),
+                onChanged: (_) => setState(() {}),
+              )
+            : Text(
+                context.tr('calls'),
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w800,
+                  color: isDark ? Colors.white : const Color(0xFF111827),
+                ),
+              ),
+        actions: [
+          if (_isSearchingCalls) ...[
+            if (_callSearchController.text.isNotEmpty)
+              IconButton(
+                icon: Icon(
+                  Icons.close_rounded,
+                  size: 20,
+                  color: isDark ? Colors.white70 : const Color(0xFF6B7280),
+                ),
+                onPressed: () {
+                  _callSearchController.clear();
+                  setState(() {});
+                },
+                tooltip: 'Hapus Pencarian',
+              ),
+          ] else ...[
+            IconButton(
+              icon: Icon(
+                Icons.search_rounded,
+                size: 22,
+                color: isDark ? Colors.white : const Color(0xFF374151),
+              ),
+              onPressed: () {
+                setState(() {
+                  _isSearchingCalls = true;
+                });
+              },
+              tooltip: context.tr('search'),
+            ),
+            PopupMenuButton<String>(
+              color: isDark ? AppColors.darkSurfaceElevated : Colors.white,
+              icon: Icon(
+                Icons.more_vert_rounded,
+                color: isDark ? Colors.white : const Color(0xFF374151),
+              ),
+              onSelected: (value) async {
+                if (value == 'clear') {
+                  await LocalDatabase.instance.clearCallLogs();
+                  if (mounted) {
+                    setState(() {
+                      _callLogs = [];
+                    });
                   }
-                } catch (e) {
-                  debugPrint('[HomeScreen] clearCallLogs remote error: $e');
+                  try {
+                    if (ApiClient.instance.authToken != null) {
+                      await ApiClient.instance.delete(ApiEndpoints.callHistory);
+                    }
+                  } catch (e) {
+                    debugPrint('[HomeScreen] clearCallLogs remote error: $e');
+                  }
+                  _loadCallLogs();
+                } else if (value == 'settings') {
+                  HomeScreen.activeTabNotifier.value = 3;
                 }
-                _loadCallLogs();
-              } else if (value == 'settings') {
-                HomeScreen.activeTabNotifier.value = 3;
-              }
-            },
-            itemBuilder: (context) => [
-              PopupMenuItem(value: 'clear', child: Text(context.tr('clearCallLog'))),
-              PopupMenuItem(value: 'settings', child: Text(context.tr('settings'))),
-            ],
-          ),
+              },
+              itemBuilder: (context) => [
+                PopupMenuItem(value: 'clear', child: Text(context.tr('clearCallLog'))),
+                PopupMenuItem(value: 'settings', child: Text(context.tr('settings'))),
+              ],
+            ),
+          ],
         ],
       ),
       body: LajuGlassBackground(
@@ -1444,160 +1557,207 @@ class _HomeScreenState extends State<HomeScreen> {
           child: ListView(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 110),
             children: [
-          // New Call Action in a sleek frosted glass card
-          LajuGlassCard(
-            borderRadius: 18,
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-            child: InkWell(
-              borderRadius: BorderRadius.circular(12),
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => const NewCallContactPickerScreen()),
-                ).then((_) => _loadCallLogs());
-              },
-              child: Row(
-                children: [
-                  Container(
-                    width: 48,
-                    height: 48,
-                    decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        colors: [
-                          AppColors.primary,
-                          AppColors.primaryDark,
-                        ],
-                      ),
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color: AppColors.primary.withValues(alpha: 0.35),
-                          blurRadius: 10,
-                          offset: const Offset(0, 3),
+              if (!_isSearchingCalls) ...[
+                // New Call Action in a sleek frosted glass card
+                LajuGlassCard(
+                  borderRadius: 18,
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(12),
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (context) => const NewCallContactPickerScreen()),
+                      ).then((_) => _loadCallLogs());
+                    },
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 48,
+                          height: 48,
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [
+                                AppColors.primary,
+                                AppColors.primaryDark,
+                              ],
+                            ),
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                color: AppColors.primary.withValues(alpha: 0.35),
+                                blurRadius: 10,
+                                offset: const Offset(0, 3),
+                              ),
+                            ],
+                          ),
+                          child: const Icon(Icons.add_call, color: Colors.white, size: 22),
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                context.tr('newCall'),
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 15.5,
+                                  color: isDark ? Colors.white : const Color(0xFF111827),
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                context.tr('newCallSub'),
+                                style: TextStyle(
+                                  fontSize: 12.5,
+                                  color: isDark ? AppColors.darkTextSecondary : const Color(0xFF6B7280),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Icon(
+                          Icons.chevron_right_rounded,
+                          color: isDark ? Colors.white38 : const Color(0xFF9CA3AF),
+                          size: 22,
                         ),
                       ],
                     ),
-                    child: const Icon(Icons.add_call, color: Colors.white, size: 22),
                   ),
-                  const SizedBox(width: 14),
-                  Expanded(
+                ),
+                const SizedBox(height: 20),
+              ],
+
+              if (_callLogs.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 36, horizontal: 24),
+                  child: Center(
                     child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
                       children: [
+                        Container(
+                          width: 64,
+                          height: 64,
+                          decoration: BoxDecoration(
+                            color: AppColors.primary.withValues(alpha: 0.12),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            Icons.phone_missed_rounded,
+                            color: AppColors.primary,
+                            size: 32,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
                         Text(
-                          context.tr('newCall'),
+                          'Belum Ada Riwayat Panggilan',
                           style: TextStyle(
-                            fontWeight: FontWeight.w700,
-                            fontSize: 15.5,
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
                             color: isDark ? Colors.white : const Color(0xFF111827),
                           ),
                         ),
-                        const SizedBox(height: 2),
+                        const SizedBox(height: 6),
                         Text(
-                          context.tr('newCallSub'),
+                          'Panggilan suara dan video end-to-end terenkripsi Anda akan ditampilkan di sini.',
+                          textAlign: TextAlign.center,
                           style: TextStyle(
-                            fontSize: 12.5,
+                            fontSize: 13,
                             color: isDark ? AppColors.darkTextSecondary : const Color(0xFF6B7280),
+                            height: 1.4,
                           ),
                         ),
                       ],
                     ),
                   ),
-                  Icon(
-                    Icons.chevron_right_rounded,
-                    color: isDark ? Colors.white38 : const Color(0xFF9CA3AF),
-                    size: 22,
+                )
+              else if (_isSearchingCalls && _callSearchController.text.trim().isNotEmpty && _filteredCallLogs.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 48, horizontal: 24),
+                  child: Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 64,
+                          height: 64,
+                          decoration: BoxDecoration(
+                            color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.06),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            Icons.search_off_rounded,
+                            color: isDark ? AppColors.darkTextSecondary : const Color(0xFF9CA3AF),
+                            size: 32,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          'Panggilan Tidak Ditemukan',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: isDark ? Colors.white : const Color(0xFF111827),
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          'Tidak ada riwayat panggilan yang cocok dengan "${_callSearchController.text.trim()}".',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: isDark ? AppColors.darkTextSecondary : const Color(0xFF6B7280),
+                            height: 1.4,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 20),
-
-          if (_callLogs.isEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 36, horizontal: 24),
-              child: Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      width: 64,
-                      height: 64,
-                      decoration: BoxDecoration(
-                        color: AppColors.primary.withValues(alpha: 0.12),
-                        shape: BoxShape.circle,
+                )
+              else ...[
+                // Section Header
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                  child: Row(
+                    children: [
+                      Text(
+                        _isSearchingCalls && _callSearchController.text.trim().isNotEmpty
+                            ? 'Hasil Pencarian (${_filteredCallLogs.length})'
+                            : context.tr('recentCalls'),
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 0.4,
+                          color: isDark ? AppColors.darkTextSecondary : const Color(0xFF4B5563),
+                        ),
                       ),
-                      child: const Icon(
-                        Icons.phone_missed_rounded,
-                        color: AppColors.primary,
-                        size: 32,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      'Belum Ada Riwayat Panggilan',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: isDark ? Colors.white : const Color(0xFF111827),
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      'Panggilan suara dan video end-to-end terenkripsi Anda akan ditampilkan di sini.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: isDark ? AppColors.darkTextSecondary : const Color(0xFF6B7280),
-                        height: 1.4,
-                      ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-            )
-          else ...[
-            // Section Header
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-              child: Row(
-                children: [
-                  Text(
-                    context.tr('recentCalls'),
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 0.4,
-                      color: isDark ? AppColors.darkTextSecondary : const Color(0xFF4B5563),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 8),
+                const SizedBox(height: 8),
 
-            // Recent Calls Grouped in Glass Card
-            LajuGlassCard(
-              borderRadius: 18,
-              padding: const EdgeInsets.symmetric(vertical: 4),
-              child: Column(
-                children: List.generate(_callLogs.length, (index) {
-                  final call = _callLogs[index];
-                  final name = (call['contact_name'] as String?)?.isNotEmpty == true
-                      ? call['contact_name'] as String
-                      : 'Panggilan';
-                  final phone = call['contact_phone'] as String?;
-                  final userId = (call['contact_id'] ?? call['contact_user_id']) as String?;
-                  final isOutgoing = call['is_outgoing'] == 1 || call['is_outgoing'] == true || call['direction'] == 'outgoing';
-                  final isIncoming = !isOutgoing || call['direction'] == 'incoming';
-                  final isVideo = call['is_video'] == 1 || call['is_video'] == true || call['call_type'] == 'video';
-                  final status = call['status'] as String? ?? 'completed';
-                  final isMissed = status == 'missed' || status == 'rejected';
-                  final duration = (call['duration_seconds'] as num?)?.toInt() ?? 0;
-                  final createdAt = (call['timestamp'] as num?)?.toInt() ?? (call['created_at'] as num?)?.toInt();
-                  final timeStr = _formatCallTimestamp(createdAt);
-                  final isLast = index == _callLogs.length - 1;
+                // Recent Calls Grouped in Glass Card
+                LajuGlassCard(
+                  borderRadius: 18,
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Column(
+                    children: List.generate(displayCalls.length, (index) {
+                      final call = displayCalls[index];
+                      final name = (call['contact_name'] as String?)?.isNotEmpty == true
+                          ? call['contact_name'] as String
+                          : 'Panggilan';
+                      final phone = call['contact_phone'] as String?;
+                      final userId = (call['contact_id'] ?? call['contact_user_id']) as String?;
+                      final isOutgoing = call['is_outgoing'] == 1 || call['is_outgoing'] == true || call['direction'] == 'outgoing';
+                      final isIncoming = !isOutgoing || call['direction'] == 'incoming';
+                      final isVideo = call['is_video'] == 1 || call['is_video'] == true || call['call_type'] == 'video';
+                      final status = call['status'] as String? ?? 'completed';
+                      final isMissed = status == 'missed' || status == 'rejected';
+                      final duration = (call['duration_seconds'] as num?)?.toInt() ?? 0;
+                      final createdAt = (call['timestamp'] as num?)?.toInt() ?? (call['created_at'] as num?)?.toInt();
+                      final timeStr = _formatCallTimestamp(createdAt);
+                      final isLast = index == displayCalls.length - 1;
 
                   String? avatarUrl = call['avatar_url'] as String?;
                   if (avatarUrl == null || avatarUrl.isEmpty) {

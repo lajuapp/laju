@@ -12,6 +12,9 @@ class LocationData {
   final String name;
   final String address;
   final bool isLive;
+  final int? liveDurationMinutes;
+  final DateTime? liveExpiresAt;
+  final String? comment;
 
   const LocationData({
     required this.latitude,
@@ -20,7 +23,54 @@ class LocationData {
     required this.name,
     required this.address,
     this.isLive = false,
+    this.liveDurationMinutes,
+    this.liveExpiresAt,
+    this.comment,
   });
+
+  bool get isLiveExpired {
+    if (!isLive || liveExpiresAt == null) return false;
+    return DateTime.now().isAfter(liveExpiresAt!);
+  }
+
+  String get liveRemainingText {
+    if (!isLive || liveExpiresAt == null) return '';
+    final diff = liveExpiresAt!.difference(DateTime.now());
+    if (diff.isNegative) return 'Berakhir';
+    if (diff.inHours > 0) {
+      final hours = diff.inHours;
+      final mins = diff.inMinutes % 60;
+      return mins > 0 ? '$hours jam $mins mnt' : '$hours jam';
+    }
+    if (diff.inMinutes > 0) {
+      return '${diff.inMinutes} mnt';
+    }
+    return '${diff.inSeconds} dtk';
+  }
+
+  LocationData copyWith({
+    double? latitude,
+    double? longitude,
+    double? accuracy,
+    String? name,
+    String? address,
+    bool? isLive,
+    int? liveDurationMinutes,
+    DateTime? liveExpiresAt,
+    String? comment,
+  }) {
+    return LocationData(
+      latitude: latitude ?? this.latitude,
+      longitude: longitude ?? this.longitude,
+      accuracy: accuracy ?? this.accuracy,
+      name: name ?? this.name,
+      address: address ?? this.address,
+      isLive: isLive ?? this.isLive,
+      liveDurationMinutes: liveDurationMinutes ?? this.liveDurationMinutes,
+      liveExpiresAt: liveExpiresAt ?? this.liveExpiresAt,
+      comment: comment ?? this.comment,
+    );
+  }
 
   String get osmUrl =>
       'https://www.openstreetmap.org/?mlat=$latitude&mlon=$longitude#map=16/$latitude/$longitude';
@@ -52,11 +102,18 @@ class LocationData {
         'name': name,
         'address': address,
         'isLive': isLive,
+        if (liveDurationMinutes != null) 'liveDurationMinutes': liveDurationMinutes,
+        if (liveExpiresAt != null) 'liveExpiresAt': liveExpiresAt!.toIso8601String(),
+        if (comment != null && comment!.isNotEmpty) 'comment': comment,
       };
 
   String toJson() => jsonEncode(toMap());
 
   factory LocationData.fromMap(Map<String, dynamic> map) {
+    DateTime? expiresAt;
+    if (map['liveExpiresAt'] != null) {
+      expiresAt = DateTime.tryParse(map['liveExpiresAt'].toString());
+    }
     return LocationData(
       latitude: (map['latitude'] as num?)?.toDouble() ?? 0.0,
       longitude: (map['longitude'] as num?)?.toDouble() ?? 0.0,
@@ -68,6 +125,9 @@ class LocationData {
           ? map['address'] as String
           : '${map['latitude']}, ${map['longitude']}',
       isLive: map['isLive'] as bool? ?? false,
+      liveDurationMinutes: map['liveDurationMinutes'] as int?,
+      liveExpiresAt: expiresAt,
+      comment: map['comment'] as String?,
     );
   }
 

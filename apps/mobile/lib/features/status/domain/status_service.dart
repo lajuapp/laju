@@ -77,6 +77,12 @@ class StatusService {
             );
             if (uploadRes.isSuccess && uploadRes.rawJson is Map && uploadRes.rawJson['url'] != null) {
               processedContent = uploadRes.rawJson['url'].toString();
+              // Cache local video file under the remote URL key so opening own status plays immediately
+              await LajuMediaCacheManager.instance.putFile(processedContent, file);
+              final resolved = resolveMediaUrl(processedContent);
+              if (resolved != processedContent) {
+                await LajuMediaCacheManager.instance.putFile(resolved, file);
+              }
             } else {
               processedContent = 'data:video/mp4;base64,$b64';
             }

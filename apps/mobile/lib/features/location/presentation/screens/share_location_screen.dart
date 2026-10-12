@@ -51,17 +51,312 @@ class _ShareLocationScreenState extends State<ShareLocationScreen> {
     }
   }
 
-  void _sendLocation({bool isLive = false}) {
+  void _sendLocation({
+    bool isLive = false,
+    int? liveDurationMinutes,
+    String? comment,
+  }) {
     if (_location == null) return;
+    DateTime? liveExpiresAt;
+    if (isLive && liveDurationMinutes != null) {
+      liveExpiresAt = DateTime.now().add(Duration(minutes: liveDurationMinutes));
+    }
     final locToSend = LocationData(
       latitude: _location!.latitude,
       longitude: _location!.longitude,
       accuracy: _location!.accuracy,
-      name: isLive ? 'Lokasi Langsung (Live)' : _location!.name,
+      name: isLive ? 'Lokasi Terkini (Live)' : _location!.name,
       address: _location!.address,
       isLive: isLive,
+      liveDurationMinutes: liveDurationMinutes,
+      liveExpiresAt: liveExpiresAt,
+      comment: comment,
     );
     Navigator.pop(context, locToSend);
+  }
+
+  void _showLiveLocationDurationSheet() {
+    if (_location == null) {
+      LajuToast.info(context, 'Sedang memindai lokasi GPS, mohon tunggu sebentar...');
+      _fetchLocation();
+      return;
+    }
+    int selectedMinutes = 60; // 15, 60, 480, 1440
+    final commentController = TextEditingController();
+    final isDark = ThemeModeController.instance.isDarkMode(context);
+
+    String formatExpiryTime(int mins) {
+      final exp = DateTime.now().add(Duration(minutes: mins));
+      final hh = exp.hour.toString().padLeft(2, '0');
+      final mm = exp.minute.toString().padLeft(2, '0');
+      return '$hh:$mm';
+    }
+
+    String formatDurationLabel(int mins) {
+      if (mins < 60) return '$mins menit';
+      final h = mins ~/ 60;
+      return '$h jam';
+    }
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+            final expiryTimeStr = formatExpiryTime(selectedMinutes);
+            final durationStr = formatDurationLabel(selectedMinutes);
+
+            return Padding(
+              padding: EdgeInsets.only(bottom: bottomInset),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: isDark ? AppColors.darkSurface : Colors.white,
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.25),
+                      blurRadius: 20,
+                      offset: const Offset(0, -4),
+                    ),
+                  ],
+                ),
+                child: SafeArea(
+                  top: false,
+                  child: SingleChildScrollView(
+                    physics: const BouncingScrollPhysics(),
+                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                    Center(
+                      child: Container(
+                        width: 40,
+                        height: 4,
+                        margin: const EdgeInsets.only(bottom: 16),
+                        decoration: BoxDecoration(
+                          color: isDark ? AppColors.darkSurfaceBorder : const Color(0xFFD1D5DB),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ),
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF10B981).withValues(alpha: 0.15),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            Icons.share_location_rounded,
+                            color: Color(0xFF10B981),
+                            size: 24,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Bagikan Lokasi Langsung',
+                                style: TextStyle(
+                                  fontSize: 16.5,
+                                  fontWeight: FontWeight.w700,
+                                  color: isDark ? Colors.white : const Color(0xFF111827),
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                'Pilih durasi waktu pembaruan real-time:',
+                                style: TextStyle(
+                                  fontSize: 12.5,
+                                  color: isDark ? AppColors.darkTextSecondary : const Color(0xFF6B7280),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+
+                    // WhatsApp-style Duration Selector Chips (15 menit, 1 jam, 8 jam, 24 jam)
+                    Row(
+                      children: [
+                        _buildDurationChip(
+                          label: '15 mnt',
+                          minutes: 15,
+                          isSelected: selectedMinutes == 15,
+                          isDark: isDark,
+                          onTap: () => setSheetState(() => selectedMinutes = 15),
+                        ),
+                        const SizedBox(width: 8),
+                        _buildDurationChip(
+                          label: '1 jam',
+                          minutes: 60,
+                          isSelected: selectedMinutes == 60,
+                          isDark: isDark,
+                          onTap: () => setSheetState(() => selectedMinutes = 60),
+                        ),
+                        const SizedBox(width: 8),
+                        _buildDurationChip(
+                          label: '8 jam',
+                          minutes: 480,
+                          isSelected: selectedMinutes == 480,
+                          isDark: isDark,
+                          onTap: () => setSheetState(() => selectedMinutes = 480),
+                        ),
+                        const SizedBox(width: 8),
+                        _buildDurationChip(
+                          label: '24 jam',
+                          minutes: 1440,
+                          isSelected: selectedMinutes == 1440,
+                          isDark: isDark,
+                          onTap: () => setSheetState(() => selectedMinutes = 1440),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+
+                    // Expiry indicator
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF10B981).withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.timer_outlined, size: 16, color: Color(0xFF10B981)),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Lokasi akan dibagikan selama $durationStr (hingga $expiryTimeStr)',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: isDark ? const Color(0xFF34D399) : const Color(0xFF059669),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+
+                    // Comment input
+                    Container(
+                      decoration: BoxDecoration(
+                        color: isDark ? AppColors.darkBackground : const Color(0xFFF3F4F6),
+                        borderRadius: BorderRadius.circular(24),
+                        border: Border.all(
+                          color: isDark ? AppColors.darkSurfaceBorder : const Color(0xFFE5E7EB),
+                        ),
+                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
+                      child: TextField(
+                        controller: commentController,
+                        style: TextStyle(
+                          fontSize: 14.5,
+                          color: isDark ? Colors.white : const Color(0xFF111827),
+                        ),
+                        decoration: InputDecoration(
+                          hintText: 'Tambah keterangan (opsional)...',
+                          hintStyle: TextStyle(
+                            fontSize: 13.5,
+                            color: isDark ? AppColors.darkTextSecondary : const Color(0xFF9CA3AF),
+                          ),
+                          border: InputBorder.none,
+                          isDense: true,
+                          contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+
+                    // Explicit Send Button
+                    ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF10B981),
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        padding: const EdgeInsets.symmetric(vertical: 13),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+                      ),
+                      icon: const Icon(Icons.send_rounded, size: 18),
+                      label: Text(
+                        'Mulai Berbagi Lokasi ($durationStr)',
+                        style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700),
+                      ),
+                      onPressed: () {
+                        final text = commentController.text.trim();
+                        Navigator.pop(sheetContext);
+                        _sendLocation(
+                          isLive: true,
+                          liveDurationMinutes: selectedMinutes,
+                          comment: text.isNotEmpty ? text : null,
+                        );
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  },
+).whenComplete(() => commentController.dispose());
+  }
+
+  Widget _buildDurationChip({
+    required String label,
+    required int minutes,
+    required bool isSelected,
+    required bool isDark,
+    required VoidCallback onTap,
+  }) {
+    return Expanded(
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: onTap,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            padding: const EdgeInsets.symmetric(vertical: 11),
+            decoration: BoxDecoration(
+              color: isSelected
+                  ? const Color(0xFF10B981).withValues(alpha: isDark ? 0.25 : 0.15)
+                  : (isDark ? AppColors.darkBackground : const Color(0xFFF3F4F6)),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: isSelected
+                    ? const Color(0xFF10B981)
+                    : (isDark ? AppColors.darkSurfaceBorder : const Color(0xFFE5E7EB)),
+                width: isSelected ? 1.8 : 1,
+              ),
+            ),
+            child: Center(
+              child: Text(
+                label,
+                style: TextStyle(
+                  fontSize: 13.5,
+                  fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                  color: isSelected
+                      ? const Color(0xFF10B981)
+                      : (isDark ? Colors.white70 : const Color(0xFF374151)),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -211,10 +506,7 @@ class _ShareLocationScreenState extends State<ShareLocationScreen> {
             right: 0,
             bottom: 0,
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
               decoration: BoxDecoration(
-                color: isDark ? AppColors.darkSurface : Colors.white,
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
                 boxShadow: [
                   BoxShadow(
                     color: Colors.black.withValues(alpha: isDark ? 0.4 : 0.08),
@@ -223,93 +515,127 @@ class _ShareLocationScreenState extends State<ShareLocationScreen> {
                   ),
                 ],
               ),
-              child: SafeArea(
-                top: false,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // Handle bar
-                    Container(
-                      width: 36,
-                      height: 4,
-                      margin: const EdgeInsets.only(bottom: 12),
-                      decoration: BoxDecoration(
-                        color: isDark ? AppColors.darkSurfaceBorder : const Color(0xFFD1D5DB),
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
+              child: Material(
+                color: isDark ? AppColors.darkSurface : Colors.white,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+                clipBehavior: Clip.antiAlias,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                  child: SafeArea(
+                    top: false,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // Handle bar
+                        Container(
+                          width: 36,
+                          height: 4,
+                          margin: const EdgeInsets.only(bottom: 12),
+                          decoration: BoxDecoration(
+                            color: isDark ? AppColors.darkSurfaceBorder : const Color(0xFFD1D5DB),
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                        ),
 
-                    // Option 1: Live Location
-                    ListTile(
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 4),
-                      leading: Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF10B981).withValues(alpha: 0.15),
-                          shape: BoxShape.circle,
+                        // Option 1: Live Location
+                        ListTile(
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+                          leading: Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF10B981).withValues(alpha: 0.15),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.share_location_rounded,
+                              color: Color(0xFF10B981),
+                              size: 22,
+                            ),
+                          ),
+                          title: Row(
+                            children: [
+                              Text(
+                                'Bagikan Lokasi Langsung',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 14.5,
+                                  color: isDark ? Colors.white : const Color(0xFF111827),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF10B981),
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: const Text(
+                                  'LIVE',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w800,
+                                    letterSpacing: 0.5,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          subtitle: Text(
+                            'Pilih durasi waktu: 15 menit, 1 jam, 8 jam, atau 24 jam',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: isDark ? const Color(0xFF34D399) : const Color(0xFF059669),
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          trailing: Icon(
+                            Icons.chevron_right_rounded,
+                            color: isDark ? Colors.white38 : Colors.black38,
+                          ),
+                          onTap: _showLiveLocationDurationSheet,
                         ),
-                        child: const Icon(
-                          Icons.share_location_rounded,
-                          color: Color(0xFF10B981),
-                          size: 22,
-                        ),
-                      ),
-                      title: Text(
-                        'Bagikan Lokasi Langsung',
-                        style: TextStyle(
-                          fontWeight: FontWeight.w700,
-                          fontSize: 14.5,
-                          color: isDark ? Colors.white : const Color(0xFF111827),
-                        ),
-                      ),
-                      subtitle: Text(
-                        'Bagikan pembaruan lokasi langsung real-time',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: isDark ? AppColors.darkTextSecondary : const Color(0xFF6B7280),
-                        ),
-                      ),
-                      onTap: () => _sendLocation(isLive: true),
-                    ),
-                    Divider(color: isDark ? AppColors.darkSurfaceBorder : const Color(0xFFF3F4F6), height: 16),
+                        Divider(color: isDark ? AppColors.darkSurfaceBorder : const Color(0xFFF3F4F6), height: 16),
 
-                    // Option 2: Current Location
-                    ListTile(
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 4),
-                      leading: Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: isDark ? AppColors.darkSurfaceElevated : const Color(0xFFF3F4F6),
-                          shape: BoxShape.circle,
+                        // Option 2: Current Location (Static)
+                        ListTile(
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+                          leading: Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: isDark ? AppColors.darkSurfaceElevated : const Color(0xFFF3F4F6),
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(
+                              Icons.my_location_rounded,
+                              color: isDark ? Colors.white70 : const Color(0xFF374151),
+                              size: 22,
+                            ),
+                          ),
+                          title: Text(
+                            'Kirim Lokasi Saat Ini (Statis)',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 14.5,
+                              color: isDark ? Colors.white : const Color(0xFF111827),
+                            ),
+                          ),
+                          subtitle: Text(
+                            _location != null
+                                ? '${_location!.name} • ${_location!.address}'
+                                : 'Memindai sinyal GPS satelit...',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: isDark ? AppColors.darkTextSecondary : const Color(0xFF6B7280),
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          onTap: () => _sendLocation(isLive: false),
                         ),
-                        child: Icon(
-                          Icons.my_location_rounded,
-                          color: isDark ? Colors.white70 : const Color(0xFF374151),
-                          size: 22,
-                        ),
-                      ),
-                      title: Text(
-                        'Kirim Lokasi Terkini',
-                        style: TextStyle(
-                          fontWeight: FontWeight.w600,
-                          fontSize: 14.5,
-                          color: isDark ? Colors.white : const Color(0xFF111827),
-                        ),
-                      ),
-                      subtitle: Text(
-                        _location != null
-                            ? '${_location!.name} • ${_location!.address}'
-                            : 'Memindai sinyal GPS satelit...',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: isDark ? AppColors.darkTextSecondary : const Color(0xFF6B7280),
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      onTap: () => _sendLocation(isLive: false),
+                      ],
                     ),
-                  ],
+                  ),
                 ),
               ),
             ),

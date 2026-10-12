@@ -6,6 +6,7 @@ import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
+import '../network/api_client.dart';
 import '../network/media_url_resolver.dart';
 
 /// High-Performance Media Cache Manager for LAJU Mobile.
@@ -104,6 +105,48 @@ class LajuMediaCacheManager {
     return null;
   }
 
+  /// Directly associates an existing local file with a URL cache key, copying it into cache
+  Future<File?> putFile(String urlOrPath, File sourceFile) async {
+    try {
+      if (!sourceFile.existsSync() || sourceFile.lengthSync() == 0) return null;
+      final clean = resolveMediaUrl(urlOrPath).trim();
+      final key = getCacheKey(clean);
+      var ext = _extractExtension(clean);
+      if (ext == '.img') {
+        final srcExt = p.extension(sourceFile.path).toLowerCase();
+        if (srcExt.isNotEmpty) ext = srcExt;
+      }
+      final dir = await getCacheDirectory();
+      final cacheFile = File(p.join(dir.path, '$key$ext'));
+      if (cacheFile.path != sourceFile.path) {
+        await sourceFile.copy(cacheFile.path);
+      }
+      _cachedFileKeys.add(key);
+      return cacheFile;
+    } catch (e) {
+      debugPrint('[LajuMediaCacheManager] putFile error: $e');
+      return null;
+    }
+  }
+
+  /// Saves raw bytes directly into disk cache under a URL key
+  Future<File?> putBytes(String urlOrKey, Uint8List bytes, {String ext = '.mp4'}) async {
+    try {
+      if (bytes.isEmpty) return null;
+      final key = (urlOrKey.length == 32 && !urlOrKey.contains('/') && !urlOrKey.contains(':'))
+          ? urlOrKey
+          : getCacheKey(urlOrKey);
+      final dir = await getCacheDirectory();
+      final cacheFile = File(p.join(dir.path, '$key$ext'));
+      await cacheFile.writeAsBytes(bytes, flush: true);
+      _cachedFileKeys.add(key);
+      return cacheFile;
+    } catch (e) {
+      debugPrint('[LajuMediaCacheManager] putBytes error: $e');
+      return null;
+    }
+  }
+
   /// Gets the local cached File if it already exists, or null
   Future<File?> getCachedFileIfPresent(String urlOrPath) async {
     final key = getCacheKey(urlOrPath);
@@ -126,6 +169,20 @@ class LajuMediaCacheManager {
   }) async {
     final clean = resolveMediaUrl(urlOrPath).trim();
     if (clean.isEmpty) return null;
+
+    // 0. Check data URI
+    if (clean.startsWith('data:')) {
+      try {
+        final commaIdx = clean.indexOf(',');
+        final b64 = commaIdx != -1 ? clean.substring(commaIdx + 1) : clean;
+        final bytes = base64Decode(b64);
+        final key = getCacheKey(clean);
+        return await putBytes(key, bytes, ext: '.mp4');
+      } catch (e) {
+        debugPrint('[LajuMediaCacheManager] Base64 decode error: $e');
+        return null;
+      }
+    }
 
     // 1. Check local file system
     if (clean.startsWith('file://')) {
@@ -180,19 +237,38 @@ class LajuMediaCacheManager {
     HttpClient? client;
 
     try {
-      client = HttpClient()..connectionTimeout = timeout;
+      client = HttpClient()
+        ..connectionTimeout = timeout
+        ..badCertificateCallback = (cert, host, port) => true;
       final uri = Uri.parse(url);
       final request = await client.getUrl(uri).timeout(timeout);
+
+      // Supply rich default headers for media streaming & authenticated endpoints
+      request.headers.set(
+        HttpHeaders.userAgentHeader,
+        'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
+      );
+      request.headers.set(HttpHeaders.acceptHeader, '*/*');
+
+      final token = ApiClient.instance.authToken;
+      if (token != null && token.isNotEmpty) {
+        request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $token');
+      }
+      final devId = ApiClient.instance.deviceId;
+      if (devId != null && devId.isNotEmpty) {
+        request.headers.set('x-device-id', devId);
+      }
 
       headers?.forEach((k, v) => request.headers.set(k, v));
       final response = await request.close().timeout(timeout);
 
-      if (response.statusCode != HttpStatus.ok) {
+      if (response.statusCode != HttpStatus.ok && response.statusCode != HttpStatus.partialContent) {
+        debugPrint('[LajuMediaCacheManager] HTTP ${response.statusCode} for $url');
         return null;
       }
 
       final sink = tmpFile.openWrite();
-      await response.pipe(sink);
+      await response.timeout(timeout).pipe(sink);
       await sink.flush();
       await sink.close();
 
@@ -204,6 +280,7 @@ class LajuMediaCacheManager {
         return destinationFile;
       }
     } catch (e) {
+      debugPrint('[LajuMediaCacheManager] Download exception for $url: $e');
       if (tmpFile.existsSync()) {
         try {
           tmpFile.deleteSync();

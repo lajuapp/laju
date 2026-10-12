@@ -304,84 +304,25 @@ class AboutScreen extends StatelessWidget {
               padding: EdgeInsets.zero,
               borderRadius: 20,
               blurSigma: 16,
-              child: Column(
-                children: [
-                  Material(
-                    color: Colors.transparent,
-                    child: ListTile(
-                      shape: const RoundedRectangleBorder(
-                        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-                      ),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                      leading: Icon(Icons.menu_book_rounded, color: isDark ? AppColors.primaryLight : const Color(0xFF2563EB)),
-                      title: Text(
-                        context.tr('aboutLicenses'),
-                        style: TextStyle(
-                          fontWeight: FontWeight.w600,
-                          fontSize: 15,
-                          color: isDark ? Colors.white : const Color(0xFF111827),
-                        ),
-                      ),
-                      trailing: Icon(Icons.arrow_forward_ios_rounded, size: 14, color: isDark ? AppColors.darkTextSecondary : const Color(0xFF9CA3AF)),
-                      onTap: () => _showLajuLicenseSheet(context, isDark),
+              child: Material(
+                color: Colors.transparent,
+                child: ListTile(
+                  shape: const RoundedRectangleBorder(
+                    borderRadius: BorderRadius.all(Radius.circular(20)),
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                  leading: Icon(Icons.menu_book_rounded, color: isDark ? AppColors.primaryLight : const Color(0xFF2563EB)),
+                  title: Text(
+                    context.tr('aboutLicenses'),
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 15,
+                      color: isDark ? Colors.white : const Color(0xFF111827),
                     ),
                   ),
-                  _buildDivider(isDark),
-                  Material(
-                    color: Colors.transparent,
-                    child: ListTile(
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                      leading: const Icon(Icons.verified_user_outlined, color: AppColors.cyan),
-                      title: Text(
-                        context.tr('aboutAuditReport'),
-                        style: TextStyle(
-                          fontWeight: FontWeight.w600,
-                          fontSize: 15,
-                          color: isDark ? Colors.white : const Color(0xFF111827),
-                        ),
-                      ),
-                      trailing: Icon(Icons.arrow_forward_ios_rounded, size: 14, color: isDark ? AppColors.darkTextSecondary : const Color(0xFF9CA3AF)),
-                      onTap: () {
-                        LajuToast.success(context, context.tr('aboutAuditPassed'));
-                      },
-                    ),
-                  ),
-                  _buildDivider(isDark),
-                  Material(
-                    color: Colors.transparent,
-                    child: ListTile(
-                      shape: const RoundedRectangleBorder(
-                        borderRadius: BorderRadius.vertical(bottom: Radius.circular(20)),
-                      ),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                      leading: Icon(Icons.code_rounded, color: isDark ? Colors.white70 : const Color(0xFF0F172A)),
-                      title: Text(
-                        context.tr('aboutGithub'),
-                        style: TextStyle(
-                          fontWeight: FontWeight.w600,
-                          fontSize: 15,
-                          color: isDark ? Colors.white : const Color(0xFF111827),
-                        ),
-                      ),
-                      subtitle: Text(
-                        context.tr('aboutGithubSub'),
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: isDark ? AppColors.darkTextSecondary : const Color(0xFF6B7280),
-                        ),
-                      ),
-                      trailing: const Icon(Icons.open_in_new_rounded, size: 16, color: AppColors.primary),
-                      onTap: () async {
-                        const url = 'https://github.com/lajuapp/laju';
-                        try {
-                          await const MethodChannel('com.laju/device').invokeMethod('openUrl', {'url': url});
-                        } catch (e) {
-                          debugPrint('[AboutScreen] openUrl error: $e');
-                        }
-                      },
-                    ),
-                  ),
-                ],
+                  trailing: Icon(Icons.arrow_forward_ios_rounded, size: 14, color: isDark ? AppColors.darkTextSecondary : const Color(0xFF9CA3AF)),
+                  onTap: () => _showLajuLicenseSheet(context, isDark),
+                ),
               ),
             ),
 

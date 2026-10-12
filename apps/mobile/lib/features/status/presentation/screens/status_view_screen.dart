@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -114,18 +113,41 @@ class StatusViewScreen extends StatefulWidget {
 }
 
 class _StatusViewScreenState extends State<StatusViewScreen>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   late AnimationController _animController;
   late List<StatusStoryItem> _stories;
   int _currentIndex = 0;
   bool _isPopping = false;
+  bool _isSheetOpen = false;
 
   final NativeVideoPlayerController _videoPlayerController = NativeVideoPlayerController();
   bool _isVideoMuted = false;
 
+  void _pauseStory() {
+    _animController.stop();
+    _videoPlayerController.pause();
+  }
+
+  void _resumeStory() {
+    if (!_isPopping && !_isSheetOpen && mounted) {
+      _animController.forward();
+      _videoPlayerController.play();
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+      _pauseStory();
+    } else if (state == AppLifecycleState.resumed) {
+      _resumeStory();
+    }
+  }
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _stories = List<StatusStoryItem>.from(widget.stories);
     _animController = AnimationController(
       vsync: this,
@@ -153,13 +175,13 @@ class _StatusViewScreenState extends State<StatusViewScreen>
     final story = _stories[_currentIndex];
     _animController.reset();
     if (story.isVideo) {
+      _animController.stop();
       _animController.duration = const Duration(seconds: 15);
-      // Wait for onVideoPrepared to start progress from 0.0 with the exact video duration
-      // Fallback timer starts animation if onPrepared is delayed (e.g. slow network)
-      Future.delayed(const Duration(milliseconds: 1500), () {
+      // Safety net: if video takes too long to load or network stalls, advance after 25s
+      Future.delayed(const Duration(seconds: 25), () {
         if (mounted && !_isPopping && _currentIndex < _stories.length && _stories[_currentIndex].isVideo) {
           if (!_animController.isAnimating && !_animController.isCompleted) {
-            _animController.forward();
+            _nextStory();
           }
         }
       });
@@ -175,6 +197,11 @@ class _StatusViewScreenState extends State<StatusViewScreen>
       final next = _stories[_currentIndex + 1];
       if (next.isPhoto && next.imageAsset != null && next.imageAsset!.isNotEmpty) {
         LajuMediaCacheManager.instance.preload(next.imageAsset!);
+      } else if (next.isVideo) {
+        final vUrl = next.videoUrl ?? next.imageAsset;
+        if (vUrl != null && vUrl.isNotEmpty) {
+          LajuMediaCacheManager.instance.preload(vUrl);
+        }
       }
     }
   }
@@ -224,8 +251,9 @@ class _StatusViewScreenState extends State<StatusViewScreen>
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _isPopping = true;
-    _animController.stop();
+    _pauseStory();
     _animController.dispose();
     super.dispose();
   }
@@ -265,11 +293,16 @@ class _StatusViewScreenState extends State<StatusViewScreen>
       _startStoryPlayback();
     } else {
       _startStoryPlayback();
+      if (_stories[_currentIndex].isVideo) {
+        _videoPlayerController.seekTo(0);
+        _videoPlayerController.play();
+      }
     }
   }
 
   void _showMoreOptions() {
-    _animController.stop();
+    _isSheetOpen = true;
+    _pauseStory();
 
     if (widget.isMyStatus) {
       showModalBottomSheet(
@@ -311,7 +344,7 @@ class _StatusViewScreenState extends State<StatusViewScreen>
                   },
                 ),
                 ListTile(
-                  leading: const Icon(Icons.forward_rounded, color: Colors.white),
+                  leading: const Icon(Icons.share_rounded, color: Colors.white),
                   title: const Text(
                     'Teruskan Status',
                     style: TextStyle(
@@ -332,9 +365,8 @@ class _StatusViewScreenState extends State<StatusViewScreen>
           );
         },
       ).then((_) {
-        if (!_isPopping && mounted) {
-          _animController.forward();
-        }
+        _isSheetOpen = false;
+        _resumeStory();
       });
     } else {
       showModalBottomSheet(
@@ -361,7 +393,7 @@ class _StatusViewScreenState extends State<StatusViewScreen>
                 ),
                 const SizedBox(height: 12),
                 ListTile(
-                  leading: const Icon(Icons.forward_rounded, color: Colors.white),
+                  leading: const Icon(Icons.share_rounded, color: Colors.white),
                   title: const Text(
                     'Teruskan Status',
                     style: TextStyle(color: Colors.white, fontSize: 16),
@@ -393,7 +425,6 @@ class _StatusViewScreenState extends State<StatusViewScreen>
                   onTap: () {
                     Navigator.pop(ctx);
                     LajuToast.info(context, 'Pembaruan status dari ${widget.contactName} dibisukan');
-                    if (!_isPopping && mounted) _animController.forward();
                   },
                 ),
                 const SizedBox(height: 8),
@@ -402,15 +433,15 @@ class _StatusViewScreenState extends State<StatusViewScreen>
           );
         },
       ).then((_) {
-        if (!_isPopping && mounted) {
-          _animController.forward();
-        }
+        _isSheetOpen = false;
+        _resumeStory();
       });
     }
   }
 
   void _confirmDeleteStatus() {
-    _animController.stop();
+    _isSheetOpen = true;
+    _pauseStory();
     showDialog(
       context: context,
       builder: (dlgCtx) => AlertDialog(
@@ -428,7 +459,6 @@ class _StatusViewScreenState extends State<StatusViewScreen>
           TextButton(
             onPressed: () {
               Navigator.pop(dlgCtx);
-              if (!_isPopping && mounted) _animController.forward();
             },
             child: const Text('Batal', style: TextStyle(color: Colors.white70)),
           ),
@@ -441,7 +471,10 @@ class _StatusViewScreenState extends State<StatusViewScreen>
           ),
         ],
       ),
-    );
+    ).then((_) {
+      _isSheetOpen = false;
+      _resumeStory();
+    });
   }
 
   Future<void> _performDeleteCurrentStatus() async {
@@ -518,7 +551,7 @@ class _StatusViewScreenState extends State<StatusViewScreen>
 
   void _openChatWithQuoted(MessageModel? quotedMsg) async {
     _isPopping = true;
-    _animController.stop();
+    _pauseStory();
 
     final convId = await _resolveConversationId();
     if (!mounted) return;
@@ -568,9 +601,7 @@ class _StatusViewScreenState extends State<StatusViewScreen>
     // 3. Show feedback and resume playback
     if (mounted) {
       LajuToast.success(context, 'Reaksi $emoji terkirim');
-      if (!_isPopping) {
-        _animController.forward();
-      }
+      _resumeStory();
     }
   }
 
@@ -586,14 +617,13 @@ class _StatusViewScreenState extends State<StatusViewScreen>
 
     if (mounted) {
       LajuToast.success(context, 'Balasan terkirim');
-      if (!_isPopping) {
-        _animController.forward();
-      }
+      _resumeStory();
     }
   }
 
   void _showViewersSheet(StatusStoryItem story) async {
-    _animController.stop();
+    _isSheetOpen = true;
+    _pauseStory();
 
     List<StatusViewerItem> currentViewers = List<StatusViewerItem>.from(story.viewers);
 
@@ -660,7 +690,7 @@ class _StatusViewScreenState extends State<StatusViewScreen>
                           ),
                           // Quick Forward Button
                           IconButton(
-                            icon: const Icon(Icons.forward_rounded, color: Colors.white, size: 22),
+                            icon: const Icon(Icons.share_rounded, color: Colors.white, size: 22),
                             tooltip: 'Teruskan Status',
                             onPressed: () {
                               Navigator.pop(sheetCtx);
@@ -783,14 +813,14 @@ class _StatusViewScreenState extends State<StatusViewScreen>
         );
       },
     ).then((_) {
-      if (!_isPopping && mounted) {
-        _animController.forward();
-      }
+      _isSheetOpen = false;
+      _resumeStory();
     });
   }
 
   void _forwardStatus(StatusStoryItem story) {
-    _animController.stop();
+    _isSheetOpen = true;
+    _pauseStory();
 
     final allConversations = ConversationService.instance.conversations;
     final searchCtrl = TextEditingController();
@@ -839,7 +869,7 @@ class _StatusViewScreenState extends State<StatusViewScreen>
                       padding: const EdgeInsets.symmetric(horizontal: 18),
                       child: Row(
                         children: [
-                          const Icon(Icons.forward_rounded, color: Color(0xFF00A884), size: 22),
+                          const Icon(Icons.share_rounded, color: Color(0xFF00A884), size: 22),
                           const SizedBox(width: 8),
                           const Expanded(
                             child: Text(
@@ -952,27 +982,37 @@ class _StatusViewScreenState extends State<StatusViewScreen>
                                   ),
                                   onTap: () async {
                                     Navigator.pop(sheetCtx);
-                                    if (story.isPhoto && story.imageAsset != null) {
-                                      await ConversationService.instance.sendMessage(
-                                        conversationId: conv.id,
-                                        messageType: 'IMAGE',
-                                        attachmentPath: story.imageAsset,
-                                        text: story.text.isNotEmpty ? story.text : 'Diteruskan dari status',
-                                      );
-                                    } else if (story.isVideo && (story.videoUrl != null || story.imageAsset != null)) {
-                                      await ConversationService.instance.sendMessage(
-                                        conversationId: conv.id,
-                                        messageType: 'VIDEO',
-                                        attachmentPath: story.videoUrl ?? story.imageAsset,
-                                        text: story.text.isNotEmpty ? story.text : 'Diteruskan dari status video',
-                                      );
-                                    } else {
-                                      await ConversationService.instance.sendMessage(
-                                        conversationId: conv.id,
-                                        messageType: 'TEXT',
-                                        text: '*Status:*\n${story.text}',
-                                      );
-                                    }
+                                    final author = widget.isMyStatus ? 'Anda' : widget.contactName;
+                                    final effectiveExpiresAt = story.expiresAt ??
+                                        (story.createdAt != null
+                                            ? story.createdAt!.add(const Duration(hours: 24))
+                                            : DateTime.now().add(const Duration(hours: 24)));
+
+                                    final statusPayload = jsonEncode({
+                                      'type': 'status_forward',
+                                      'statusId': story.id ?? '',
+                                      'statusType': story.isVideo ? 'video' : (story.isPhoto ? 'image' : 'text'),
+                                      'mediaUrl': story.isVideo
+                                          ? (story.videoUrl ?? story.imageAsset ?? '')
+                                          : (story.imageAsset ?? ''),
+                                      'thumbnailUrl': story.imageAsset ?? '',
+                                      'caption': story.text,
+                                      'authorName': author,
+                                      'createdAt': story.createdAt?.toIso8601String() ?? DateTime.now().toIso8601String(),
+                                      'expiresAt': effectiveExpiresAt.toIso8601String(),
+                                    });
+
+                                    await ConversationService.instance.sendMessage(
+                                      conversationId: conv.id,
+                                      messageType: 'STATUS',
+                                      attachmentPath: story.isVideo
+                                          ? (story.videoUrl ?? story.imageAsset)
+                                          : (story.isPhoto ? story.imageAsset : null),
+                                      attachmentName: story.isVideo
+                                          ? 'status_video.mp4'
+                                          : (story.isPhoto ? 'status_photo.jpg' : null),
+                                      text: statusPayload,
+                                    );
                                     if (mounted) {
                                       LajuToast.success(context, 'Status diteruskan ke ${conv.title}');
                                     }
@@ -989,15 +1029,15 @@ class _StatusViewScreenState extends State<StatusViewScreen>
         );
       },
     ).then((_) {
-      if (!_isPopping && mounted) {
-        _animController.forward();
-      }
+      _isSheetOpen = false;
+      _resumeStory();
     });
   }
 
   void _showReplyBottomSheet() {
     if (_stories.isEmpty) return;
-    _animController.stop();
+    _isSheetOpen = true;
+    _pauseStory();
 
     final currentStory = _stories[_currentIndex];
     final quotedMsg = _buildQuotedStatusMessage(currentStory);
@@ -1212,9 +1252,8 @@ class _StatusViewScreenState extends State<StatusViewScreen>
         );
       },
     ).then((_) {
-      if (!_isPopping && mounted) {
-        _animController.forward();
-      }
+      _isSheetOpen = false;
+      _resumeStory();
     });
   }
 
@@ -1287,22 +1326,29 @@ class _StatusViewScreenState extends State<StatusViewScreen>
   Widget _buildStoryContent(StatusStoryItem story) {
     if (story.isVideo) {
       final videoSrc = story.videoUrl ?? story.imageAsset ?? '';
-      return NativeVideoPlayerWidget(
-        key: ValueKey('video_${story.id ?? story.time}_${story.hashCode}'),
-        videoUrl: videoSrc,
-        autoPlay: true,
-        loop: false,
-        muted: _isVideoMuted,
-        controller: _videoPlayerController,
-        onPrepared: _onVideoPrepared,
-        onCompleted: _onVideoCompleted,
-        onError: (err) {
-          debugPrint('[StatusViewScreen] Video playback error: $err');
-          if (mounted && !_isPopping) {
-            _animController.duration = const Duration(seconds: 5);
-            _animController.forward();
-          }
-        },
+      return Stack(
+        fit: StackFit.expand,
+        children: [
+          if (story.imageAsset != null && story.imageAsset != story.videoUrl && story.imageAsset!.isNotEmpty)
+            _buildStoryImage(story),
+          NativeVideoPlayerWidget(
+            key: ValueKey('video_${story.id ?? story.time}_${story.hashCode}'),
+            videoUrl: videoSrc,
+            autoPlay: true,
+            loop: false,
+            muted: _isVideoMuted,
+            controller: _videoPlayerController,
+            onPrepared: _onVideoPrepared,
+            onCompleted: _onVideoCompleted,
+            onError: (err) {
+              debugPrint('[StatusViewScreen] Video playback error: $err');
+              if (mounted && !_isPopping) {
+                _animController.duration = const Duration(seconds: 5);
+                _animController.forward();
+              }
+            },
+          ),
+        ],
       );
     }
     return _buildStoryImage(story);
@@ -1339,14 +1385,10 @@ class _StatusViewScreenState extends State<StatusViewScreen>
             }
           },
           onLongPressStart: (_) {
-            _animController.stop();
-            _videoPlayerController.pause();
+            _pauseStory();
           },
           onLongPressEnd: (_) {
-            if (!_isPopping) {
-              _animController.forward();
-              _videoPlayerController.play();
-            }
+            _resumeStory();
           },
           onVerticalDragEnd: (details) {
             if (_isPopping) return;

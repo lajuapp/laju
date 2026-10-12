@@ -37,6 +37,7 @@ class _VideoStatusComposerScreenState extends State<VideoStatusComposerScreen> {
 
   @override
   void dispose() {
+    _videoController.pause();
     _captionController.dispose();
     super.dispose();
   }
@@ -63,6 +64,10 @@ class _VideoStatusComposerScreenState extends State<VideoStatusComposerScreen> {
 
       if (!mounted) return;
       if (posted != null) {
+        if (posted.videoUrl != null) {
+          await LajuMediaCacheManager.instance.putFile(posted.videoUrl!, File(widget.videoPath));
+        }
+        if (!mounted) return;
         Navigator.pop(context, posted);
       } else {
         // Fallback local story item if offline or created locally

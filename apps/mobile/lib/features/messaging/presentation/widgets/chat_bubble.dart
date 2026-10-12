@@ -100,6 +100,16 @@ class ChatBubble extends StatelessWidget {
     final messageAge = DateTime.now().difference(message.timestamp);
     final canRecall = message.isOutgoing && messageAge.inMinutes <= 30 && !message.isRecalled;
 
+    String copyText = message.content;
+    if (_isStatusForwardMessage()) {
+      try {
+        final parsed = jsonDecode(message.content);
+        copyText = (parsed['caption'] as String?)?.trim() ?? '';
+      } catch (_) {
+        copyText = '';
+      }
+    }
+
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -183,7 +193,7 @@ class ChatBubble extends StatelessWidget {
                             onReply?.call(message);
                           },
                         ),
-                        if (message.content.isNotEmpty && !message.content.startsWith('{')) ...[
+                        if (copyText.isNotEmpty && !copyText.startsWith('{')) ...[
                           Divider(height: 1, color: isDark ? Colors.white10 : Colors.black12),
                           ListTile(
                             leading: const Icon(Icons.copy_rounded, color: AppColors.cyan),
@@ -196,8 +206,8 @@ class ChatBubble extends StatelessWidget {
                             ),
                             onTap: () {
                               Navigator.pop(sheetContext);
-                              Clipboard.setData(ClipboardData(text: message.content));
-                              LajuToast.info(context, 'Teks pesan disalin ke clipboard');
+                              Clipboard.setData(ClipboardData(text: copyText));
+                              LajuToast.info(context, 'Teks disalin ke clipboard');
                             },
                           ),
                         ],
@@ -359,6 +369,10 @@ class ChatBubble extends StatelessWidget {
 
     if (_isStickerMessage()) {
       return _buildStickerBubble(context, isDark, isOut, timeStr);
+    }
+
+    if (_isStatusForwardMessage()) {
+      return _buildStatusForwardBubble(context, isDark, isOut, timeStr);
     }
 
     final isImage = _isImageMessage();
@@ -563,6 +577,381 @@ class ChatBubble extends StatelessWidget {
                   ),
                 ),
             ],
+          ),
+        ),
+      ),
+    );
+
+    return _SwipeToReplyWrapper(
+      isDark: isDark,
+      onReply: onReply != null ? () => onReply!(message) : null,
+      child: bubbleWidget,
+    );
+  }
+
+  bool _isStatusForwardMessage() {
+    if (message.content.contains('"type":"status_forward"') ||
+        message.content.contains('"type": "status_forward"')) {
+      return true;
+    }
+    if ((message.content == 'Diteruskan dari status video' ||
+         message.content == 'Diteruskan dari status') &&
+        message.attachmentPath != null) {
+      return true;
+    }
+    return false;
+  }
+
+  Widget _buildStatusForwardBubble(BuildContext context, bool isDark, bool isOut, String timeStr) {
+    Map<String, dynamic> data = {};
+    if (message.content.startsWith('{')) {
+      try {
+        data = jsonDecode(message.content) as Map<String, dynamic>;
+      } catch (_) {}
+    }
+
+    final statusType = (data['statusType'] as String?) ??
+        ((message.attachmentPath != null &&
+          (message.attachmentPath!.toLowerCase().endsWith('.mp4') ||
+           message.content == 'Diteruskan dari status video')) ? 'video' : 'image');
+    final isVideo = statusType == 'video';
+    final authorName = (data['authorName'] as String?) ?? (isOut ? 'Anda' : message.senderName);
+    final mediaUrl = (data['mediaUrl'] as String?) ?? (data['media'] as String?) ?? message.attachmentPath ?? '';
+    final thumbnailUrl = (data['thumbnailUrl'] as String?) ?? (isVideo ? '' : mediaUrl);
+    final caption = (data['caption'] as String?) ??
+        ((message.content != 'Diteruskan dari status video' && message.content != 'Diteruskan dari status' && !message.content.startsWith('{')) ? message.content : '');
+
+    DateTime? expiresAt;
+    if (data['expiresAt'] != null) {
+      expiresAt = DateTime.tryParse(data['expiresAt'].toString());
+    }
+    expiresAt ??= message.timestamp.add(const Duration(hours: 24));
+
+    final isExpired = DateTime.now().isAfter(expiresAt);
+
+    final bubbleWidget = Align(
+      alignment: isOut ? Alignment.centerRight : Alignment.centerLeft,
+      child: GestureDetector(
+        onLongPress: () => _showMessageOptions(context),
+        child: Container(
+          margin: EdgeInsets.only(top: topMargin, bottom: bottomMargin),
+          padding: EdgeInsets.only(left: isOut ? 48 : 6, right: isOut ? 6 : 48),
+          child: Container(
+            constraints: const BoxConstraints(maxWidth: 290),
+            decoration: BoxDecoration(
+              color: isOut
+                  ? (isDark ? const Color(0xFF005C4B) : const Color(0xFFD9FDD3))
+                  : (isDark ? const Color(0xFF202C33) : Colors.white),
+              borderRadius: BorderRadius.only(
+                topLeft: const Radius.circular(14),
+                topRight: const Radius.circular(14),
+                bottomLeft: Radius.circular(isOut ? 14 : 2),
+                bottomRight: Radius.circular(isOut ? 2 : 14),
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: isDark ? 0.20 : 0.08),
+                  blurRadius: 2,
+                  offset: const Offset(0, 1),
+                ),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Header (Status Author & Expiration Badge)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(10, 8, 10, 6),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          color: (isOut
+                                  ? (isDark ? const Color(0xFF25D366) : const Color(0xFF008069))
+                                  : AppColors.primary)
+                              .withValues(alpha: 0.15),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          Icons.share_rounded,
+                          size: 13,
+                          color: isOut
+                              ? (isDark ? const Color(0xFF25D366) : const Color(0xFF008069))
+                              : AppColors.primary,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          'Status • $authorName',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 12.5,
+                            color: isOut
+                                ? (isDark ? const Color(0xFF25D366) : const Color(0xFF008069))
+                                : (isDark ? AppColors.primaryLight : AppColors.primaryDark),
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      if (isExpired)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: Colors.red.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: const Text(
+                            'Berakhir',
+                            style: TextStyle(
+                              color: Color(0xFFEF4444),
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        )
+                      else ...[
+                        Builder(
+                          builder: (_) {
+                            final remaining = expiresAt!.difference(DateTime.now());
+                            final remStr = remaining.inHours > 0
+                                ? '${remaining.inHours}j lagi'
+                                : '${remaining.inMinutes}m lagi';
+                            return Text(
+                              remStr,
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: isDark ? Colors.white54 : Colors.black45,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            );
+                          },
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+
+                // Media Container (Video / Image / Expired Placeholder)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 6),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(10),
+                    child: SizedBox(
+                      width: double.infinity,
+                      height: 180,
+                      child: isExpired
+                          ? InkWell(
+                              onTap: () {
+                                LajuToast.info(context, 'Status ini sudah kadaluarsa (24 jam) dan tidak dapat dilihat lagi.');
+                              },
+                              child: Container(
+                                color: isDark ? const Color(0xFF0F172A) : const Color(0xFFE2E8F0),
+                                padding: const EdgeInsets.all(16),
+                                child: Center(
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.all(10),
+                                        decoration: BoxDecoration(
+                                          color: Colors.red.withValues(alpha: 0.12),
+                                          shape: BoxShape.circle,
+                                        ),
+                                        child: const Icon(
+                                          Icons.history_toggle_off_rounded,
+                                          size: 32,
+                                          color: Color(0xFFEF4444),
+                                        ),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Text(
+                                        'Status Telah Berakhir',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.w700,
+                                          fontSize: 13.5,
+                                          color: isDark ? Colors.white : const Color(0xFF111827),
+                                        ),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        'Tidak tersedia setelah 24 jam',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          color: isDark ? Colors.white54 : const Color(0xFF6B7280),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            )
+                          : InkWell(
+                              onTap: () {
+                                if (isVideo) {
+                                  LajuVideoViewer.show(
+                                    context,
+                                    videoUrl: mediaUrl,
+                                    title: 'Status • $authorName',
+                                    subtitle: caption.isNotEmpty ? caption : null,
+                                    expiresAt: expiresAt,
+                                  );
+                                } else {
+                                  LajuImageViewer.show(
+                                    context,
+                                    imagePath: mediaUrl,
+                                    title: 'Status • $authorName',
+                                    subtitle: caption.isNotEmpty ? caption : null,
+                                  );
+                                }
+                              },
+                              child: Stack(
+                                fit: StackFit.expand,
+                                children: [
+                                  // Background Thumbnail or Gradient
+                                  if (thumbnailUrl.isNotEmpty)
+                                    LajuCachedImage(
+                                      imageUrlOrPath: thumbnailUrl,
+                                      fit: BoxFit.cover,
+                                      errorWidget: Container(
+                                        color: const Color(0xFF0F172A),
+                                        child: Center(
+                                          child: Icon(
+                                            isVideo ? Icons.videocam_rounded : Icons.image_rounded,
+                                            size: 40,
+                                            color: Colors.white38,
+                                          ),
+                                        ),
+                                      ),
+                                    )
+                                  else
+                                    Container(
+                                      decoration: const BoxDecoration(
+                                        gradient: LinearGradient(
+                                          begin: Alignment.topLeft,
+                                          end: Alignment.bottomRight,
+                                          colors: [
+                                            Color(0xFF0F2B26),
+                                            Color(0xFF1E293B),
+                                          ],
+                                        ),
+                                      ),
+                                      child: Center(
+                                        child: Icon(
+                                          isVideo ? Icons.videocam_rounded : Icons.image_rounded,
+                                          size: 40,
+                                          color: Colors.white38,
+                                        ),
+                                      ),
+                                    ),
+
+                                  // Dim overlay
+                                  Container(
+                                    color: Colors.black.withValues(alpha: 0.18),
+                                  ),
+
+                                  // Play Button Overlay for Video
+                                  if (isVideo)
+                                    Center(
+                                      child: Container(
+                                        width: 50,
+                                        height: 50,
+                                        decoration: BoxDecoration(
+                                          color: Colors.black.withValues(alpha: 0.60),
+                                          shape: BoxShape.circle,
+                                          border: Border.all(color: Colors.white70, width: 2),
+                                        ),
+                                        child: const Icon(
+                                          Icons.play_arrow_rounded,
+                                          color: Colors.white,
+                                          size: 32,
+                                        ),
+                                      ),
+                                    ),
+
+                                  // Bottom-left Media Type Badge
+                                  Positioned(
+                                    bottom: 8,
+                                    left: 8,
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                                      decoration: BoxDecoration(
+                                        color: Colors.black.withValues(alpha: 0.65),
+                                        borderRadius: BorderRadius.circular(6),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(
+                                            isVideo ? Icons.videocam_rounded : Icons.photo_camera_rounded,
+                                            size: 13,
+                                            color: Colors.white,
+                                          ),
+                                          const SizedBox(width: 4),
+                                          Text(
+                                            isVideo ? 'STATUS VIDEO' : 'STATUS FOTO',
+                                            style: const TextStyle(
+                                              color: Colors.white,
+                                              fontSize: 10,
+                                              fontWeight: FontWeight.bold,
+                                              letterSpacing: 0.4,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                    ),
+                  ),
+                ),
+
+                // Caption (if any)
+                if (caption.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(10, 6, 10, 2),
+                    child: Text(
+                      caption,
+                      style: TextStyle(
+                        fontSize: 14 * ChatAppearanceController.instance.fontScale,
+                        color: isOut
+                            ? (isDark ? Colors.white : const Color(0xFF111827))
+                            : (isDark ? const Color(0xFFE9EDEF) : const Color(0xFF111827)),
+                        height: 1.32,
+                      ),
+                    ),
+                  ),
+
+                // Timestamp & Status (Bottom right)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(10, 4, 10, 6),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    mainAxisSize: MainAxisSize.max,
+                    children: [
+                      Text(
+                        timeStr,
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: isOut
+                              ? (isDark ? Colors.white60 : const Color(0xFF667781))
+                              : (isDark ? Colors.white54 : AppColors.textTertiary),
+                        ),
+                      ),
+                      if (isOut) ...[
+                        const SizedBox(width: 4),
+                        _buildStatusIcon(message.status, isOut: true, isDark: isDark),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -1600,8 +1989,15 @@ class ChatBubble extends StatelessWidget {
       );
     }
 
+    if (loc.isLive && loc.liveExpiresAt == null && loc.liveDurationMinutes != null) {
+      loc = loc.copyWith(
+        liveExpiresAt: message.timestamp.add(Duration(minutes: loc.liveDurationMinutes!)),
+      );
+    }
+
     final tileUrl = loc.getOsmTileUrl(zoom: 16);
     final isLive = loc.isLive;
+    final isExpired = isLive && loc.isLiveExpired;
     final timeColor = isOut
         ? (isDark ? Colors.white.withValues(alpha: 0.7) : const Color(0xFF667781))
         : (isDark ? const Color(0xFF8696A0) : const Color(0xFF667781));
@@ -1610,7 +2006,13 @@ class ChatBubble extends StatelessWidget {
       color: Colors.transparent,
       child: InkWell(
         borderRadius: BorderRadius.circular(8),
-        onTap: () => LocationService.instance.openMap(loc.latitude, loc.longitude, label: loc.name),
+        onTap: () {
+          if (isExpired) {
+            LajuToast.info(context, 'Waktu berbagi lokasi langsung telah berakhir dan tidak dapat dibuka.');
+            return;
+          }
+          LocationService.instance.openMap(loc.latitude, loc.longitude, label: loc.name);
+        },
         child: SizedBox(
           width: 245,
           child: Column(
@@ -1639,22 +2041,54 @@ class ChatBubble extends StatelessWidget {
                           ),
                         ),
                       ),
-                      // Center Pin
-                      Center(
-                        child: Container(
-                          padding: const EdgeInsets.all(4),
-                          decoration: BoxDecoration(
-                            color: isLive ? const Color(0xFF10B981) : AppColors.danger,
-                            shape: BoxShape.circle,
-                            boxShadow: const [BoxShadow(color: Colors.black38, blurRadius: 4)],
-                          ),
-                          child: Icon(
-                            isLive ? Icons.share_location_rounded : Icons.location_on_rounded,
-                            color: Colors.white,
-                            size: 16,
+                      if (isExpired) ...[
+                        Container(
+                          color: Colors.black.withValues(alpha: 0.5),
+                        ),
+                        Center(
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF1E293B).withValues(alpha: 0.95),
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(color: Colors.white24),
+                              boxShadow: const [BoxShadow(color: Colors.black45, blurRadius: 6)],
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.location_off_rounded, color: Colors.white70, size: 14),
+                                SizedBox(width: 5),
+                                Text(
+                                  'Sesi Berakhir',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 11.5,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
-                      ),
+                      ] else ...[
+                        // Center Pin
+                        Center(
+                          child: Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: BoxDecoration(
+                              color: isLive ? const Color(0xFF10B981) : AppColors.danger,
+                              shape: BoxShape.circle,
+                              boxShadow: const [BoxShadow(color: Colors.black38, blurRadius: 4)],
+                            ),
+                            child: Icon(
+                              isLive ? Icons.share_location_rounded : Icons.location_on_rounded,
+                              color: Colors.white,
+                              size: 16,
+                            ),
+                          ),
+                        ),
+                      ],
                       // Attribution tag
                       Positioned(
                         top: 4,
@@ -1662,11 +2096,15 @@ class ChatBubble extends StatelessWidget {
                         child: Container(
                           padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
                           decoration: BoxDecoration(
-                            color: (isLive ? const Color(0xFF10B981) : Colors.black87).withValues(alpha: 0.85),
+                            color: isLive
+                                ? (isExpired ? const Color(0xFF4B5563) : const Color(0xFF10B981)).withValues(alpha: 0.9)
+                                : Colors.black87.withValues(alpha: 0.85),
                             borderRadius: BorderRadius.circular(6),
                           ),
                           child: Text(
-                            isLive ? 'LIVE' : '© OpenStreetMap',
+                            isLive
+                                ? (isExpired ? 'BERAKHIR' : (loc.liveRemainingText.isNotEmpty ? 'LIVE • ${loc.liveRemainingText}' : 'LIVE'))
+                                : '© OpenStreetMap',
                             style: const TextStyle(
                               color: Colors.white,
                               fontSize: 8.5,
@@ -1687,11 +2125,24 @@ class ChatBubble extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    if (loc.comment != null && loc.comment!.isNotEmpty) ...[
+                      Text(
+                        loc.comment!,
+                        style: TextStyle(
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w600,
+                          color: isOut
+                              ? (isDark ? Colors.white : const Color(0xFF111827))
+                              : (isDark ? Colors.white : const Color(0xFF111827)),
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                    ],
                     Text(
-                      loc.name.isNotEmpty ? loc.name : 'Lokasi Terkini',
+                      isLive ? 'Lokasi Terkini (Live)' : (loc.name.isNotEmpty ? loc.name : 'Lokasi Terkini'),
                       style: TextStyle(
-                        fontSize: 13.5,
-                        fontWeight: FontWeight.w700,
+                        fontSize: (loc.comment != null && loc.comment!.isNotEmpty) ? 12 : 13.5,
+                        fontWeight: (loc.comment != null && loc.comment!.isNotEmpty) ? FontWeight.w500 : FontWeight.w700,
                         color: isOut
                             ? (isDark ? Colors.white : const Color(0xFF111827))
                             : (isDark ? Colors.white : const Color(0xFF111827)),
@@ -1699,7 +2150,35 @@ class ChatBubble extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
-                    if (loc.address.isNotEmpty) ...[
+                    if (isLive) ...[
+                      const SizedBox(height: 2),
+                      Row(
+                        children: [
+                          Icon(
+                            isExpired ? Icons.access_time_rounded : Icons.sensors_rounded,
+                            size: 12,
+                            color: isExpired ? (isDark ? Colors.white54 : const Color(0xFF9CA3AF)) : const Color(0xFF10B981),
+                          ),
+                          const SizedBox(width: 4),
+                          Expanded(
+                            child: Text(
+                              isExpired
+                                  ? 'Lokasi langsung berakhir'
+                                  : 'Lokasi real-time • ${loc.liveRemainingText}',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: isExpired
+                                    ? (isDark ? Colors.white54 : const Color(0xFF9CA3AF))
+                                    : const Color(0xFF10B981),
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ] else if (loc.address.isNotEmpty) ...[
                       const SizedBox(height: 1),
                       Text(
                         loc.address,
@@ -2078,6 +2557,15 @@ class ChatBubble extends StatelessWidget {
         iconColor = const Color(0xFFA855F7);
         fileIcon = Icons.audiotrack_rounded;
         break;
+      case 'MP4':
+      case 'MOV':
+      case 'MKV':
+      case 'WEBM':
+      case '3GP':
+        iconBgColor = isDark ? const Color(0xFF0369A1).withValues(alpha: 0.4) : const Color(0xFFE0F2FE);
+        iconColor = const Color(0xFF0284C7);
+        fileIcon = Icons.videocam_rounded;
+        break;
       default:
         iconBgColor = isDark ? const Color(0xFF134E4A).withValues(alpha: 0.4) : AppColors.primaryLight;
         iconColor = AppColors.primaryDark;
@@ -2103,6 +2591,16 @@ class ChatBubble extends StatelessWidget {
         (message.attachmentPath != null &&
             (message.attachmentPath!.startsWith('data:image') ||
              message.attachmentPath!.startsWith('data:')));
+
+    final isVideo = ext == 'MP4' ||
+        ext == 'MOV' ||
+        ext == 'MKV' ||
+        ext == 'WEBM' ||
+        ext == '3GP' ||
+        (message.attachmentPath != null &&
+            (message.attachmentPath!.startsWith('data:video') ||
+             message.attachmentPath!.toLowerCase().endsWith('.mp4') ||
+             message.attachmentPath!.toLowerCase().endsWith('.mov')));
 
     if (isImage && message.attachmentPath != null) {
       Widget? imageWidget;
@@ -2161,6 +2659,15 @@ class ChatBubble extends StatelessWidget {
             title: message.isOutgoing
                 ? 'Anda'
                 : (message.senderName.isNotEmpty ? message.senderName : 'Foto'),
+            subtitle: DateFormat('dd MMMM yyyy, HH:mm').format(message.timestamp.toLocal()),
+          );
+        } else if (isVideo && message.attachmentPath != null) {
+          LajuVideoViewer.show(
+            context,
+            videoUrl: message.attachmentPath!,
+            title: message.isOutgoing
+                ? 'Anda'
+                : (message.senderName.isNotEmpty ? message.senderName : 'Video'),
             subtitle: DateFormat('dd MMMM yyyy, HH:mm').format(message.timestamp.toLocal()),
           );
         } else {

@@ -244,6 +244,26 @@ class MessageModel {
           : 'Kontak';
     }
     if (contentType == MessageContentType.attachment) {
+      if (content.contains('"type":"status_forward"') || content.contains('"type": "status_forward"')) {
+        try {
+          final parsed = jsonDecode(content);
+          if (parsed is Map) {
+            final isVid = parsed['statusType'] == 'video';
+            final author = parsed['authorName'] ?? 'Status';
+            final cap = (parsed['caption'] as String?)?.trim() ?? '';
+            final icon = isVid ? '📹' : '📷';
+            return cap.isNotEmpty ? '$icon Status ($author): $cap' : '$icon Status • $author';
+          }
+        } catch (_) {}
+        return 'Status';
+      }
+      if (attachmentName != null &&
+          (attachmentName!.toLowerCase().endsWith('.mp4') ||
+           attachmentName!.toLowerCase().endsWith('.mov') ||
+           attachmentName!.toLowerCase().endsWith('.mkv'))) {
+        final clean = content.trim();
+        return (clean.isNotEmpty && !clean.startsWith('{')) ? '📹 $clean' : 'Video';
+      }
       if (attachmentName != null &&
           attachmentName!.isNotEmpty &&
           attachmentName != 'Foto.jpg' &&

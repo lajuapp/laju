@@ -503,8 +503,8 @@ class _ChatInputBarState extends State<ChatInputBar> with SingleTickerProviderSt
                               style: TextStyle(color: textCol, fontSize: 15),
                               decoration: InputDecoration(
                                 hintText: widget.editingMessage != null
-                                    ? 'Edit pesan...'
-                                    : 'LAJU encrypted message...',
+                                    ? context.tr('editMessageHint')
+                                    : context.tr('messageHint'),
                                 hintStyle: TextStyle(color: hintCol, fontSize: 14),
                                 isDense: true,
                                 contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),

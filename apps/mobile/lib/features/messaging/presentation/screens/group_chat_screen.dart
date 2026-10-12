@@ -1461,6 +1461,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                               : widget.avatarUrl,
                           radius: 19,
                           isVerified: true,
+                          heroTag: widget.groupId.isNotEmpty ? 'avatar_${widget.groupId}' : null,
                         ),
                         const SizedBox(width: 10),
                         Expanded(
