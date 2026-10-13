@@ -38,11 +38,6 @@ export default function HelpPage() {
           
           {/* Left: Manifesto Copy */}
           <div className="lg:col-span-7 space-y-6 text-left">
-            <div className="inline-flex items-center gap-2 rounded-full border border-stone-200 bg-white px-4 py-1.5 text-xs font-bold text-stone-700 shadow-sm">
-              <Headphones className="h-4 w-4 text-[#0D382C]" />
-              <span>{t('help_badge')}</span>
-            </div>
-
             <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold text-slate-900 tracking-tight leading-[1.08]">
               {t('help_hero_title_line1')}<br />
               {t('help_hero_title_line2')}
