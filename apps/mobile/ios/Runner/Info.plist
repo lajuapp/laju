@@ -66,5 +66,13 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>NSCameraUsageDescription</key>
+	<string>LAJU memerlukan izin kamera untuk panggilan video, pengambilan foto dan video, serta pemindaian kode QR.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>LAJU memerlukan izin mikrofon untuk panggilan suara dan video serta pengiriman rekaman suara.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>LAJU memerlukan akses galeri foto untuk mengirim gambar dan dokumen dalam percakapan.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>LAJU memerlukan izin lokasi hanya saat Anda secara sukarela membagikan lokasi dalam percakapan.</string>
 </dict>
 </plist>

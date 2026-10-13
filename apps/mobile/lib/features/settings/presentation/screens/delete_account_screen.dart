@@ -92,6 +92,12 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
             onPressed: () async {
               Navigator.pop(ctx); // Close dialog
               await Future.delayed(const Duration(milliseconds: 150));
+              try {
+                await ApiClient.instance.delete(
+                  ApiEndpoints.currentUser,
+                  body: {'reason': _selectedReason},
+                );
+              } catch (_) {}
               AccountController.instance.resetAccount();
               AuthController.instance.logout();
               AppNavigation.navigatorKey.currentState?.pushAndRemoveUntil(

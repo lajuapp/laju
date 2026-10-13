@@ -1,13 +1,12 @@
 import React from 'react';
-import { ShieldAlert, Activity, Clock, Terminal } from 'lucide-react';
-import { useAuditLogs, useSecurityEvents } from '../hooks/useSecurity';
+import { Terminal } from 'lucide-react';
+import { useAuditLogs } from '../hooks/useSecurity';
 import { usePagination } from '../hooks/usePagination';
 import { Badge } from '../components/ui/Badge';
 import { Pagination } from '../components/ui/Pagination';
 
 export function SecurityPage() {
   const { data: auditLogs, isLoading: loadingAudit } = useAuditLogs();
-  const { data: securityEvents, isLoading: loadingEvents } = useSecurityEvents();
 
   const pagination = usePagination(auditLogs || [], { initialPageSize: 15 });
 
@@ -16,10 +15,10 @@ export function SecurityPage() {
       {/* Header */}
       <div>
         <h1 className="text-xl font-extrabold tracking-tight text-neutral-900">
-          Log Aktivitas Admin (Activity Logs)
+          Activity & Audit Logs
         </h1>
         <p className="text-xs text-neutral-500 mt-1">
-          Catatan riwayat seluruh aktivitas dan tindakan operasional tim admin
+          Historical trail of all administrative actions, account deletions, and system events.
         </p>
       </div>
 
@@ -29,37 +28,38 @@ export function SecurityPage() {
           <div className="flex items-center gap-2">
             <Terminal className="w-4 h-4 text-neutral-600" />
             <h2 className="text-xs font-bold text-neutral-900 uppercase tracking-wider">
-              Riwayat Aktivitas Admin ({auditLogs?.length ?? 0})
+              Admin Activity Trail ({auditLogs?.length ?? 0})
             </h2>
           </div>
-          <Badge variant="brand">Log Aktivitas</Badge>
+          <Badge variant="brand">Audit Logs</Badge>
         </div>
 
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
             <thead className="bg-neutral-50/70 border-b border-neutral-100 text-neutral-500 uppercase tracking-wider text-[10px] font-bold">
               <tr>
-                <th className="px-5 py-3">Waktu</th>
-                <th className="px-5 py-3">Tindakan (Action)</th>
-                <th className="px-5 py-3">Sumber Daya</th>
-                <th className="px-5 py-3">Rincian Operasi</th>
-                <th className="px-5 py-3">Alamat IP</th>
+                <th className="px-5 py-3">Timestamp</th>
+                <th className="px-5 py-3">Action</th>
+                <th className="px-5 py-3">Target Resource</th>
+                <th className="px-5 py-3">Operation Details</th>
+                <th className="px-5 py-3">IP Address</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-neutral-100">
               {loadingAudit ? (
                 <tr>
                   <td colSpan={5} className="px-5 py-8 text-center text-neutral-400">
-                    Memuat log audit...
+                    Loading audit trail...
                   </td>
                 </tr>
               ) : pagination.paginatedItems && pagination.paginatedItems.length > 0 ? (
                 pagination.paginatedItems.map((log) => (
                   <tr key={log.id} className="hover:bg-neutral-50/50 transition-colors">
                     <td className="px-5 py-3 font-mono text-[11px] text-neutral-500 whitespace-nowrap">
-                      {new Date(log.createdAt).toLocaleString('id-ID', {
+                      {new Date(log.createdAt).toLocaleString('en-US', {
                         day: '2-digit',
-                        month: '2-digit',
+                        month: 'short',
+                        year: 'numeric',
                         hour: '2-digit',
                         minute: '2-digit',
                         second: '2-digit',
@@ -84,7 +84,7 @@ export function SecurityPage() {
               ) : (
                 <tr>
                   <td colSpan={5} className="px-5 py-8 text-center text-neutral-400">
-                    Belum ada log audit tercatat
+                    No audit logs recorded yet
                   </td>
                 </tr>
               )}

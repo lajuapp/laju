@@ -3,9 +3,11 @@ import {
   Get,
   Post,
   Patch,
+  Delete,
   Param,
   Body,
   Query,
+  Ip,
   UseGuards
 } from '@nestjs/common';
 import { UsersService } from './users.service';
@@ -30,6 +32,15 @@ export class UsersController {
     @Body() dto: UpdateUserProfileDto
   ) {
     return this.usersService.updateProfile(userId, dto);
+  }
+
+  @Delete('me')
+  deleteAccount(
+    @CurrentUser('userId') userId: string,
+    @Body('reason') reason?: string,
+    @Ip() ip?: string
+  ) {
+    return this.usersService.deleteAccount(userId, reason, ip);
   }
 
   @Post('report')

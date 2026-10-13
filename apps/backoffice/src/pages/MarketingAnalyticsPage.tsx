@@ -4,21 +4,13 @@ import {
   Users,
   Smartphone,
   TrendingUp,
-  Percent,
-  Compass,
   Layers,
-  ArrowUpRight,
-  Filter,
-  CheckCircle2,
-  Calendar,
-  Sparkles,
   BarChart3,
   Globe,
   MonitorSmartphone,
-  RefreshCw
+  RefreshCw,
 } from 'lucide-react';
 import { useMarketingStats } from '../hooks/useMarketingStats';
-import { Badge } from '../components/ui/Badge';
 
 export function MarketingAnalyticsPage() {
   const { data: stats, isLoading, refetch, isFetching } = useMarketingStats();
@@ -40,10 +32,10 @@ export function MarketingAnalyticsPage() {
         <div>
           <h1 className="text-xl font-extrabold tracking-tight text-neutral-900 flex items-center gap-2">
             <BarChart3 className="w-5 h-5 text-brand-600" />
-            Statistik Pemasaran & Perilaku Pengguna
+            Service Statistics & Telemetry
           </h1>
           <p className="text-xs text-neutral-500 mt-1">
-            Pantau performa unduhan APK dari landing page, corong konversi instalasi, serta perilaku & distribusi perangkat pengguna aktif.
+            Track client package downloads, installation conversion funnels, daily active users, and client platform distribution.
           </p>
         </div>
 
@@ -54,14 +46,14 @@ export function MarketingAnalyticsPage() {
             className="flex items-center gap-1.5 px-3 py-1.5 bg-white text-neutral-700 border border-neutral-200 rounded-xl text-xs font-semibold shadow-2xs hover:bg-neutral-50 transition-colors disabled:opacity-50"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isFetching ? 'animate-spin text-brand-600' : ''}`} />
-            Perbarui Data
+            Refresh Metrics
           </button>
         </div>
       </div>
 
       {/* Top Metric Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Card 1: Total Unduhan */}
+        {/* Card 1: Total Downloads */}
         <div className="bg-white rounded-2xl border border-neutral-200/80 p-5 shadow-xs flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between mb-3">
@@ -69,23 +61,23 @@ export function MarketingAnalyticsPage() {
                 <Download className="w-4 h-4" />
               </div>
               <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-brand-50 text-brand-700 border border-brand-200">
-                +{overview?.downloadsToday ?? 0} hari ini
+                +{overview?.downloadsToday ?? 0} today
               </span>
             </div>
-            <p className="text-xs font-semibold text-neutral-500">Total Unduhan APK</p>
+            <p className="text-xs font-semibold text-neutral-500">Total Client Downloads</p>
             <div className="text-3xl font-black text-neutral-900 mt-1 tracking-tight">
               {isLoading ? '...' : (overview?.totalDownloads ?? 0)}
-              <span className="text-xs font-semibold text-neutral-400 ml-1.5">kali</span>
+              <span className="text-xs font-semibold text-neutral-400 ml-1.5">times</span>
             </div>
           </div>
           <div className="mt-4 pt-3 border-t border-neutral-100 flex items-center justify-between text-[11px] text-neutral-500">
-            <span>{overview?.downloadsThisWeek ?? 0} minggu ini</span>
+            <span>{overview?.downloadsThisWeek ?? 0} this week</span>
             <span>•</span>
-            <span>{overview?.downloadsThisMonth ?? 0} bulan ini</span>
+            <span>{overview?.downloadsThisMonth ?? 0} this month</span>
           </div>
         </div>
 
-        {/* Card 2: Pengguna Terdaftar */}
+        {/* Card 2: Registered Accounts */}
         <div className="bg-white rounded-2xl border border-neutral-200/80 p-5 shadow-xs flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between mb-3">
@@ -93,23 +85,23 @@ export function MarketingAnalyticsPage() {
                 <Users className="w-4 h-4" />
               </div>
               <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
-                +{overview?.newUsersToday ?? 0} hari ini
+                +{overview?.newUsersToday ?? 0} today
               </span>
             </div>
-            <p className="text-xs font-semibold text-neutral-500">Pengguna Terdaftar</p>
+            <p className="text-xs font-semibold text-neutral-500">Registered Accounts</p>
             <div className="text-3xl font-black text-neutral-900 mt-1 tracking-tight">
               {isLoading ? '...' : (overview?.totalUsers ?? 0)}
-              <span className="text-xs font-semibold text-neutral-400 ml-1.5">akun</span>
+              <span className="text-xs font-semibold text-neutral-400 ml-1.5">users</span>
             </div>
           </div>
           <div className="mt-4 pt-3 border-t border-neutral-100 flex items-center justify-between text-[11px] text-neutral-500">
-            <span>{overview?.newUsersThisWeek ?? 0} minggu ini</span>
+            <span>{overview?.newUsersThisWeek ?? 0} this week</span>
             <span>•</span>
-            <span>{overview?.newUsersThisMonth ?? 0} bulan ini</span>
+            <span>{overview?.newUsersThisMonth ?? 0} this month</span>
           </div>
         </div>
 
-        {/* Card 3: Tingkat Konversi (Corong) */}
+        {/* Card 3: Conversion Rate */}
         <div className="bg-white rounded-2xl border border-neutral-200/80 p-5 shadow-xs flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between mb-3">
@@ -117,23 +109,23 @@ export function MarketingAnalyticsPage() {
                 <TrendingUp className="w-4 h-4" />
               </div>
               <span className="text-[11px] font-mono font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md">
-                Corong Instal
+                Conversion Funnel
               </span>
             </div>
-            <p className="text-xs font-semibold text-neutral-500">Konversi Download ke Akun</p>
+            <p className="text-xs font-semibold text-neutral-500">Download-to-Account Ratio</p>
             <div className="text-3xl font-black text-neutral-900 mt-1 tracking-tight">
               {isLoading ? '...' : `${overview?.conversionRatePercent ?? 0}%`}
-              <span className="text-xs font-semibold text-neutral-400 ml-1.5">rasio</span>
+              <span className="text-xs font-semibold text-neutral-400 ml-1.5">ratio</span>
             </div>
           </div>
           <div className="mt-4 pt-3 border-t border-neutral-100 flex items-center justify-between text-[11px] text-neutral-500">
-            <span>Target Ideal: &gt;50%</span>
+            <span>Ideal Target: &gt;50%</span>
             <span>•</span>
-            <span className="text-emerald-600 font-medium">Kualitas Trafik Baik</span>
+            <span className="text-emerald-600 font-medium">Healthy Adoption</span>
           </div>
         </div>
 
-        {/* Card 4: Retensi Pengguna Aktif (DAU) */}
+        {/* Card 4: Daily Active Users */}
         <div className="bg-white rounded-2xl border border-neutral-200/80 p-5 shadow-xs flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between mb-3">
@@ -141,32 +133,32 @@ export function MarketingAnalyticsPage() {
                 <MonitorSmartphone className="w-4 h-4" />
               </div>
               <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-violet-50 text-violet-700 border border-violet-200">
-                {overview?.activeRetentionPercent ?? 0}% aktif
+                {overview?.activeRetentionPercent ?? 0}% active
               </span>
             </div>
-            <p className="text-xs font-semibold text-neutral-500">Pengguna Aktif Harian (DAU)</p>
+            <p className="text-xs font-semibold text-neutral-500">Daily Active Users (DAU)</p>
             <div className="text-3xl font-black text-neutral-900 mt-1 tracking-tight">
               {isLoading ? '...' : (overview?.dauCount ?? 0)}
-              <span className="text-xs font-semibold text-neutral-400 ml-1.5">user/24j</span>
+              <span className="text-xs font-semibold text-neutral-400 ml-1.5">users/24h</span>
             </div>
           </div>
           <div className="mt-4 pt-3 border-t border-neutral-100 flex items-center justify-between text-[11px] text-neutral-500">
-            <span>Retensi Pengguna Baru</span>
+            <span>Active Retention</span>
             <span>•</span>
-            <span>Terkoneksi Realtime</span>
+            <span>Real-time Connected</span>
           </div>
         </div>
       </div>
 
-      {/* Main Chart Section: Tren 14 Hari */}
+      {/* Main Chart Section: 14-Day Trend */}
       <div className="bg-white rounded-2xl border border-neutral-200/80 p-6 shadow-xs">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
           <div>
             <h2 className="text-sm font-bold text-neutral-900 flex items-center gap-2">
-              Tren Unduhan vs Pendaftaran (14 Hari Terakhir)
+              Downloads vs Registrations Trend (Last 14 Days)
             </h2>
             <p className="text-xs text-neutral-500 mt-0.5">
-              Perbandingan harian antara pengunjung yang mengunduh APK dan yang berhasil mendaftarkan akun.
+              Daily comparative volume between client package downloads and completed user registrations.
             </p>
           </div>
 
@@ -179,7 +171,7 @@ export function MarketingAnalyticsPage() {
                   : 'text-neutral-500 hover:text-neutral-900'
               }`}
             >
-              Unduhan APK ({trend.reduce((acc, curr) => acc + curr.downloads, 0)})
+              Downloads ({trend.reduce((acc, curr) => acc + curr.downloads, 0)})
             </button>
             <button
               onClick={() => setActiveTab('REGISTRATIONS')}
@@ -189,12 +181,12 @@ export function MarketingAnalyticsPage() {
                   : 'text-neutral-500 hover:text-neutral-900'
               }`}
             >
-              Registrasi Akun ({trend.reduce((acc, curr) => acc + curr.registrations, 0)})
+              Registrations ({trend.reduce((acc, curr) => acc + curr.registrations, 0)})
             </button>
           </div>
         </div>
 
-        {/* SVG Bar Chart */}
+        {/* SVG / Bar Chart */}
         <div className="h-64 flex items-end gap-2 pt-6 pb-2 px-2 border-b border-neutral-100">
           {trend.map((item, idx) => {
             const currentVal = activeTab === 'DOWNLOADS' ? item.downloads : item.registrations;
@@ -206,7 +198,7 @@ export function MarketingAnalyticsPage() {
                 <div className="absolute -top-10 opacity-0 group-hover:opacity-100 transition-opacity bg-neutral-900 text-white text-[10px] py-1 px-2 rounded pointer-events-none whitespace-nowrap z-20 shadow-md">
                   <div className="font-bold">{item.date}</div>
                   <div>
-                    {activeTab === 'DOWNLOADS' ? 'Unduhan' : 'Registrasi'}: {currentVal}
+                    {activeTab === 'DOWNLOADS' ? 'Downloads' : 'Registrations'}: {currentVal}
                   </div>
                 </div>
 
@@ -237,21 +229,21 @@ export function MarketingAnalyticsPage() {
         </div>
       </div>
 
-      {/* Behavioral & Distribution Grid */}
+      {/* Telemetry & Distribution Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* 1. Model Ponsel Terbanyak */}
+        {/* 1. Device Models */}
         <div className="bg-white rounded-2xl border border-neutral-200/80 p-5 shadow-xs">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-xs font-bold text-neutral-900 uppercase tracking-wider flex items-center gap-2">
               <Smartphone className="w-4 h-4 text-brand-600" />
-              Model Ponsel Pengguna
+              Client Device Models
             </h3>
             <span className="text-[10px] text-neutral-400">Top 10</span>
           </div>
 
           <div className="space-y-3">
             {(distributions?.deviceModels || []).length === 0 ? (
-              <p className="text-xs text-neutral-400 py-4 text-center">Belum ada data perangkat</p>
+              <p className="text-xs text-neutral-400 py-4 text-center">No device data recorded</p>
             ) : (
               (distributions?.deviceModels || []).map((m, i) => {
                 const total = (distributions?.deviceModels || []).reduce((a, b) => a + b.count, 0);
@@ -275,19 +267,19 @@ export function MarketingAnalyticsPage() {
           </div>
         </div>
 
-        {/* 2. Versi Android & OS */}
+        {/* 2. OS Platforms */}
         <div className="bg-white rounded-2xl border border-neutral-200/80 p-5 shadow-xs">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-xs font-bold text-neutral-900 uppercase tracking-wider flex items-center gap-2">
               <Layers className="w-4 h-4 text-blue-600" />
-              Versi OS Android Terpasang
+              Operating System Platforms
             </h3>
-            <span className="text-[10px] text-neutral-400">Distribusi</span>
+            <span className="text-[10px] text-neutral-400">Distribution</span>
           </div>
 
           <div className="space-y-3">
             {(distributions?.osVersions || []).length === 0 ? (
-              <p className="text-xs text-neutral-400 py-4 text-center">Belum ada data OS</p>
+              <p className="text-xs text-neutral-400 py-4 text-center">No OS data recorded</p>
             ) : (
               (distributions?.osVersions || []).map((o, i) => {
                 const total = (distributions?.osVersions || []).reduce((a, b) => a + b.count, 0);
@@ -311,19 +303,19 @@ export function MarketingAnalyticsPage() {
           </div>
         </div>
 
-        {/* 3. Saluran Sumber Unduhan (Marketing Channels) */}
+        {/* 3. Acquisition Channels */}
         <div className="bg-white rounded-2xl border border-neutral-200/80 p-5 shadow-xs">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-xs font-bold text-neutral-900 uppercase tracking-wider flex items-center gap-2">
               <Globe className="w-4 h-4 text-emerald-600" />
-              Saluran Sumber Unduhan
+              Acquisition & Referrer Channels
             </h3>
             <span className="text-[10px] text-neutral-400">Referrer</span>
           </div>
 
           <div className="space-y-3">
             {(distributions?.sources || []).length === 0 ? (
-              <p className="text-xs text-neutral-400 py-4 text-center">Belum ada data sumber</p>
+              <p className="text-xs text-neutral-400 py-4 text-center">No source data recorded</p>
             ) : (
               (distributions?.sources || []).map((s, i) => {
                 const total = (distributions?.sources || []).reduce((a, b) => a + b.count, 0);

@@ -649,6 +649,28 @@ export class AdminService {
     });
   }
 
+  async listDeletedAccounts() {
+    const events = await this.prisma.adminAuditEvent.findMany({
+      where: { action: 'ACCOUNT_DELETED' },
+      orderBy: { createdAt: 'desc' }
+    });
+    return events.map((e) => {
+      let parsed: any = {};
+      try {
+        parsed = JSON.parse(e.details);
+      } catch (_) {}
+      return {
+        id: e.id,
+        userId: e.resourceId,
+        username: parsed.username || 'Deleted Account',
+        reason: parsed.reason || 'User requested deletion',
+        deletedAt: parsed.deletedAt || e.createdAt.toISOString(),
+        ipAddress: e.ipAddress || null,
+        createdAt: e.createdAt
+      };
+    });
+  }
+
   async suspendUser(userId: string, reason?: string) {
     return this.prisma.$transaction([
       this.prisma.user.update({

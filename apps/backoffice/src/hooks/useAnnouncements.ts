@@ -23,7 +23,7 @@ export function useCreateAnnouncement() {
       isActive?: boolean;
       targetType?: string;
       targetUserIds?: string[];
-      mediaType?: 'TEXT' | 'IMAGE';
+      mediaType?: 'TEXT' | 'IMAGE' | 'VIDEO';
       mediaUrl?: string;
       backgroundColor?: string;
       actionUrl?: string;
@@ -52,7 +52,7 @@ export function useUpdateAnnouncement() {
       content?: string;
       type?: string;
       isActive?: boolean;
-      mediaType?: 'TEXT' | 'IMAGE';
+      mediaType?: 'TEXT' | 'IMAGE' | 'VIDEO';
       mediaUrl?: string;
       backgroundColor?: string;
       actionUrl?: string;

@@ -21,10 +21,10 @@ export function ConversationsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-extrabold tracking-tight text-neutral-900">
-            Daftar Obrolan (Conversations & Groups)
+            Conversations & Groups
           </h1>
           <p className="text-xs text-neutral-500 mt-1">
-            Daftar percakapan dan grup pengguna pada aplikasi LAJU
+            Directory of user conversations and chat groups on LAJU
           </p>
         </div>
 
@@ -38,7 +38,7 @@ export function ConversationsPage() {
                 : 'text-neutral-500 hover:text-neutral-900'
             }`}
           >
-            Semua Obrolan
+            All Chats
           </button>
           <button
             onClick={() => setActiveTab('GROUPS')}
@@ -48,7 +48,7 @@ export function ConversationsPage() {
                 : 'text-neutral-500 hover:text-neutral-900'
             }`}
           >
-            Grup Obrolan Saja
+            Groups Only
           </button>
         </div>
       </div>
@@ -58,10 +58,10 @@ export function ConversationsPage() {
         <div className="flex items-center gap-3">
           <MessageSquare className="w-4 h-4 text-neutral-500 flex-shrink-0" />
           <span>
-            Pesan dan percakapan pengguna terlindungi secara privat. Halaman ini hanya menampilkan ringkasan data aktivitas obrolan.
+            User messages and payload data are strictly end-to-end protected. This table only presents high-level chat metadata and telemetry.
           </span>
         </div>
-        <Badge variant="neutral">Privasi Terjaga</Badge>
+        <Badge variant="neutral">Privacy Preserved</Badge>
       </div>
 
       {/* Table */}
@@ -71,17 +71,17 @@ export function ConversationsPage() {
             <thead className="bg-neutral-50/70 border-b border-neutral-100 text-neutral-500 uppercase tracking-wider text-[10px] font-bold">
               <tr>
                 <th className="px-5 py-3.5">Conversation ID</th>
-                <th className="px-5 py-3.5">Tipe Obrolan</th>
-                <th className="px-5 py-3.5">Anggota Berpartisipasi</th>
-                <th className="px-5 py-3.5">Volume Pesan</th>
-                <th className="px-5 py-3.5">Dibuat Pada</th>
+                <th className="px-5 py-3.5">Chat Type</th>
+                <th className="px-5 py-3.5">Participants</th>
+                <th className="px-5 py-3.5">Message Volume</th>
+                <th className="px-5 py-3.5">Created At</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-neutral-100">
               {isLoading ? (
                 <tr>
                   <td colSpan={5} className="px-5 py-8 text-center text-neutral-400">
-                    Memuat metadata percakapan...
+                    Loading conversation metadata...
                   </td>
                 </tr>
               ) : pagination.paginatedItems && pagination.paginatedItems.length > 0 ? (
@@ -95,9 +95,9 @@ export function ConversationsPage() {
                     </td>
                     <td className="px-5 py-3.5">
                       {c.type === 'GROUP' ? (
-                        <Badge variant="brand">Grup</Badge>
+                        <Badge variant="brand">Group</Badge>
                       ) : (
-                        <Badge variant="neutral">Personal P2P</Badge>
+                        <Badge variant="neutral">Direct P2P</Badge>
                       )}
                     </td>
                     <td className="px-5 py-3.5">
@@ -113,10 +113,10 @@ export function ConversationsPage() {
                       </div>
                     </td>
                     <td className="px-5 py-3.5 font-medium text-neutral-700">
-                      {c._count?.messages ?? 0} pesan
+                      {c._count?.messages ?? 0} messages
                     </td>
                     <td className="px-5 py-3.5 text-neutral-500 text-[11px]">
-                      {new Date(c.createdAt).toLocaleDateString('id-ID', {
+                      {new Date(c.createdAt).toLocaleDateString('en-US', {
                         day: 'numeric',
                         month: 'short',
                         year: 'numeric',
@@ -127,7 +127,7 @@ export function ConversationsPage() {
               ) : (
                 <tr>
                   <td colSpan={5} className="px-5 py-8 text-center text-neutral-400">
-                    Belum ada percakapan
+                    No conversations found
                   </td>
                 </tr>
               )}

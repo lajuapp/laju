@@ -3,7 +3,6 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import {
-  Image as ImageIcon,
   Plus,
   Trash2,
   CheckCircle,
@@ -22,14 +21,13 @@ import { Button } from '../components/ui/Button';
 import { Modal } from '../components/ui/Modal';
 import { ConfirmModal } from '../components/ui/ConfirmModal';
 import { Input } from '../components/ui/Input';
-import { Badge } from '../components/ui/Badge';
 import { Pagination } from '../components/ui/Pagination';
 import { usePagination } from '../hooks/usePagination';
 import { resolveMediaUrl } from '../api/client';
 
 const wallpaperSchema = z.object({
-  name: z.string().min(2, 'Nama wallpaper minimal 2 karakter'),
-  category: z.string().min(1, 'Kategori harus dipilih'),
+  name: z.string().min(2, 'Wallpaper name must be at least 2 characters'),
+  category: z.string().min(1, 'Category must be selected'),
   colorHex: z.string().optional(),
   imageUrl: z.string().optional(),
   isDefault: z.boolean().default(false),
@@ -97,7 +95,7 @@ export function WallpapersPage() {
       setSelectedFile(null);
       setPreviewUrl(null);
     } catch (err: any) {
-      setErrorMessage(err.response?.data?.message || 'Gagal menyimpan wallpaper');
+      setErrorMessage(err.response?.data?.message || 'Failed to save wallpaper');
     }
   };
 
@@ -129,10 +127,10 @@ export function WallpapersPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-extrabold tracking-tight text-neutral-900">
-            Manajemen Wallpaper Obrolan (Chat Backgrounds)
+            Chat Background Wallpapers
           </h1>
           <p className="text-xs text-neutral-500 mt-1">
-            Kelola pilihan latar belakang pesan, warna solid, gradien, dan gambar ornamen aplikasi LAJU
+            Manage built-in chat wallpaper themes, solid colors, patterns, and background art.
           </p>
         </div>
 
@@ -146,14 +144,14 @@ export function WallpapersPage() {
             setIsModalOpen(true);
           }}
         >
-          Tambah Wallpaper Baru
+          Add New Wallpaper
         </Button>
       </div>
 
       {/* Grid of Wallpapers */}
       {isLoading ? (
         <div className="bg-white rounded-2xl border border-neutral-200/80 p-12 text-center text-xs text-neutral-400">
-          Memuat daftar wallpaper...
+          Loading wallpapers catalog...
         </div>
       ) : pagination.paginatedItems && pagination.paginatedItems.length > 0 ? (
         <div className="space-y-4">
@@ -183,11 +181,11 @@ export function WallpapersPage() {
                       style={{ backgroundColor: wp.colorHex || '#1E293B' }}
                     >
                       <Sparkles className="w-6 h-6 text-white/40 mb-1" />
-                      <span className="text-[10px] font-mono text-white/70">Warna Solid</span>
+                      <span className="text-[10px] font-mono text-white/70">Solid Color</span>
                     </div>
                   )}
 
-                  {/* Smartphone top speaker/camera pill */}
+                  {/* Smartphone top pill */}
                   <div className="absolute top-2 left-1/2 -translate-x-1/2 w-8 h-1 bg-black/30 rounded-full backdrop-blur-xs pointer-events-none" />
 
                   {wp.isDefault && (
@@ -221,10 +219,10 @@ export function WallpapersPage() {
                         onClick={() => handleSetDefault(wp.id)}
                         className="text-[11px] font-semibold text-neutral-500 hover:text-neutral-900"
                       >
-                        Jadikan Default
+                        Set as Default
                       </button>
                     ) : (
-                      <span className="text-[11px] text-emerald-600 font-semibold">Aktif Standar</span>
+                      <span className="text-[11px] text-emerald-600 font-semibold">Active Default</span>
                     )}
 
                     <button
@@ -254,7 +252,7 @@ export function WallpapersPage() {
         </div>
       ) : (
         <div className="bg-white rounded-2xl border border-neutral-200/80 p-12 text-center text-xs text-neutral-400">
-          Belum ada wallpaper tersimpan. Klik tombol Tambah Wallpaper untuk membuat baru.
+          No wallpapers stored yet. Click "Add New Wallpaper" to upload one.
         </div>
       )}
 
@@ -262,8 +260,8 @@ export function WallpapersPage() {
       <Modal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
-        title="Tambah Wallpaper Chat Baru"
-        description="Unggah tema latar belakang obrolan untuk dinikmati seluruh pengguna LAJU"
+        title="Add New Chat Wallpaper"
+        description="Upload a chat wallpaper background theme for all LAJU users"
       >
         {errorMessage && (
           <div className="mb-4 p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2">
@@ -274,30 +272,30 @@ export function WallpapersPage() {
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           <Input
-            label="Nama Wallpaper"
-            placeholder="Misal: Sunset Glow / Deep Slate"
+            label="Wallpaper Name"
+            placeholder="e.g. Sunset Glow / Deep Slate"
             error={errors.name?.message}
             {...register('name')}
           />
 
           <div className="space-y-1.5">
             <label className="block text-xs font-semibold text-neutral-700">
-              Kategori Tipe
+              Wallpaper Category
             </label>
             <select
               className="w-full px-3 py-2 text-xs rounded-xl border border-neutral-200 bg-white text-neutral-900 focus:outline-none focus:border-neutral-900"
               {...register('category')}
             >
-              <option value="SOLID">Warna Solid (Solid Color)</option>
-              <option value="GRADIENT">Warna Gradien (Gradient)</option>
-              <option value="PATTERN">Pola Ornamen (Pattern / Doodle)</option>
-              <option value="IMAGE">Gambar Kustom (Image Background)</option>
+              <option value="SOLID">Solid Color</option>
+              <option value="GRADIENT">Gradient Color</option>
+              <option value="PATTERN">Pattern / Doodle</option>
+              <option value="IMAGE">Custom Image Background</option>
             </select>
           </div>
 
           <div className="space-y-1.5">
             <label className="block text-xs font-semibold text-neutral-700">
-              Kode Warna Hex
+              Hex Color Code
             </label>
             <div className="flex items-center gap-2">
               <input
@@ -317,7 +315,7 @@ export function WallpapersPage() {
           {(category === 'IMAGE' || category === 'PATTERN') && (
             <div className="space-y-1.5">
               <label className="block text-xs font-semibold text-neutral-700">
-                Unggah File Gambar Wallpaper
+                Upload Wallpaper Image
               </label>
               <div className="border-2 border-dashed border-neutral-200 rounded-xl p-4 text-center hover:border-neutral-400 transition-colors cursor-pointer relative bg-neutral-50/50">
                 <input
@@ -340,14 +338,14 @@ export function WallpapersPage() {
                     </div>
                     <div className="text-center text-xs text-neutral-600">
                       <p className="font-bold truncate max-w-[220px]">{selectedFile?.name}</p>
-                      <p className="text-[11px] text-neutral-400 mt-0.5">Rasio Layar 9:16 • Klik untuk ganti file</p>
+                      <p className="text-[11px] text-neutral-400 mt-0.5">Aspect Ratio 9:16 • Click to change</p>
                     </div>
                   </div>
                 ) : (
                   <div className="space-y-1.5 text-neutral-500 py-3">
                     <Upload className="w-6 h-6 mx-auto text-neutral-400" />
-                    <p className="text-xs font-semibold">Pilih file gambar (PNG, JPG, WEBP)</p>
-                    <p className="text-[11px] text-neutral-400">Rasio potret 9:16 disarankan (misal 1080x1920) agar pas di layar ponsel</p>
+                    <p className="text-xs font-semibold">Select image file (PNG, JPG, WEBP)</p>
+                    <p className="text-[11px] text-neutral-400">Portrait ratio 9:16 recommended (e.g. 1080x1920)</p>
                   </div>
                 )}
               </div>
@@ -362,7 +360,7 @@ export function WallpapersPage() {
               {...register('isDefault')}
             />
             <label htmlFor="isDefault" className="text-xs font-medium text-neutral-700 cursor-pointer">
-              Jadikan wallpaper default untuk obrolan baru
+              Set as default wallpaper for new conversations
             </label>
           </div>
 
@@ -372,28 +370,28 @@ export function WallpapersPage() {
               variant="outline"
               onClick={() => setIsModalOpen(false)}
             >
-              Batal
+              Cancel
             </Button>
             <Button
               type="submit"
               variant="primary"
               isLoading={createWallpaper.isPending || mediaUpload.isPending}
             >
-              Simpan Wallpaper
+              Save Wallpaper
             </Button>
           </div>
         </form>
       </Modal>
 
-      {/* Modal Hapus Wallpaper */}
+      {/* Delete Wallpaper Modal */}
       <ConfirmModal
         isOpen={deleteModal.isOpen}
         onClose={() => setDeleteModal({ isOpen: false, wallpaperId: '', name: '' })}
         onConfirm={handleConfirmDelete}
-        title="Hapus Wallpaper Obrolan"
-        description={`Yakin ingin menghapus wallpaper "${deleteModal.name}"? File wallpaper ini tidak akan dapat digunakan lagi oleh pengguna.`}
-        confirmText="Hapus Wallpaper"
-        cancelText="Batal"
+        title="Delete Chat Wallpaper"
+        description={`Are you sure you want to delete wallpaper "${deleteModal.name}"? It will no longer be available in user settings.`}
+        confirmText="Delete Wallpaper"
+        cancelText="Cancel"
         variant="danger"
         isLoading={deleteWallpaper.isPending}
       />

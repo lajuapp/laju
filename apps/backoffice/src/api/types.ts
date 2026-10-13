@@ -114,6 +114,17 @@ export interface MarketingStats {
   };
 }
 
+export type ServiceStats = MarketingStats;
+
+export interface DeletedAccount {
+  id: string;
+  userId: string;
+  username: string;
+  reason: string;
+  deletedAt: string;
+  ipAddress?: string | null;
+  createdAt?: string;
+}
 
 export interface UserItem {
   id: string;

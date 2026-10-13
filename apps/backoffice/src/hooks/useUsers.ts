@@ -1,12 +1,22 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../api/client';
-import { UserItem, UserDetails } from '../api/types';
+import { UserItem, UserDetails, DeletedAccount } from '../api/types';
 
 export function useUsersList() {
   return useQuery({
     queryKey: ['admin', 'users'],
     queryFn: async (): Promise<UserItem[]> => {
       const res = await apiClient.get('/admin/users');
+      return res.data;
+    },
+  });
+}
+
+export function useDeletedAccountsList() {
+  return useQuery({
+    queryKey: ['admin', 'deleted-accounts'],
+    queryFn: async (): Promise<DeletedAccount[]> => {
+      const res = await apiClient.get('/admin/deleted-accounts');
       return res.data;
     },
   });

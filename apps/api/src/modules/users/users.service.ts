@@ -487,4 +487,51 @@ export class UsersService {
       total: tickets.length,
     };
   }
+
+  async deleteAccount(userId: string, reason?: string, ipAddress?: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId }
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    // 1. Audit log the deletion and reasoning before permanently removing records
+    try {
+      await this.prisma.adminAuditEvent.create({
+        data: {
+          adminId: 'SYSTEM',
+          action: 'ACCOUNT_DELETED',
+          resource: 'USER',
+          resourceId: user.id,
+          ipAddress: ipAddress || null,
+          details: JSON.stringify({
+            username: user.username,
+            reason: reason || 'User requested deletion',
+            deletedAt: new Date().toISOString()
+          })
+        }
+      });
+    } catch (_) {}
+
+    // 2. Clean up Redis cached user keys
+    try {
+      await Promise.all([
+        this.redis.del(`user:${userId}:avatar`),
+        this.redis.del(`user:${userId}:about`),
+        this.redis.del(`user:${userId}:token`)
+      ]);
+    } catch (_) {}
+
+    // 3. Cascade delete User record (deletes devices, sessions, keys, locations, memberships, etc.)
+    await this.prisma.user.delete({
+      where: { id: userId }
+    });
+
+    return {
+      success: true,
+      message: 'Account and associated records permanently deleted.'
+    };
+  }
 }

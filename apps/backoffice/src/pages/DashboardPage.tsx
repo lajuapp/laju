@@ -3,15 +3,11 @@ import {
   Users,
   Smartphone,
   MessageSquare,
-  Image as ImageIcon,
-  Smile,
   ShieldAlert,
   ArrowUpRight,
   Activity,
-  CheckCircle2,
   Clock,
   Radio,
-  PhoneCall,
   TrendingUp,
   TrendingDown,
   UserPlus,
@@ -21,17 +17,14 @@ import {
   ChevronRight,
   ShieldCheck,
   Download,
-  BarChart3,
 } from 'lucide-react';
 
 import { useDashboardStats } from '../hooks/useDashboardStats';
-import { Badge } from '../components/ui/Badge';
 import { NavLink } from 'react-router-dom';
 
 export function DashboardPage() {
   const { data: stats, isLoading } = useDashboardStats();
   const [activeChartTab, setActiveChartTab] = useState<'REGISTRATIONS' | 'MESSAGES'>('REGISTRATIONS');
-  const [timeFilter, setTimeFilter] = useState<'TODAY' | 'WEEK' | 'MONTH'>('TODAY');
 
   const growth = stats?.growth;
   const overview = stats?.overview;
@@ -45,14 +38,14 @@ export function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      {/* Top Welcome Title & Time Range Filter */}
+      {/* Top Welcome Title & Live Indicator */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-xl font-extrabold tracking-tight text-neutral-900 flex items-center gap-2">
-            Ringkasan Sistem & Statistik Pertumbuhan
+            System Overview & Network Telemetry
           </h1>
           <p className="text-xs text-neutral-500 mt-1">
-            Status operasional real-time, pertumbuhan pengguna baru, analitik lalu lintas, dan pengawasan sistem
+            Real-time operational status, user adoption growth, network traffic metrics, and safety oversight.
           </p>
         </div>
 
@@ -60,7 +53,7 @@ export function DashboardPage() {
           {/* Status Live Indicator */}
           <div className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 text-emerald-800 border border-emerald-200/80 rounded-xl text-xs font-semibold shadow-2xs">
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-            Sistem Aktif Normal
+            System Healthy
           </div>
         </div>
       </div>
@@ -74,13 +67,13 @@ export function DashboardPage() {
             </div>
             <div>
               <div className="text-xs font-bold text-rose-900 flex items-center gap-2">
-                Peringatan Pusat Moderasi
+                Trust & Moderation Notice
                 <span className="px-2 py-0.2 rounded-full text-[10px] font-extrabold bg-rose-600 text-white">
-                  {trustAndSafety?.pendingReportsCount} Aduan Baru
+                  {trustAndSafety?.pendingReportsCount} Pending Reports
                 </span>
               </div>
               <p className="text-[11px] text-rose-700 mt-0.5">
-                Terdapat laporan pelanggaran spam/scam pengguna yang menunggu peninjauan dan penyesuaian Trust Score.
+                Spam or misconduct reports have been submitted and await moderation review and Trust Score evaluation.
               </p>
             </div>
           </div>
@@ -88,7 +81,7 @@ export function DashboardPage() {
             to="/reports"
             className="text-xs font-bold text-rose-700 hover:text-rose-800 bg-rose-100 hover:bg-rose-200/80 px-3.5 py-2 rounded-xl transition-all flex items-center gap-1 shadow-2xs whitespace-nowrap"
           >
-            Tinjau Laporan
+            Review Reports
             <ChevronRight className="w-3.5 h-3.5" />
           </NavLink>
         </div>
@@ -105,16 +98,16 @@ export function DashboardPage() {
             <div>
               <div className="flex items-center gap-2">
                 <span className="text-xs font-bold text-brand-800 uppercase tracking-wider">
-                  Perangkat Online
+                  Devices Online
                 </span>
                 <span className="w-2 h-2 rounded-full bg-brand-500 animate-ping" />
               </div>
               <div className="text-3xl font-black text-brand-950 mt-0.5 tracking-tight flex items-baseline gap-2">
                 {isLoading ? '...' : (overview?.onlineDevices ?? overview?.onlineUsers ?? 0)}
-                <span className="text-xs font-semibold text-brand-600">aktif sekarang</span>
+                <span className="text-xs font-semibold text-brand-600">active now</span>
               </div>
               <p className="text-[11px] text-neutral-500 mt-0.5">
-                Perangkat terhubung aktif dalam 3-5 menit terakhir
+                Client devices connected in the last 3-5 minutes
               </p>
             </div>
           </div>
@@ -122,7 +115,7 @@ export function DashboardPage() {
             to="/devices"
             className="text-xs font-bold text-brand-700 hover:text-brand-800 bg-brand-50 px-3 py-1.5 rounded-xl border border-brand-200 hover:bg-brand-100/70 transition-all flex items-center gap-1 shadow-2xs"
           >
-            Lihat Online
+            View Online
             <ArrowUpRight className="w-3.5 h-3.5" />
           </NavLink>
         </div>
@@ -136,16 +129,16 @@ export function DashboardPage() {
             <div>
               <div className="flex items-center gap-2">
                 <span className="text-xs font-bold text-neutral-600 uppercase tracking-wider">
-                  Perangkat Offline
+                  Devices Offline
                 </span>
                 <span className="w-2 h-2 rounded-full bg-neutral-400" />
               </div>
               <div className="text-3xl font-black text-neutral-800 mt-0.5 tracking-tight flex items-baseline gap-2">
                 {isLoading ? '...' : (overview?.offlineDevices ?? Math.max(0, (overview?.totalDevices ?? 0) - (overview?.onlineDevices ?? 0)))}
-                <span className="text-xs font-semibold text-neutral-500">tidak aktif</span>
+                <span className="text-xs font-semibold text-neutral-500">inactive</span>
               </div>
               <p className="text-[11px] text-neutral-500 mt-0.5">
-                Perangkat terdaftar yang sedang tidak terhubung atau di luar jaringan
+                Registered devices currently unreachable or disconnected
               </p>
             </div>
           </div>
@@ -153,17 +146,17 @@ export function DashboardPage() {
             to="/devices"
             className="text-xs font-bold text-neutral-700 hover:text-neutral-900 bg-neutral-100 px-3 py-1.5 rounded-xl border border-neutral-200/80 hover:bg-neutral-200/60 transition-all flex items-center gap-1 shadow-2xs"
           >
-            Kelola Perangkat
+            Manage Devices
             <ArrowUpRight className="w-3.5 h-3.5" />
           </NavLink>
         </div>
       </div>
 
-      {/* Core Growth, Marketing & Activity Metric Cards */}
+      {/* Core Growth, Metrics & Activity Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
-        {/* 0. Total Unduhan APK (Marketing & Download Analytics) */}
+        {/* 0. Total Downloads */}
         <NavLink
-          to="/marketing-analytics"
+          to="/service-stats"
           className="bg-white rounded-2xl border border-neutral-200/80 p-5 shadow-xs hover:border-brand-400 hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 group flex flex-col justify-between"
         >
           <div>
@@ -172,26 +165,26 @@ export function DashboardPage() {
                 <Download className="w-4 h-4" />
               </div>
               <span className="inline-flex items-center gap-0.5 text-[11px] font-bold px-2 py-0.5 rounded-full bg-brand-50 text-brand-700 border border-brand-200">
-                +{overview?.downloadsToday ?? 0} hari ini
+                +{overview?.downloadsToday ?? 0} today
               </span>
             </div>
 
-            <p className="text-xs font-semibold text-neutral-500">Total Unduhan APK</p>
+            <p className="text-xs font-semibold text-neutral-500">Total Client Downloads</p>
             <div className="text-3xl font-black text-neutral-900 mt-1 tracking-tight">
               {isLoading ? '...' : (overview?.totalDownloads ?? 0)}
-              <span className="text-xs font-semibold text-neutral-400 ml-1.5">kali</span>
+              <span className="text-xs font-semibold text-neutral-400 ml-1.5">times</span>
             </div>
           </div>
 
           <div className="mt-4 pt-3 border-t border-neutral-100 flex items-center justify-between text-[11px] text-neutral-500">
             <span className="text-brand-600 font-semibold group-hover:underline flex items-center gap-1">
-              Lihat Analitik Pemasaran
+              View Service Statistics
               <ArrowUpRight className="w-3 h-3" />
             </span>
           </div>
         </NavLink>
 
-        {/* 1. Pengguna Baru (New Users) */}
+        {/* 1. New Users */}
         <NavLink
           to="/users"
           className="bg-white rounded-2xl border border-neutral-200/80 p-5 shadow-xs hover:border-brand-300 hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 group flex flex-col justify-between"
@@ -219,21 +212,21 @@ export function DashboardPage() {
               )}
             </div>
 
-            <p className="text-xs font-semibold text-neutral-500">Pengguna Baru Hari Ini</p>
+            <p className="text-xs font-semibold text-neutral-500">New Users Today</p>
             <div className="text-3xl font-black text-neutral-900 mt-1 tracking-tight">
               {isLoading ? '...' : (growth?.newUsersToday ?? 0)}
-              <span className="text-xs font-semibold text-neutral-400 ml-1.5">akun</span>
+              <span className="text-xs font-semibold text-neutral-400 ml-1.5">accounts</span>
             </div>
           </div>
 
           <div className="mt-4 pt-3 border-t border-neutral-100 flex items-center justify-between text-[11px] text-neutral-500">
-            <span>{growth?.newUsersThisWeek ?? 0} minggu ini</span>
+            <span>{growth?.newUsersThisWeek ?? 0} this week</span>
             <span>•</span>
-            <span>{growth?.newUsersThisMonth ?? 0} bulan ini</span>
+            <span>{growth?.newUsersThisMonth ?? 0} this month</span>
           </div>
         </NavLink>
 
-        {/* 2. Keaktifan (DAU / MAU Stickiness) */}
+        {/* 2. DAU Stickiness */}
         <div className="bg-white rounded-2xl border border-neutral-200/80 p-5 shadow-xs flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between mb-3">
@@ -241,25 +234,25 @@ export function DashboardPage() {
                 <Zap className="w-4 h-4" />
               </div>
               <span className="inline-flex items-center gap-0.5 text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
-                Rasio: {growth?.stickinessRatio ?? 0}%
+                Ratio: {growth?.stickinessRatio ?? 0}%
               </span>
             </div>
 
-            <p className="text-xs font-semibold text-neutral-500">Pengguna Aktif (DAU)</p>
+            <p className="text-xs font-semibold text-neutral-500">Daily Active Users (DAU)</p>
             <div className="text-3xl font-black text-neutral-900 mt-1 tracking-tight">
               {isLoading ? '...' : (growth?.dau ?? 0)}
-              <span className="text-xs font-semibold text-neutral-400 ml-1.5">user/24 jam</span>
+              <span className="text-xs font-semibold text-neutral-400 ml-1.5">users/24h</span>
             </div>
           </div>
 
           <div className="mt-4 pt-3 border-t border-neutral-100 flex items-center justify-between text-[11px] text-neutral-500">
-            <span>{growth?.wau ?? 0} WAU (7 hari)</span>
+            <span>{growth?.wau ?? 0} WAU (7 days)</span>
             <span>•</span>
-            <span>{growth?.mau ?? 0} MAU (30 hari)</span>
+            <span>{growth?.mau ?? 0} MAU (30 days)</span>
           </div>
         </div>
 
-        {/* 3. Lalu Lintas Pesan & Obrolan */}
+        {/* 3. Messages & Chat Traffic */}
         <div className="bg-white rounded-2xl border border-neutral-200/80 p-5 shadow-xs flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between mb-3">
@@ -271,21 +264,21 @@ export function DashboardPage() {
               </span>
             </div>
 
-            <p className="text-xs font-semibold text-neutral-500">Pesan Terkirim Hari Ini</p>
+            <p className="text-xs font-semibold text-neutral-500">Messages Sent Today</p>
             <div className="text-3xl font-black text-neutral-900 mt-1 tracking-tight">
               {isLoading ? '...' : (overview?.messagesToday ?? 0)}
-              <span className="text-xs font-semibold text-neutral-400 ml-1.5">pesan</span>
+              <span className="text-xs font-semibold text-neutral-400 ml-1.5">messages</span>
             </div>
           </div>
 
           <div className="mt-4 pt-3 border-t border-neutral-100 flex items-center justify-between text-[11px] text-neutral-500">
-            <span>{overview?.totalMessages ?? 0} total pesan</span>
+            <span>{overview?.totalMessages ?? 0} total messages</span>
             <span>•</span>
-            <span>{overview?.totalCallsToday ?? 0} panggilan hari ini</span>
+            <span>{overview?.totalCallsToday ?? 0} calls today</span>
           </div>
         </div>
 
-        {/* 4. Kesehatan & Keamanan Pengguna */}
+        {/* 4. Trust & Safety Score */}
         <NavLink
           to="/reports"
           className="bg-white rounded-2xl border border-neutral-200/80 p-5 shadow-xs hover:border-amber-300 hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 group flex flex-col justify-between"
@@ -298,26 +291,26 @@ export function DashboardPage() {
               {(trustAndSafety?.pendingReportsCount ?? 0) > 0 ? (
                 <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200">
                   <AlertTriangle className="w-3 h-3" />
-                  {trustAndSafety?.pendingReportsCount} Laporan
+                  {trustAndSafety?.pendingReportsCount} Reports
                 </span>
               ) : (
                 <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
-                  Aman
+                  Secure
                 </span>
               )}
             </div>
 
-            <p className="text-xs font-semibold text-neutral-500">Skor Kepercayaan Pengguna</p>
+            <p className="text-xs font-semibold text-neutral-500">User Trust Health</p>
             <div className="text-3xl font-black text-neutral-900 mt-1 tracking-tight">
               {isLoading ? '...' : (trustAndSafety?.healthyUsersCount ?? overview?.activeUsers ?? 0)}
-              <span className="text-xs font-semibold text-emerald-600 ml-1.5">akun sehat</span>
+              <span className="text-xs font-semibold text-emerald-600 ml-1.5">healthy</span>
             </div>
           </div>
 
           <div className="mt-4 pt-3 border-t border-neutral-100 flex items-center justify-between text-[11px] text-neutral-500">
-            <span className="text-rose-600 font-semibold">{trustAndSafety?.atRiskUsersCount ?? 0} akun berisiko</span>
+            <span className="text-rose-600 font-semibold">{trustAndSafety?.atRiskUsersCount ?? 0} at-risk</span>
             <span>•</span>
-            <span>{overview?.suspendedUsers ?? 0} terkunci</span>
+            <span>{overview?.suspendedUsers ?? 0} suspended</span>
           </div>
         </NavLink>
       </div>
@@ -329,11 +322,11 @@ export function DashboardPage() {
             <h2 className="text-sm font-bold text-neutral-900 flex items-center gap-2">
               <TrendingUp className="w-4 h-4 text-brand-600" />
               {activeChartTab === 'REGISTRATIONS'
-                ? 'Tren Pertumbuhan Pendaftaran Pengguna Baru (14 Hari Terakhir)'
-                : 'Tren Volume Pesan Terkirim (7 Hari Terakhir)'}
+                ? 'User Registrations Growth Trend (Last 14 Days)'
+                : 'Message Volume Trend (Last 7 Days)'}
             </h2>
             <p className="text-xs text-neutral-500 mt-0.5">
-              Grafik time-series aktivitas dan adopsi platform harian
+              Daily time-series telemetry of network adoption and traffic activity.
             </p>
           </div>
 
@@ -347,7 +340,7 @@ export function DashboardPage() {
                   : 'text-neutral-500 hover:text-neutral-900'
               }`}
             >
-              Pendaftaran Pengguna
+              Registrations
             </button>
             <button
               onClick={() => setActiveChartTab('MESSAGES')}
@@ -357,7 +350,7 @@ export function DashboardPage() {
                   : 'text-neutral-500 hover:text-neutral-900'
               }`}
             >
-              Volume Pesan
+              Message Volume
             </button>
           </div>
         </div>
@@ -366,7 +359,7 @@ export function DashboardPage() {
         <div className="pt-6">
           {activeSeries.length === 0 ? (
             <div className="py-16 text-center text-xs text-neutral-400">
-              Belum ada data rekaman pendaftaran pada periode ini
+              No registration records found for this period
             </div>
           ) : (
             <div className="space-y-2">
@@ -382,7 +375,7 @@ export function DashboardPage() {
                     >
                       {/* Tooltip on hover */}
                       <div className="opacity-0 group-hover:opacity-100 pointer-events-none absolute -top-8 transition-opacity duration-150 z-20 bg-neutral-900 text-white text-[10px] font-bold px-2 py-0.5 rounded shadow-md whitespace-nowrap">
-                        {item.count} {activeChartTab === 'REGISTRATIONS' ? 'pengguna baru' : 'pesan'}
+                        {item.count} {activeChartTab === 'REGISTRATIONS' ? 'new accounts' : 'messages'}
                       </div>
 
                       {/* Bar Value above bar */}
@@ -429,7 +422,7 @@ export function DashboardPage() {
           {/* Platform Distribution Card */}
           <div className="bg-white rounded-2xl border border-neutral-200/80 p-5 shadow-xs">
             <h3 className="text-xs font-bold uppercase tracking-wider text-neutral-500 mb-4 flex items-center justify-between">
-              <span>Distribusi Platform Perangkat</span>
+              <span>Client Platform Distribution</span>
               <Smartphone className="w-3.5 h-3.5" />
             </h3>
 
@@ -442,7 +435,7 @@ export function DashboardPage() {
                     <div key={p.platform} className="space-y-1">
                       <div className="flex items-center justify-between text-xs font-bold text-neutral-800">
                         <span>{p.platform}</span>
-                        <span className="font-mono text-neutral-500">{p.count} unit ({pct}%)</span>
+                        <span className="font-mono text-neutral-500">{p.count} units ({pct}%)</span>
                       </div>
                       <div className="h-2 rounded-full bg-neutral-100 overflow-hidden">
                         <div
@@ -461,7 +454,7 @@ export function DashboardPage() {
                 })
               ) : (
                 <div className="py-4 text-center text-xs text-neutral-400">
-                  Belum ada data perangkat
+                  No device data recorded
                 </div>
               )}
             </div>
@@ -471,13 +464,13 @@ export function DashboardPage() {
           <div className="bg-white rounded-2xl border border-neutral-200/80 p-5 shadow-xs">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-xs font-bold uppercase tracking-wider text-neutral-500">
-                Adopsi Versi Aplikasi
+                Client App Adoption
               </h3>
               <NavLink
                 to="/app-version"
                 className="text-[11px] font-bold text-brand-700 hover:underline"
               >
-                Konfigurasi →
+                Configure →
               </NavLink>
             </div>
 
@@ -486,31 +479,31 @@ export function DashboardPage() {
                 stats.distributions.appVersions.map((v) => (
                   <div key={v.version} className="flex items-center justify-between p-2.5 rounded-xl bg-neutral-50 text-xs">
                     <span className="font-mono font-bold text-neutral-800">{v.version}</span>
-                    <span className="text-neutral-500 font-medium">{v.count} perangkat aktif</span>
+                    <span className="text-neutral-500 font-medium">{v.count} active devices</span>
                   </div>
                 ))
               ) : (
                 <div className="py-4 text-center text-xs text-neutral-400">
-                  Belum ada catatan versi aplikasi
+                  No app versions registered
                 </div>
               )}
             </div>
           </div>
         </div>
 
-        {/* Right Column: Recent Audit Activities (2 cols on large screen) */}
+        {/* Right Column: Recent Audit Activities */}
         <div className="lg:col-span-2 bg-white rounded-2xl border border-neutral-200/80 p-6 shadow-xs flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between pb-4 border-b border-neutral-100">
               <div className="flex items-center gap-2">
                 <Activity className="w-4 h-4 text-neutral-700" />
-                <h2 className="text-sm font-bold text-neutral-900">Aktivitas Audit Terbaru</h2>
+                <h2 className="text-sm font-bold text-neutral-900">Recent Audit Activities</h2>
               </div>
               <NavLink
                 to="/security"
                 className="text-xs font-semibold text-neutral-500 hover:text-neutral-900 hover:underline"
               >
-                Lihat Semua Log →
+                View Full Audit Logs →
               </NavLink>
             </div>
 
@@ -524,7 +517,7 @@ export function DashboardPage() {
                           {log.action}
                         </span>
                         <span className="text-xs text-neutral-500 font-medium">
-                          di {log.resource}
+                          on {log.resource}
                         </span>
                       </div>
                       <p className="text-xs text-neutral-600 mt-1 truncate">
@@ -533,7 +526,7 @@ export function DashboardPage() {
                     </div>
                     <div className="flex items-center gap-1 text-[11px] text-neutral-400 font-mono whitespace-nowrap">
                       <Clock className="w-3 h-3" />
-                      {new Date(log.createdAt).toLocaleTimeString('id-ID', {
+                      {new Date(log.createdAt).toLocaleTimeString('en-US', {
                         hour: '2-digit',
                         minute: '2-digit',
                       })}
@@ -542,7 +535,7 @@ export function DashboardPage() {
                 ))
               ) : (
                 <div className="py-8 text-center text-xs text-neutral-400 font-medium">
-                  Belum ada aktivitas audit yang tercatat
+                  No recent audit logs recorded
                 </div>
               )}
             </div>
@@ -551,7 +544,7 @@ export function DashboardPage() {
           {/* Quick Shortcuts */}
           <div className="mt-6 pt-5 border-t border-neutral-100">
             <h4 className="text-xs font-bold uppercase tracking-wider text-neutral-400 mb-3">
-              Pintasan Operasional
+              Operational Shortcuts
             </h4>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
               <NavLink
@@ -560,7 +553,7 @@ export function DashboardPage() {
               >
                 <div className="flex items-center gap-2">
                   <ShieldAlert className="w-3.5 h-3.5 text-rose-600" />
-                  <span className="font-bold text-neutral-800">Pusat Laporan</span>
+                  <span className="font-bold text-neutral-800">Reports Center</span>
                 </div>
                 <ArrowUpRight className="w-3 h-3 text-neutral-400" />
               </NavLink>
@@ -571,7 +564,7 @@ export function DashboardPage() {
               >
                 <div className="flex items-center gap-2">
                   <Layers className="w-3.5 h-3.5 text-brand-600" />
-                  <span className="font-bold text-neutral-800">Versi & Rilis</span>
+                  <span className="font-bold text-neutral-800">Versions & Releases</span>
                 </div>
                 <ArrowUpRight className="w-3 h-3 text-neutral-400" />
               </NavLink>
@@ -582,7 +575,7 @@ export function DashboardPage() {
               >
                 <div className="flex items-center gap-2">
                   <Users className="w-3.5 h-3.5 text-blue-600" />
-                  <span className="font-bold text-neutral-800">Tim Admin</span>
+                  <span className="font-bold text-neutral-800">Admin Team</span>
                 </div>
                 <ArrowUpRight className="w-3 h-3 text-neutral-400" />
               </NavLink>

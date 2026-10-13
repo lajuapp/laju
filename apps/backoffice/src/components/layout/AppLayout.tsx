@@ -10,7 +10,6 @@ import {
   ShieldCheck,
   LogOut,
   Sparkles,
-  Megaphone,
   Settings2,
   LifeBuoy,
   Database,
@@ -37,42 +36,41 @@ export function AppLayout() {
 
   const navGroups = [
     {
-      group: 'Utama',
+      group: 'Main',
       items: [
         { label: 'Dashboard', to: '/', icon: LayoutDashboard },
-        { label: 'Statistik & Pemasaran', to: '/marketing-analytics', icon: BarChart3 },
-      ],
-    },
-
-    {
-      group: 'Konten',
-      items: [
-        { label: 'Wallpaper Obrolan', to: '/wallpapers', icon: ImageIcon },
-        { label: 'Stiker & Packs', to: '/stickers', icon: Smile },
-        { label: 'Status Resmi LAJU', to: '/announcements', icon: Sparkles },
+        { label: 'Service Statistics', to: '/service-stats', icon: BarChart3 },
       ],
     },
     {
-      group: 'Pengaturan Sistem',
+      group: 'Content',
       items: [
-        { label: 'Versi Aplikasi', to: '/app-version', icon: Settings2 },
-        { label: 'Pemeliharaan Data', to: '/maintenance', icon: Database },
+        { label: 'Chat Wallpapers', to: '/wallpapers', icon: ImageIcon },
+        { label: 'Stickers & Packs', to: '/stickers', icon: Smile },
+        { label: 'Official Announcements', to: '/announcements', icon: Sparkles },
       ],
     },
     {
-      group: 'Layanan & Kepatuhan',
+      group: 'System Settings',
       items: [
-        { label: 'Tiket Bantuan', to: '/tickets', icon: LifeBuoy },
-        { label: 'Laporan Pengguna', to: '/reports', icon: ShieldCheck },
-        { label: 'Log Aktivitas', to: '/security', icon: ShieldAlert },
+        { label: 'App Versioning', to: '/app-version', icon: Settings2 },
+        { label: 'Data Maintenance', to: '/maintenance', icon: Database },
       ],
     },
     {
-      group: 'Akses & Pengguna',
+      group: 'Service & Compliance',
       items: [
-        { label: 'Tim Admin', to: '/admins', icon: ShieldCheck },
-        { label: 'Direktori Pengguna', to: '/users', icon: Users },
-        { label: 'Perangkat', to: '/devices', icon: Smartphone },
+        { label: 'Support Tickets', to: '/tickets', icon: LifeBuoy },
+        { label: 'User Reports', to: '/reports', icon: ShieldCheck },
+        { label: 'Activity Audit Logs', to: '/security', icon: ShieldAlert },
+      ],
+    },
+    {
+      group: 'Access & Users',
+      items: [
+        { label: 'Admin Team', to: '/admins', icon: ShieldCheck },
+        { label: 'User Directory', to: '/users', icon: Users },
+        { label: 'Devices', to: '/devices', icon: Smartphone },
       ],
     },
   ];
@@ -191,7 +189,7 @@ export function AppLayout() {
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2 px-2.5 py-1 rounded-full bg-brand-50/80 border border-brand-200/80 text-[11px] font-semibold text-brand-800 shadow-2xs">
               <span className="w-2 h-2 rounded-full bg-brand-500 animate-pulse" />
-              <span>Platform Node Aktif</span>
+              <span>Platform Node Active</span>
             </div>
             <span className="text-xs text-neutral-400">•</span>
             <span className="text-xs font-medium text-neutral-500">

@@ -3,14 +3,6 @@ import {
   ShieldAlert,
   ShieldCheck,
   Search,
-  Filter,
-  AlertTriangle,
-  CheckCircle,
-  XCircle,
-  User,
-  Clock,
-  ArrowRight,
-  Lock,
 } from 'lucide-react';
 import { useReportsList, useReviewReport } from '../hooks/useReports';
 import { usePagination } from '../hooks/usePagination';
@@ -71,17 +63,17 @@ export function ReportsPage() {
   const getCategoryBadge = (category: string) => {
     switch (category) {
       case 'SCAM':
-        return <Badge variant="error">Penipuan (Scam)</Badge>;
+        return <Badge variant="error">Fraud / Scam</Badge>;
       case 'HARASSMENT':
-        return <Badge variant="warning">Pelecehan (Harassment)</Badge>;
+        return <Badge variant="warning">Harassment</Badge>;
       case 'SPAM':
-        return <Badge variant="warning">Spam Komersial</Badge>;
+        return <Badge variant="warning">Commercial Spam</Badge>;
       case 'IMPERSONATION':
-        return <Badge variant="error">Akun Tiruan</Badge>;
+        return <Badge variant="error">Impersonation</Badge>;
       case 'INAPPROPRIATE_CONTENT':
-        return <Badge variant="warning">Konten Tak Pantas</Badge>;
+        return <Badge variant="warning">Inappropriate Content</Badge>;
       default:
-        return <Badge variant="neutral">Lainnya</Badge>;
+        return <Badge variant="neutral">Other</Badge>;
     }
   };
 
@@ -92,16 +84,16 @@ export function ReportsPage() {
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-xl font-extrabold tracking-tight text-neutral-900">
-              Pusat Moderasi Laporan Pengguna (User Reports)
+              User Moderation & Reports
             </h1>
             {statusFilter === 'PENDING' && (reports.length > 0) && (
               <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-rose-50 text-rose-700 border border-rose-200 animate-pulse">
-                {reports.length} Perlu Tindakan
+                {reports.length} Action Needed
               </span>
             )}
           </div>
           <p className="text-xs text-neutral-500 mt-1">
-            Tinjau aduan penyalahgunaan, spam, penipuan, dan tentukan penyesuaian Trust Score akun
+            Investigate reported abuse, spam, and security misconduct to adjust Trust Scores or suspend malicious actors.
           </p>
         </div>
       </div>
@@ -113,7 +105,7 @@ export function ReportsPage() {
           <Search className="w-4 h-4 text-neutral-400 absolute left-3 top-1/2 -translate-y-1/2" />
           <input
             type="text"
-            placeholder="Cari pelapor, terlapor, alasan..."
+            placeholder="Search reporter, reported user, reason..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full pl-9 pr-3 py-1.5 text-xs rounded-xl border border-neutral-200 bg-neutral-50/50 text-neutral-900 placeholder:text-neutral-400 focus:outline-none focus:border-neutral-900 focus:bg-white"
@@ -133,12 +125,12 @@ export function ReportsPage() {
               }`}
             >
               {tab === 'PENDING'
-                ? 'Menunggu Review'
+                ? 'Pending Review'
                 : tab === 'APPROVED'
-                ? 'Disetujui'
+                ? 'Approved'
                 : tab === 'REJECTED'
-                ? 'Ditolak'
-                : 'Semua'}
+                ? 'Dismissed'
+                : 'All'}
             </button>
           ))}
         </div>
@@ -150,29 +142,29 @@ export function ReportsPage() {
           <table className="w-full text-left text-xs">
             <thead className="bg-neutral-50/70 border-b border-neutral-100 text-neutral-500 uppercase tracking-wider text-[10px] font-bold">
               <tr>
-                <th className="px-5 py-3.5">Terlapor</th>
-                <th className="px-5 py-3.5">Pelapor</th>
-                <th className="px-5 py-3.5">Kategori</th>
-                <th className="px-5 py-3.5">Alasan / Catatan Aduan</th>
+                <th className="px-5 py-3.5">Reported User</th>
+                <th className="px-5 py-3.5">Reporter</th>
+                <th className="px-5 py-3.5">Category</th>
+                <th className="px-5 py-3.5">Reason & Details</th>
                 <th className="px-5 py-3.5">Status</th>
-                <th className="px-5 py-3.5">Waktu Dilaporkan</th>
-                <th className="px-5 py-3.5 text-right">Tindakan</th>
+                <th className="px-5 py-3.5">Reported Date</th>
+                <th className="px-5 py-3.5 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-neutral-100">
               {isLoading ? (
                 <tr>
                   <td colSpan={7} className="px-5 py-12 text-center text-neutral-400">
-                    Memuat daftar aduan pengguna...
+                    Loading reports list...
                   </td>
                 </tr>
               ) : pagination.paginatedItems.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="px-5 py-12 text-center">
                     <ShieldCheck className="w-8 h-8 text-neutral-300 mx-auto mb-2" />
-                    <p className="text-xs font-semibold text-neutral-600">Tidak ada aduan yang ditemukan</p>
+                    <p className="text-xs font-semibold text-neutral-600">No user reports found</p>
                     <p className="text-[11px] text-neutral-400 mt-0.5">
-                      Semua laporan telah diproses atau belum ada aduan baru pada status ini
+                      All reports have been processed or no complaints submitted in this category
                     </p>
                   </td>
                 </tr>
@@ -186,17 +178,17 @@ export function ReportsPage() {
                         </div>
                         <div>
                           <div className="font-bold text-neutral-900">
-                            @{report.reportedUser?.username || 'Tidak Diketahui'}
+                            @{report.reportedUser?.username || 'Unknown'}
                           </div>
                           <div className="text-[10px] text-neutral-400 font-mono">
-                            Skor: {report.reportedUser?.trustScore ?? '?'}/100
+                            Trust: {report.reportedUser?.trustScore ?? '?'}/100
                           </div>
                         </div>
                       </div>
                     </td>
                     <td className="px-5 py-3.5">
                       <span className="font-semibold text-neutral-700">
-                        @{report.reporter?.username || 'Anonim'}
+                        @{report.reporter?.username || 'Anonymous'}
                       </span>
                     </td>
                     <td className="px-5 py-3.5">
@@ -208,21 +200,21 @@ export function ReportsPage() {
                       </p>
                       {report.reviewNotes && (
                         <p className="text-[10px] text-neutral-400 truncate mt-0.5" title={report.reviewNotes}>
-                          Catatan: {report.reviewNotes}
+                          Staff Note: {report.reviewNotes}
                         </p>
                       )}
                     </td>
                     <td className="px-5 py-3.5">
                       {report.status === 'PENDING' ? (
-                        <Badge variant="warning">Menunggu</Badge>
+                        <Badge variant="warning">Pending</Badge>
                       ) : report.status === 'APPROVED' ? (
-                        <Badge variant="success">Disetujui (-{report.scoreDeduction} pts)</Badge>
+                        <Badge variant="success">Approved (-{report.scoreDeduction} pts)</Badge>
                       ) : (
-                        <Badge variant="neutral">Ditolak</Badge>
+                        <Badge variant="neutral">Dismissed</Badge>
                       )}
                     </td>
                     <td className="px-5 py-3.5 text-neutral-400 text-[11px] whitespace-nowrap">
-                      {new Date(report.createdAt).toLocaleDateString('id-ID', {
+                      {new Date(report.createdAt).toLocaleDateString('en-US', {
                         day: 'numeric',
                         month: 'short',
                         year: 'numeric',
@@ -238,7 +230,7 @@ export function ReportsPage() {
                           className="text-brand-700 hover:bg-brand-50 border-brand-200"
                           onClick={() => handleOpenReview(report)}
                         >
-                          Tinjau
+                          Review
                         </Button>
                       ) : (
                         <Button
@@ -247,7 +239,7 @@ export function ReportsPage() {
                           className="text-neutral-500"
                           onClick={() => handleOpenReview(report)}
                         >
-                          Detail
+                          Details
                         </Button>
                       )}
                     </td>
@@ -262,7 +254,7 @@ export function ReportsPage() {
         {pagination.totalPages > 1 && (
           <div className="p-4 border-t border-neutral-100 flex items-center justify-between">
             <span className="text-xs text-neutral-500">
-              Total {pagination.totalItems} aduan
+              Total {pagination.totalItems} reports
             </span>
             <Pagination
               currentPage={pagination.currentPage}
@@ -284,7 +276,7 @@ export function ReportsPage() {
               <div className="flex items-center gap-2">
                 <ShieldAlert className="w-5 h-5 text-rose-600" />
                 <h3 className="text-base font-bold text-neutral-900">
-                  Tinjauan Aduan Pengguna
+                  User Report Review
                 </h3>
               </div>
               <button
@@ -299,22 +291,22 @@ export function ReportsPage() {
               {/* Target & Reporter details */}
               <div className="grid grid-cols-2 gap-3 p-3.5 rounded-2xl bg-neutral-50 border border-neutral-100">
                 <div>
-                  <span className="text-[10px] uppercase font-bold text-neutral-400">Akun Terlapor</span>
+                  <span className="text-[10px] uppercase font-bold text-neutral-400">Reported User</span>
                   <div className="font-bold text-neutral-900 text-sm mt-0.5">
-                    @{selectedReport.reportedUser?.username || 'Tidak Diketahui'}
+                    @{selectedReport.reportedUser?.username || 'Unknown'}
                   </div>
                   <div className="text-[11px] text-neutral-500 mt-0.5">
-                    Trust Score Saat Ini: <strong>{selectedReport.reportedUser?.trustScore ?? '?'}/100</strong>
+                    Current Trust Score: <strong>{selectedReport.reportedUser?.trustScore ?? '?'}/100</strong>
                   </div>
                 </div>
 
                 <div>
-                  <span className="text-[10px] uppercase font-bold text-neutral-400">Pelapor</span>
+                  <span className="text-[10px] uppercase font-bold text-neutral-400">Reporter</span>
                   <div className="font-bold text-neutral-900 text-sm mt-0.5">
-                    @{selectedReport.reporter?.username || 'Anonim'}
+                    @{selectedReport.reporter?.username || 'Anonymous'}
                   </div>
                   <div className="text-[11px] text-neutral-500 mt-0.5">
-                    Kategori: {selectedReport.category}
+                    Category: {selectedReport.category}
                   </div>
                 </div>
               </div>
@@ -322,7 +314,7 @@ export function ReportsPage() {
               {/* Reported Reason */}
               <div>
                 <label className="font-bold text-neutral-700 block mb-1">
-                  Keterangan / Alasan Pelaporan:
+                  Reported Details & Reason:
                 </label>
                 <div className="p-3 rounded-xl bg-neutral-100/70 text-neutral-800 font-mono text-[11px] leading-relaxed">
                   "{selectedReport.reason}"
@@ -335,7 +327,7 @@ export function ReportsPage() {
                   <div className="space-y-3 pt-2 border-t border-neutral-100">
                     <div>
                       <label className="font-bold text-neutral-700 block mb-1">
-                        Pengurangan Trust Score:
+                        Trust Score Penalty:
                       </label>
                       <div className="flex items-center gap-2">
                         {[10, 20, 30, 50].map((deduction) => (
@@ -349,7 +341,7 @@ export function ReportsPage() {
                                 : 'bg-neutral-50 text-neutral-600 border-neutral-200 hover:bg-neutral-100'
                             }`}
                           >
-                            -{deduction} Poin
+                            -{deduction} Points
                           </button>
                         ))}
                       </div>
@@ -364,17 +356,17 @@ export function ReportsPage() {
                         className="rounded border-rose-300 text-rose-600 focus:ring-rose-500"
                       />
                       <label htmlFor="suspendUserCheckbox" className="text-xs font-bold text-rose-900 cursor-pointer">
-                        Kunci / Suspend akun pengguna ini segera (Pelanggaran Berat)
+                        Immediately suspend user account (Severe Violation)
                       </label>
                     </div>
 
                     <div>
                       <label className="font-bold text-neutral-700 block mb-1">
-                        Catatan Keputusan Admin (Opsional):
+                        Admin Decision Notes (Optional):
                       </label>
                       <textarea
                         rows={2}
-                        placeholder="Masukkan alasan atau dasar keputusan tindakan..."
+                        placeholder="Provide reasoning or internal rationale..."
                         value={reviewNotes}
                         onChange={(e) => setReviewNotes(e.target.value)}
                         className="w-full p-2.5 rounded-xl border border-neutral-200 bg-neutral-50/50 text-neutral-900 placeholder:text-neutral-400 focus:outline-none focus:border-neutral-900 focus:bg-white text-xs"
@@ -391,7 +383,7 @@ export function ReportsPage() {
                       onClick={() => handleConfirmReview('REJECT')}
                       disabled={reviewMutation.isPending}
                     >
-                      Tolak Aduan (Dismiss)
+                      Dismiss Report
                     </Button>
 
                     <Button
@@ -401,34 +393,34 @@ export function ReportsPage() {
                       disabled={reviewMutation.isPending}
                     >
                       {reviewMutation.isPending
-                        ? 'Memproses...'
+                        ? 'Processing...'
                         : suspendUser
-                        ? 'Terapkan Sanksi & Kunci Akun'
-                        : `Potong -${scoreDeduction} Skor & Setujui`}
+                        ? 'Enforce Penalty & Suspend'
+                        : `Deduct -${scoreDeduction} Score & Approve`}
                     </Button>
                   </div>
                 </>
               ) : (
                 <div className="p-4 rounded-xl bg-neutral-50 border border-neutral-100 space-y-2">
                   <div className="flex items-center gap-2">
-                    <span className="font-bold text-neutral-700">Status Akhir:</span>
+                    <span className="font-bold text-neutral-700">Final Outcome:</span>
                     <Badge variant={selectedReport.status === 'APPROVED' ? 'success' : 'neutral'}>
                       {selectedReport.status}
                     </Badge>
                   </div>
                   {selectedReport.reviewNotes && (
                     <div className="text-neutral-600">
-                      <strong>Catatan Admin:</strong> {selectedReport.reviewNotes}
+                      <strong>Admin Notes:</strong> {selectedReport.reviewNotes}
                     </div>
                   )}
                   {selectedReport.reviewedAt && (
                     <div className="text-neutral-400 text-[11px]">
-                      Ditinjau pada {new Date(selectedReport.reviewedAt).toLocaleString('id-ID')}
+                      Reviewed at {new Date(selectedReport.reviewedAt).toLocaleString('en-US')}
                     </div>
                   )}
                   <div className="pt-2 flex justify-end">
                     <Button size="sm" variant="outline" onClick={() => setSelectedReport(null)}>
-                      Tutup
+                      Close
                     </Button>
                   </div>
                 </div>

@@ -9,12 +9,10 @@ import {
   Upload,
   AlertCircle,
   Package,
-  Layers,
   ChevronRight,
   X,
   Film,
   FolderUp,
-  Eye,
   Copy,
   Check,
   Scissors,
@@ -44,15 +42,15 @@ import { SpriteSheetExtractorModal } from '../components/stickers/SpriteSheetExt
 import { resolveMediaUrl } from '../api/client';
 
 const packSchema = z.object({
-  name: z.string().min(2, 'Nama paket stiker minimal 2 karakter'),
-  publisher: z.string().min(2, 'Nama kreator/publisher minimal 2 karakter'),
+  name: z.string().min(2, 'Sticker pack name must be at least 2 characters'),
+  publisher: z.string().min(2, 'Creator/publisher name must be at least 2 characters'),
   description: z.string().optional(),
 });
 
 type PackFormData = z.infer<typeof packSchema>;
 
 const stickerItemSchema = z.object({
-  name: z.string().min(2, 'Nama stiker minimal 2 karakter'),
+  name: z.string().min(2, 'Sticker name must be at least 2 characters'),
   emoji: z.string().optional(),
 });
 
@@ -189,7 +187,6 @@ export function StickersPage() {
           coverUrl: coverUrl || undefined,
         });
 
-        // Update active selection if current is updated
         if (selectedPack?.id === editingPack.id) {
           setSelectedPack(updated);
         }
@@ -214,14 +211,14 @@ export function StickersPage() {
         handleClosePackModal();
       }
     } catch (err: any) {
-      setErrorMessage(err.response?.data?.message || 'Gagal menyimpan paket stiker');
+      setErrorMessage(err.response?.data?.message || 'Failed to save sticker pack');
     }
   };
 
   const onSubmitSticker = async (data: StickerItemFormData) => {
     if (!selectedPack) return;
     if (!stickerFile) {
-      setErrorMessage('Pilih file gambar stiker terlebih dahulu');
+      setErrorMessage('Please select a sticker image file first');
       return;
     }
 
@@ -240,7 +237,7 @@ export function StickersPage() {
       setStickerFile(null);
       setStickerPreview(null);
     } catch (err: any) {
-      setErrorMessage(err.response?.data?.message || 'Gagal mengunggah stiker');
+      setErrorMessage(err.response?.data?.message || 'Failed to upload sticker');
     }
   };
 
@@ -272,7 +269,7 @@ export function StickersPage() {
       setEditStickerFile(null);
       setEditStickerPreview(null);
     } catch (err: any) {
-      setErrorMessage(err.response?.data?.message || 'Gagal memperbarui stiker');
+      setErrorMessage(err.response?.data?.message || 'Failed to update sticker');
     } finally {
       setIsUpdatingSticker(false);
     }
@@ -291,7 +288,7 @@ export function StickersPage() {
 
       return {
         file,
-        name: cleanName || 'Stiker',
+        name: cleanName || 'Sticker',
         emoji: '',
         previewUrl: URL.createObjectURL(file),
       };
@@ -331,7 +328,7 @@ export function StickersPage() {
         setBulkProgress({ current: i + 1, total: bulkItems.length });
         const uploadRes = await mediaUpload.mutateAsync(item.file);
         uploadedItems.push({
-          name: item.name.trim() || `Stiker ${i + 1}`,
+          name: item.name.trim() || `Sticker ${i + 1}`,
           imageUrl: uploadRes.url,
           emoji: item.emoji.trim() || undefined,
         });
@@ -346,7 +343,7 @@ export function StickersPage() {
       setBulkItems([]);
       setIsBulkModalOpen(false);
     } catch (err: any) {
-      setErrorMessage(err.response?.data?.message || 'Gagal mengunggah stiker massal');
+      setErrorMessage(err.response?.data?.message || 'Failed to upload bulk stickers');
     } finally {
       setIsUploadingBulk(false);
     }
@@ -392,7 +389,6 @@ export function StickersPage() {
   const [previewBg, setPreviewBg] = useState<'checker' | 'dark' | 'light'>('checker');
   const [copiedUrl, setCopiedUrl] = useState(false);
 
-  // Sync selectedPack with fresh query data
   const currentActivePack = packs?.find((p) => p.id === selectedPack?.id) || selectedPack;
 
   const packsPagination = usePagination(packs || [], { initialPageSize: 6 });
@@ -404,10 +400,10 @@ export function StickersPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-extrabold tracking-tight text-neutral-900">
-            Manajemen Stiker (Stickers & Packs)
+            Stickers & Sticker Packs
           </h1>
           <p className="text-xs text-neutral-500 mt-1">
-            Kelola koleksi paket stiker resmi dan ekspresi emoji obrolan LAJU Messenger
+            Manage official sticker packs, animated APNG expressions, and reaction media for LAJU Messenger.
           </p>
         </div>
 
@@ -416,7 +412,7 @@ export function StickersPage() {
           icon={<Plus className="w-4 h-4" />}
           onClick={handleOpenCreatePack}
         >
-          Buat Paket Stiker Baru
+          Create New Pack
         </Button>
       </div>
 
@@ -426,13 +422,13 @@ export function StickersPage() {
         <div className="bg-white rounded-2xl border border-neutral-200/80 p-5 shadow-xs h-fit space-y-3">
           <div className="flex items-center justify-between pb-3 border-b border-neutral-100">
             <h2 className="text-xs font-bold text-neutral-900 uppercase tracking-wider">
-              Daftar Paket Stiker ({packs?.length ?? 0})
+              Sticker Packs ({packs?.length ?? 0})
             </h2>
           </div>
 
           <div className="space-y-2">
             {isLoading ? (
-              <p className="text-xs text-neutral-400 py-6 text-center">Memuat daftar paket...</p>
+              <p className="text-xs text-neutral-400 py-6 text-center">Loading sticker packs...</p>
             ) : packsPagination.paginatedItems && packsPagination.paginatedItems.length > 0 ? (
               packsPagination.paginatedItems.map((pack) => {
                 const isSelected = currentActivePack?.id === pack.id;
@@ -466,7 +462,7 @@ export function StickersPage() {
                           {pack.name}
                         </p>
                         <p className={`text-[11px] truncate ${isSelected ? 'text-neutral-300' : 'text-neutral-400'}`}>
-                          {pack.publisher || 'LAJU'} • {pack.stickers?.length ?? 0} stiker
+                          {pack.publisher || 'LAJU'} • {pack.stickers?.length ?? 0} stickers
                         </p>
                       </div>
                     </div>
@@ -483,7 +479,7 @@ export function StickersPage() {
                             ? 'text-white/70 hover:text-white hover:bg-white/10'
                             : 'text-neutral-400 hover:text-indigo-600 hover:bg-neutral-200/60'
                         }`}
-                        title="Edit thumbnail & informasi paket"
+                        title="Edit pack cover & details"
                       >
                         <Pencil className="w-3.5 h-3.5" />
                       </button>
@@ -494,7 +490,7 @@ export function StickersPage() {
               })
             ) : (
               <p className="text-xs text-neutral-400 py-6 text-center">
-                Belum ada paket stiker
+                No sticker packs found
               </p>
             )}
           </div>
@@ -538,10 +534,10 @@ export function StickersPage() {
                   <div>
                     <div className="flex items-center gap-2">
                       <h2 className="text-sm font-bold text-neutral-900">{currentActivePack.name}</h2>
-                      <Badge variant="brand">{currentActivePack.stickers?.length ?? 0} item</Badge>
+                      <Badge variant="brand">{currentActivePack.stickers?.length ?? 0} items</Badge>
                     </div>
                     <p className="text-xs text-neutral-400 mt-0.5">
-                      Kreator: {currentActivePack.publisher || 'LAJU Team'}
+                      Creator: {currentActivePack.publisher || 'LAJU Team'}
                     </p>
                   </div>
                 </div>
@@ -552,9 +548,9 @@ export function StickersPage() {
                     variant="outline"
                     icon={<Pencil className="w-3.5 h-3.5 text-indigo-600" />}
                     onClick={() => handleOpenEditPack(currentActivePack)}
-                    title="Edit thumbnail cover dan informasi paket stiker"
+                    title="Edit pack cover thumbnail and details"
                   >
-                    Edit Paket & Thumbnail
+                    Edit Pack
                   </Button>
 
                   <Button
@@ -566,7 +562,7 @@ export function StickersPage() {
                       setIsSpriteSheetExtractorOpen(true);
                     }}
                   >
-                    Ekstraktor Sprite Sheet
+                    Sprite Sheet Extractor
                   </Button>
 
                   <Button
@@ -578,7 +574,7 @@ export function StickersPage() {
                       setIsApngStudioOpen(true);
                     }}
                   >
-                    Studio Animasi APNG
+                    APNG Animation Studio
                   </Button>
 
                   <Button
@@ -591,13 +587,13 @@ export function StickersPage() {
                       setIsBulkModalOpen(true);
                     }}
                   >
-                    Unggah Massal
+                    Bulk Upload
                   </Button>
 
                   <Button
                     size="sm"
                     variant="outline"
-                    icon={<Plus className="w-3.5 h-3.5" />}
+                    icon={<Plus className="w-4 h-4" />}
                     onClick={() => {
                       setErrorMessage(null);
                       setStickerFile(null);
@@ -605,7 +601,7 @@ export function StickersPage() {
                       setIsAddStickerModalOpen(true);
                     }}
                   >
-                    Tambah Stiker
+                    Add Sticker
                   </Button>
 
                   <Button
@@ -657,7 +653,7 @@ export function StickersPage() {
                                   handleOpenEditSticker(stk);
                                 }}
                                 className="p-1.5 rounded-lg bg-white/95 border border-neutral-200 text-neutral-600 hover:text-indigo-600 hover:border-indigo-300 shadow-xs transition-colors"
-                                title="Edit thumbnail & stiker"
+                                title="Edit sticker details"
                               >
                                 <Pencil className="w-3.5 h-3.5" />
                               </button>
@@ -667,7 +663,7 @@ export function StickersPage() {
                                   handleOpenDeleteSticker(stk.id);
                                 }}
                                 className="p-1.5 rounded-lg bg-white/95 border border-neutral-200 text-neutral-400 hover:text-rose-600 hover:border-rose-300 shadow-xs transition-colors"
-                                title="Hapus stiker"
+                                title="Delete sticker"
                               >
                                 <X className="w-3.5 h-3.5" />
                               </button>
@@ -705,7 +701,7 @@ export function StickersPage() {
                                 </span>
                               ) : (
                                 <span className="text-[10px] text-neutral-400 inline-block mt-0.5">
-                                  Klik untuk pratinjau
+                                  Click to preview
                                 </span>
                               )}
                             </div>
@@ -728,7 +724,7 @@ export function StickersPage() {
                   </>
                 ) : (
                   <div className="py-16 text-center text-xs text-neutral-400">
-                    Paket ini belum memiliki item stiker. Klik "Tambah Stiker" untuk mengunggah.
+                    This pack has no stickers yet. Click "Add Sticker" to upload assets.
                   </div>
                 )}
               </div>
@@ -736,7 +732,7 @@ export function StickersPage() {
           ) : (
             <div className="py-24 text-center text-neutral-400 space-y-2">
               <Package className="w-8 h-8 mx-auto text-neutral-300" />
-              <p className="text-xs font-medium">Pilih paket stiker di sebelah kiri untuk melihat dan mengelola isinya</p>
+              <p className="text-xs font-medium">Select a sticker pack from the left panel to inspect and manage its assets</p>
             </div>
           )}
         </div>
@@ -746,11 +742,11 @@ export function StickersPage() {
       <Modal
         isOpen={isPackModalOpen}
         onClose={handleClosePackModal}
-        title={editingPack ? 'Edit Thumbnail & Informasi Paket' : 'Buat Paket Stiker Baru'}
+        title={editingPack ? 'Edit Pack Cover & Information' : 'Create New Sticker Pack'}
         description={
           editingPack
-            ? `Perbarui thumbnail cover dan detail untuk paket "${editingPack.name}"`
-            : 'Daftarkan paket stiker baru sebelum mengunggah aset gambar stikernya'
+            ? `Update cover thumbnail and details for pack "${editingPack.name}"`
+            : 'Register a new sticker pack before uploading individual sticker items'
         }
       >
         {errorMessage && (
@@ -762,29 +758,29 @@ export function StickersPage() {
 
         <form onSubmit={handleSubmitPack(onSubmitPack)} className="space-y-4">
           <Input
-            label="Nama Paket Stiker"
-            placeholder="Misal: Kucing Lucu / Emoji Ekspresi"
+            label="Sticker Pack Name"
+            placeholder="e.g. Playful Kittens / Daily Reactions"
             error={packErrors.name?.message}
             {...registerPack('name')}
           />
 
           <Input
-            label="Penerbit / Kreator (Publisher)"
+            label="Publisher / Creator"
             placeholder="LAJU Creative Team"
             error={packErrors.publisher?.message}
             {...registerPack('publisher')}
           />
 
           <Input
-            label="Deskripsi Singkat"
-            placeholder="Koleksi ekspresi stiker harian"
+            label="Short Description"
+            placeholder="Daily conversational sticker pack"
             {...registerPack('description')}
           />
 
           {/* Cover / Thumbnail Upload */}
           <div className="space-y-1.5">
             <label className="block text-xs font-semibold text-neutral-700">
-              Thumbnail / Ikon Cover Paket
+              Pack Cover / Thumbnail Icon
             </label>
             <div className="border-2 border-dashed border-neutral-200 rounded-xl p-3 text-center hover:border-neutral-400 transition-colors cursor-pointer relative bg-neutral-50/50">
               <input
@@ -802,16 +798,16 @@ export function StickersPage() {
                   />
                   <div className="text-left text-xs text-neutral-600">
                     <p className="font-bold truncate max-w-[200px]">
-                      {packCoverFile?.name || (editingPack ? 'Thumbnail saat ini' : 'Cover terpilih')}
+                      {packCoverFile?.name || (editingPack ? 'Current thumbnail' : 'Selected cover')}
                     </p>
-                    <p className="text-[10px] text-neutral-400">Klik untuk mengganti thumbnail</p>
+                    <p className="text-[10px] text-neutral-400">Click to change thumbnail</p>
                   </div>
                 </div>
               ) : (
                 <div className="space-y-0.5 text-neutral-500">
                   <Upload className="w-4 h-4 mx-auto text-neutral-400" />
-                  <p className="text-xs font-medium">Pilih thumbnail / cover (PNG, WEBP, JPG)</p>
-                  <p className="text-[10px] text-neutral-400">Dimensi kotak persegi disarankan</p>
+                  <p className="text-xs font-medium">Select thumbnail / cover (PNG, WEBP, JPG)</p>
+                  <p className="text-[10px] text-neutral-400">Square dimensions recommended</p>
                 </div>
               )}
             </div>
@@ -823,14 +819,14 @@ export function StickersPage() {
               variant="outline"
               onClick={handleClosePackModal}
             >
-              Batal
+              Cancel
             </Button>
             <Button
               type="submit"
               variant="primary"
               isLoading={createPack.isPending || updatePack.isPending || mediaUpload.isPending}
             >
-              {editingPack ? 'Simpan Perubahan' : 'Simpan Paket Stiker'}
+              {editingPack ? 'Save Changes' : 'Save Sticker Pack'}
             </Button>
           </div>
         </form>
@@ -840,8 +836,8 @@ export function StickersPage() {
       <Modal
         isOpen={isAddStickerModalOpen}
         onClose={() => setIsAddStickerModalOpen(false)}
-        title="Unggah Item Stiker Baru"
-        description={`Tambahkan stiker ke dalam paket "${currentActivePack?.name}"`}
+        title="Upload New Sticker Item"
+        description={`Add sticker to pack "${currentActivePack?.name}"`}
       >
         {errorMessage && (
           <div className="mb-4 p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2">
@@ -852,21 +848,21 @@ export function StickersPage() {
 
         <form onSubmit={handleSubmitSticker(onSubmitSticker)} className="space-y-4">
           <Input
-            label="Nama / Judul Stiker"
-            placeholder="Misal: Jempol Kucing / Senyum Lebar"
+            label="Sticker Name / Title"
+            placeholder="e.g. Thumbs Up / Big Grin"
             error={stickerErrors.name?.message}
             {...registerSticker('name')}
           />
 
           <Input
-            label="Tag / Kode Reaksi (Opsional)"
-            placeholder="Misal: thumbs_up / smile"
+            label="Reaction Tag / Emoji Code (Optional)"
+            placeholder="e.g. thumbs_up / smile"
             {...registerSticker('emoji')}
           />
 
           <div className="space-y-1.5">
             <label className="block text-xs font-semibold text-neutral-700">
-              File Gambar Stiker (Transparan PNG / WEBP)
+              Sticker Image File (Transparent PNG / WEBP)
             </label>
             <div className="border-2 border-dashed border-neutral-200 rounded-xl p-4 text-center hover:border-neutral-400 transition-colors cursor-pointer relative bg-neutral-50/50">
               <input
@@ -884,14 +880,14 @@ export function StickersPage() {
                   />
                   <div className="text-left text-xs text-neutral-600">
                     <p className="font-bold truncate max-w-[200px]">{stickerFile?.name}</p>
-                    <p className="text-[10px] text-neutral-400">Klik untuk ganti file</p>
+                    <p className="text-[10px] text-neutral-400">Click to change file</p>
                   </div>
                 </div>
               ) : (
                 <div className="space-y-1 text-neutral-500">
                   <Upload className="w-5 h-5 mx-auto text-neutral-400" />
-                  <p className="text-xs font-medium">Unggah file stiker (PNG transparan / APNG disarankan)</p>
-                  <p className="text-[10px] text-neutral-400">Dimensi 512x512 px optimal</p>
+                  <p className="text-xs font-medium">Upload sticker file (Transparent PNG / APNG recommended)</p>
+                  <p className="text-[10px] text-neutral-400">512x512 px optimal dimensions</p>
                 </div>
               )}
             </div>
@@ -903,20 +899,20 @@ export function StickersPage() {
               variant="outline"
               onClick={() => setIsAddStickerModalOpen(false)}
             >
-              Batal
+              Cancel
             </Button>
             <Button
               type="submit"
               variant="primary"
               isLoading={addSticker.isPending || mediaUpload.isPending}
             >
-              Unggah Stiker
+              Upload Sticker
             </Button>
           </div>
         </form>
       </Modal>
 
-      {/* Modal: Unggah Massal Stiker (Non-APNG) */}
+      {/* Modal: Bulk Upload */}
       <Modal
         isOpen={isBulkModalOpen}
         onClose={() => {
@@ -926,12 +922,12 @@ export function StickersPage() {
             setIsBulkModalOpen(false);
           }
         }}
-        title={`Unggah Massal Stiker (${currentActivePack?.name || 'Paket'})`}
+        title={`Bulk Upload Stickers (${currentActivePack?.name || 'Pack'})`}
         maxWidth="xl"
       >
         <div className="space-y-4">
           <p className="text-xs text-neutral-500">
-            Pilih banyak file gambar sekaligus (PNG transparan atau WEBP). Nama stiker akan dibuat otomatis dari nama file dan dapat Anda sesuaikan.
+            Select multiple image files at once (transparent PNG or WEBP). Sticker names will be generated from filenames and can be edited.
           </p>
 
           {errorMessage && (
@@ -941,7 +937,6 @@ export function StickersPage() {
             </div>
           )}
 
-          {/* Multi-file dropzone / input */}
           <div className="border-2 border-dashed border-neutral-300 rounded-xl p-5 text-center hover:border-emerald-500 transition-colors cursor-pointer relative bg-neutral-50/50">
             <input
               type="file"
@@ -954,19 +949,18 @@ export function StickersPage() {
             <div className="space-y-1.5 text-neutral-600">
               <FolderUp className="w-8 h-8 mx-auto text-emerald-600" />
               <p className="text-xs font-bold text-neutral-800">
-                Klik atau Seret Banyak Gambar ke Sini
+                Click or Drag Multiple Images Here
               </p>
               <p className="text-[11px] text-neutral-400">
-                Pilih sekaligus banyak gambar (PNG/WEBP transparan disarankan • 512x512 px)
+                Transparent PNG / WEBP recommended (512x512 px)
               </p>
             </div>
           </div>
 
-          {/* Selected Files Grid Preview */}
           {bulkItems.length > 0 && (
             <div className="space-y-2">
               <div className="flex items-center justify-between text-xs font-semibold text-neutral-700">
-                <span>Daftar Stiker Siap Diunggah ({bulkItems.length} item)</span>
+                <span>Stickers Ready for Upload ({bulkItems.length} items)</span>
                 {!isUploadingBulk && (
                   <button
                     type="button"
@@ -976,7 +970,7 @@ export function StickersPage() {
                     }}
                     className="text-[11px] text-rose-600 hover:text-rose-700"
                   >
-                    Hapus Semua
+                    Clear All
                   </button>
                 )}
               </div>
@@ -1000,7 +994,7 @@ export function StickersPage() {
                         value={item.name}
                         disabled={isUploadingBulk}
                         onChange={(e) => handleUpdateBulkItem(idx, 'name', e.target.value)}
-                        placeholder="Nama stiker"
+                        placeholder="Sticker name"
                         className="text-xs px-2.5 py-1.5 rounded-md border border-neutral-200 focus:outline-none focus:border-emerald-500 font-medium"
                       />
                       <input
@@ -1008,7 +1002,7 @@ export function StickersPage() {
                         value={item.emoji}
                         disabled={isUploadingBulk}
                         onChange={(e) => handleUpdateBulkItem(idx, 'emoji', e.target.value)}
-                        placeholder="Tag emoji opsional (misal: smile)"
+                        placeholder="Optional emoji tag (e.g. smile)"
                         className="text-xs px-2.5 py-1.5 rounded-md border border-neutral-200 focus:outline-none focus:border-emerald-500"
                       />
                     </div>
@@ -1027,11 +1021,10 @@ export function StickersPage() {
             </div>
           )}
 
-          {/* Progress bar during bulk upload */}
           {isUploadingBulk && (
             <div className="space-y-2 p-3 bg-emerald-50 rounded-xl border border-emerald-200">
               <div className="flex justify-between text-xs font-semibold text-emerald-800">
-                <span>Mengunggah stiker ke server...</span>
+                <span>Uploading stickers to cluster...</span>
                 <span>{bulkProgress.current} / {bulkProgress.total}</span>
               </div>
               <div className="w-full bg-emerald-200 rounded-full h-2 overflow-hidden">
@@ -1054,7 +1047,7 @@ export function StickersPage() {
                 setIsBulkModalOpen(false);
               }}
             >
-              Batal
+              Cancel
             </Button>
             <Button
               type="button"
@@ -1063,13 +1056,13 @@ export function StickersPage() {
               isLoading={isUploadingBulk}
               onClick={onSubmitBulkStickers}
             >
-              Unggah Semua ({bulkItems.length} Stiker)
+              Upload All ({bulkItems.length} Stickers)
             </Button>
           </div>
         </div>
       </Modal>
 
-      {/* Modal: APNG Frame & Sprite Sheet Studio */}
+      {/* APNG Studio */}
       {currentActivePack && (
         <ApngFrameStudioModal
           isOpen={isApngStudioOpen}
@@ -1079,7 +1072,7 @@ export function StickersPage() {
         />
       )}
 
-      {/* Modal: Ekstraktor Sprite Sheet Atlas (Phaser Tools Engine) */}
+      {/* Sprite Sheet Atlas */}
       {currentActivePack && (
         <SpriteSheetExtractorModal
           isOpen={isSpriteSheetExtractorOpen}
@@ -1089,18 +1082,17 @@ export function StickersPage() {
         />
       )}
 
-      {/* Modal: Pratinjau Resolusi Tinggi & Penguji Animasi Stiker */}
+      {/* Preview Sticker Modal */}
       <Modal
         isOpen={!!previewSticker}
         onClose={() => setPreviewSticker(null)}
-        title={previewSticker ? `Pratinjau Stiker: ${previewSticker.name}` : 'Pratinjau Stiker'}
+        title={previewSticker ? `Sticker Preview: ${previewSticker.name}` : 'Sticker Preview'}
         maxWidth="md"
       >
         {previewSticker && (
           <div className="space-y-4">
-            {/* Background switcher for transparency test */}
             <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-neutral-500">Latar Belakang Pratinjau:</span>
+              <span className="text-xs font-medium text-neutral-500">Preview Canvas:</span>
               <div className="flex items-center gap-1.5 bg-neutral-100 p-1 rounded-xl">
                 <button
                   type="button"
@@ -1111,7 +1103,7 @@ export function StickersPage() {
                       : 'text-neutral-500 hover:text-neutral-900'
                   }`}
                 >
-                  Kotak Catur
+                  Checkerboard
                 </button>
                 <button
                   type="button"
@@ -1122,7 +1114,7 @@ export function StickersPage() {
                       : 'text-neutral-500 hover:text-neutral-900'
                   }`}
                 >
-                  Putih
+                  Light
                 </button>
                 <button
                   type="button"
@@ -1133,12 +1125,11 @@ export function StickersPage() {
                       : 'text-neutral-500 hover:text-neutral-900'
                   }`}
                 >
-                  Gelap
+                  Dark
                 </button>
               </div>
             </div>
 
-            {/* Display Stage */}
             <div
               className="w-full h-64 rounded-2xl flex items-center justify-center p-6 border border-neutral-200/80 transition-colors relative overflow-hidden"
               style={{
@@ -1158,22 +1149,21 @@ export function StickersPage() {
               />
             </div>
 
-            {/* Details & Actions */}
             <div className="bg-neutral-50 rounded-xl p-3.5 border border-neutral-200/80 space-y-2 text-xs">
               <div className="flex items-center justify-between">
-                <span className="text-neutral-500">Nama Stiker:</span>
+                <span className="text-neutral-500">Sticker Name:</span>
                 <span className="font-bold text-neutral-900">{previewSticker.name}</span>
               </div>
               {previewSticker.emoji && (
                 <div className="flex items-center justify-between">
-                  <span className="text-neutral-500">Shortcut / Emoji:</span>
+                  <span className="text-neutral-500">Emoji / Tag:</span>
                   <span className="font-mono bg-white px-2 py-0.5 rounded border border-neutral-200 font-semibold">
                     :{previewSticker.emoji}:
                   </span>
                 </div>
               )}
               <div className="flex items-center justify-between">
-                <span className="text-neutral-500">Format File:</span>
+                <span className="text-neutral-500">Format:</span>
                 <span className="font-semibold text-neutral-700">
                   {previewSticker.imageUrl.split('.').pop()?.toUpperCase() || 'PNG'}
                 </span>
@@ -1191,11 +1181,11 @@ export function StickersPage() {
                 >
                   {copiedUrl ? (
                     <>
-                      <Check className="w-3 h-3" /> Tersalin
+                      <Check className="w-3 h-3" /> Copied
                     </>
                   ) : (
                     <>
-                      <Copy className="w-3 h-3" /> Salin URL
+                      <Copy className="w-3 h-3" /> Copy URL
                     </>
                   )}
                 </button>
@@ -1213,7 +1203,7 @@ export function StickersPage() {
                   handleOpenDeleteSticker(id);
                 }}
               >
-                <Trash2 className="w-4 h-4 mr-1.5" /> Hapus Stiker
+                <Trash2 className="w-4 h-4 mr-1.5" /> Delete Sticker
               </Button>
               <div className="flex items-center gap-2">
                 <Button
@@ -1225,14 +1215,14 @@ export function StickersPage() {
                     handleOpenEditSticker(stk);
                   }}
                 >
-                  <Pencil className="w-3.5 h-3.5 mr-1.5" /> Edit Thumbnail
+                  <Pencil className="w-3.5 h-3.5 mr-1.5" /> Edit Details
                 </Button>
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={() => setPreviewSticker(null)}
                 >
-                  Tutup
+                  Close
                 </Button>
               </div>
             </div>
@@ -1240,18 +1230,18 @@ export function StickersPage() {
         )}
       </Modal>
 
-      {/* Modal Edit Thumbnail & Detail Stiker */}
+      {/* Modal Edit Sticker */}
       {editingSticker && (
         <Modal
           isOpen={!!editingSticker}
           onClose={() => setEditingSticker(null)}
-          title="Edit Thumbnail & Detail Stiker"
+          title="Edit Sticker Thumbnail & Details"
           maxWidth="md"
         >
           <div className="space-y-4">
             <div>
               <label className="block text-xs font-semibold text-neutral-700 mb-1.5">
-                Gambar / Thumbnail Stiker
+                Sticker Image / Thumbnail
               </label>
               <div className="flex items-center gap-4 p-3 bg-neutral-50 rounded-xl border border-neutral-200">
                 <div
@@ -1271,7 +1261,7 @@ export function StickersPage() {
                 <div className="flex-1">
                   <label className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-white border border-neutral-200 hover:bg-neutral-50 cursor-pointer shadow-2xs">
                     <Upload className="w-3.5 h-3.5 text-neutral-500" />
-                    <span>Ganti Gambar / Thumbnail</span>
+                    <span>Change Image</span>
                     <input
                       type="file"
                       accept="image/*"
@@ -1286,7 +1276,7 @@ export function StickersPage() {
                     />
                   </label>
                   <p className="text-[11px] text-neutral-400 mt-1">
-                    Format didukung: PNG, APNG, GIF, WEBP.
+                    Formats: PNG, APNG, GIF, WEBP.
                   </p>
                 </div>
               </div>
@@ -1294,23 +1284,23 @@ export function StickersPage() {
 
             <div>
               <label className="block text-xs font-semibold text-neutral-700 mb-1">
-                Nama Stiker
+                Sticker Name
               </label>
               <Input
                 value={editStickerName}
                 onChange={(e) => setEditStickerName(e.target.value)}
-                placeholder="Contoh: Kucing Jempol"
+                placeholder="e.g. Grinning Cat"
               />
             </div>
 
             <div>
               <label className="block text-xs font-semibold text-neutral-700 mb-1">
-                Shortcut Emoji (Opsional)
+                Emoji Shortcut (Optional)
               </label>
               <Input
                 value={editStickerEmoji}
                 onChange={(e) => setEditStickerEmoji(e.target.value)}
-                placeholder="Contoh: 👍 atau thumbsup"
+                placeholder="e.g. thumbsup or smile"
               />
             </div>
 
@@ -1320,42 +1310,42 @@ export function StickersPage() {
                 onClick={() => setEditingSticker(null)}
                 disabled={isUpdatingSticker}
               >
-                Batal
+                Cancel
               </Button>
               <Button
                 onClick={handleSaveEditSticker}
                 disabled={isUpdatingSticker}
                 isLoading={isUpdatingSticker}
               >
-                Simpan Perubahan
+                Save Changes
               </Button>
             </div>
           </div>
         </Modal>
       )}
 
-      {/* Modal Hapus Paket Stiker */}
+      {/* Delete Sticker Pack Modal */}
       <ConfirmModal
         isOpen={deletePackModal.isOpen}
         onClose={() => setDeletePackModal({ isOpen: false, packId: '', name: '' })}
         onConfirm={handleConfirmDeletePack}
-        title="Hapus Paket Stiker"
-        description={`Yakin ingin menghapus paket stiker "${deletePackModal.name}" beserta seluruh stiker di dalamnya? Tindakan ini bersifat permanen.`}
-        confirmText="Hapus Paket"
-        cancelText="Batal"
+        title="Delete Sticker Pack"
+        description={`Are you sure you want to delete sticker pack "${deletePackModal.name}" and all stickers inside it? This action is permanent.`}
+        confirmText="Delete Pack"
+        cancelText="Cancel"
         variant="danger"
         isLoading={deletePack.isPending}
       />
 
-      {/* Modal Hapus Stiker Satuan */}
+      {/* Delete Single Sticker Modal */}
       <ConfirmModal
         isOpen={deleteStickerModal.isOpen}
         onClose={() => setDeleteStickerModal({ isOpen: false, stickerId: '' })}
         onConfirm={handleConfirmDeleteSticker}
-        title="Hapus Item Stiker"
-        description="Yakin ingin menghapus stiker ini dari paket?"
-        confirmText="Hapus Stiker"
-        cancelText="Batal"
+        title="Delete Sticker"
+        description="Are you sure you want to delete this sticker from the pack?"
+        confirmText="Delete Sticker"
+        cancelText="Cancel"
         variant="danger"
         isLoading={deleteSticker.isPending}
       />

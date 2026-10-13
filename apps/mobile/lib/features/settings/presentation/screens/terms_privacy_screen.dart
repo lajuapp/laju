@@ -134,6 +134,12 @@ class _TermsPrivacyScreenState extends State<TermsPrivacyScreen>
           title: context.tr('privacySec5Title'),
           content: context.tr('privacySec5Body'),
         ),
+        const SizedBox(height: 12),
+        _buildSectionCard(
+          isDark,
+          title: context.tr('privacySec6Title'),
+          content: context.tr('privacySec6Body'),
+        ),
       ],
     );
   }
@@ -183,6 +189,12 @@ class _TermsPrivacyScreenState extends State<TermsPrivacyScreen>
           isDark,
           title: context.tr('termsSec6Title'),
           content: context.tr('termsSec6Body'),
+        ),
+        const SizedBox(height: 12),
+        _buildSectionCard(
+          isDark,
+          title: context.tr('termsSec7Title'),
+          content: context.tr('termsSec7Body'),
         ),
       ],
     );

@@ -12,7 +12,6 @@ import {
   Image as ImageIcon,
   Smile,
   CheckCircle,
-  HelpCircle,
   Layers,
   Lock,
 } from 'lucide-react';
@@ -82,7 +81,7 @@ export function MaintenancePage() {
       setIsConfirmModalOpen(false);
       setFeedback({
         type: 'success',
-        message: res.message || 'Reset data berhasil dijalankan.',
+        message: res.message || 'Database reset operation completed successfully.',
         details: res.results,
       });
 
@@ -98,7 +97,7 @@ export function MaintenancePage() {
     } catch (err: any) {
       setFeedback({
         type: 'error',
-        message: err.response?.data?.message || err.message || 'Gagal menjalankan reset data.',
+        message: err.response?.data?.message || err.message || 'Failed to execute database reset.',
       });
     }
   };
@@ -109,13 +108,13 @@ export function MaintenancePage() {
       const res = await reseedMutation.mutateAsync();
       setFeedback({
         type: 'success',
-        message: res.message || 'Re-seed data default berhasil. Seluruh aset Wallpaper & Stiker tetap aman!',
+        message: res.message || 'Default seed data applied successfully. Wallpaper & Sticker assets remain intact!',
         details: res.results,
       });
     } catch (err: any) {
       setFeedback({
         type: 'error',
-        message: err.response?.data?.message || err.message || 'Gagal menjalankan re-seed data default.',
+        message: err.response?.data?.message || err.message || 'Failed to reseed default data.',
       });
     }
   };
@@ -131,10 +130,10 @@ export function MaintenancePage() {
             </div>
             <div>
               <h1 className="text-xl font-extrabold tracking-tight text-neutral-900">
-                Pemeliharaan Data & Dev Tools
+                Data Maintenance & Dev Tools
               </h1>
               <p className="text-xs text-neutral-500 mt-0.5">
-                Pengelolaan dan peresetan data obrolan, grup, status, dan pengguna untuk kebutuhan development & staging
+                Maintenance utilities and data purge tools for development and staging environments.
               </p>
             </div>
           </div>
@@ -148,7 +147,7 @@ export function MaintenancePage() {
             isLoading={loadingStats}
             icon={<RefreshCw className="w-3.5 h-3.5" />}
           >
-            Segarkan Statistik
+            Refresh Counts
           </Button>
           <Button
             variant="secondary"
@@ -157,7 +156,7 @@ export function MaintenancePage() {
             isLoading={reseedMutation.isPending}
             icon={<Sparkles className="w-3.5 h-3.5 text-brand-600" />}
           >
-            Re-seed Data Default
+            Reseed Default Assets
           </Button>
         </div>
       </div>
@@ -196,20 +195,20 @@ export function MaintenancePage() {
       {/* Database Overview Cards */}
       <div>
         <h2 className="text-xs font-bold text-neutral-500 uppercase tracking-wider mb-3">
-          Ringkasan Data Saat Ini di Database
+          Current Database Record Counts
         </h2>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3.5">
           {/* Users & Devices */}
           <div className="bg-white p-4 rounded-xl border border-neutral-200/80 shadow-2xs">
             <div className="flex items-center justify-between text-neutral-400 mb-2">
               <Users className="w-4 h-4 text-brand-600" />
-              <Badge variant="brand">{stats?.totalUsers ?? 0} Akun</Badge>
+              <Badge variant="brand">{stats?.totalUsers ?? 0} Accounts</Badge>
             </div>
             <div className="text-xl font-bold text-neutral-900">
               {stats?.totalUsers ?? 0}
             </div>
             <p className="text-[11px] text-neutral-500 mt-0.5">
-              {stats?.totalDevices ?? 0} Perangkat terdaftar
+              {stats?.totalDevices ?? 0} Registered Devices
             </p>
           </div>
 
@@ -222,55 +221,55 @@ export function MaintenancePage() {
             <div className="text-xl font-bold text-neutral-900">
               {stats?.totalDirectConversations ?? 0}
             </div>
-            <p className="text-[11px] text-neutral-500 mt-0.5">Percakapan personal</p>
+            <p className="text-[11px] text-neutral-500 mt-0.5">Personal chats</p>
           </div>
 
           {/* Group Chats */}
           <div className="bg-white p-4 rounded-xl border border-neutral-200/80 shadow-2xs">
             <div className="flex items-center justify-between text-neutral-400 mb-2">
               <Layers className="w-4 h-4 text-purple-600" />
-              <span className="text-[10px] font-semibold text-neutral-500">Grup</span>
+              <span className="text-[10px] font-semibold text-neutral-500">Groups</span>
             </div>
             <div className="text-xl font-bold text-neutral-900">
               {stats?.totalGroupConversations ?? 0}
             </div>
-            <p className="text-[11px] text-neutral-500 mt-0.5">Grup aktif</p>
+            <p className="text-[11px] text-neutral-500 mt-0.5">Active groups</p>
           </div>
 
           {/* Messages */}
           <div className="bg-white p-4 rounded-xl border border-neutral-200/80 shadow-2xs">
             <div className="flex items-center justify-between text-neutral-400 mb-2">
               <MessageSquare className="w-4 h-4 text-emerald-600" />
-              <span className="text-[10px] font-semibold text-neutral-500">Total Pesan</span>
+              <span className="text-[10px] font-semibold text-neutral-500">Total Messages</span>
             </div>
             <div className="text-xl font-bold text-neutral-900">
               {stats?.totalMessages ?? 0}
             </div>
-            <p className="text-[11px] text-neutral-500 mt-0.5">Pesan terenkripsi</p>
+            <p className="text-[11px] text-neutral-500 mt-0.5">Encrypted messages</p>
           </div>
 
           {/* User Stories */}
           <div className="bg-white p-4 rounded-xl border border-neutral-200/80 shadow-2xs">
             <div className="flex items-center justify-between text-neutral-400 mb-2">
               <Sparkles className="w-4 h-4 text-amber-500" />
-              <span className="text-[10px] font-semibold text-neutral-500">Status</span>
+              <span className="text-[10px] font-semibold text-neutral-500">Stories</span>
             </div>
             <div className="text-xl font-bold text-neutral-900">
               {stats?.totalStories ?? 0}
             </div>
-            <p className="text-[11px] text-neutral-500 mt-0.5">Story pengguna</p>
+            <p className="text-[11px] text-neutral-500 mt-0.5">User stories</p>
           </div>
 
           {/* Calls */}
           <div className="bg-white p-4 rounded-xl border border-neutral-200/80 shadow-2xs">
             <div className="flex items-center justify-between text-neutral-400 mb-2">
               <PhoneCall className="w-4 h-4 text-cyan-600" />
-              <span className="text-[10px] font-semibold text-neutral-500">Panggilan</span>
+              <span className="text-[10px] font-semibold text-neutral-500">Calls</span>
             </div>
             <div className="text-xl font-bold text-neutral-900">
               {stats?.totalCalls ?? 0}
             </div>
-            <p className="text-[11px] text-neutral-500 mt-0.5">Riwayat call logs</p>
+            <p className="text-[11px] text-neutral-500 mt-0.5">Call history logs</p>
           </div>
 
           {/* Wallpapers (Protected) */}
@@ -278,14 +277,14 @@ export function MaintenancePage() {
             <div className="flex items-center justify-between text-neutral-400 mb-2">
               <ImageIcon className="w-4 h-4 text-teal-600" />
               <span className="text-[10px] font-extrabold uppercase tracking-wide text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                Aset Fix
+                Fixed Asset
               </span>
             </div>
             <div className="text-xl font-bold text-neutral-900">
               {stats?.totalWallpapers ?? 0}
             </div>
             <p className="text-[11px] text-emerald-600 font-medium mt-0.5">
-              Wallpaper (Dilindungi)
+              Wallpapers (Protected)
             </p>
           </div>
 
@@ -294,14 +293,14 @@ export function MaintenancePage() {
             <div className="flex items-center justify-between text-neutral-400 mb-2">
               <Smile className="w-4 h-4 text-amber-500" />
               <span className="text-[10px] font-extrabold uppercase tracking-wide text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                Aset Fix
+                Fixed Asset
               </span>
             </div>
             <div className="text-xl font-bold text-neutral-900">
-              {stats?.totalStickerPacks ?? 0} Pack
+              {stats?.totalStickerPacks ?? 0} Packs
             </div>
             <p className="text-[11px] text-emerald-600 font-medium mt-0.5">
-              {stats?.totalStickers ?? 0} Stiker (Dilindungi)
+              {stats?.totalStickers ?? 0} Stickers (Protected)
             </p>
           </div>
         </div>
@@ -314,11 +313,10 @@ export function MaintenancePage() {
         </div>
         <div>
           <h3 className="text-xs font-bold text-neutral-900">
-            Proteksi Aset Tetap: Wallpaper & Stiker Dijamin Aman
+            Fixed Asset Protection: Wallpapers & Stickers Are Safeguarded
           </h3>
           <p className="text-xs text-neutral-600 mt-1 leading-relaxed">
-            Sesuai arsitektur LAJU, seluruh berkas <strong>Wallpaper Obrolan</strong> dan <strong>Paket Stiker</strong> dianggap sebagai <em>aset sistem tetap (fix)</em>.
-            Menjalankan reset data obrolan, status, grup, maupun proses <strong>Re-seed Database</strong> <u>tidak akan pernah mendelete</u> wallpaper dan stiker Anda.
+            Per LAJU architecture, all <strong>Chat Wallpapers</strong> and <strong>Sticker Packs</strong> are treated as <em>fixed system assets</em>. Resetting chat logs, stories, groups, or running <strong>Reseed Defaults</strong> will <u>never delete</u> your wallpaper and sticker libraries.
           </p>
         </div>
       </div>
@@ -328,10 +326,10 @@ export function MaintenancePage() {
         <div className="px-6 py-5 border-b border-neutral-100 flex items-center justify-between">
           <div>
             <h2 className="text-sm font-extrabold text-neutral-900">
-              Pilihan Peresetan Data (Granular Reset Options)
+              Granular Reset Options
             </h2>
             <p className="text-xs text-neutral-500 mt-0.5">
-              Pilih kategori data yang ingin Anda bersihkan secara spesifik
+              Select specific data categories you wish to purge
             </p>
           </div>
           <Badge variant="brand">Development Mode</Badge>
@@ -349,12 +347,12 @@ export function MaintenancePage() {
             <div className="flex-1">
               <div className="flex items-center gap-2">
                 <span className="text-xs font-bold text-neutral-900">
-                  Reset Obrolan Personal (1-on-1 Direct Chats)
+                  Reset 1-on-1 Direct Chats
                 </span>
-                <Badge variant="neutral">{stats?.totalDirectConversations ?? 0} Obrolan</Badge>
+                <Badge variant="neutral">{stats?.totalDirectConversations ?? 0} Chats</Badge>
               </div>
               <p className="text-[11px] text-neutral-500 mt-0.5">
-                Menghapus semua percakapan privat personal beserta seluruh pesan, lampiran gambar/file, reaksi pesan, dan status pengiriman (deliveries).
+                Purge all personal conversations, messages, media attachments, reactions, and delivery records.
               </p>
             </div>
           </label>
@@ -370,12 +368,12 @@ export function MaintenancePage() {
             <div className="flex-1">
               <div className="flex items-center gap-2">
                 <span className="text-xs font-bold text-neutral-900">
-                  Reset Grup Obrolan (Group Chats & Members)
+                  Reset Group Chats & Memberships
                 </span>
-                <Badge variant="neutral">{stats?.totalGroupConversations ?? 0} Grup</Badge>
+                <Badge variant="neutral">{stats?.totalGroupConversations ?? 0} Groups</Badge>
               </div>
               <p className="text-[11px] text-neutral-500 mt-0.5">
-                Menghapus seluruh grup obrolan, daftar keanggotaan grup, serta seluruh riwayat percakapan grup.
+                Purge all group rooms, member rosters, and group message logs.
               </p>
             </div>
           </label>
@@ -391,12 +389,12 @@ export function MaintenancePage() {
             <div className="flex-1">
               <div className="flex items-center gap-2">
                 <span className="text-xs font-bold text-neutral-900">
-                  Reset Status/Story Pengguna
+                  Reset User Stories / Statuses
                 </span>
-                <Badge variant="neutral">{stats?.totalStories ?? 0} Status</Badge>
+                <Badge variant="neutral">{stats?.totalStories ?? 0} Stories</Badge>
               </div>
               <p className="text-[11px] text-neutral-500 mt-0.5">
-                Menghapus seluruh postingan status (story) pengguna beserta catatan penonton (views).
+                Purge all user-published stories and view records.
               </p>
             </div>
           </label>
@@ -412,12 +410,12 @@ export function MaintenancePage() {
             <div className="flex-1">
               <div className="flex items-center gap-2">
                 <span className="text-xs font-bold text-neutral-900">
-                  Reset Riwayat Panggilan (Calls)
+                  Reset Call History Logs
                 </span>
-                <Badge variant="neutral">{stats?.totalCalls ?? 0} Panggilan</Badge>
+                <Badge variant="neutral">{stats?.totalCalls ?? 0} Calls</Badge>
               </div>
               <p className="text-[11px] text-neutral-500 mt-0.5">
-                Membersihkan seluruh catatan riwayat panggilan suara & video (call logs).
+                Clear all voice and video call log entries.
               </p>
             </div>
           </label>
@@ -433,16 +431,16 @@ export function MaintenancePage() {
             <div className="flex-1">
               <div className="flex items-center gap-2">
                 <span className="text-xs font-bold text-neutral-900">
-                  Reset Status Akun Pengguna ke AKTIF (Unsuspend All Users)
+                  Reset User Statuses to ACTIVE (Unsuspend All Users)
                 </span>
               </div>
               <p className="text-[11px] text-neutral-500 mt-0.5">
-                Mengembalikan status seluruh akun yang sebelumnya terblokir (SUSPENDED atau DEACTIVATED) menjadi ACTIVE, serta membersihkan riwayat alasan suspend.
+                Restore previously suspended or deactivated user accounts back to ACTIVE and clear suspension reasons.
               </p>
             </div>
           </label>
 
-          {/* Option: Wipe All Users (Dev tester purge) */}
+          {/* Option: Wipe All Users */}
           <label className="flex items-start gap-3.5 p-3.5 rounded-xl border border-amber-300/80 bg-amber-50/30 hover:bg-amber-50/50 cursor-pointer transition-colors">
             <input
               type="checkbox"
@@ -453,20 +451,20 @@ export function MaintenancePage() {
             <div className="flex-1">
               <div className="flex items-center gap-2">
                 <span className="text-xs font-bold text-amber-950">
-                  Hapus Semua Akun Pengguna Tester (Wipe Test Users & Devices)
+                  Purge Test User Accounts (Wipe Test Users & Devices)
                 </span>
                 <span className="text-[10px] font-bold text-amber-800 bg-amber-100 px-2 py-0.5 rounded-md border border-amber-300">
-                  Hapus Data Tester
+                  Wipe Tester Data
                 </span>
               </div>
               <p className="text-[11px] text-amber-800 mt-0.5 leading-relaxed">
-                Menghapus seluruh akun pengguna biasa (tester), sesi login, kunci kriptografi Signal, dan perangkat terdaftar. 
-                <strong className="ml-1 text-neutral-900">Akun Admin tidak akan terhapus.</strong>
+                Purge all regular client tester accounts, device sessions, and Signal cryptokeys.
+                <strong className="ml-1 text-neutral-900">Admin accounts will not be deleted.</strong>
               </p>
             </div>
           </label>
 
-          {/* Option: Auto Re-seed Defaults */}
+          {/* Option: Auto Reseed Defaults */}
           <label className="flex items-start gap-3.5 p-3.5 rounded-xl border border-neutral-200/80 hover:bg-neutral-50/60 cursor-pointer transition-colors">
             <input
               type="checkbox"
@@ -477,12 +475,12 @@ export function MaintenancePage() {
             <div className="flex-1">
               <div className="flex items-center gap-2">
                 <span className="text-xs font-bold text-neutral-900">
-                  Re-seed Data Default Otomatis (Permissions, Roles, & Default Assets)
+                  Auto Re-seed Default System Data (Roles, Permissions, & Built-in Assets)
                 </span>
-                <Badge variant="brand">Direkomendasikan</Badge>
+                <Badge variant="brand">Recommended</Badge>
               </div>
               <p className="text-[11px] text-neutral-500 mt-0.5">
-                Memastikan hak akses sistem, peran admin, wallpaper default, dan paket stiker dasar selalu sinkron setelah reset selesai.
+                Ensures system access privileges, roles, and default assets remain synchronized after reset.
               </p>
             </div>
           </label>
@@ -492,7 +490,7 @@ export function MaintenancePage() {
             <div className="flex items-center gap-2 mb-3">
               <Lock className="w-3.5 h-3.5 text-neutral-400" />
               <h3 className="text-xs font-bold text-neutral-700 uppercase tracking-wider">
-                Opsi Khusus Aset Tetap (Danger Zone - Terproteksi)
+                Special Asset Purge (Danger Zone - Protected)
               </h3>
             </div>
 
@@ -506,10 +504,10 @@ export function MaintenancePage() {
                 />
                 <div className="flex-1">
                   <span className="text-xs font-bold text-rose-950">
-                    Paksa Hapus Seluruh Wallpaper Obrolan
+                    Force Delete All Chat Wallpapers
                   </span>
                   <p className="text-[11px] text-rose-800 mt-0.5">
-                    Hanya centang opsi ini jika Anda benar-benar berniat mengosongkan katalog wallpaper yang tersimpan saat ini.
+                    Only check this option if you explicitly intend to purge the wallpaper catalog.
                   </p>
                 </div>
               </label>
@@ -523,10 +521,10 @@ export function MaintenancePage() {
                 />
                 <div className="flex-1">
                   <span className="text-xs font-bold text-rose-950">
-                    Paksa Hapus Seluruh Paket Stiker
+                    Force Delete All Sticker Packs
                   </span>
                   <p className="text-[11px] text-rose-800 mt-0.5">
-                    Hanya centang opsi ini jika Anda benar-benar berniat mengosongkan katalog seluruh paket stiker.
+                    Only check this option if you explicitly intend to purge the sticker catalog.
                   </p>
                 </div>
               </label>
@@ -539,10 +537,10 @@ export function MaintenancePage() {
           <div className="text-xs text-neutral-500">
             {hasAnySelection ? (
               <span className="text-neutral-900 font-semibold">
-                Opsi telah dipilih. Klik tombol di kanan untuk meninjau dan mengeksekusi.
+                Options selected. Click the button to review and execute.
               </span>
             ) : (
-              <span>Pilih setidaknya satu opsi di atas untuk mengaktifkan reset.</span>
+              <span>Select at least one option above to enable reset.</span>
             )}
           </div>
 
@@ -553,7 +551,7 @@ export function MaintenancePage() {
             onClick={handleOpenConfirmModal}
             icon={<Trash2 className="w-4 h-4" />}
           >
-            Tinjau & Jalankan Reset Terpilih
+            Review & Execute Reset
           </Button>
         </div>
       </div>
@@ -562,43 +560,43 @@ export function MaintenancePage() {
       <Modal
         isOpen={isConfirmModalOpen}
         onClose={() => setIsConfirmModalOpen(false)}
-        title="Konfirmasi Tindakan Reset Data"
-        description="Periksa daftar data yang akan dihapus di bawah sebelum melanjutkan."
+        title="Confirm Database Reset Operation"
+        description="Carefully review the operations listed below before proceeding."
         maxWidth="md"
       >
         <div className="space-y-4 pt-2">
           <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-900 text-xs flex items-start gap-2.5">
             <AlertTriangle className="w-4 h-4 text-rose-600 flex-shrink-0 mt-0.5" />
             <div>
-              <p className="font-bold">Peringatan: Tindakan ini permanen!</p>
+              <p className="font-bold">Warning: This action is permanent!</p>
               <p className="mt-0.5 text-rose-800">
-                Data yang dipilih akan dihapus dari basis data dan tidak dapat dikembalikan.
+                Selected data will be deleted from the database and cannot be recovered.
               </p>
             </div>
           </div>
 
           <div className="bg-neutral-50 p-3.5 rounded-xl border border-neutral-200 text-xs space-y-2">
-            <p className="font-bold text-neutral-700">Daftar operasi yang akan dieksekusi:</p>
+            <p className="font-bold text-neutral-700">Scheduled Operations:</p>
             <ul className="list-disc pl-5 space-y-1 text-neutral-600 text-[11px]">
-              {resetChats && <li>Hapus seluruh percakapan privat (1-on-1) dan pesan</li>}
-              {resetGroups && <li>Hapus seluruh grup obrolan dan riwayat pesan grup</li>}
-              {resetUserStatuses && <li>Hapus seluruh status/story pengguna</li>}
-              {resetCalls && <li>Hapus seluruh catatan riwayat panggilan</li>}
-              {resetUserAccountStatuses && <li>Kembalikan status semua akun user ke ACTIVE</li>}
-              {wipeAllUsers && <li className="text-rose-600 font-bold">Hapus semua akun user tester dan perangkat</li>}
-              {reseedDefaults && <li className="text-emerald-700 font-medium">Jalankan sinkronisasi / re-seed data default</li>}
-              {deleteWallpapers && <li className="text-rose-600 font-bold">Hapus semua wallpaper obrolan</li>}
-              {deleteStickers && <li className="text-rose-600 font-bold">Hapus semua paket stiker</li>}
+              {resetChats && <li>Delete all 1-on-1 private conversations and messages</li>}
+              {resetGroups && <li>Delete all group chats and message histories</li>}
+              {resetUserStatuses && <li>Delete all user stories</li>}
+              {resetCalls && <li>Delete all call history logs</li>}
+              {resetUserAccountStatuses && <li>Reset all user account statuses to ACTIVE</li>}
+              {wipeAllUsers && <li className="text-rose-600 font-bold">Wipe all test user accounts and devices</li>}
+              {reseedDefaults && <li className="text-emerald-700 font-medium">Synchronize / reseed default data</li>}
+              {deleteWallpapers && <li className="text-rose-600 font-bold">Delete all chat wallpapers</li>}
+              {deleteStickers && <li className="text-rose-600 font-bold">Delete all sticker packs</li>}
             </ul>
           </div>
 
           <div>
             <label className="block text-xs font-bold text-neutral-800 mb-1.5">
-              Ketik kata <span className="font-mono text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200">RESET</span> untuk mengonfirmasi:
+              Type <span className="font-mono text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200">RESET</span> to confirm:
             </label>
             <Input
               type="text"
-              placeholder="Ketik RESET di sini"
+              placeholder="Type RESET here"
               value={confirmInput}
               onChange={(e) => setConfirmInput(e.target.value)}
               className="text-xs uppercase font-mono tracking-widest"
@@ -612,7 +610,7 @@ export function MaintenancePage() {
               size="sm"
               onClick={() => setIsConfirmModalOpen(false)}
             >
-              Batalkan
+              Cancel
             </Button>
             <Button
               variant="danger"
@@ -622,7 +620,7 @@ export function MaintenancePage() {
               onClick={handleExecuteReset}
               icon={<Trash2 className="w-3.5 h-3.5" />}
             >
-              Ya, Eksekusi Reset Sekarang
+              Execute Reset
             </Button>
           </div>
         </div>

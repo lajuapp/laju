@@ -2,19 +2,14 @@ import React from 'react';
 import {
   X,
   Smartphone,
-  MessageSquare,
   ShieldCheck,
   ShieldAlert,
-  Calendar,
   Lock,
   Unlock,
-  Radio,
   Clock,
-  Globe,
   AlertTriangle,
-  UserCheck,
 } from 'lucide-react';
-import { useUserDetails, useSuspendUser, useRestoreUser } from '../../hooks/useUsers';
+import { useUserDetails } from '../../hooks/useUsers';
 import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
 
@@ -42,7 +37,7 @@ export function UserDetailModal({
       return (
         <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
           <ShieldCheck className="w-3.5 h-3.5" />
-          Trust Score: {score}/100 (Tinggi)
+          Trust Score: {score}/100 (High)
         </span>
       );
     }
@@ -50,14 +45,14 @@ export function UserDetailModal({
       return (
         <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200">
           <AlertTriangle className="w-3.5 h-3.5" />
-          Trust Score: {score}/100 (Sedang)
+          Trust Score: {score}/100 (Medium)
         </span>
       );
     }
     return (
       <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-rose-50 text-rose-700 border border-rose-200">
         <ShieldAlert className="w-3.5 h-3.5" />
-        Trust Score: {score}/100 (Kritis)
+        Trust Score: {score}/100 (Critical)
       </span>
     );
   };
@@ -74,11 +69,11 @@ export function UserDetailModal({
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="text-base font-bold text-neutral-900">
-                  {user ? `@${user.username}` : 'Memuat data...'}
+                  {user ? `@${user.username}` : 'Loading data...'}
                 </h3>
                 {user && (
                   <Badge variant={user.status === 'ACTIVE' ? 'success' : 'error'}>
-                    {user.status === 'ACTIVE' ? 'Aktif' : 'Terkunci'}
+                    {user.status === 'ACTIVE' ? 'Active' : 'Suspended'}
                   </Badge>
                 )}
               </div>
@@ -99,7 +94,7 @@ export function UserDetailModal({
         <div className="p-6 space-y-6 max-h-[80vh] overflow-y-auto">
           {isLoading ? (
             <div className="py-12 text-center text-xs text-neutral-400">
-              Memuat profil detail pengguna...
+              Loading user profile details...
             </div>
           ) : user ? (
             <>
@@ -108,7 +103,7 @@ export function UserDetailModal({
                 <div className="flex items-center gap-3">
                   {getTrustBadge(user.trustScore ?? 100)}
                   <span className="text-xs text-neutral-500">
-                    2FA: <strong className="text-neutral-800">{user.twoFactorEnabled ? 'Aktif' : 'Non-aktif'}</strong>
+                    2FA: <strong className="text-neutral-800">{user.twoFactorEnabled ? 'Enabled' : 'Disabled'}</strong>
                   </span>
                 </div>
 
@@ -121,7 +116,7 @@ export function UserDetailModal({
                       icon={<Lock className="w-3.5 h-3.5" />}
                       onClick={() => onOpenSuspend && onOpenSuspend(user.id, user.username)}
                     >
-                      Kunci Akun
+                      Suspend Account
                     </Button>
                   ) : (
                     <Button
@@ -131,7 +126,7 @@ export function UserDetailModal({
                       icon={<Unlock className="w-3.5 h-3.5" />}
                       onClick={() => onOpenRestore && onOpenRestore(user.id, user.username)}
                     >
-                      Buka Kunci
+                      Restore Account
                     </Button>
                   )}
                 </div>
@@ -140,10 +135,10 @@ export function UserDetailModal({
               {/* Reason if suspended */}
               {user.status === 'SUSPENDED' && (
                 <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200/80 text-rose-800 text-xs">
-                  <strong>Alasan Penangguhan:</strong> {user.suspendedReason || 'Pelanggaran ketentuan layanan'}
+                  <strong>Suspension Reason:</strong> {user.suspendedReason || 'Violation of Terms of Service'}
                   {user.suspendedAt && (
                     <div className="text-[11px] text-rose-600 mt-1">
-                      Waktu penangguhan: {new Date(user.suspendedAt).toLocaleString('id-ID')}
+                      Suspended at: {new Date(user.suspendedAt).toLocaleString('en-US')}
                     </div>
                   )}
                 </div>
@@ -153,7 +148,7 @@ export function UserDetailModal({
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 <div className="p-3 rounded-xl bg-white border border-neutral-200/80 shadow-2xs">
                   <span className="text-[11px] font-semibold text-neutral-400 uppercase tracking-wider block">
-                    Perangkat
+                    Devices
                   </span>
                   <span className="text-xl font-black text-neutral-900 mt-1 block">
                     {user.counts.devices}
@@ -161,7 +156,7 @@ export function UserDetailModal({
                 </div>
                 <div className="p-3 rounded-xl bg-white border border-neutral-200/80 shadow-2xs">
                   <span className="text-[11px] font-semibold text-neutral-400 uppercase tracking-wider block">
-                    Total Pesan
+                    Messages
                   </span>
                   <span className="text-xl font-black text-neutral-900 mt-1 block">
                     {user.counts.messages}
@@ -169,7 +164,7 @@ export function UserDetailModal({
                 </div>
                 <div className="p-3 rounded-xl bg-white border border-neutral-200/80 shadow-2xs">
                   <span className="text-[11px] font-semibold text-neutral-400 uppercase tracking-wider block">
-                    Grup Diikuti
+                    Groups Joined
                   </span>
                   <span className="text-xl font-black text-neutral-900 mt-1 block">
                     {user.counts.conversationMembers}
@@ -177,7 +172,7 @@ export function UserDetailModal({
                 </div>
                 <div className="p-3 rounded-xl bg-white border border-neutral-200/80 shadow-2xs">
                   <span className="text-[11px] font-semibold text-neutral-400 uppercase tracking-wider block">
-                    Dilaporkan
+                    Reported
                   </span>
                   <span className={`text-xl font-black block ${user.counts.reportsReceived > 0 ? 'text-rose-600' : 'text-neutral-900'}`}>
                     {user.counts.reportsReceived}x
@@ -188,27 +183,27 @@ export function UserDetailModal({
               {/* User Identity Details */}
               <div className="space-y-2">
                 <h4 className="text-xs font-bold uppercase tracking-wider text-neutral-500">
-                  Informasi Identitas & Registrasi
+                  Identity & Registration Info
                 </h4>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
                   <div className="p-3 rounded-xl bg-neutral-50 border border-neutral-100 flex items-center justify-between">
-                    <span className="text-neutral-400">Nomor Telepon</span>
+                    <span className="text-neutral-400">Phone Number</span>
                     <span className="font-semibold text-neutral-800">
-                      {user.phoneNumber || 'Belum diatur'}
+                      {user.phoneNumber || 'Not configured'}
                     </span>
                   </div>
                   <div className="p-3 rounded-xl bg-neutral-50 border border-neutral-100 flex items-center justify-between">
                     <span className="text-neutral-400">Email</span>
                     <span className="font-semibold text-neutral-800">
-                      {user.email || 'Belum diatur'}
+                      {user.email || 'Not configured'}
                     </span>
                   </div>
                   <div className="p-3 rounded-xl bg-neutral-50 border border-neutral-100 flex items-center justify-between">
-                    <span className="text-neutral-400">Tanggal Terdaftar</span>
+                    <span className="text-neutral-400">Registration Date</span>
                     <span className="font-semibold text-neutral-800">
-                      {new Date(user.createdAt).toLocaleDateString('id-ID', {
+                      {new Date(user.createdAt).toLocaleDateString('en-US', {
                         day: 'numeric',
-                        month: 'long',
+                        month: 'short',
                         year: 'numeric',
                         hour: '2-digit',
                         minute: '2-digit',
@@ -216,9 +211,9 @@ export function UserDetailModal({
                     </span>
                   </div>
                   <div className="p-3 rounded-xl bg-neutral-50 border border-neutral-100 flex items-center justify-between">
-                    <span className="text-neutral-400">Sesi Aktif</span>
+                    <span className="text-neutral-400">Active Sessions</span>
                     <span className="font-semibold text-neutral-800">
-                      {user.counts.sessions} sesi
+                      {user.counts.sessions} sessions
                     </span>
                   </div>
                 </div>
@@ -228,14 +223,14 @@ export function UserDetailModal({
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <h4 className="text-xs font-bold uppercase tracking-wider text-neutral-500">
-                    Daftar Perangkat Terdaftar ({user.devices.length})
+                    Registered Devices ({user.devices.length})
                   </h4>
                 </div>
 
                 <div className="divide-y divide-neutral-100 border border-neutral-200/80 rounded-2xl overflow-hidden bg-white shadow-2xs">
                   {user.devices.length === 0 ? (
                     <div className="p-4 text-center text-xs text-neutral-400">
-                      Belum ada perangkat yang terhubung.
+                      No devices connected yet.
                     </div>
                   ) : (
                     user.devices.map((device) => (
@@ -246,13 +241,13 @@ export function UserDetailModal({
                           </div>
                           <div>
                             <div className="font-bold text-neutral-900 flex items-center gap-2">
-                              {device.deviceModel || device.name || 'Perangkat Tanpa Nama'}
+                              {device.deviceModel || device.name || 'Unnamed Device'}
                               <span className="text-[10px] px-1.5 py-0.2 rounded bg-neutral-100 text-neutral-600 font-mono">
                                 {device.platform || 'UNKNOWN'}
                               </span>
                             </div>
                             <div className="text-[11px] text-neutral-400 flex items-center gap-2 mt-0.5">
-                              <span>Versi: {device.appVersion || 'v1.0.0'}</span>
+                              <span>Version: {device.appVersion || 'v1.0.0'}</span>
                               <span>•</span>
                               <span>OS: {device.osVersion || 'N/A'}</span>
                               {device.registrationIp && (
@@ -272,7 +267,7 @@ export function UserDetailModal({
                           {device.lastSeenAt && (
                             <div className="text-[10px] text-neutral-400 mt-1 flex items-center justify-end gap-1">
                               <Clock className="w-3 h-3" />
-                              {new Date(device.lastSeenAt).toLocaleTimeString('id-ID', {
+                              {new Date(device.lastSeenAt).toLocaleTimeString('en-US', {
                                 hour: '2-digit',
                                 minute: '2-digit',
                               })}
@@ -287,7 +282,7 @@ export function UserDetailModal({
             </>
           ) : (
             <div className="py-8 text-center text-xs text-neutral-400">
-              Data pengguna tidak ditemukan.
+              User details could not be found.
             </div>
           )}
         </div>
@@ -295,7 +290,7 @@ export function UserDetailModal({
         {/* Modal Footer */}
         <div className="px-6 py-3.5 bg-neutral-50/70 border-t border-neutral-100 flex justify-end">
           <Button variant="outline" size="sm" onClick={onClose}>
-            Tutup
+            Close
           </Button>
         </div>
       </div>

@@ -9,8 +9,8 @@ import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 
 const loginSchema = z.object({
-  identifier: z.string().min(1, 'Username atau email harus diisi'),
-  password: z.string().min(6, 'Password minimal 6 karakter'),
+  identifier: z.string().min(1, 'Username or email is required'),
+  password: z.string().min(6, 'Password must be at least 6 characters'),
 });
 
 type LoginFormData = z.infer<typeof loginSchema>;
@@ -40,7 +40,7 @@ export function LoginPage() {
       },
       onError: (err: any) => {
         setErrorMessage(
-          err.response?.data?.message || 'Login gagal. Periksa kembali kredensial Anda.'
+          err.response?.data?.message || 'Login failed. Please verify your credentials.'
         );
       },
     });
@@ -63,7 +63,7 @@ export function LoginPage() {
             LAJU Backoffice
           </h1>
           <p className="text-xs text-neutral-500 mt-1">
-            Masuk untuk mengakses portal kontrol administrasi
+            Sign in to access the enterprise administration portal
           </p>
         </div>
 
@@ -78,15 +78,15 @@ export function LoginPage() {
 
           <form onSubmit={handleSubmit(onSubmit)} autoComplete="off" className="space-y-4">
             <Input
-              label="Username atau Email Admin"
-              placeholder="Masukkan username atau email"
+              label="Admin Username or Email"
+              placeholder="Enter username or email"
               autoComplete="username"
               error={errors.identifier?.message}
               {...register('identifier')}
             />
 
             <Input
-              label="Kata Sandi (Password)"
+              label="Password"
               type="password"
               placeholder="••••••••"
               autoComplete="current-password"
@@ -101,7 +101,7 @@ export function LoginPage() {
               className="w-full mt-2"
               isLoading={login.isPending}
             >
-              Masuk ke Backoffice
+              Sign In to Backoffice
             </Button>
           </form>
         </div>
@@ -110,7 +110,7 @@ export function LoginPage() {
         <div className="mt-6 text-center">
           <p className="text-[11px] text-neutral-400 flex items-center justify-center gap-1.5 font-medium">
             <ShieldCheck className="w-3.5 h-3.5 text-brand-600" />
-            Portal Administrasi Aman & Terproteksi
+            End-to-End Secure Administration Console
           </p>
         </div>
       </div>

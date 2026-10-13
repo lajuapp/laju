@@ -115,6 +115,12 @@ export class AdminController {
     return this.adminService.getMarketingStats();
   }
 
+  @Get('service-stats')
+  @UseGuards(AdminAuthGuard)
+  getServiceStats() {
+    return this.adminService.getMarketingStats();
+  }
+
   @Post('app-config/track-download')
   trackDownload(@Body() dto: TrackDownloadEventDto, @Req() req: Request) {
     const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip || 'unknown';
@@ -171,6 +177,13 @@ export class AdminController {
   @RequirePermissions(AdminPermission.USER_SUSPEND)
   listUsers() {
     return this.adminService.listUsers();
+  }
+
+  @Get('deleted-accounts')
+  @UseGuards(AdminAuthGuard)
+  @RequirePermissions(AdminPermission.USER_SUSPEND)
+  listDeletedAccounts() {
+    return this.adminService.listDeletedAccounts();
   }
 
   @Post('users/:id/suspend')

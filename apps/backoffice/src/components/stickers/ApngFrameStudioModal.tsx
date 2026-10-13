@@ -375,7 +375,7 @@ export function ApngFrameStudioModal({
         setCompiledBlob(null);
         setCompiledUrl(null);
       } catch (err: any) {
-        setErrorMessage('Gagal menstabilkan posisi frame: ' + err.message);
+        setErrorMessage('Failed to stabilize frame positions: ' + err.message);
       } finally {
         setIsStabilizing(false);
       }
@@ -663,7 +663,7 @@ export function ApngFrameStudioModal({
   // Compile frames to APNG
   const handleCompileApng = async () => {
     if (frames.length === 0) {
-      setErrorMessage('Unggah frame animasi terlebih dahulu');
+      setErrorMessage('Please upload animation frames first');
       return;
     }
 
@@ -683,7 +683,7 @@ export function ApngFrameStudioModal({
       setCompiledBlob(blob);
       setCompiledUrl(url);
     } catch (err: any) {
-      setErrorMessage('Kompilasi APNG gagal: ' + err.message);
+      setErrorMessage('APNG compilation failed: ' + err.message);
     } finally {
       setIsCompiling(false);
     }
@@ -692,11 +692,11 @@ export function ApngFrameStudioModal({
   // Save compiled APNG sticker to package
   const handleSaveSticker = async () => {
     if (!compiledBlob) {
-      setErrorMessage('Harap kompilasi animasi terlebih dahulu sebelum menyimpan');
+      setErrorMessage('Please compile the animation before saving');
       return;
     }
     if (!stickerName.trim()) {
-      setErrorMessage('Nama stiker wajib diisi');
+      setErrorMessage('Sticker name is required');
       return;
     }
 
@@ -719,7 +719,7 @@ export function ApngFrameStudioModal({
 
       onClose();
     } catch (err: any) {
-      setErrorMessage(err.response?.data?.message || 'Gagal menyimpan stiker animasi');
+      setErrorMessage(err.response?.data?.message || 'Failed to save animated sticker');
     } finally {
       setIsSaving(false);
     }
@@ -731,8 +731,8 @@ export function ApngFrameStudioModal({
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title="Studio Animasi APNG & Stabilizer Posisi Frame"
-      description={`Stabilkan getaran animasi dan kompilasi stiker APNG mulus untuk paket "${packName}"`}
+      title="APNG Animation Studio & Frame Stabilizer"
+      description={`Stabilize jitter and compile smooth APNG stickers for package "${packName}"`}
       maxWidth="7xl"
     >
       <div className="space-y-4 max-h-[88vh] overflow-y-auto pr-1">
@@ -768,7 +768,7 @@ export function ApngFrameStudioModal({
                     stageBg === 'checker' ? 'bg-neutral-900 text-white shadow-2xs' : 'text-neutral-500 hover:text-neutral-900'
                   }`}
                 >
-                  Catur
+                  Checker
                 </button>
                 <button
                   type="button"
@@ -777,7 +777,7 @@ export function ApngFrameStudioModal({
                     stageBg === 'light' ? 'bg-neutral-900 text-white shadow-2xs' : 'text-neutral-500 hover:text-neutral-900'
                   }`}
                 >
-                  Putih
+                  Light
                 </button>
                 <button
                   type="button"
@@ -786,7 +786,7 @@ export function ApngFrameStudioModal({
                     stageBg === 'dark' ? 'bg-neutral-900 text-white shadow-2xs' : 'text-neutral-500 hover:text-neutral-900'
                   }`}
                 >
-                  Gelap
+                  Dark
                 </button>
               </div>
             </div>
@@ -806,7 +806,7 @@ export function ApngFrameStudioModal({
                 backgroundSize: '16px 16px',
                 backgroundPosition: '0 0, 0 8px, 8px -8px, -8px 0px',
               }}
-              title="Klik dan seret karakter langsung pada kanvas untuk menggeser posisinya (Nudge Offset)"
+              title="Click and drag character directly on canvas to nudge position (Nudge Offset)"
             >
               {frames.length > 0 ? (
                 <>
@@ -821,7 +821,7 @@ export function ApngFrameStudioModal({
                   {/* Onion Skin Indicator Tag */}
                   {onionSkinEnabled && (
                     <div className="absolute top-2 left-2 px-2 py-0.5 bg-rose-500/80 text-white text-[9px] font-bold rounded-md shadow-xs pointer-events-none">
-                      Onion Skin Aktif
+                      Onion Skin Active
                     </div>
                   )}
 
@@ -836,8 +836,8 @@ export function ApngFrameStudioModal({
               ) : (
                 <div className="text-center text-neutral-400 space-y-1">
                   <Film className="w-8 h-8 mx-auto text-neutral-300" />
-                  <p className="text-xs font-semibold text-neutral-700">Belum ada frame animasi</p>
-                  <p className="text-[10px] text-neutral-400">Unggah frame atau sprite sheet di panel sebelah kanan</p>
+                  <p className="text-xs font-semibold text-neutral-700">No animation frames yet</p>
+                  <p className="text-[10px] text-neutral-400">Upload frames or sprite sheet on the right panel</p>
                 </div>
               )}
             </div>
@@ -853,7 +853,7 @@ export function ApngFrameStudioModal({
                     ? 'bg-brand-50 border border-brand-300 text-brand-700'
                     : 'bg-neutral-50 text-neutral-600 border border-neutral-200 hover:bg-neutral-100'
                 }`}
-                title="Tampilkan bayangan frame sebelumnya untuk mencocokkan garis kaki & badan"
+                title="Show ghost overlay of previous frame to match character alignment"
               >
                 <Eye className="w-3.5 h-3.5 text-brand-600" />
                 <span>Onion Skinning</span>
@@ -889,7 +889,7 @@ export function ApngFrameStudioModal({
                     }}
                     disabled={frames.length === 0}
                     className="p-1 rounded-lg text-neutral-600 hover:bg-neutral-100 disabled:opacity-40"
-                    title="Ke Frame Pertama"
+                    title="First Frame"
                   >
                     <SkipBack className="w-3.5 h-3.5" />
                   </button>
@@ -902,7 +902,7 @@ export function ApngFrameStudioModal({
                     }}
                     disabled={frames.length === 0}
                     className="p-1 rounded-lg text-neutral-600 hover:bg-neutral-100 disabled:opacity-40"
-                    title="Frame Sebelumnya"
+                    title="Previous Frame"
                   >
                     <ArrowLeft className="w-3.5 h-3.5" />
                   </button>
@@ -912,7 +912,7 @@ export function ApngFrameStudioModal({
                     onClick={() => setIsPlaying(!isPlaying)}
                     disabled={frames.length === 0}
                     className="p-1.5 rounded-lg bg-brand-500 text-white hover:bg-brand-600 disabled:opacity-40 shadow-xs"
-                    title={isPlaying ? 'Jeda Animasi' : 'Putar Animasi'}
+                    title={isPlaying ? 'Pause Animation' : 'Play Animation'}
                   >
                     {isPlaying ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
                   </button>
@@ -925,7 +925,7 @@ export function ApngFrameStudioModal({
                     }}
                     disabled={frames.length === 0}
                     className="p-1 rounded-lg text-neutral-600 hover:bg-neutral-100 disabled:opacity-40"
-                    title="Frame Berikutnya"
+                    title="Next Frame"
                   >
                     <ArrowRight className="w-3.5 h-3.5" />
                   </button>
@@ -938,7 +938,7 @@ export function ApngFrameStudioModal({
                     }}
                     disabled={frames.length === 0}
                     className="p-1 rounded-lg text-neutral-600 hover:bg-neutral-100 disabled:opacity-40"
-                    title="Ke Frame Terakhir"
+                    title="Last Frame"
                   >
                     <SkipForward className="w-3.5 h-3.5" />
                   </button>
@@ -971,7 +971,7 @@ export function ApngFrameStudioModal({
                 <div className="flex items-center justify-between">
                   <span className="text-[11px] font-bold text-neutral-700 flex items-center gap-1.5 uppercase tracking-wider">
                     <Move className="w-3 h-3 text-brand-600" />
-                    Koreksi Posisi Frame #{currentFrameIdx + 1}
+                    Frame #{currentFrameIdx + 1} Position Nudge
                   </span>
                   <button
                     type="button"
@@ -989,7 +989,7 @@ export function ApngFrameStudioModal({
                       type="button"
                       onClick={() => updateActiveFrameOffset(-1, 0)}
                       className="p-1.5 rounded-lg bg-neutral-100 hover:bg-neutral-200 text-neutral-700"
-                      title="Geser Kiri (1px)"
+                      title="Nudge Left (1px)"
                     >
                       <ArrowLeft className="w-3 h-3" />
                     </button>
@@ -997,7 +997,7 @@ export function ApngFrameStudioModal({
                       type="button"
                       onClick={() => updateActiveFrameOffset(0, -1)}
                       className="p-1.5 rounded-lg bg-neutral-100 hover:bg-neutral-200 text-neutral-700"
-                      title="Geser Atas (1px)"
+                      title="Nudge Up (1px)"
                     >
                       <ArrowUp className="w-3 h-3" />
                     </button>
@@ -1005,7 +1005,7 @@ export function ApngFrameStudioModal({
                       type="button"
                       onClick={() => updateActiveFrameOffset(0, 1)}
                       className="p-1.5 rounded-lg bg-neutral-100 hover:bg-neutral-200 text-neutral-700"
-                      title="Geser Bawah (1px)"
+                      title="Nudge Down (1px)"
                     >
                       <ArrowDown className="w-3 h-3" />
                     </button>
@@ -1013,7 +1013,7 @@ export function ApngFrameStudioModal({
                       type="button"
                       onClick={() => updateActiveFrameOffset(1, 0)}
                       className="p-1.5 rounded-lg bg-neutral-100 hover:bg-neutral-200 text-neutral-700"
-                      title="Geser Kanan (1px)"
+                      title="Nudge Right (1px)"
                     >
                       <ArrowRight className="w-3 h-3" />
                     </button>
@@ -1042,7 +1042,7 @@ export function ApngFrameStudioModal({
                   </div>
                 </div>
                 <p className="text-[10px] text-neutral-400">
-                  Tip: Gunakan tombol panah keyboard (Arrow keys) untuk menggeser 1px, atau Shift + Arrow untuk 5px.
+                  Tip: Use keyboard arrow keys to nudge 1px, or Shift + Arrow for 5px.
                 </p>
               </div>
             )}
@@ -1053,10 +1053,10 @@ export function ApngFrameStudioModal({
             {/* Input Name & Tag */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-neutral-50/80 p-3 rounded-xl border border-neutral-200">
               <div className="space-y-1">
-                <label className="text-xs font-bold text-neutral-800">Nama Stiker Animasi</label>
+                <label className="text-xs font-bold text-neutral-800">Animated Sticker Name</label>
                 <input
                   type="text"
-                  placeholder="Misal: Joget_Gembira / Kucing_Lucu"
+                  placeholder="e.g. Happy_Dance / Cute_Cat"
                   value={stickerName}
                   onChange={(e) => setStickerName(e.target.value)}
                   className="w-full px-3 py-1.5 text-xs rounded-lg border border-neutral-200 bg-white font-medium"
@@ -1064,10 +1064,10 @@ export function ApngFrameStudioModal({
               </div>
 
               <div className="space-y-1">
-                <label className="text-xs font-bold text-neutral-800">Tag / Reaksi Emoji</label>
+                <label className="text-xs font-bold text-neutral-800">Tag / Reaction Emoji</label>
                 <input
                   type="text"
-                  placeholder="Misal: dance / happy / cat"
+                  placeholder="e.g. dance / happy / cat"
                   value={stickerTag}
                   onChange={(e) => setStickerTag(e.target.value)}
                   className="w-full px-3 py-1.5 text-xs rounded-lg border border-neutral-200 bg-white"
@@ -1081,7 +1081,7 @@ export function ApngFrameStudioModal({
                 <div className="flex items-center gap-1.5">
                   <Anchor className="w-4 h-4 text-brand-600" />
                   <span className="text-xs font-bold text-brand-900">
-                    Auto-Stabilizer Posisi (Kunci Titik Tumpu)
+                    Position Auto-Stabilizer (Anchor Lock)
                   </span>
                 </div>
                 <div className="flex items-center gap-1 bg-white p-0.5 rounded-lg border border-brand-200 text-[11px]">
@@ -1091,9 +1091,9 @@ export function ApngFrameStudioModal({
                     className={`px-2 py-0.5 rounded font-semibold transition-all ${
                       anchorMode === 'BOTTOM_CENTER' ? 'bg-brand-500 text-white shadow-2xs' : 'text-neutral-600'
                     }`}
-                    title="Kunci garis kaki/tanah agar karakter tidak naik-turun"
+                    title="Lock bottom baseline so character does not bounce"
                   >
-                    Kaki / Bawah
+                    Feet / Bottom
                   </button>
                   <button
                     type="button"
@@ -1101,15 +1101,15 @@ export function ApngFrameStudioModal({
                     className={`px-2 py-0.5 rounded font-semibold transition-all ${
                       anchorMode === 'CENTER' ? 'bg-brand-500 text-white shadow-2xs' : 'text-neutral-600'
                     }`}
-                    title="Pusatkan objek ke tengah kanvas (untuk icon/logo melayang)"
+                    title="Center object inside canvas (for floating items/icons)"
                   >
-                    Pusat / Tengah
+                    Center
                   </button>
                 </div>
               </div>
 
               <p className="text-[11px] text-neutral-600">
-                Menyelaraskan seluruh frame agar titik tumpu karakter terkunci pada garis yang sama, melenyapkan animasi goyang (jitter/wobble) secara instan.
+                Aligns all frames so the character's anchor point is locked on the same baseline, eliminating animation jitter and wobbling instantly.
               </p>
 
               <div className="flex items-center gap-2">
@@ -1123,7 +1123,7 @@ export function ApngFrameStudioModal({
                   onClick={handleAutoStabilizeAll}
                   icon={<Sparkles className="w-3.5 h-3.5" />}
                 >
-                  ⚡ Auto-Stabilize Semua Frame
+                  ⚡ Auto-Stabilize All Frames
                 </Button>
 
                 <Button
@@ -1151,7 +1151,7 @@ export function ApngFrameStudioModal({
                   }`}
                 >
                   <Layers className="w-3.5 h-3.5" />
-                  Urutan Gambar Frame
+                  Frame Sequence
                 </button>
                 <button
                   type="button"
@@ -1163,12 +1163,12 @@ export function ApngFrameStudioModal({
                   }`}
                 >
                   <Grid3X3 className="w-3.5 h-3.5" />
-                  Pemotong Sprite Sheet Seragam
+                  Uniform Sprite Sheet Slicer
                 </button>
               </div>
 
               <Badge variant="neutral" size="sm">
-                {frames.length} Frame Aktif
+                {frames.length} Active Frames
               </Badge>
             </div>
 
@@ -1185,10 +1185,10 @@ export function ApngFrameStudioModal({
                 <div className="space-y-1.5 text-neutral-600">
                   <Upload className="w-6 h-6 mx-auto text-brand-600" />
                   <p className="text-xs font-bold text-neutral-800">
-                    Pilih File Frame Sekaligus (PNG / WEBP Transparan)
+                    Upload Frame Files (Transparent PNG / WEBP)
                   </p>
                   <p className="text-[11px] text-neutral-400">
-                    Otomatis diurutkan berdasarkan penomoran nama file (misal: walk_01.png, walk_02.png)
+                    Automatically ordered by numerical filenames (e.g. walk_01.png, walk_02.png)
                   </p>
                 </div>
               </div>
@@ -1196,7 +1196,7 @@ export function ApngFrameStudioModal({
               <div className="space-y-3 bg-neutral-50/80 p-3.5 rounded-2xl border border-neutral-200">
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
                   <div className="space-y-0.5">
-                    <label className="text-[10px] font-semibold text-neutral-600">Kolom</label>
+                    <label className="text-[10px] font-semibold text-neutral-600">Columns</label>
                     <input
                       type="number"
                       min="1"
@@ -1207,7 +1207,7 @@ export function ApngFrameStudioModal({
                     />
                   </div>
                   <div className="space-y-0.5">
-                    <label className="text-[10px] font-semibold text-neutral-600">Baris</label>
+                    <label className="text-[10px] font-semibold text-neutral-600">Rows</label>
                     <input
                       type="number"
                       min="1"
@@ -1239,7 +1239,7 @@ export function ApngFrameStudioModal({
                     </div>
                   </div>
                   <div className="space-y-0.5">
-                    <label className="text-[10px] font-semibold text-neutral-600">Spasi X / Y</label>
+                    <label className="text-[10px] font-semibold text-neutral-600">Spacing X / Y</label>
                     <div className="flex gap-1">
                       <input
                         type="number"
@@ -1273,7 +1273,7 @@ export function ApngFrameStudioModal({
                     <div className="space-y-1 text-neutral-600">
                       <Scissors className="w-5 h-5 mx-auto text-brand-600" />
                       <p className="text-xs font-bold text-neutral-800">
-                        Unggah Sprite Sheet Animasi ({spriteCols}x{spriteRows} Frame)
+                        Upload Animation Sprite Sheet ({spriteCols}x{spriteRows} Frames)
                       </p>
                     </div>
                   </div>
@@ -1285,7 +1285,7 @@ export function ApngFrameStudioModal({
 
                     <div className="flex items-center justify-between">
                       <span className="text-[11px] text-neutral-500 font-mono">
-                        {spriteDims.width}x{spriteDims.height} px • {spriteCols * spriteRows} frame seragam
+                        {spriteDims.width}x{spriteDims.height} px • {spriteCols * spriteRows} uniform frames
                       </span>
                       <Button
                         type="button"
@@ -1295,7 +1295,7 @@ export function ApngFrameStudioModal({
                         onClick={handleSliceUniformSpriteSheet}
                         icon={<Scissors className="w-3.5 h-3.5" />}
                       >
-                        Potong Menjadi {spriteCols * spriteRows} Frame Animasi
+                        Slice into {spriteCols * spriteRows} Animation Frames
                       </Button>
                     </div>
                   </div>
@@ -1309,7 +1309,7 @@ export function ApngFrameStudioModal({
                 <div className="flex items-center justify-between text-xs font-bold text-neutral-800 mb-1">
                   <span className="flex items-center gap-1.5">
                     <Clock className="w-3.5 h-3.5 text-neutral-600" />
-                    Kecepatan Animasi: {fps} FPS ({Math.round(1000 / fps)} ms/frame)
+                    Animation Speed: {fps} FPS ({Math.round(1000 / fps)} ms/frame)
                   </span>
                   <div className="flex gap-1">
                     {[8, 12, 16, 24, 30].map((rate) => (
@@ -1342,27 +1342,27 @@ export function ApngFrameStudioModal({
 
               <div className="grid grid-cols-2 gap-3 pt-1">
                 <div className="space-y-1">
-                  <label className="text-[11px] font-semibold text-neutral-700">Dimensi Target</label>
+                  <label className="text-[11px] font-semibold text-neutral-700">Target Dimensions</label>
                   <select
                     value={canvasSize}
                     onChange={(e) => setCanvasSize(parseInt(e.target.value))}
                     className="w-full px-2.5 py-1 text-xs rounded-lg border border-neutral-200 bg-white"
                   >
-                    <option value="512">512 x 512 px (Standar Optimal LAJU)</option>
-                    <option value="256">256 x 256 px (Kecil)</option>
+                    <option value="512">512 x 512 px (Optimal LAJU Standard)</option>
+                    <option value="256">256 x 256 px (Small)</option>
                   </select>
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-[11px] font-semibold text-neutral-700">Perulangan (Loop)</label>
+                  <label className="text-[11px] font-semibold text-neutral-700">Loop Behavior</label>
                   <select
                     value={loopCount}
                     onChange={(e) => setLoopCount(parseInt(e.target.value))}
                     className="w-full px-2.5 py-1 text-xs rounded-lg border border-neutral-200 bg-white"
                   >
-                    <option value="0">Tak Terbatas (Infinite Loop)</option>
-                    <option value="1">1 Kali Putar</option>
-                    <option value="3">3 Kali Putar</option>
+                    <option value="0">Infinite Loop</option>
+                    <option value="1">Play Once</option>
+                    <option value="3">Play 3 Times</option>
                   </select>
                 </div>
               </div>
@@ -1388,7 +1388,7 @@ export function ApngFrameStudioModal({
                   onClick={reverseFrames}
                   icon={<RotateCcw className="w-3.5 h-3.5 text-neutral-600" />}
                 >
-                  Balikkan Urutan
+                  Reverse Order
                 </Button>
 
                 {frames.length > 0 && (
@@ -1403,7 +1403,7 @@ export function ApngFrameStudioModal({
                       setCompiledUrl(null);
                     }}
                   >
-                    Kosongkan Frame
+                    Clear Frames
                   </Button>
                 )}
               </div>
@@ -1418,7 +1418,7 @@ export function ApngFrameStudioModal({
                 onClick={handleCompileApng}
                 icon={<Sparkles className="w-4 h-4" />}
               >
-                {compiledBlob ? 'Kompilasi Ulang APNG' : 'Kompilasi ke Stiker APNG'}
+                {compiledBlob ? 'Recompile APNG' : 'Compile to APNG Sticker'}
               </Button>
             </div>
           </div>
@@ -1429,10 +1429,10 @@ export function ApngFrameStudioModal({
           <div className="space-y-2 pt-2 border-t border-neutral-200">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-neutral-800">
-                Timeline Urutan Frame ({frames.length} Frame)
+                Timeline Frame Sequence ({frames.length} Frames)
               </span>
               <span className="text-[11px] text-neutral-400">
-                Pilih frame untuk koreksi posisi per-frame • Geser urutan dengan tombol panah
+                Select frame to nudge position • Reorder with arrow buttons
               </span>
             </div>
 
@@ -1478,7 +1478,7 @@ export function ApngFrameStudioModal({
                             moveFrame(idx, 'left');
                           }}
                           className="p-0.5 rounded hover:bg-neutral-100 text-neutral-600"
-                          title="Geser Kiri"
+                          title="Move Left"
                         >
                           <ArrowLeft className="w-3 h-3" />
                         </button>
@@ -1491,7 +1491,7 @@ export function ApngFrameStudioModal({
                             moveFrame(idx, 'right');
                           }}
                           className="p-0.5 rounded hover:bg-neutral-100 text-neutral-600"
-                          title="Geser Kanan"
+                          title="Move Right"
                         >
                           <ArrowRight className="w-3 h-3" />
                         </button>
@@ -1503,7 +1503,7 @@ export function ApngFrameStudioModal({
                           duplicateFrame(idx);
                         }}
                         className="p-0.5 rounded hover:bg-neutral-100 text-brand-600"
-                        title="Duplikasi Frame"
+                        title="Duplicate Frame"
                       >
                         <Copy className="w-3 h-3" />
                       </button>
@@ -1514,7 +1514,7 @@ export function ApngFrameStudioModal({
                           deleteFrame(idx);
                         }}
                         className="p-0.5 rounded hover:bg-rose-50 text-rose-600"
-                        title="Hapus Frame"
+                        title="Delete Frame"
                       >
                         <Trash2 className="w-3 h-3" />
                       </button>
@@ -1529,7 +1529,7 @@ export function ApngFrameStudioModal({
         {/* Modal Footer */}
         <div className="flex items-center justify-between pt-3 border-t border-neutral-100">
           <Button type="button" variant="outline" onClick={onClose} disabled={isSaving}>
-            Tutup
+            Close
           </Button>
 
           <Button
@@ -1541,7 +1541,7 @@ export function ApngFrameStudioModal({
             onClick={handleSaveSticker}
             icon={<CheckCircle className="w-4 h-4" />}
           >
-            Simpan Stiker Animasi ke Paket "{packName}"
+            Save Animated Sticker to Pack "{packName}"
           </Button>
         </div>
       </div>

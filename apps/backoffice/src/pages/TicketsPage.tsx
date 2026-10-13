@@ -2,20 +2,12 @@ import React, { useState } from 'react';
 import {
   LifeBuoy,
   Search,
-  Filter,
   CheckCircle2,
   Clock,
-  AlertTriangle,
-  User,
   MessageSquare,
   ArrowRight,
   Send,
-  ShieldCheck,
   RefreshCw,
-  Smartphone,
-  Check,
-  X,
-  FileText,
 } from 'lucide-react';
 import { useTicketsList, useUpdateTicket } from '../hooks/useTickets';
 import { usePagination } from '../hooks/usePagination';
@@ -27,8 +19,8 @@ import { SupportTicketItem, TicketStatus, TicketPriority } from '../api/types';
 
 export function TicketsPage() {
   const [statusFilter, setStatusFilter] = useState<'ALL' | TicketStatus>('OPEN');
-  const [priorityFilter, setPriorityFilter] = useState<'ALL' | TicketPriority>('ALL');
-  const [categoryFilter, setCategoryFilter] = useState<string>('ALL');
+  const [priorityFilter] = useState<'ALL' | TicketPriority>('ALL');
+  const [categoryFilter] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
 
   // Review & Response Modal State
@@ -96,13 +88,13 @@ export function TicketsPage() {
   const getStatusBadge = (status: TicketStatus) => {
     switch (status) {
       case 'OPEN':
-        return <Badge variant="warning">Baru (Open)</Badge>;
+        return <Badge variant="warning">New (Open)</Badge>;
       case 'IN_PROGRESS':
-        return <Badge variant="brand">Sedang Diproses</Badge>;
+        return <Badge variant="brand">In Progress</Badge>;
       case 'RESOLVED':
-        return <Badge variant="success">Selesai</Badge>;
+        return <Badge variant="success">Resolved</Badge>;
       case 'CLOSED':
-        return <Badge variant="neutral">Ditutup</Badge>;
+        return <Badge variant="neutral">Closed</Badge>;
       default:
         return <Badge variant="neutral">{status}</Badge>;
     }
@@ -111,13 +103,13 @@ export function TicketsPage() {
   const getPriorityBadge = (priority: TicketPriority) => {
     switch (priority) {
       case 'CRITICAL':
-        return <Badge variant="error">Kritis</Badge>;
+        return <Badge variant="error">Critical</Badge>;
       case 'HIGH':
-        return <Badge variant="error">Tinggi</Badge>;
+        return <Badge variant="error">High</Badge>;
       case 'MEDIUM':
-        return <Badge variant="warning">Sedang</Badge>;
+        return <Badge variant="warning">Medium</Badge>;
       case 'LOW':
-        return <Badge variant="neutral">Rendah</Badge>;
+        return <Badge variant="neutral">Low</Badge>;
       default:
         return <Badge variant="neutral">{priority}</Badge>;
     }
@@ -126,7 +118,7 @@ export function TicketsPage() {
   const formatDate = (isoStr: string) => {
     try {
       const d = new Date(isoStr);
-      return d.toLocaleString('id-ID', {
+      return d.toLocaleString('en-US', {
         day: 'numeric',
         month: 'short',
         year: 'numeric',
@@ -145,16 +137,16 @@ export function TicketsPage() {
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-xl font-extrabold tracking-tight text-neutral-900">
-              Pusat Tiket Bantuan Pengguna (Support Tickets)
+              Support & Help Desk
             </h1>
             {counts.open > 0 && (
               <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-200 animate-pulse">
-                {counts.open} Tiket Baru
+                {counts.open} Open Tickets
               </span>
             )}
           </div>
           <p className="text-xs text-neutral-500 mt-1">
-            Kelola pengaduan teknis, kendala enkripsi, serta kirimkan balasan resmi langsung ke aplikasi mobile pengguna
+            Resolve user inquiries, investigate technical issues, and dispatch official replies directly to client devices.
           </p>
         </div>
 
@@ -165,7 +157,7 @@ export function TicketsPage() {
           className="self-start sm:self-auto gap-1.5"
         >
           <RefreshCw className="w-3.5 h-3.5" />
-          Segarkan Data
+          Refresh Data
         </Button>
       </div>
 
@@ -173,46 +165,46 @@ export function TicketsPage() {
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div className="bg-white rounded-2xl border border-neutral-200/80 p-4 shadow-xs">
           <div className="flex items-center justify-between text-neutral-500 mb-2">
-            <span className="text-xs font-semibold">Total Tiket</span>
+            <span className="text-xs font-semibold">Total Tickets</span>
             <LifeBuoy className="w-4 h-4 text-neutral-400" />
           </div>
           <div className="text-2xl font-black text-neutral-900">
             {ticketsData?.total ?? 0}
           </div>
-          <p className="text-[10px] text-neutral-400 mt-0.5">Semua tiket yang masuk</p>
+          <p className="text-[10px] text-neutral-400 mt-0.5">All tickets submitted</p>
         </div>
 
         <div className="bg-white rounded-2xl border border-amber-200/80 p-4 shadow-xs bg-amber-50/20">
           <div className="flex items-center justify-between text-amber-700 mb-2">
-            <span className="text-xs font-semibold">Menunggu Review</span>
+            <span className="text-xs font-semibold">Awaiting Review</span>
             <Clock className="w-4 h-4 text-amber-500" />
           </div>
           <div className="text-2xl font-black text-amber-800">
             {counts.open}
           </div>
-          <p className="text-[10px] text-amber-600 mt-0.5">Status Baru (Open)</p>
+          <p className="text-[10px] text-amber-600 mt-0.5">Open status</p>
         </div>
 
         <div className="bg-white rounded-2xl border border-brand-200/80 p-4 shadow-xs bg-brand-50/20">
           <div className="flex items-center justify-between text-brand-700 mb-2">
-            <span className="text-xs font-semibold">Sedang Diproses</span>
+            <span className="text-xs font-semibold">In Progress</span>
             <MessageSquare className="w-4 h-4 text-brand-500" />
           </div>
           <div className="text-2xl font-black text-brand-900">
             {counts.inProgress}
           </div>
-          <p className="text-[10px] text-brand-600 mt-0.5">Sedang ditangani tim</p>
+          <p className="text-[10px] text-brand-600 mt-0.5">Being handled by team</p>
         </div>
 
         <div className="bg-white rounded-2xl border border-neutral-200/80 p-4 shadow-xs">
           <div className="flex items-center justify-between text-neutral-500 mb-2">
-            <span className="text-xs font-semibold">Terselesaikan</span>
+            <span className="text-xs font-semibold">Resolved</span>
             <CheckCircle2 className="w-4 h-4 text-brand-600" />
           </div>
           <div className="text-2xl font-black text-neutral-900">
             {counts.resolved}
           </div>
-          <p className="text-[10px] text-neutral-400 mt-0.5">Solusi telah dikirim</p>
+          <p className="text-[10px] text-neutral-400 mt-0.5">Solution dispatched</p>
         </div>
       </div>
 
@@ -223,7 +215,7 @@ export function TicketsPage() {
           <Search className="w-4 h-4 text-neutral-400 absolute left-3 top-1/2 -translate-y-1/2" />
           <input
             type="text"
-            placeholder="Cari kode tiket, subjek, pesan, username..."
+            placeholder="Search ticket code, subject, message, username..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full pl-9 pr-3 py-1.5 text-xs rounded-xl border border-neutral-200 bg-neutral-50/50 text-neutral-900 placeholder:text-neutral-400 focus:outline-none focus:border-neutral-900 focus:bg-white"
@@ -243,14 +235,14 @@ export function TicketsPage() {
               }`}
             >
               {tab === 'OPEN'
-                ? `Baru (${counts.open})`
+                ? `Open (${counts.open})`
                 : tab === 'IN_PROGRESS'
-                ? `Diproses (${counts.inProgress})`
+                ? `In Progress (${counts.inProgress})`
                 : tab === 'RESOLVED'
-                ? `Selesai (${counts.resolved})`
+                ? `Resolved (${counts.resolved})`
                 : tab === 'CLOSED'
-                ? `Ditutup (${counts.closed})`
-                : 'Semua'}
+                ? `Closed (${counts.closed})`
+                : 'All'}
             </button>
           ))}
         </div>
@@ -262,29 +254,29 @@ export function TicketsPage() {
           <table className="w-full text-left text-xs">
             <thead className="bg-neutral-50/70 border-b border-neutral-100 text-neutral-500 uppercase tracking-wider text-[10px] font-bold">
               <tr>
-                <th className="px-5 py-3.5">Kode Tiket</th>
-                <th className="px-5 py-3.5">Pengguna</th>
-                <th className="px-5 py-3.5">Subjek & Pesan</th>
-                <th className="px-5 py-3.5">Prioritas</th>
+                <th className="px-5 py-3.5">Ticket Code</th>
+                <th className="px-5 py-3.5">User</th>
+                <th className="px-5 py-3.5">Subject & Message</th>
+                <th className="px-5 py-3.5">Priority</th>
                 <th className="px-5 py-3.5">Status</th>
-                <th className="px-5 py-3.5">Waktu Masuk</th>
-                <th className="px-5 py-3.5 text-right">Tindakan</th>
+                <th className="px-5 py-3.5">Submitted At</th>
+                <th className="px-5 py-3.5 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-neutral-100">
               {isLoading ? (
                 <tr>
                   <td colSpan={7} className="px-5 py-12 text-center text-neutral-400">
-                    Memuat data tiket bantuan...
+                    Loading support tickets...
                   </td>
                 </tr>
               ) : pagination.paginatedItems.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="px-5 py-12 text-center">
                     <LifeBuoy className="w-8 h-8 text-neutral-300 mx-auto mb-2" />
-                    <p className="text-xs font-semibold text-neutral-600">Tidak ada tiket bantuan yang ditemukan</p>
+                    <p className="text-xs font-semibold text-neutral-600">No support tickets found</p>
                     <p className="text-[11px] text-neutral-400 mt-0.5">
-                      Belum ada laporan dari pengguna pada kategori filter ini
+                      No customer issues submitted for this filter criteria
                     </p>
                   </td>
                 </tr>
@@ -312,7 +304,7 @@ export function TicketsPage() {
                         </div>
                         <div>
                           <div className="font-bold text-neutral-900">
-                            @{ticket.user?.username || 'Anonim'}
+                            @{ticket.user?.username || 'Anonymous'}
                           </div>
                           <div className="text-[10px] text-neutral-400">
                             {ticket.user?.phoneNumber || ticket.user?.email || 'ID: ' + ticket.userId.substring(0, 8)}
@@ -349,7 +341,7 @@ export function TicketsPage() {
                         onClick={() => handleOpenTicket(ticket)}
                         className="gap-1 text-xs"
                       >
-                        Tinjau & Tanggapi
+                        Review & Respond
                         <ArrowRight className="w-3.5 h-3.5" />
                       </Button>
                     </td>
@@ -364,7 +356,7 @@ export function TicketsPage() {
         {pagination.totalPages > 1 && (
           <div className="p-4 border-t border-neutral-100 flex items-center justify-between">
             <span className="text-xs text-neutral-500">
-              Total {pagination.totalItems} tiket
+              Total {pagination.totalItems} tickets
             </span>
             <Pagination
               currentPage={pagination.currentPage}
@@ -383,8 +375,8 @@ export function TicketsPage() {
         <Modal
           isOpen={!!selectedTicket}
           onClose={() => setSelectedTicket(null)}
-          title={`Detail Tiket: ${selectedTicket.ticketCode}`}
-          description={`Pengirim: @${selectedTicket.user?.username || 'Anonim'} • Kategori: ${selectedTicket.category || 'General'}`}
+          title={`Ticket Details: ${selectedTicket.ticketCode}`}
+          description={`From: @${selectedTicket.user?.username || 'Anonymous'} • Category: ${selectedTicket.category || 'General'}`}
           maxWidth="2xl"
         >
           <div className="space-y-4 text-xs">
@@ -396,7 +388,7 @@ export function TicketsPage() {
                 </div>
                 <div>
                   <div className="font-bold text-neutral-900">
-                    @{selectedTicket.user?.username || 'Anonim'}
+                    @{selectedTicket.user?.username || 'Anonymous'}
                   </div>
                   <div className="text-[10px] text-neutral-400">
                     Trust Score: {selectedTicket.user?.trustScore ?? 100}/100 • Status: {selectedTicket.user?.status || 'ACTIVE'}
@@ -405,7 +397,7 @@ export function TicketsPage() {
               </div>
 
               <div className="flex items-center gap-2">
-                <span className="text-[11px] text-neutral-500">Versi App:</span>
+                <span className="text-[11px] text-neutral-500">App Version:</span>
                 <span className="font-mono font-semibold px-2 py-0.5 rounded bg-white border border-neutral-200 text-neutral-700">
                   {selectedTicket.appVersion || '1.0.0'}
                 </span>
@@ -415,7 +407,7 @@ export function TicketsPage() {
             {/* Ticket Content Box */}
             <div className="border border-neutral-200 rounded-xl p-4 bg-white space-y-2">
               <div className="text-[10px] uppercase font-bold text-neutral-400 tracking-wider">
-                Subjek & Keluhan Pengguna
+                Subject & Inquired Issue
               </div>
               <h3 className="text-sm font-bold text-neutral-900">
                 {selectedTicket.subject}
@@ -424,7 +416,7 @@ export function TicketsPage() {
                 {selectedTicket.message}
               </div>
               <div className="text-[10px] text-neutral-400">
-                Diajukan pada: {formatDate(selectedTicket.createdAt)}
+                Submitted at: {formatDate(selectedTicket.createdAt)}
               </div>
             </div>
 
@@ -432,33 +424,33 @@ export function TicketsPage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="block font-bold text-neutral-700 mb-1">
-                  Status Tiket
+                  Ticket Status
                 </label>
                 <select
                   value={newStatus}
                   onChange={(e) => setNewStatus(e.target.value as TicketStatus)}
                   className="w-full px-3 py-2 rounded-xl border border-neutral-200 bg-white text-xs font-semibold focus:outline-none focus:border-brand-600"
                 >
-                  <option value="OPEN">Baru (OPEN)</option>
-                  <option value="IN_PROGRESS">Sedang Ditangani (IN_PROGRESS)</option>
-                  <option value="RESOLVED">Terselesaikan (RESOLVED)</option>
-                  <option value="CLOSED">Ditutup (CLOSED)</option>
+                  <option value="OPEN">Open</option>
+                  <option value="IN_PROGRESS">In Progress</option>
+                  <option value="RESOLVED">Resolved</option>
+                  <option value="CLOSED">Closed</option>
                 </select>
               </div>
 
               <div>
                 <label className="block font-bold text-neutral-700 mb-1">
-                  Tingkat Prioritas
+                  Priority Level
                 </label>
                 <select
                   value={newPriority}
                   onChange={(e) => setNewPriority(e.target.value as TicketPriority)}
                   className="w-full px-3 py-2 rounded-xl border border-neutral-200 bg-white text-xs font-semibold focus:outline-none focus:border-brand-600"
                 >
-                  <option value="LOW">Rendah (LOW)</option>
-                  <option value="MEDIUM">Sedang (MEDIUM)</option>
-                  <option value="HIGH">Tinggi (HIGH)</option>
-                  <option value="CRITICAL">Kritis (CRITICAL)</option>
+                  <option value="LOW">Low</option>
+                  <option value="MEDIUM">Medium</option>
+                  <option value="HIGH">High</option>
+                  <option value="CRITICAL">Critical</option>
                 </select>
               </div>
             </div>
@@ -466,16 +458,16 @@ export function TicketsPage() {
             {/* Official Response Input */}
             <div>
               <label className="block font-bold text-neutral-900 mb-1">
-                Tanggapan / Solusi Resmi untuk Pengguna
+                Official Staff Response
               </label>
               <p className="text-[11px] text-neutral-500 mb-1.5">
-                Pesan ini akan dikirimkan sebagai notifikasi push & langsung tampil di riwayat tiket aplikasi mobile pengguna.
+                This response will be delivered via push notification and displayed in the user's mobile ticket history.
               </p>
               <textarea
                 rows={3}
                 value={responseMessage}
                 onChange={(e) => setResponseMessage(e.target.value)}
-                placeholder="Tuliskan jawaban atau solusi teknis kepada pengguna di sini..."
+                placeholder="Write the technical resolution or response here..."
                 className="w-full px-3 py-2 rounded-xl border border-neutral-200 bg-neutral-50/50 text-xs focus:outline-none focus:border-brand-600 focus:bg-white resize-none"
               />
             </div>
@@ -483,13 +475,13 @@ export function TicketsPage() {
             {/* Internal Staff Notes */}
             <div>
               <label className="block font-bold text-neutral-700 mb-1">
-                Catatan Internal Admin (Opsional)
+                Internal Admin Notes (Optional)
               </label>
               <textarea
                 rows={2}
                 value={adminNotes}
                 onChange={(e) => setAdminNotes(e.target.value)}
-                placeholder="Catatan rahasia untuk tim admin (tidak terlihat oleh pengguna)..."
+                placeholder="Private notes for administrator audit (not visible to user)..."
                 className="w-full px-3 py-2 rounded-xl border border-neutral-200 bg-neutral-50/50 text-xs focus:outline-none focus:border-neutral-900 focus:bg-white resize-none"
               />
             </div>
@@ -501,7 +493,7 @@ export function TicketsPage() {
                 size="sm"
                 onClick={() => setSelectedTicket(null)}
               >
-                Batal
+                Cancel
               </Button>
               <Button
                 variant="primary"
@@ -515,7 +507,7 @@ export function TicketsPage() {
                 ) : (
                   <Send className="w-3.5 h-3.5" />
                 )}
-                Simpan & Kirim Tanggapan
+                Save & Dispatch Response
               </Button>
             </div>
           </div>

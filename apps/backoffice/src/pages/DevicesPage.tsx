@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Smartphone, Radio, Search, ShieldCheck, ShieldAlert, Trash2 } from 'lucide-react';
+import { Smartphone, Search } from 'lucide-react';
 import { useDevicesList, useRevokeDevice } from '../hooks/useDevices';
 import { usePagination } from '../hooks/usePagination';
 import { Button } from '../components/ui/Button';
@@ -63,10 +63,10 @@ export function DevicesPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-xl font-extrabold tracking-tight text-neutral-900">
-            Daftar Perangkat (Devices)
+            Registered Devices
           </h1>
           <p className="text-xs text-neutral-500 mt-1">
-            Status koneksi online / offline dan manajemen sesi seluruh perangkat terdaftar
+            Real-time connection status and session management for all registered client devices.
           </p>
         </div>
 
@@ -90,7 +90,7 @@ export function DevicesPage() {
           <Search className="w-4 h-4 text-neutral-400 absolute left-3 top-1/2 -translate-y-1/2" />
           <input
             type="text"
-            placeholder="Cari Device ID atau username..."
+            placeholder="Search Device ID or username..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full pl-9 pr-3 py-1.5 text-xs rounded-xl border border-neutral-200 bg-neutral-50/50 text-neutral-900 placeholder:text-neutral-400 focus:outline-none focus:border-neutral-900 focus:bg-white"
@@ -107,7 +107,7 @@ export function DevicesPage() {
                 : 'text-neutral-500 hover:text-neutral-900'
             }`}
           >
-            Semua ({devices?.length ?? 0})
+            All ({devices?.length ?? 0})
           </button>
           <button
             onClick={() => setStatusFilter('ONLINE')}
@@ -141,19 +141,19 @@ export function DevicesPage() {
             <thead className="bg-neutral-50/70 border-b border-neutral-100 text-neutral-500 uppercase tracking-wider text-[10px] font-bold">
               <tr>
                 <th className="px-5 py-3.5">Device ID</th>
-                <th className="px-5 py-3.5">Pemilik Akun</th>
-                <th className="px-5 py-3.5">Status Koneksi</th>
-                <th className="px-5 py-3.5">Status Sesi</th>
-                <th className="px-5 py-3.5">Terakhir Aktif</th>
-                <th className="px-5 py-3.5">Didaftarkan</th>
-                <th className="px-5 py-3.5 text-right">Tindakan</th>
+                <th className="px-5 py-3.5">Account Owner</th>
+                <th className="px-5 py-3.5">Connection Status</th>
+                <th className="px-5 py-3.5">Session Status</th>
+                <th className="px-5 py-3.5">Last Seen</th>
+                <th className="px-5 py-3.5">Registered</th>
+                <th className="px-5 py-3.5 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-neutral-100">
               {isLoading ? (
                 <tr>
                   <td colSpan={7} className="px-5 py-8 text-center text-neutral-400">
-                    Memuat data perangkat...
+                    Loading devices...
                   </td>
                 </tr>
               ) : pagination.paginatedItems && pagination.paginatedItems.length > 0 ? (
@@ -185,23 +185,23 @@ export function DevicesPage() {
                     </td>
                     <td className="px-5 py-3.5">
                       {device.status === 'ACTIVE' ? (
-                        <Badge variant="success">Aktif</Badge>
+                        <Badge variant="success">Active</Badge>
                       ) : device.status === 'REVOKED' ? (
-                        <Badge variant="error">Nonaktif</Badge>
+                        <Badge variant="error">Revoked</Badge>
                       ) : (
                         <Badge variant="warning">{device.status}</Badge>
                       )}
                     </td>
                     <td className="px-5 py-3.5 text-neutral-500 text-[11px]">
                       {device.lastSeenAt
-                        ? new Date(device.lastSeenAt).toLocaleString('id-ID', {
+                        ? new Date(device.lastSeenAt).toLocaleString('en-US', {
                             dateStyle: 'short',
                             timeStyle: 'short',
                           })
                         : '—'}
                     </td>
                     <td className="px-5 py-3.5 text-neutral-500 text-[11px]">
-                      {new Date(device.createdAt).toLocaleDateString('id-ID', {
+                      {new Date(device.createdAt).toLocaleDateString('en-US', {
                         day: 'numeric',
                         month: 'short',
                         year: 'numeric',
@@ -215,7 +215,7 @@ export function DevicesPage() {
                           className="text-rose-600 hover:text-rose-700 hover:bg-rose-50"
                           onClick={() => handleOpenRevoke(device.id)}
                         >
-                          Putus Sesi
+                          Revoke Session
                         </Button>
                       )}
                     </td>
@@ -224,7 +224,7 @@ export function DevicesPage() {
               ) : (
                 <tr>
                   <td colSpan={7} className="px-5 py-8 text-center text-neutral-400">
-                    Belum ada perangkat yang sesuai dengan filter
+                    No devices match the filter
                   </td>
                 </tr>
               )}
@@ -245,15 +245,15 @@ export function DevicesPage() {
         </div>
       </div>
 
-      {/* Modal Putus Sesi */}
+      {/* Revoke Session Modal */}
       <ConfirmModal
         isOpen={revokeModal.isOpen}
         onClose={() => setRevokeModal({ isOpen: false, deviceId: '' })}
         onConfirm={handleConfirmRevoke}
-        title="Putus Sesi Perangkat"
-        description={`Yakin ingin memutuskan sesi perangkat ini (ID: ${revokeModal.deviceId})? Akun pada perangkat ini akan langsung dikeluarkan secara aman.`}
-        confirmText="Putus Sesi"
-        cancelText="Batal"
+        title="Revoke Device Session"
+        description={`Are you sure you want to revoke session for device (ID: ${revokeModal.deviceId})? The account on this device will be immediately and securely logged out.`}
+        confirmText="Revoke Session"
+        cancelText="Cancel"
         variant="danger"
         isLoading={revokeDevice.isPending}
       />

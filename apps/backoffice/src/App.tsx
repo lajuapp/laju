@@ -23,7 +23,8 @@ export function App() {
 
       <Route path="/" element={<AppLayout />}>
         <Route index element={<DashboardPage />} />
-        <Route path="marketing-analytics" element={<MarketingAnalyticsPage />} />
+        <Route path="service-stats" element={<MarketingAnalyticsPage />} />
+        <Route path="marketing-analytics" element={<Navigate to="/service-stats" replace />} />
         <Route path="admins" element={<AdminsPage />} />
 
         <Route path="users" element={<UsersPage />} />

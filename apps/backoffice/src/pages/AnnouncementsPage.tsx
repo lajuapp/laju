@@ -45,8 +45,8 @@ const COLOR_PRESETS = [
 ];
 
 const announcementSchema = z.object({
-  title: z.string().min(3, 'Judul status minimal 3 karakter'),
-  content: z.string().min(5, 'Isi pesan status minimal 5 karakter'),
+  title: z.string().min(3, 'Announcement title must be at least 3 characters'),
+  content: z.string().min(5, 'Announcement content must be at least 5 characters'),
   type: z.enum(['INFO', 'WARNING', 'MAINTENANCE']),
   targetType: z.enum(['ALL', 'SPECIFIC', 'BULK']).default('ALL'),
   targetUserIds: z.string().optional(),
@@ -128,7 +128,7 @@ export function AnnouncementsPage() {
         video.onloadedmetadata = () => {
           if (video.duration > 60.5) {
             setErrorMessage(
-              `Durasi video melebihi batas maksimal 1 menit (${Math.round(video.duration)} detik). Silakan gunakan video dengan durasi maksimal 60 detik.`
+              `Video length exceeds the 1-minute limit (${Math.round(video.duration)}s). Please use a video under 60 seconds.`
             );
             setSelectedFile(null);
             setFilePreview(null);
@@ -140,7 +140,7 @@ export function AnnouncementsPage() {
           setVideoDuration(Math.round(video.duration));
         };
         video.onerror = () => {
-          setErrorMessage('Gagal memuat metadata video. Pastikan format file adalah video valid (MP4/WebM).');
+          setErrorMessage('Failed to load video metadata. Please ensure the file is a valid MP4 or WebM video.');
           setSelectedFile(null);
           setFilePreview(null);
           setVideoDuration(null);
@@ -159,40 +159,29 @@ export function AnnouncementsPage() {
       setErrorMessage(null);
       let finalMediaUrl = data.mediaUrl;
 
-      if ((data.mediaType === 'IMAGE' || data.mediaType === 'VIDEO') && selectedFile) {
+      if (selectedFile) {
         const uploadRes = await mediaUpload.mutateAsync(selectedFile);
         finalMediaUrl = uploadRes.url;
       }
 
-      const payload: any = {
-        title: data.title,
-        content: data.content,
-        type: data.type,
-        targetType: data.targetType,
-        isActive: data.isActive,
-        mediaType: data.mediaType,
-        mediaUrl: finalMediaUrl || undefined,
-        backgroundColor: data.backgroundColor,
-        durationHours: Number(data.durationHours),
-        actionTitle: data.actionTitle?.trim() || undefined,
-        actionUrl: data.actionUrl?.trim() || undefined,
-      };
+      const parsedTargetUserIds = data.targetUserIds
+        ? data.targetUserIds.split(',').map((id) => id.trim()).filter(Boolean)
+        : undefined;
 
-      if (data.targetType !== 'ALL' && data.targetUserIds) {
-        payload.targetUserIds = data.targetUserIds
-          .split(/[\n,]+/)
-          .map((s) => s.trim())
-          .filter((s) => s.length > 0);
-      }
+      await createAnnouncement.mutateAsync({
+        ...data,
+        targetUserIds: parsedTargetUserIds,
+        mediaUrl: finalMediaUrl,
+      });
 
-      await createAnnouncement.mutateAsync(payload);
       setIsModalOpen(false);
       reset();
       setSelectedFile(null);
       setFilePreview(null);
+      setVideoDuration(null);
     } catch (err: any) {
       setErrorMessage(
-        err.response?.data?.message || 'Gagal membuat Status Resmi LAJU'
+        err.response?.data?.message || 'Failed to publish official announcement story'
       );
     }
   };
@@ -216,39 +205,36 @@ export function AnnouncementsPage() {
   const getTypeBadge = (type: string) => {
     switch (type) {
       case 'WARNING':
-        return <Badge variant="warning">Peringatan</Badge>;
+        return <Badge variant="warning">Notice</Badge>;
       case 'MAINTENANCE':
-        return <Badge variant="error">Pemeliharaan</Badge>;
-      case 'INFO':
+        return <Badge variant="error">Maintenance</Badge>;
       default:
-        return <Badge variant="brand">Informasi</Badge>;
+        return <Badge variant="brand">Broadcast</Badge>;
     }
   };
 
-  const getTargetBadge = (targetType?: string, count?: number) => {
+  const getTargetBadge = (targetType: string = 'ALL', userCount?: number) => {
     switch (targetType) {
       case 'SPECIFIC':
-        return <Badge variant="neutral">Pengguna Khusus (1)</Badge>;
+        return <Badge variant="neutral">Single User</Badge>;
       case 'BULK':
-        return <Badge variant="warning">Bulk ({count || 0} Pengguna)</Badge>;
-      case 'ALL':
+        return <Badge variant="neutral">{userCount || 0} Target Users</Badge>;
       default:
-        return <Badge variant="brand">Semua Pengguna (Broadcast)</Badge>;
+        return <Badge variant="brand">All Users (Broadcast)</Badge>;
     }
   };
 
-  const formatExpiryTime = (expiresAt?: string, durationHours?: number) => {
-    if (!expiresAt) {
-      if (durationHours === 0) return 'Permanen';
-      return '-';
-    }
-    const exp = new Date(expiresAt).getTime();
-    const now = Date.now();
-    const diffHours = Math.round((exp - now) / (1000 * 60 * 60));
-    if (diffHours <= 0) return 'Kedaluwarsa';
-    if (diffHours < 24) return `Sisa ${diffHours} jam`;
+  const formatExpiryTime = (expiresAt?: string | null, durationHours?: number) => {
+    if (durationHours === 0) return 'Permanent';
+    if (!expiresAt) return '24 Hours';
+
+    const diffMs = new Date(expiresAt).getTime() - Date.now();
+    if (diffMs <= 0) return 'Expired';
+
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+    if (diffHours < 24) return `${diffHours}h remaining`;
     const days = Math.floor(diffHours / 24);
-    return `Sisa ${days} hari`;
+    return `${days}d remaining`;
   };
 
   return (
@@ -258,15 +244,15 @@ export function AnnouncementsPage() {
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-xl font-extrabold tracking-tight text-neutral-900">
-              Status Resmi LAJU (Official Stories)
+              Official Stories & Announcements
             </h1>
             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800">
               <Sparkles className="w-3 h-3 text-amber-600" />
-              Story Otomatis
+              Automated Story
             </span>
           </div>
           <p className="text-xs text-neutral-500 mt-1">
-            Status ini muncul langsung di tab Status aplikasi mobile dengan badge terverifikasi dan ring gradien biru LAJU
+            Broadcast stories appear directly in the mobile client Status tab with official verified badges.
           </p>
         </div>
 
@@ -282,7 +268,7 @@ export function AnnouncementsPage() {
             setIsModalOpen(true);
           }}
         >
-          Buat Status Resmi
+          Create Story Announcement
         </Button>
       </div>
 
@@ -292,21 +278,21 @@ export function AnnouncementsPage() {
           <table className="w-full text-left text-xs">
             <thead className="bg-neutral-50/70 border-b border-neutral-100 text-neutral-500 uppercase tracking-wider text-[10px] font-bold">
               <tr>
-                <th className="px-5 py-3.5">Pratinjau Story</th>
-                <th className="px-5 py-3.5">Judul & Pesan</th>
-                <th className="px-5 py-3.5">Tipe & Target</th>
-                <th className="px-5 py-3.5">Durasi / Kedaluwarsa</th>
-                <th className="px-5 py-3.5">Dilihat</th>
+                <th className="px-5 py-3.5">Story Preview</th>
+                <th className="px-5 py-3.5">Title & Message</th>
+                <th className="px-5 py-3.5">Type & Target</th>
+                <th className="px-5 py-3.5">Duration / Expiry</th>
+                <th className="px-5 py-3.5">Views</th>
                 <th className="px-5 py-3.5">Status</th>
-                <th className="px-5 py-3.5">Dibuat Pada</th>
-                <th className="px-5 py-3.5 text-right">Tindakan</th>
+                <th className="px-5 py-3.5">Published At</th>
+                <th className="px-5 py-3.5 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-neutral-100">
               {isLoading ? (
                 <tr>
                   <td colSpan={8} className="px-5 py-8 text-center text-neutral-400">
-                    Memuat daftar status resmi...
+                    Loading official stories...
                   </td>
                 </tr>
               ) : pagination.paginatedItems && pagination.paginatedItems.length > 0 ? (
@@ -353,7 +339,7 @@ export function AnnouncementsPage() {
                         {item.title}
                         {item.mediaType === 'VIDEO' ? (
                           <span className="text-[10px] text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded font-medium flex items-center gap-0.5">
-                            <Video className="w-2.5 h-2.5" /> Video (Maks 1m)
+                            <Video className="w-2.5 h-2.5" /> Video (Max 1m)
                           </span>
                         ) : item.mediaType === 'IMAGE' ? (
                           <span className="text-[10px] text-sky-600 bg-sky-50 px-1.5 py-0.5 rounded font-medium flex items-center gap-0.5">
@@ -361,7 +347,7 @@ export function AnnouncementsPage() {
                           </span>
                         ) : (
                           <span className="text-[10px] text-purple-600 bg-purple-50 px-1.5 py-0.5 rounded font-medium flex items-center gap-0.5">
-                            <Type className="w-2.5 h-2.5" /> Teks
+                            <Type className="w-2.5 h-2.5" /> Text
                           </span>
                         )}
                       </p>
@@ -371,7 +357,7 @@ export function AnnouncementsPage() {
                       {item.actionUrl && (
                         <div className="mt-1 flex items-center gap-1 text-[10px] text-blue-600 font-medium">
                           <ExternalLink className="w-2.5 h-2.5" />
-                          <span>{item.actionTitle || 'Buka Tautan'}</span>
+                          <span>{item.actionTitle || 'Open Link'}</span>
                         </div>
                       )}
                     </td>
@@ -387,7 +373,7 @@ export function AnnouncementsPage() {
                         <span>{formatExpiryTime(item.expiresAt, item.durationHours)}</span>
                       </div>
                       <span className="text-[10px] text-neutral-400">
-                        {item.durationHours === 0 ? 'Permanen' : `${item.durationHours || 24} Jam`}
+                        {item.durationHours === 0 ? 'Permanent' : `${item.durationHours || 24} Hours`}
                       </span>
                     </td>
 
@@ -400,14 +386,14 @@ export function AnnouncementsPage() {
 
                     <td className="px-5 py-3.5">
                       {item.isActive ? (
-                        <Badge variant="success">Aktif Tayang</Badge>
+                        <Badge variant="success">Active</Badge>
                       ) : (
-                        <Badge variant="neutral">Nonaktif</Badge>
+                        <Badge variant="neutral">Inactive</Badge>
                       )}
                     </td>
 
                     <td className="px-5 py-3.5 text-neutral-500 text-[11px]">
-                      {new Date(item.createdAt).toLocaleDateString('id-ID', {
+                      {new Date(item.createdAt).toLocaleDateString('en-US', {
                         day: 'numeric',
                         month: 'short',
                         year: 'numeric',
@@ -422,7 +408,7 @@ export function AnnouncementsPage() {
                         variant="outline"
                         onClick={() => handleToggleActive(item.id, item.isActive)}
                       >
-                        {item.isActive ? 'Nonaktifkan' : 'Aktifkan'}
+                        {item.isActive ? 'Deactivate' : 'Activate'}
                       </Button>
                       <Button
                         size="sm"
@@ -438,7 +424,7 @@ export function AnnouncementsPage() {
               ) : (
                 <tr>
                   <td colSpan={8} className="px-5 py-8 text-center text-neutral-400">
-                    Belum ada status resmi LAJU dibuat
+                    No official announcements posted yet
                   </td>
                 </tr>
               )}
@@ -459,12 +445,12 @@ export function AnnouncementsPage() {
         </div>
       </div>
 
-      {/* Modal Buat Status Resmi Baru */}
+      {/* Modal Create Official Announcement */}
       <Modal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
-        title="Buat Status Resmi LAJU Baru"
-        description="Siarkan status visual story 9:16 dengan badge resmi LAJU ke seluruh pengguna aplikasi"
+        title="Publish Official Announcement Story"
+        description="Broadcast a 9:16 story with verified official badge to all active client users"
         maxWidth="3xl"
       >
         {errorMessage && (
@@ -476,12 +462,11 @@ export function AnnouncementsPage() {
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-            {/* Form Fields (Left Column) */}
+            {/* Form Fields */}
             <div className="lg:col-span-7 space-y-4">
-              {/* Media Type Selector */}
               <div>
                 <label className="block text-[11px] font-bold text-neutral-700 mb-1.5 uppercase tracking-wider">
-                  Format Tampilan Story
+                  Story Format
                 </label>
                 <div className="grid grid-cols-3 gap-2">
                   <button
@@ -499,7 +484,7 @@ export function AnnouncementsPage() {
                     }`}
                   >
                     <Type className="w-4 h-4" />
-                    Teks Gradien
+                    Gradient Text
                   </button>
 
                   <button
@@ -535,25 +520,24 @@ export function AnnouncementsPage() {
                     }`}
                   >
                     <Video className="w-4 h-4" />
-                    Video (Maks 1m)
+                    Video (Max 1m)
                   </button>
                 </div>
               </div>
 
-              {/* Flyer File Upload if IMAGE */}
               {watchMediaType === 'IMAGE' && (
                 <div>
                   <label className="block text-[11px] font-bold text-neutral-700 mb-1.5 uppercase tracking-wider">
-                    Upload Banner Flyer (Rasio Rekomendasi 9:16)
+                    Upload Flyer Banner (9:16 Recommended)
                   </label>
                   <label className="border-2 border-dashed border-neutral-300 rounded-xl p-4 flex flex-col items-center justify-center gap-2 hover:bg-neutral-50 transition-colors cursor-pointer text-center block">
                     <Upload className="w-6 h-6 text-neutral-400" />
                     <div>
                       <span className="text-xs font-semibold text-neutral-800">
-                        {selectedFile ? selectedFile.name : 'Pilih gambar dari perangkat'}
+                        {selectedFile ? selectedFile.name : 'Choose image file'}
                       </span>
                       <p className="text-[11px] text-neutral-400 mt-0.5">
-                        Format PNG, JPG, WEBP (1080 x 1920 px disarankan)
+                        PNG, JPG, WEBP (1080 x 1920 px recommended)
                       </p>
                     </div>
                     <input
@@ -566,31 +550,30 @@ export function AnnouncementsPage() {
                 </div>
               )}
 
-              {/* Video File Upload if VIDEO */}
               {watchMediaType === 'VIDEO' && (
                 <div>
                   <div className="flex items-center justify-between mb-1.5">
                     <label className="block text-[11px] font-bold text-neutral-700 uppercase tracking-wider">
-                      Upload Video Status (Maksimal 1 Menit)
+                      Upload Story Video (Max 1 Minute)
                     </label>
                     <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200">
-                      Batas 60 Detik
+                      60s Limit
                     </span>
                   </div>
                   <label className="border-2 border-dashed border-neutral-300 rounded-xl p-4 flex flex-col items-center justify-center gap-2 hover:bg-neutral-50 transition-colors cursor-pointer text-center block">
                     <Video className="w-6 h-6 text-neutral-400" />
                     <div>
                       <span className="text-xs font-semibold text-neutral-800">
-                        {selectedFile ? selectedFile.name : 'Pilih file video dari perangkat'}
+                        {selectedFile ? selectedFile.name : 'Choose video file'}
                       </span>
                       <p className="text-[11px] text-neutral-400 mt-0.5">
-                        Format MP4, WebM (Durasi maksimal 60 detik)
+                        MP4, WebM (Duration max 60 seconds)
                       </p>
                     </div>
                     {videoDuration !== null && (
                       <div className="mt-1 inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-full text-[11px] font-semibold">
                         <CheckCircle className="w-3.5 h-3.5" />
-                        <span>Durasi: {videoDuration} detik (Memenuhi syarat ≤ 60 detik)</span>
+                        <span>Duration: {videoDuration} seconds (Valid ≤ 60s)</span>
                       </div>
                     )}
                     <input
@@ -603,11 +586,10 @@ export function AnnouncementsPage() {
                 </div>
               )}
 
-              {/* Background Color Preset if TEXT */}
               {watchMediaType === 'TEXT' && (
                 <div>
                   <label className="block text-[11px] font-bold text-neutral-700 mb-1.5 uppercase tracking-wider">
-                    Warna Latar Belakang Story
+                    Story Background Color
                   </label>
                   <div className="flex flex-wrap items-center gap-2 mb-2">
                     {COLOR_PRESETS.map((preset) => (
@@ -638,20 +620,20 @@ export function AnnouncementsPage() {
               )}
 
               <Input
-                label="Judul Status Resmi"
-                placeholder="Contoh: Fitur Baru LAJU v2.5 Rilis!"
+                label="Story Title"
+                placeholder="e.g. LAJU Network v2.5 Feature Release!"
                 {...register('title')}
                 error={errors.title?.message}
               />
 
               <div>
                 <label className="block text-[11px] font-bold text-neutral-700 mb-1.5 uppercase tracking-wider">
-                  Isi Pesan Status
+                  Story Content & Message
                 </label>
                 <textarea
                   {...register('content')}
                   rows={3}
-                  placeholder="Tuliskan pesan atau detail pengumuman yang akan dibaca pengguna..."
+                  placeholder="Enter the broadcast message for users..."
                   className="w-full text-xs rounded-xl border border-neutral-200 px-3 py-2 text-neutral-900 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-900/10 focus:border-neutral-900 transition-all resize-none"
                 />
                 {errors.content && (
@@ -661,65 +643,64 @@ export function AnnouncementsPage() {
                 )}
               </div>
 
-              {/* Durasi Tayang Story */}
               <div>
                 <label className="block text-[11px] font-bold text-neutral-700 mb-1.5 uppercase tracking-wider">
-                  Durasi Tayang Status
+                  Story Duration
                 </label>
                 <select
                   {...register('durationHours', { valueAsNumber: true })}
                   className="w-full text-xs rounded-xl border border-neutral-200 px-3 py-2 text-neutral-900 bg-white focus:outline-none focus:ring-2 focus:ring-neutral-900/10 focus:border-neutral-900"
                 >
-                  <option value={24}>24 Jam (Standar Status Mobile)</option>
-                  <option value={48}>48 Jam (2 Hari)</option>
-                  <option value={72}>3 Hari</option>
-                  <option value={168}>7 Hari (1 Minggu)</option>
-                  <option value={0}>Permanen (Hingga dihapus manual)</option>
+                  <option value={24}>24 Hours (Standard Story)</option>
+                  <option value={48}>48 Hours (2 Days)</option>
+                  <option value={72}>3 Days</option>
+                  <option value={168}>7 Days (1 Week)</option>
+                  <option value={0}>Permanent (Until deleted)</option>
                 </select>
               </div>
 
-              {/* Action Button (Optional) */}
+              {/* Action Button */}
               <div className="grid grid-cols-2 gap-3 p-3 bg-neutral-50 rounded-xl border border-neutral-100">
                 <div className="col-span-2">
                   <span className="text-[11px] font-bold text-neutral-700 uppercase tracking-wider">
-                    Tombol Aksi Tautan (Opsional)
+                    Link Action Button (Optional)
                   </span>
                   <p className="text-[10px] text-neutral-400 mt-0.5">
-                    Menampilkan tombol navigasi / link di bagian bawah layar story
+                    Displays an action pill button at the bottom of the story
                   </p>
                 </div>
                 <Input
-                  label="Label Tombol"
-                  placeholder="Contoh: Buka Tautan"
+                  label="Button Label"
+                  placeholder="e.g. Open Link"
                   {...register('actionTitle')}
                 />
                 <Input
-                  label="URL Tujuan"
+                  label="Target URL"
                   placeholder="https://..."
                   {...register('actionUrl')}
                 />
               </div>
 
-              {/* Target Penerima */}
+              {/* Target Audience */}
               <div>
                 <label className="block text-[11px] font-bold text-neutral-700 mb-1.5 uppercase tracking-wider">
-                  Target Penerima Status
+                  Target Audience
                 </label>
                 <select
                   {...register('targetType')}
                   className="w-full text-xs rounded-xl border border-neutral-200 px-3 py-2 text-neutral-900 bg-white focus:outline-none focus:ring-2 focus:ring-neutral-900/10 focus:border-neutral-900"
                 >
-                  <option value="ALL">📢 Semua Pengguna (Broadcast All Users)</option>
-                  <option value="SPECIFIC">👤 Satu Pengguna Khusus (Specific User)</option>
-                  <option value="BULK">👥 Daftar Banyak Pengguna (Bulk Users)</option>
+                  <option value="ALL">📢 All Users (Broadcast)</option>
+                  <option value="SPECIFIC">👤 Single User</option>
+                  <option value="BULK">👥 Bulk User List</option>
                 </select>
               </div>
 
               {watchTargetType === 'SPECIFIC' && (
                 <div>
                   <Input
-                    label="Username / User ID Penerima"
-                    placeholder="@dimas atau 08123456789"
+                    label="Username / User ID"
+                    placeholder="@john or 08123456789"
                     {...register('targetUserIds')}
                   />
                 </div>
@@ -728,11 +709,11 @@ export function AnnouncementsPage() {
               {watchTargetType === 'BULK' && (
                 <div>
                   <label className="block text-[11px] font-bold text-neutral-700 mb-1.5 uppercase tracking-wider">
-                    Daftar Penerima (Koma / Baris Baru)
+                    Target List (Comma / Newline Separated)
                   </label>
                   <textarea
                     rows={2}
-                    placeholder="@dimas, @budi, 081234567890"
+                    placeholder="@john, @jane, 081234567890"
                     {...register('targetUserIds')}
                     className="w-full text-xs rounded-xl border border-neutral-200 px-3 py-2 text-neutral-900 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-900/10 focus:border-neutral-900 transition-all resize-none"
                   />
@@ -747,24 +728,21 @@ export function AnnouncementsPage() {
                   className="rounded border-neutral-300 text-neutral-900 focus:ring-neutral-900 h-4 w-4"
                 />
                 <label htmlFor="isActive" className="text-xs text-neutral-700 font-medium cursor-pointer">
-                  Langsung aktifkan dan siarkan status resmi ini
+                  Activate and broadcast this official story immediately
                 </label>
               </div>
             </div>
 
-            {/* Live 9:16 Smartphone Mockup Preview (Right Column) */}
+            {/* Live 9:16 Smartphone Mockup Preview */}
             <div className="lg:col-span-5 flex flex-col items-center">
               <label className="block text-[11px] font-bold text-neutral-700 mb-2 uppercase tracking-wider self-start flex items-center gap-1.5">
                 <Smartphone className="w-3.5 h-3.5 text-neutral-500" />
-                Live Preview Status Mobile (9:16)
+                Live Mobile Preview (9:16)
               </label>
 
-              {/* Smartphone Frame */}
               <div className="w-[230px] h-[408px] rounded-[32px] bg-black p-2.5 shadow-2xl border-4 border-neutral-800 relative flex flex-col overflow-hidden">
-                {/* Speaker pill notch */}
                 <div className="absolute top-3 left-1/2 -translate-x-1/2 w-14 h-3 bg-neutral-900 rounded-full z-30" />
 
-                {/* Story Screen Area */}
                 <div
                   className="w-full h-full rounded-[22px] overflow-hidden relative flex flex-col justify-between p-3.5 bg-cover bg-center transition-colors"
                   style={{
@@ -772,7 +750,6 @@ export function AnnouncementsPage() {
                     backgroundImage: filePreview && watchMediaType === 'IMAGE' ? `url(${filePreview})` : undefined,
                   }}
                 >
-                  {/* Video Background if VIDEO */}
                   {watchMediaType === 'VIDEO' && (filePreview || watchMediaUrl) && (
                     <video
                       src={filePreview || watchMediaUrl}
@@ -784,17 +761,14 @@ export function AnnouncementsPage() {
                     />
                   )}
 
-                  {/* Subtle dark gradient overlay for text legibility */}
                   <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-transparent to-black/80 pointer-events-none z-0" />
 
-                  {/* Top Bar: Progress & Official Header */}
+                  {/* Top Bar */}
                   <div className="relative z-10 space-y-2 pt-2">
-                    {/* Story progress bar */}
                     <div className="w-full h-0.5 bg-white/30 rounded-full overflow-hidden">
                       <div className="w-1/2 h-full bg-white rounded-full animate-pulse" />
                     </div>
 
-                    {/* Official Author Info */}
                     <div className="flex items-center gap-2">
                       <div className="w-7 h-7 rounded-full bg-sky-500 flex items-center justify-center text-white font-bold text-[10px] ring-2 ring-white/50 shadow-sm">
                         L
@@ -806,22 +780,22 @@ export function AnnouncementsPage() {
                           </span>
                           <CheckCircle className="w-3 h-3 text-sky-400 fill-sky-400" />
                         </div>
-                        <span className="text-[9px] text-white/70">Resmi</span>
+                        <span className="text-[9px] text-white/70">Verified</span>
                       </div>
                     </div>
                   </div>
 
-                  {/* Center Text (if TEXT story or with caption) */}
+                  {/* Center Text */}
                   <div className="relative z-10 my-auto text-center px-2 py-4">
                     <h3 className="text-sm font-extrabold text-white leading-tight drop-shadow-md">
-                      {watchTitle || 'Judul Status Resmi'}
+                      {watchTitle || 'Official Story Title'}
                     </h3>
                     <p className="text-[11px] text-white/90 mt-1.5 leading-relaxed drop-shadow-sm line-clamp-5">
-                      {watchContent || 'Isi konten status resmi LAJU akan muncul di sini...'}
+                      {watchContent || 'Announcement content will appear here...'}
                     </p>
                   </div>
 
-                  {/* Bottom: Action Button if configured */}
+                  {/* Bottom: Action Button */}
                   <div className="relative z-10 pb-1">
                     {watchActionTitle && (
                       <div className="w-full py-1.5 px-3 rounded-full bg-white/95 text-neutral-900 text-center font-bold text-[10px] shadow-lg flex items-center justify-center gap-1">
@@ -834,7 +808,7 @@ export function AnnouncementsPage() {
               </div>
 
               <p className="text-[10px] text-neutral-400 mt-2 text-center">
-                Rasio 9:16 Fullscreen Story Viewer
+                9:16 Fullscreen Story Viewer
               </p>
             </div>
           </div>
@@ -845,28 +819,28 @@ export function AnnouncementsPage() {
               variant="outline"
               onClick={() => setIsModalOpen(false)}
             >
-              Batal
+              Cancel
             </Button>
             <Button
               type="submit"
               variant="primary"
               isLoading={createAnnouncement.isPending || mediaUpload.isPending}
             >
-              Terbitkan Status Resmi
+              Publish Official Story
             </Button>
           </div>
         </form>
       </Modal>
 
-      {/* Modal Hapus Pengumuman */}
+      {/* Delete Announcement Modal */}
       <ConfirmModal
         isOpen={deleteModal.isOpen}
         onClose={() => setDeleteModal({ isOpen: false, id: '', title: '' })}
         onConfirm={handleConfirmDelete}
-        title="Hapus Status Resmi"
-        description={`Yakin ingin menghapus status resmi "${deleteModal.title}"? Status ini tidak akan lagi tampil di tab Status aplikasi pengguna.`}
-        confirmText="Hapus Status"
-        cancelText="Batal"
+        title="Delete Official Story"
+        description={`Are you sure you want to delete story "${deleteModal.title}"? It will be removed from user feeds.`}
+        confirmText="Delete Story"
+        cancelText="Cancel"
         variant="danger"
         isLoading={deleteAnnouncement.isPending}
       />

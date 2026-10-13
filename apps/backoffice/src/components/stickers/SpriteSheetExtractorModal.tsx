@@ -111,7 +111,7 @@ export function SpriteSheetExtractorModal({
   const [autoTrim, setAutoTrim] = useState(true);
   const [outputResolutionMode, setOutputResolutionMode] = useState<'512' | 'native' | '1024'>('512');
   const [preventUpscaleBlur, setPreventUpscaleBlur] = useState(false);
-  const [namePrefix, setNamePrefix] = useState('Stiker');
+  const [namePrefix, setNamePrefix] = useState('Sticker');
 
   // Slices Gallery State
   const [slices, setSlices] = useState<SlicedStickerItem[]>([]);
@@ -524,7 +524,7 @@ export function SpriteSheetExtractorModal({
         canvas.width = w;
         canvas.height = h;
         const ctx = canvas.getContext('2d');
-        if (!ctx) throw new Error('Kanvas deteksi tidak dapat diinisialisasi');
+        if (!ctx) throw new Error('Detection canvas could not be initialized');
 
         ctx.drawImage(sheetImage, 0, 0);
         const imgData = ctx.getImageData(0, 0, w, h);
@@ -686,7 +686,7 @@ export function SpriteSheetExtractorModal({
           .filter((b) => b.width >= 24 && b.height >= 24);
 
         if (finalDetected.length === 0) {
-          setErrorMessage('Tidak ditemukan karakter stiker. Gunakan fitur Grid Terpadu.');
+          setErrorMessage('No sticker characters found. Try using Uniform Grid.');
         } else {
           // Sort spatially left-to-right, top-to-bottom
           finalDetected.sort((a, b) => {
@@ -699,7 +699,7 @@ export function SpriteSheetExtractorModal({
           setSelectedBoxId(finalDetected[0]?.id || null);
         }
       } catch (err: any) {
-        setErrorMessage('Gagal mendeteksi kontur: ' + err.message);
+        setErrorMessage('Failed to detect contours: ' + err.message);
       } finally {
         setIsProcessing(false);
       }
@@ -1319,7 +1319,7 @@ export function SpriteSheetExtractorModal({
 
         setSlices(newSlices);
       } catch (err: any) {
-        setErrorMessage('Gagal memotong stiker: ' + err.message);
+        setErrorMessage('Failed to crop stickers: ' + err.message);
       } finally {
         setIsProcessing(false);
       }
@@ -1373,14 +1373,14 @@ export function SpriteSheetExtractorModal({
           item.canvas.toBlob((b) => resolve(b), 'image/png');
         });
 
-        if (!blob) throw new Error('Gagal mengonversi kanvas stiker ke file');
+        if (!blob) throw new Error('Failed to convert sticker canvas to file');
 
         const cleanFilename = `${item.name.replace(/\s+/g, '_').toLowerCase()}.png`;
         const file = new File([blob], cleanFilename, { type: 'image/png' });
 
         const uploadRes = await mediaUpload.mutateAsync(file);
         uploadedItems.push({
-          name: item.name.trim() || `Stiker ${i + 1}`,
+          name: item.name.trim() || `Sticker ${i + 1}`,
           imageUrl: uploadRes.url,
           emoji: item.emoji.trim() || undefined,
         });
@@ -1393,7 +1393,7 @@ export function SpriteSheetExtractorModal({
 
       onClose();
     } catch (err: any) {
-      setErrorMessage(err.response?.data?.message || err.message || 'Gagal mengekstrak dan mengunggah stiker');
+      setErrorMessage(err.response?.data?.message || err.message || 'Failed to extract and upload stickers');
     } finally {
       setIsUploading(false);
     }
@@ -1408,8 +1408,8 @@ export function SpriteSheetExtractorModal({
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title="Studio Ekstraktor Sprite Sheet Stiker"
-      description={`Tarik grid serentak atau sesuaikan stiker individu pada paket "${packName}"`}
+      title="Sticker Sprite Sheet Extractor Studio"
+      description={`Drag grid uniformly or adjust individual stickers for pack "${packName}"`}
       maxWidth="7xl"
     >
       <div className="space-y-4 max-h-[88vh] overflow-y-auto pr-1">
@@ -1433,7 +1433,7 @@ export function SpriteSheetExtractorModal({
             <div className="space-y-1">
               <label className="text-xs font-bold text-neutral-800 flex items-center gap-1.5">
                 <Upload className="w-3.5 h-3.5 text-brand-600" />
-                Sprite Sheet / Atlas Gambar
+                Sprite Sheet / Image Atlas
               </label>
 
               <div className="border-2 border-dashed border-neutral-300 rounded-xl p-3 text-center hover:border-brand-500 transition-colors cursor-pointer relative bg-white">
@@ -1447,14 +1447,14 @@ export function SpriteSheetExtractorModal({
                   <div className="space-y-0.5 text-neutral-700">
                     <p className="text-xs font-bold truncate max-w-[240px] mx-auto text-brand-700">{sheetFile.name}</p>
                     <p className="text-[11px] text-neutral-500 font-mono">
-                      {sheetDimensions.width} x {sheetDimensions.height} px • {boxes.length} stiker terdeteksi
+                      {sheetDimensions.width} x {sheetDimensions.height} px • {boxes.length} stickers detected
                     </p>
                   </div>
                 ) : (
                   <div className="space-y-1 text-neutral-500 py-1">
                     <Scissors className="w-5 h-5 mx-auto text-neutral-400" />
-                    <p className="text-xs font-semibold text-neutral-800">Pilih File Sprite Sheet</p>
-                    <p className="text-[10px] text-neutral-400">PNG transparan atau latar solid (WEBP/JPG)</p>
+                    <p className="text-xs font-semibold text-neutral-800">Choose Sprite Sheet File</p>
+                    <p className="text-[10px] text-neutral-400">Transparent PNG or solid background (WEBP/JPG)</p>
                   </div>
                 )}
               </div>
@@ -1465,16 +1465,16 @@ export function SpriteSheetExtractorModal({
               <div className="flex items-center justify-between">
                 <span className="text-[11px] font-bold text-neutral-700 uppercase tracking-wider flex items-center gap-1">
                   <Grid className="w-3.5 h-3.5 text-brand-600" />
-                  Matriks Grid Fleksibel
+                  Flexible Grid Matrix
                 </span>
                 <button
                   type="button"
                   onClick={handleResetToUniformGrid}
                   className="text-[10px] font-semibold text-brand-600 hover:text-brand-700 hover:underline flex items-center gap-1"
-                  title="Kembalikan semua kotak ke ukuran rata"
+                  title="Reset all boxes to uniform size"
                 >
                   <RotateCcw className="w-2.5 h-2.5" />
-                  Ratakan Grid
+                  Reset Grid
                 </button>
               </div>
 
@@ -1484,15 +1484,15 @@ export function SpriteSheetExtractorModal({
                 onClick={handleFitMasterGridToFullImage}
                 disabled={!sheetImage}
                 className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg bg-brand-500 hover:bg-brand-600 text-white text-[11px] font-bold transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-sm"
-                title="Paskan seluruh grid menutupi 100% tinggi dan lebar gambar"
+                title="Fit entire grid to cover 100% of image width and height"
               >
                 <Maximize2 className="w-3.5 h-3.5" />
-                Penuh 100% Ukuran Gambar
+                Fit 100% Full Image
               </button>
 
               {/* Quick Presets Pills */}
               <div className="space-y-1">
-                <span className="text-[10px] font-semibold text-neutral-500">Preset Grid Cepat:</span>
+                <span className="text-[10px] font-semibold text-neutral-500">Quick Grid Presets:</span>
                 <div className="flex flex-wrap gap-1">
                   {[
                     { label: '6 × 4 (24)', c: 6, r: 4 },
@@ -1527,7 +1527,7 @@ export function SpriteSheetExtractorModal({
               <div className="grid grid-cols-2 gap-2 text-xs">
                 <div className="space-y-1">
                   <span className="text-[10px] font-semibold text-neutral-500 flex items-center gap-1">
-                    <Columns className="w-3 h-3 text-brand-600" /> Kolom
+                    <Columns className="w-3 h-3 text-brand-600" /> Columns
                   </span>
                   <div className="flex items-center gap-1">
                     <button
@@ -1557,7 +1557,7 @@ export function SpriteSheetExtractorModal({
 
                 <div className="space-y-1">
                   <span className="text-[10px] font-semibold text-neutral-500 flex items-center gap-1">
-                    <Rows className="w-3 h-3 text-brand-600" /> Baris
+                    <Rows className="w-3 h-3 text-brand-600" /> Rows
                   </span>
                   <div className="flex items-center gap-1">
                     <button
@@ -1590,7 +1590,7 @@ export function SpriteSheetExtractorModal({
               <div className="grid grid-cols-2 gap-2 text-xs pt-1 border-t border-neutral-100">
                 <div className="space-y-1">
                   <div className="flex justify-between text-[10px] text-neutral-500">
-                    <span>Jeda X</span>
+                    <span>Spacing X</span>
                     <span className="font-mono">{spacingX}px</span>
                   </div>
                   <input
@@ -1609,7 +1609,7 @@ export function SpriteSheetExtractorModal({
 
                 <div className="space-y-1">
                   <div className="flex justify-between text-[10px] text-neutral-500">
-                    <span>Jeda Y</span>
+                    <span>Spacing Y</span>
                     <span className="font-mono">{spacingY}px</span>
                   </div>
                   <input
@@ -1629,23 +1629,23 @@ export function SpriteSheetExtractorModal({
 
               {/* Grid Snap & Alignment Tools */}
               <div className="space-y-1.5 pt-1.5 border-t border-neutral-100">
-                <span className="text-[10px] font-semibold text-neutral-500">Paskan Grid ke Gambar:</span>
+                <span className="text-[10px] font-semibold text-neutral-500">Fit Grid to Image:</span>
                 <div className="grid grid-cols-2 gap-1.5">
                   <button
                     type="button"
                     onClick={handleFitMasterGridToFullImage}
                     disabled={!sheetImage}
                     className="py-1 text-xs font-bold rounded-lg bg-brand-50 hover:bg-brand-100 text-brand-800 border border-brand-300 transition-colors text-center shadow-2xs"
-                    title="Ratakan seluruh grid memenuhi 100% ukuran file gambar (ujung ke ujung)"
+                    title="Fit entire grid to 100% of image size edge-to-edge"
                   >
-                    Penuh (100%)
+                    Full (100%)
                   </button>
                   <button
                     type="button"
                     onClick={handleFitMasterGridWithMargin}
                     disabled={!sheetImage}
                     className="py-1 text-xs font-semibold rounded-lg bg-neutral-100 hover:bg-neutral-200 text-neutral-700 transition-colors text-center"
-                    title="Pusatkan grid dengan margin 2% di tiap sisi"
+                    title="Center grid with 2% margin on each edge"
                   >
                     Margin (96%)
                   </button>
@@ -1657,33 +1657,33 @@ export function SpriteSheetExtractorModal({
                     onClick={handleSnapMasterGridToTop}
                     disabled={!sheetImage}
                     className="py-1 text-[11px] font-medium rounded-lg bg-neutral-100 hover:bg-neutral-200 text-neutral-700 transition-colors text-center flex items-center justify-center gap-1"
-                    title="Tarik sisi atas grid langsung ke ujung paling atas gambar (Y=0)"
+                    title="Snap top edge of grid directly to the top edge of image (Y=0)"
                   >
                     <ArrowUp className="w-3 h-3 text-brand-600" />
-                    Paling Atas (Y=0)
+                    Top Edge (Y=0)
                   </button>
                   <button
                     type="button"
                     onClick={handleSnapMasterGridToBottom}
                     disabled={!sheetImage}
                     className="py-1 text-[11px] font-medium rounded-lg bg-neutral-100 hover:bg-neutral-200 text-neutral-700 transition-colors text-center flex items-center justify-center gap-1"
-                    title="Tarik sisi bawah grid langsung ke ujung paling bawah gambar"
+                    title="Snap bottom edge of grid directly to bottom of image"
                   >
                     <ArrowDown className="w-3 h-3 text-brand-600" />
-                    Paling Bawah
+                    Bottom Edge
                   </button>
                 </div>
 
                 {/* Geser Grid Manual (Nudge) */}
                 <div className="flex items-center justify-between pt-1">
-                  <span className="text-[10px] text-neutral-500 font-semibold">Geser Posisi Grid:</span>
+                  <span className="text-[10px] text-neutral-500 font-semibold">Nudge Grid Position:</span>
                   <div className="flex items-center gap-1">
                     <button
                       type="button"
                       onClick={() => handleNudgeMasterGrid(-16, 0)}
                       disabled={!sheetImage}
                       className="p-1 rounded bg-neutral-100 hover:bg-neutral-200 text-neutral-700"
-                      title="Geser Grid ke Kiri (16px)"
+                      title="Nudge Grid Left (16px)"
                     >
                       <ArrowLeft className="w-3 h-3" />
                     </button>
@@ -1692,7 +1692,7 @@ export function SpriteSheetExtractorModal({
                       onClick={() => handleNudgeMasterGrid(0, -16)}
                       disabled={!sheetImage}
                       className="p-1 rounded bg-neutral-100 hover:bg-neutral-200 text-neutral-700"
-                      title="Geser Grid ke Atas (16px)"
+                      title="Nudge Grid Up (16px)"
                     >
                       <ArrowUp className="w-3 h-3" />
                     </button>
@@ -1701,7 +1701,7 @@ export function SpriteSheetExtractorModal({
                       onClick={() => handleNudgeMasterGrid(0, 16)}
                       disabled={!sheetImage}
                       className="p-1 rounded bg-neutral-100 hover:bg-neutral-200 text-neutral-700"
-                      title="Geser Grid ke Bawah (16px)"
+                      title="Nudge Grid Down (16px)"
                     >
                       <ArrowDown className="w-3 h-3" />
                     </button>
@@ -1710,7 +1710,7 @@ export function SpriteSheetExtractorModal({
                       onClick={() => handleNudgeMasterGrid(16, 0)}
                       disabled={!sheetImage}
                       className="p-1 rounded bg-neutral-100 hover:bg-neutral-200 text-neutral-700"
-                      title="Geser Grid ke Kanan (16px)"
+                      title="Nudge Grid Right (16px)"
                     >
                       <ArrowRight className="w-3 h-3" />
                     </button>
@@ -1726,11 +1726,11 @@ export function SpriteSheetExtractorModal({
               <div className="flex items-center justify-between">
                 <span className="text-[11px] font-bold text-neutral-700 uppercase tracking-wider flex items-center gap-1.5">
                   <Layers className="w-3.5 h-3.5 text-brand-600" />
-                  Inspector Kotak Stiker
+                  Sticker Box Inspector
                 </span>
                 {selectedBox && (
                   <Badge variant={selectedBox.customized ? 'brand' : 'neutral'} size="sm">
-                    {selectedBox.customized ? 'Ukuran Khusus' : 'Sesuai Grid'}
+                    {selectedBox.customized ? 'Custom Size' : 'Grid Default'}
                   </Badge>
                 )}
               </div>
@@ -1739,7 +1739,7 @@ export function SpriteSheetExtractorModal({
                 <div className="space-y-2.5">
                   <div className="flex items-center justify-between text-xs bg-neutral-50 p-2 rounded-lg border border-neutral-200/80">
                     <span className="font-bold text-brand-800">
-                      Stiker #{boxes.findIndex((b) => b.id === selectedBox.id) + 1}
+                      Sticker #{boxes.findIndex((b) => b.id === selectedBox.id) + 1}
                     </span>
                     <div className="flex items-center gap-1.5">
                       {selectedBox.customized && (
@@ -1747,9 +1747,9 @@ export function SpriteSheetExtractorModal({
                           type="button"
                           onClick={() => handleResetSingleBoxToGrid(selectedBox.id)}
                           className="text-[10px] text-neutral-500 hover:text-brand-600 underline"
-                          title="Kembalikan ukuran kotak ini ke standar grid"
+                          title="Reset this box size to uniform grid"
                         >
-                          Reset ke Grid
+                          Reset to Grid
                         </button>
                       )}
                       <span className="text-[10px] font-mono text-neutral-500">
@@ -1761,7 +1761,7 @@ export function SpriteSheetExtractorModal({
                   {/* Manual Coordinate & Dimension Inputs */}
                   <div className="grid grid-cols-2 gap-2 text-xs">
                     <div className="space-y-0.5">
-                      <span className="text-[10px] font-semibold text-neutral-500">Posisi X (Px)</span>
+                      <span className="text-[10px] font-semibold text-neutral-500">Position X (Px)</span>
                       <input
                         type="number"
                         min="0"
@@ -1772,7 +1772,7 @@ export function SpriteSheetExtractorModal({
                       />
                     </div>
                     <div className="space-y-0.5">
-                      <span className="text-[10px] font-semibold text-neutral-500">Posisi Y (Px)</span>
+                      <span className="text-[10px] font-semibold text-neutral-500">Position Y (Px)</span>
                       <input
                         type="number"
                         min="0"
@@ -1783,7 +1783,7 @@ export function SpriteSheetExtractorModal({
                       />
                     </div>
                     <div className="space-y-0.5">
-                      <span className="text-[10px] font-semibold text-neutral-500">Lebar / W (Px)</span>
+                      <span className="text-[10px] font-semibold text-neutral-500">Width / W (Px)</span>
                       <input
                         type="number"
                         min="8"
@@ -1794,7 +1794,7 @@ export function SpriteSheetExtractorModal({
                       />
                     </div>
                     <div className="space-y-0.5">
-                      <span className="text-[10px] font-semibold text-neutral-500">Tinggi / H (Px)</span>
+                      <span className="text-[10px] font-semibold text-neutral-500">Height / H (Px)</span>
                       <input
                         type="number"
                         min="8"
@@ -1814,7 +1814,7 @@ export function SpriteSheetExtractorModal({
                       className={`text-[11px] font-semibold flex items-center gap-1 px-2 py-1 rounded-lg border transition-all ${
                         lockAspectRatio ? 'bg-brand-50 border-brand-300 text-brand-700' : 'border-neutral-200 text-neutral-500'
                       }`}
-                      title="Kunci rasio 1:1 (persegi)"
+                      title="Lock 1:1 aspect ratio (square)"
                     >
                       {lockAspectRatio ? <Lock className="w-3 h-3 text-brand-600" /> : <Unlock className="w-3 h-3" />}
                       <span>1:1</span>
@@ -1826,7 +1826,7 @@ export function SpriteSheetExtractorModal({
                         type="button"
                         onClick={() => nudgeSelectedBox(-2, 0)}
                         className="p-1 rounded bg-neutral-100 hover:bg-neutral-200 text-neutral-600"
-                        title="Geser Kiri (2px)"
+                        title="Nudge Left (2px)"
                       >
                         <ArrowLeft className="w-3 h-3" />
                       </button>
@@ -1834,7 +1834,7 @@ export function SpriteSheetExtractorModal({
                         type="button"
                         onClick={() => nudgeSelectedBox(0, -2)}
                         className="p-1 rounded bg-neutral-100 hover:bg-neutral-200 text-neutral-600"
-                        title="Geser Atas (2px)"
+                        title="Nudge Up (2px)"
                       >
                         <ArrowUp className="w-3 h-3" />
                       </button>
@@ -1842,7 +1842,7 @@ export function SpriteSheetExtractorModal({
                         type="button"
                         onClick={() => nudgeSelectedBox(0, 2)}
                         className="p-1 rounded bg-neutral-100 hover:bg-neutral-200 text-neutral-600"
-                        title="Geser Bawah (2px)"
+                        title="Nudge Down (2px)"
                       >
                         <ArrowDown className="w-3 h-3" />
                       </button>
@@ -1850,7 +1850,7 @@ export function SpriteSheetExtractorModal({
                         type="button"
                         onClick={() => nudgeSelectedBox(2, 0)}
                         className="p-1 rounded bg-neutral-100 hover:bg-neutral-200 text-neutral-600"
-                        title="Geser Kanan (2px)"
+                        title="Nudge Right (2px)"
                       >
                         <ArrowRight className="w-3 h-3" />
                       </button>
@@ -1862,7 +1862,7 @@ export function SpriteSheetExtractorModal({
                         type="button"
                         onClick={duplicateSelectedBox}
                         className="p-1 rounded bg-neutral-100 hover:bg-neutral-200 text-neutral-600"
-                        title="Duplikat Kotak Ini"
+                        title="Duplicate This Box"
                       >
                         <Copy className="w-3.5 h-3.5" />
                       </button>
@@ -1870,7 +1870,7 @@ export function SpriteSheetExtractorModal({
                         type="button"
                         onClick={deleteSelectedBox}
                         className="p-1 rounded bg-rose-50 hover:bg-rose-100 text-rose-600"
-                        title="Hapus Kotak Ini"
+                        title="Delete This Box"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
@@ -1880,7 +1880,7 @@ export function SpriteSheetExtractorModal({
               ) : (
                 <div className="text-center py-2.5 text-neutral-400 text-xs space-y-1">
                   <MousePointer className="w-4 h-4 mx-auto text-neutral-300" />
-                  <p>Klik kotak stiker manapun di kanvas untuk menyesuaikan ukuran atau posisinya secara bebas.</p>
+                  <p>Click any sticker box in the canvas to adjust its size or position freely.</p>
                 </div>
               )}
             </div>
@@ -1889,7 +1889,7 @@ export function SpriteSheetExtractorModal({
             <div className="bg-white p-3 rounded-xl border border-neutral-200 shadow-2xs space-y-2">
               <div className="flex items-center justify-between">
                 <span className="text-[11px] font-bold text-neutral-700 uppercase tracking-wider">
-                  Deteksi Kontur Cerdas
+                  Smart Contour Detection
                 </span>
                 <span className="text-[10px] text-brand-600 font-semibold">Proximity 28px</span>
               </div>
@@ -1903,7 +1903,7 @@ export function SpriteSheetExtractorModal({
                 onClick={handleAutoDetectFrames}
                 icon={<Sparkles className="w-3.5 h-3.5 text-brand-500" />}
               >
-                Deteksi Otomatis & Gabung Bagian Tubuh
+                Auto-Detect & Merge Body Parts
               </Button>
             </div>
 
@@ -1912,7 +1912,7 @@ export function SpriteSheetExtractorModal({
               <label className="flex items-center justify-between cursor-pointer">
                 <span className="text-xs font-bold text-neutral-800 flex items-center gap-1.5">
                   <Wand2 className="w-3.5 h-3.5 text-brand-600" />
-                  Hapus Background Warna Solid
+                  Remove Solid Background Color
                 </span>
                 <input
                   type="checkbox"
@@ -1925,7 +1925,7 @@ export function SpriteSheetExtractorModal({
               {removeBgColor && (
                 <div className="space-y-2 pt-1 border-t border-neutral-100 text-xs">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-[11px] text-neutral-500">Warna Latar:</span>
+                    <span className="text-[11px] text-neutral-500">Background Color:</span>
                     <div className="flex items-center gap-1.5">
                       <input
                         type="color"
@@ -1940,7 +1940,7 @@ export function SpriteSheetExtractorModal({
                         className={`p-1 rounded border transition-colors ${
                           activeTool === 'eyedropper' ? 'bg-brand-500 text-white border-brand-600' : 'bg-neutral-100 text-neutral-600 border-neutral-200'
                         }`}
-                        title="Pipet Warna: Klik pada gambar untuk mengambil warna latar"
+                        title="Eyedropper: Click on image to sample background color"
                       >
                         <Pipette className="w-3.5 h-3.5" />
                       </button>
@@ -1949,7 +1949,7 @@ export function SpriteSheetExtractorModal({
 
                   <div className="space-y-1">
                     <div className="flex justify-between text-[11px] text-neutral-500">
-                      <span>Toleransi Warna</span>
+                      <span>Color Tolerance</span>
                       <span>{bgTolerance}%</span>
                     </div>
                     <input
@@ -1970,14 +1970,14 @@ export function SpriteSheetExtractorModal({
               <div className="flex items-center justify-between">
                 <span className="text-[11px] font-bold text-neutral-700 uppercase tracking-wider flex items-center gap-1.5">
                   <Sparkles className="w-3.5 h-3.5 text-brand-600" />
-                  Resolusi & Kualitas Stiker
+                  Sticker Resolution & Quality
                 </span>
-                <Badge variant="brand" size="sm">Anti-Pecah</Badge>
+                <Badge variant="brand" size="sm">Crisp Output</Badge>
               </div>
 
               {/* Resolution Mode Selector */}
               <div className="space-y-1">
-                <span className="text-[10px] font-semibold text-neutral-500">Ukuran Target Kanvas:</span>
+                <span className="text-[10px] font-semibold text-neutral-500">Target Canvas Size:</span>
                 <div className="grid grid-cols-3 gap-1">
                   <button
                     type="button"
@@ -1989,7 +1989,7 @@ export function SpriteSheetExtractorModal({
                     }`}
                   >
                     512×512
-                    <span className="block text-[9px] font-normal text-neutral-400">Standar</span>
+                    <span className="block text-[9px] font-normal text-neutral-400">Standard</span>
                   </button>
 
                   <button
@@ -2001,8 +2001,8 @@ export function SpriteSheetExtractorModal({
                         : 'bg-neutral-50 border-neutral-200 text-neutral-600 hover:bg-neutral-100'
                     }`}
                   >
-                    Asli (HD)
-                    <span className="block text-[9px] font-normal text-brand-600">0% Pecah</span>
+                    Original (HD)
+                    <span className="block text-[9px] font-normal text-brand-600">Pixel-Perfect</span>
                   </button>
 
                   <button
@@ -2030,9 +2030,9 @@ export function SpriteSheetExtractorModal({
                     className="rounded text-brand-600 focus:ring-brand-500 w-3.5 h-3.5 mt-0.5"
                   />
                   <div className="space-y-0.5">
-                    <span className="text-[11px] font-bold text-neutral-800 block">Kunci Ukuran 1:1 (Jangan Perbesar)</span>
+                    <span className="text-[11px] font-bold text-neutral-800 block">Lock 1:1 Scale (Do Not Upscale)</span>
                     <p className="text-[10px] text-neutral-400 leading-snug">
-                      Jika dicentang, stiker kecil tidak akan diperbesar ke {outputResolutionMode}px (akan tampak kecil di mobile). Biarkan tidak dicentang agar stiker mengisi kanvas secara proporsional dan tampil jelas di chat.
+                      When enabled, smaller stickers will not be stretched to {outputResolutionMode}px. Leave unchecked to proportionately fill the sticker canvas for clear chat viewing.
                     </p>
                   </div>
                 </label>
@@ -2047,9 +2047,9 @@ export function SpriteSheetExtractorModal({
                   className="rounded text-brand-600 focus:ring-brand-500 w-3.5 h-3.5 mt-0.5"
                 />
                 <div className="space-y-0.5">
-                  <span className="text-[11px] font-bold text-neutral-800 block">Auto-Trim Area Transparan</span>
+                  <span className="text-[11px] font-bold text-neutral-800 block">Auto-Trim Transparent Padding</span>
                   <p className="text-[10px] text-neutral-400 leading-snug">
-                    Memangkas ruang kosong transparan di sekitar karakter stiker agar pas.
+                    Trims empty transparent borders around sticker characters for a snug fit.
                   </p>
                 </div>
               </label>
@@ -2066,7 +2066,7 @@ export function SpriteSheetExtractorModal({
               onClick={handleExtractSlices}
               icon={<Scissors className="w-4 h-4" />}
             >
-              Ekstrak {boxes.length} Stiker
+              Extract {boxes.length} Stickers
             </Button>
           </div>
 
@@ -2082,10 +2082,10 @@ export function SpriteSheetExtractorModal({
                   className={`px-2.5 py-1 rounded-md font-semibold flex items-center gap-1.5 transition-all ${
                     activeTool === 'select' ? 'bg-brand-500 text-white shadow-xs' : 'text-neutral-600 hover:bg-neutral-100'
                   }`}
-                  title="Pilih & Tarik Kotak (Select & Drag)"
+                  title="Select & Drag Boxes"
                 >
                   <MousePointer className="w-3.5 h-3.5" />
-                  <span>Pilih & Tarik</span>
+                  <span>Select & Drag</span>
                 </button>
                 <button
                   type="button"
@@ -2093,10 +2093,10 @@ export function SpriteSheetExtractorModal({
                   className={`px-2.5 py-1 rounded-md font-semibold flex items-center gap-1.5 transition-all ${
                     activeTool === 'add_box' ? 'bg-brand-500 text-white shadow-xs' : 'text-neutral-600 hover:bg-neutral-100'
                   }`}
-                  title="Tarik Kursor di Kanvas untuk Menambah Kotak Baru"
+                  title="Drag on canvas to draw a new box"
                 >
                   <Plus className="w-3.5 h-3.5" />
-                  <span>+ Kotak Baru</span>
+                  <span>+ New Box</span>
                 </button>
                 <button
                   type="button"
@@ -2104,10 +2104,10 @@ export function SpriteSheetExtractorModal({
                   className={`px-2.5 py-1 rounded-md font-semibold flex items-center gap-1.5 transition-all ${
                     activeTool === 'pan' || isSpacePressed ? 'bg-brand-500 text-white shadow-xs' : 'text-neutral-600 hover:bg-neutral-100'
                   }`}
-                  title="Geser Kanvas (Tahan Spacebar)"
+                  title="Pan Canvas (Hold Spacebar)"
                 >
                   <Move className="w-3.5 h-3.5" />
-                  <span>Geser</span>
+                  <span>Pan</span>
                 </button>
               </div>
 
@@ -2117,7 +2117,7 @@ export function SpriteSheetExtractorModal({
                   type="button"
                   onClick={() => handleZoom(-0.1)}
                   className="p-1.5 rounded-lg bg-white border border-neutral-200 text-neutral-600 hover:bg-neutral-100"
-                  title="Perkecil Kanvas"
+                  title="Zoom Out"
                 >
                   <ZoomOut className="w-3.5 h-3.5" />
                 </button>
@@ -2128,7 +2128,7 @@ export function SpriteSheetExtractorModal({
                   type="button"
                   onClick={() => handleZoom(0.1)}
                   className="p-1.5 rounded-lg bg-white border border-neutral-200 text-neutral-600 hover:bg-neutral-100"
-                  title="Perbesar Kanvas"
+                  title="Zoom In"
                 >
                   <ZoomIn className="w-3.5 h-3.5" />
                 </button>
@@ -2136,7 +2136,7 @@ export function SpriteSheetExtractorModal({
                   type="button"
                   onClick={handleResetZoomPan}
                   className="p-1.5 rounded-lg bg-white border border-neutral-200 text-neutral-600 hover:bg-neutral-100"
-                  title="Sesuaikan dengan Layar"
+                  title="Fit to Screen"
                 >
                   <RefreshCw className="w-3.5 h-3.5" />
                 </button>
@@ -2145,7 +2145,7 @@ export function SpriteSheetExtractorModal({
               {/* Status Badge */}
               <div className="flex items-center gap-2">
                 <Badge variant="brand" size="sm">
-                  {boxes.length} Kotak Stiker
+                  {boxes.length} Sticker Boxes
                 </Badge>
               </div>
             </div>
@@ -2511,8 +2511,8 @@ export function SpriteSheetExtractorModal({
               ) : (
                 <div className="text-center text-neutral-400 space-y-1">
                   <Grid className="w-10 h-10 mx-auto text-neutral-300" />
-                  <p className="text-xs font-semibold text-neutral-700">Belum ada gambar sprite sheet yang diunggah</p>
-                  <p className="text-[11px] text-neutral-400">Pilih file pada panel kiri untuk memulai studio pemotongan</p>
+                  <p className="text-xs font-semibold text-neutral-700">No sprite sheet image uploaded yet</p>
+                  <p className="text-[11px] text-neutral-400">Choose a file on the left panel to begin the extraction studio</p>
                 </div>
               )}
             </div>
@@ -2526,16 +2526,16 @@ export function SpriteSheetExtractorModal({
             <div className="flex flex-wrap items-center justify-between gap-3 bg-neutral-50 p-3 rounded-xl border border-neutral-200">
               <div className="flex items-center gap-3">
                 <span className="text-xs font-bold text-neutral-900">
-                  Hasil Potongan: {slices.length} Stiker
+                  Cropped Results: {slices.length} Stickers
                 </span>
-                <Badge variant="brand" size="sm">{selectedCount} Dipilih</Badge>
+                <Badge variant="brand" size="sm">{selectedCount} Selected</Badge>
                 <div className="flex items-center gap-1 text-[11px]">
                   <button
                     type="button"
                     onClick={() => selectAll(true)}
                     className="text-brand-700 hover:underline font-semibold"
                   >
-                    Pilih Semua
+                    Select All
                   </button>
                   <span className="text-neutral-300">•</span>
                   <button
@@ -2543,19 +2543,19 @@ export function SpriteSheetExtractorModal({
                     onClick={() => selectAll(false)}
                     className="text-neutral-500 hover:underline"
                   >
-                    Batal Pilih
+                    Deselect All
                   </button>
                 </div>
               </div>
 
               {/* Template Prefix Assigner */}
               <div className="flex items-center gap-2">
-                <span className="text-xs text-neutral-500">Awalan Nama:</span>
+                <span className="text-xs text-neutral-500">Name Prefix:</span>
                 <input
                   type="text"
                   value={namePrefix}
                   onChange={(e) => setNamePrefix(e.target.value)}
-                  placeholder="Nama awalan"
+                  placeholder="Prefix name"
                   className="px-2.5 py-1 text-xs rounded-lg border border-neutral-200 bg-white font-medium"
                 />
                 <Button
@@ -2564,7 +2564,7 @@ export function SpriteSheetExtractorModal({
                   variant="outline"
                   onClick={applyPrefixToAll}
                 >
-                  Terapkan ke Semua
+                  Apply to All
                 </Button>
               </div>
             </div>
@@ -2637,7 +2637,7 @@ export function SpriteSheetExtractorModal({
             {isUploading && (
               <div className="space-y-1.5 p-3.5 bg-brand-50 rounded-xl border border-brand-200">
                 <div className="flex justify-between text-xs font-semibold text-brand-900">
-                  <span>Menerbitkan stiker ke paket "{packName}"...</span>
+                  <span>Publishing stickers to package "{packName}"...</span>
                   <span>{uploadProgress.current} / {uploadProgress.total}</span>
                 </div>
                 <div className="w-full bg-brand-200 rounded-full h-2 overflow-hidden">
@@ -2654,7 +2654,7 @@ export function SpriteSheetExtractorModal({
         {/* Modal Footer */}
         <div className="flex items-center justify-between pt-3 border-t border-neutral-100">
           <Button type="button" variant="outline" onClick={onClose} disabled={isUploading}>
-            Tutup
+            Close
           </Button>
 
           <Button
@@ -2666,7 +2666,7 @@ export function SpriteSheetExtractorModal({
             onClick={handleUploadAll}
             icon={<FolderDown className="w-4 h-4" />}
           >
-            Ekstrak & Tambahkan Semua ke Paket ({selectedCount} Stiker)
+            Extract & Add All to Pack ({selectedCount} Stickers)
           </Button>
         </div>
       </div>

@@ -3,7 +3,6 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import {
-  Settings2,
   CheckCircle,
   AlertCircle,
   Smartphone,
@@ -12,7 +11,6 @@ import {
   UploadCloud,
   FileArchive,
   Download,
-  ExternalLink,
   Hash,
   FileCheck,
 } from 'lucide-react';
@@ -22,8 +20,8 @@ import { Input } from '../components/ui/Input';
 import { Badge } from '../components/ui/Badge';
 
 const appConfigSchema = z.object({
-  minAndroidVersion: z.string().min(1, 'Versi minimum tidak boleh kosong'),
-  latestAndroidVersion: z.string().min(1, 'Versi terbaru tidak boleh kosong'),
+  minAndroidVersion: z.string().min(1, 'Minimum version cannot be empty'),
+  latestAndroidVersion: z.string().min(1, 'Latest version cannot be empty'),
   forceUpdate: z.boolean().default(false),
   maintenanceMode: z.boolean().default(false),
   maintenanceMessage: z.string().optional(),
@@ -93,11 +91,11 @@ export function AppVersionPage() {
       setErrorMessage(null);
       setSuccessMessage(null);
       await updateConfig.mutateAsync(data);
-      setSuccessMessage('Konfigurasi versi aplikasi berhasil disimpan');
+      setSuccessMessage('Application version configuration saved successfully');
       setTimeout(() => setSuccessMessage(null), 4000);
     } catch (err: any) {
       setErrorMessage(
-        err.response?.data?.message || 'Gagal menyimpan konfigurasi aplikasi'
+        err.response?.data?.message || 'Failed to save application configuration'
       );
     }
   };
@@ -106,7 +104,7 @@ export function AppVersionPage() {
     const file = e.target.files?.[0];
     if (file) {
       if (!file.name.toLowerCase().endsWith('.apk')) {
-        setApkUploadError('Berkas harus berekstensi .apk');
+        setApkUploadError('File must have an .apk extension');
         setSelectedApkFile(null);
         return;
       }
@@ -118,7 +116,7 @@ export function AppVersionPage() {
   const handleUploadApkSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedApkFile) {
-      setApkUploadError('Silakan pilih berkas APK terlebih dahulu');
+      setApkUploadError('Please select an APK file first');
       return;
     }
 
@@ -139,13 +137,13 @@ export function AppVersionPage() {
         },
       });
 
-      setApkUploadSuccess(res.message || 'Berkas APK berhasil diunggah dan dirilis!');
+      setApkUploadSuccess(res.message || 'APK file successfully uploaded and released!');
       setSelectedApkFile(null);
       setUploadProgress(0);
       setTimeout(() => setApkUploadSuccess(null), 6000);
     } catch (err: any) {
       setApkUploadError(
-        err.response?.data?.message || err.message || 'Gagal mengunggah berkas APK'
+        err.response?.data?.message || err.message || 'Failed to upload APK file'
       );
       setUploadProgress(0);
     } finally {
@@ -169,10 +167,10 @@ export function AppVersionPage() {
       {/* Header */}
       <div>
         <h1 className="text-xl font-extrabold tracking-tight text-neutral-900">
-          Pengaturan Versi Aplikasi & Rilis APK (App Release Management)
+          App Versioning & Package Distribution
         </h1>
         <p className="text-xs text-neutral-500 mt-1">
-          Unggah berkas APK mobile secara langsung, kelola nomor versi rilis, dan pantau status pemeliharaan sistem
+          Upload mobile APK binaries directly, manage release version numbers, and oversee system maintenance modes.
         </p>
       </div>
 
@@ -190,17 +188,17 @@ export function AppVersionPage() {
         </div>
       )}
 
-      {/* SECTION 1: UPLOAD APK TERBARU */}
+      {/* SECTION 1: UPLOAD APK */}
       <div className="bg-white rounded-2xl border border-neutral-200/80 shadow-xs p-6 space-y-6">
         <div className="flex items-center justify-between border-b border-neutral-100 pb-3">
           <div className="flex items-center gap-2.5">
             <UploadCloud className="w-5 h-5 text-brand-600" />
             <h2 className="text-xs font-bold text-neutral-900 uppercase tracking-wider">
-              Unggah & Distribusi Berkas APK Android
+              Android APK Binary Distribution
             </h2>
           </div>
           {config?.apkFilename && (
-            <Badge variant="success">APK Siap Diunduh Publik</Badge>
+            <Badge variant="success">APK Ready for Download</Badge>
           )}
         </div>
 
@@ -220,9 +218,9 @@ export function AppVersionPage() {
                     <Badge variant="brand">v{config.latestAndroidVersion}</Badge>
                   </div>
                   <div className="text-[11px] text-neutral-500 mt-0.5 flex flex-wrap gap-2">
-                    <span>Ukuran: {formatFileSize(config.apkSize)}</span>
+                    <span>Size: {formatFileSize(config.apkSize)}</span>
                     <span>•</span>
-                    <span>Diperbarui: {new Date(config.updatedAt).toLocaleDateString('id-ID')}</span>
+                    <span>Updated: {new Date(config.updatedAt).toLocaleDateString('en-US')}</span>
                   </div>
                 </div>
               </div>
@@ -234,7 +232,7 @@ export function AppVersionPage() {
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-neutral-200 text-xs font-semibold text-neutral-700 hover:bg-neutral-50 shadow-xs transition-colors"
               >
                 <Download className="w-3.5 h-3.5 text-brand-600" />
-                <span>Unduh Berkas Ini</span>
+                <span>Download File</span>
               </a>
             </div>
 
@@ -248,7 +246,7 @@ export function AppVersionPage() {
 
             {config.releaseNotes && (
               <div className="text-xs text-neutral-600 bg-white/80 p-2.5 rounded-lg border border-neutral-200/50">
-                <span className="font-semibold text-neutral-700 block mb-0.5">Catatan Rilis:</span>
+                <span className="font-semibold text-neutral-700 block mb-0.5">Release Notes:</span>
                 <p className="whitespace-pre-wrap">{config.releaseNotes}</p>
               </div>
             )}
@@ -256,7 +254,7 @@ export function AppVersionPage() {
         ) : (
           <div className="p-4 rounded-xl bg-amber-50/70 border border-amber-200/70 text-amber-800 text-xs flex items-center gap-2">
             <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
-            <span>Belum ada berkas APK yang diunggah. Unggah berkas APK pertama Anda melalui formulir di bawah ini.</span>
+            <span>No APK file uploaded yet. Upload your first release binary using the form below.</span>
           </div>
         )}
 
@@ -294,17 +292,17 @@ export function AppVersionPage() {
                 <div>
                   <p className="text-xs font-bold text-neutral-900">{selectedApkFile.name}</p>
                   <p className="text-[11px] text-brand-600 font-semibold mt-0.5">
-                    {formatFileSize(selectedApkFile.size)} • Siap diunggah
+                    {formatFileSize(selectedApkFile.size)} • Ready to upload
                   </p>
-                  <p className="text-[10px] text-neutral-400 mt-1">Klik untuk mengganti berkas</p>
+                  <p className="text-[10px] text-neutral-400 mt-1">Click to change file</p>
                 </div>
               ) : (
                 <div>
                   <p className="text-xs font-bold text-neutral-900">
-                    Pilih atau tarik berkas APK Android (.apk) ke sini
+                    Select or drag Android APK (.apk) file here
                   </p>
                   <p className="text-[11px] text-neutral-400 mt-1">
-                    Maksimal ukuran berkas hingga 500 MB (Streaming multipart)
+                    Maximum file size up to 500 MB (Streaming multipart)
                   </p>
                 </div>
               )}
@@ -314,40 +312,40 @@ export function AppVersionPage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-[11px] font-bold text-neutral-700 mb-1 uppercase tracking-wider">
-                Nomor Versi Rilis Baru
+                New Release Version
               </label>
               <Input
-                placeholder="Contoh: 1.0.1"
+                placeholder="e.g. 1.0.1"
                 value={apkVersionInput}
                 onChange={(e) => setApkVersionInput(e.target.value)}
               />
               <p className="text-[10px] text-neutral-400 mt-1">
-                Akan otomatis tercatat sebagai latest Android version
+                Will be recorded as the latest Android client version
               </p>
             </div>
 
             <div>
               <label className="block text-[11px] font-bold text-neutral-700 mb-1 uppercase tracking-wider">
-                Versi Minimum Wajib
+                Minimum Supported Version
               </label>
               <Input
-                placeholder="Contoh: 1.0.0"
+                placeholder="e.g. 1.0.0"
                 value={apkMinVersionInput}
                 onChange={(e) => setApkMinVersionInput(e.target.value)}
               />
               <p className="text-[10px] text-neutral-400 mt-1">
-                Versi terendah yang masih diizinkan mengakses layanan
+                Lowest version permitted to access network endpoints
               </p>
             </div>
           </div>
 
           <div>
             <label className="block text-[11px] font-bold text-neutral-700 mb-1 uppercase tracking-wider">
-              Catatan Rilis (Release Notes)
+              Release Notes
             </label>
             <textarea
               rows={2}
-              placeholder="Rincian fitur baru atau perbaikan bug pada versi ini..."
+              placeholder="Summary of new features or security updates in this release..."
               value={apkReleaseNotes}
               onChange={(e) => setApkReleaseNotes(e.target.value)}
               className="w-full text-xs rounded-xl border border-neutral-200 px-3 py-2 text-neutral-900 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-900/10 focus:border-neutral-900 transition-all resize-none"
@@ -364,21 +362,22 @@ export function AppVersionPage() {
               />
               <div>
                 <p className="text-xs font-bold text-neutral-900">
-                  Wajibkan Pengguna Memperbarui Aplikasi (Force Update)
+                  Enforce Immediate Update (Force Update)
                 </p>
                 <p className="text-[11px] text-neutral-500 mt-0.5">
-                  Pengguna dengan versi di bawah batas minimum tidak dapat melanjutkan sebelum mengunduh versi ini.
+                  Clients on older versions cannot proceed until downloading this update.
                 </p>
               </div>
             </label>
           </div>
+
           {/* Upload Progress Indicator */}
           {isUploadingApk && (
             <div className="space-y-1.5 p-3.5 rounded-2xl bg-brand-50 border border-brand-200 shadow-xs">
               <div className="flex justify-between items-center text-xs font-bold text-brand-900">
                 <span className="flex items-center gap-1.5">
                   <UploadCloud className="w-4 h-4 text-brand-600 animate-pulse" />
-                  Mengunggah Berkas APK ke Server...
+                  Uploading APK binary to server...
                 </span>
                 <span className="font-mono text-xs bg-white px-2 py-0.5 rounded-full border border-brand-200 text-brand-800">
                   {uploadProgress}%
@@ -391,7 +390,7 @@ export function AppVersionPage() {
                 />
               </div>
               <p className="text-[10px] text-brand-700">
-                Streaming berkas binary langsung tanpa buffering memori browser. Jangan tutup halaman ini.
+                Direct binary streaming without browser memory buffering. Please keep this tab open.
               </p>
             </div>
           )}
@@ -404,58 +403,58 @@ export function AppVersionPage() {
               isLoading={isUploadingApk}
               disabled={!selectedApkFile || isUploadingApk}
             >
-              {isUploadingApk ? `Mengunggah (${uploadProgress}%)...` : 'Unggah & Rilis APK Sekarang'}
+              {isUploadingApk ? `Uploading (${uploadProgress}%)...` : 'Upload & Publish APK'}
             </Button>
           </div>
         </form>
       </div>
 
-      {/* SECTION 2: PENGATURAN UMUM & PEMELIHARAAN */}
+      {/* SECTION 2: CONFIGURATION & MAINTENANCE */}
       {isLoading ? (
         <div className="bg-white rounded-2xl border border-neutral-200/80 p-8 text-center text-xs text-neutral-400">
-          Memuat konfigurasi sistem...
+          Loading system configuration...
         </div>
       ) : (
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-          {/* Card: Kebijakan Versi Aplikasi */}
+          {/* Card: Version Policy */}
           <div className="bg-white rounded-2xl border border-neutral-200/80 shadow-xs p-6 space-y-5">
             <div className="flex items-center gap-2.5 border-b border-neutral-100 pb-3">
               <Smartphone className="w-4 h-4 text-brand-600" />
               <h2 className="text-xs font-bold text-neutral-900 uppercase tracking-wider">
-                Kebijakan Versi Aplikasi (Version Policy & Enforcement)
+                Version Policy & Enforcement
               </h2>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-[11px] font-bold text-neutral-700 mb-1 uppercase tracking-wider">
-                  Nomor Versi Terbaru (Latest Version)
+                  Latest Version
                 </label>
                 <Input
                   {...register('latestAndroidVersion')}
-                  placeholder="Contoh: 1.0.1"
+                  placeholder="e.g. 1.0.1"
                 />
                 {errors.latestAndroidVersion && (
                   <p className="text-[10px] text-rose-500 mt-1">{errors.latestAndroidVersion.message}</p>
                 )}
                 <p className="text-[10px] text-neutral-400 mt-1">
-                  Versi rilis terkini yang ditawarkan kepada pengguna aplikasi
+                  Target client version currently offered to users
                 </p>
               </div>
 
               <div>
                 <label className="block text-[11px] font-bold text-neutral-700 mb-1 uppercase tracking-wider">
-                  Versi Minimum Wajib (Minimum Supported Version)
+                  Minimum Supported Version
                 </label>
                 <Input
                   {...register('minAndroidVersion')}
-                  placeholder="Contoh: 1.0.1"
+                  placeholder="e.g. 1.0.0"
                 />
                 {errors.minAndroidVersion && (
                   <p className="text-[10px] text-rose-500 mt-1">{errors.minAndroidVersion.message}</p>
                 )}
                 <p className="text-[10px] text-neutral-400 mt-1">
-                  Aplikasi dengan versi di bawah ini akan diblokir dan diwajibkan update
+                  Clients below this version will be blocked from authenticating
                 </p>
               </div>
             </div>
@@ -469,22 +468,22 @@ export function AppVersionPage() {
                 />
                 <div>
                   <p className="text-xs font-bold text-neutral-900">
-                    Wajibkan Pembaruan Aplikasi (Force Update)
+                    Enforce Mandatory Update (Force Update)
                   </p>
                   <p className="text-[11px] text-neutral-500 mt-0.5">
-                    Jika aktif, setiap pengguna yang versinya di bawah versi terbaru akan langsung diminta memperbarui aplikasi secara wajib.
+                    When active, users running older builds will be required to update before accessing conversations.
                   </p>
                 </div>
               </label>
             </div>
           </div>
 
-          {/* Card: Mode Pemeliharaan (Maintenance Mode) */}
+          {/* Card: Maintenance Mode */}
           <div className="bg-white rounded-2xl border border-neutral-200/80 shadow-xs p-6 space-y-5">
             <div className="flex items-center gap-2.5 border-b border-neutral-100 pb-3">
               <ShieldAlert className="w-4 h-4 text-neutral-700" />
               <h2 className="text-xs font-bold text-neutral-900 uppercase tracking-wider">
-                Mode Pemeliharaan Sistem (Maintenance Mode)
+                System Maintenance Mode
               </h2>
             </div>
 
@@ -498,12 +497,12 @@ export function AppVersionPage() {
                 <div>
                   <div className="flex items-center gap-2">
                     <p className="text-xs font-bold text-neutral-900">
-                      Aktifkan Mode Pemeliharaan
+                      Enable Maintenance Mode
                     </p>
-                    <Badge variant="warning">Akses Dibatasi</Badge>
+                    <Badge variant="warning">Restricted Access</Badge>
                   </div>
                   <p className="text-[11px] text-neutral-500 mt-0.5">
-                    Ketika mode ini aktif, seluruh interaksi baru pada aplikasi mobile akan ditangguhkan sementara dengan menampilkan pesan pemeliharaan di bawah.
+                    When active, new mobile requests will be temporarily suspended with the maintenance notice below.
                   </p>
                 </div>
               </label>
@@ -511,12 +510,12 @@ export function AppVersionPage() {
 
             <div>
               <label className="block text-[11px] font-bold text-neutral-700 mb-1.5 uppercase tracking-wider">
-                Pesan Pemeliharaan Untuk Pengguna
+                User Maintenance Message
               </label>
               <textarea
                 {...register('maintenanceMessage')}
                 rows={3}
-                placeholder="Contoh: Sistem sedang dalam pemeliharaan berkala untuk peningkatan performa. Silakan coba kembali beberapa saat lagi."
+                placeholder="e.g. System is undergoing scheduled maintenance for performance upgrades. Please check back shortly."
                 className="w-full text-xs rounded-xl border border-neutral-200 px-3 py-2 text-neutral-900 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-900/10 focus:border-neutral-900 transition-all resize-none"
               />
             </div>
@@ -528,7 +527,7 @@ export function AppVersionPage() {
                 icon={<Save className="w-4 h-4" />}
                 isLoading={updateConfig.isPending}
               >
-                Simpan Kebijakan Versi & Pemeliharaan
+                Save Policies & Maintenance
               </Button>
             </div>
           </div>

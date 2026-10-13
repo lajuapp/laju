@@ -63,14 +63,14 @@ export function Pagination({
       {/* Left Info: Range & Page Size */}
       <div className="flex items-center gap-3">
         <p className="font-medium text-neutral-500">
-          Menampilkan <span className="font-bold text-neutral-900">{startItem}</span> -{' '}
-          <span className="font-bold text-neutral-900">{endItem}</span> dari{' '}
-          <span className="font-bold text-neutral-900">{totalItems}</span> data
+          Showing <span className="font-bold text-neutral-900">{startItem}</span> -{' '}
+          <span className="font-bold text-neutral-900">{endItem}</span> of{' '}
+          <span className="font-bold text-neutral-900">{totalItems}</span> entries
         </p>
 
         {onPageSizeChange && (
           <div className="flex items-center gap-1.5 ml-2 border-l border-neutral-200 pl-3">
-            <span className="text-[11px] text-neutral-400">Baris:</span>
+            <span className="text-[11px] text-neutral-400">Rows:</span>
             <select
               value={pageSize}
               onChange={(e) => onPageSizeChange(Number(e.target.value))}
@@ -94,7 +94,7 @@ export function Pagination({
           onClick={() => onPageChange(Math.max(1, currentPage - 1))}
           disabled={currentPage <= 1}
           className="p-1.5 rounded-lg border border-neutral-200/90 bg-white hover:bg-neutral-50 text-neutral-700 disabled:opacity-40 disabled:pointer-events-none transition-colors"
-          title="Halaman Sebelumnya"
+          title="Previous Page"
         >
           <ChevronLeft className="w-4 h-4" />
         </button>
@@ -135,7 +135,7 @@ export function Pagination({
           onClick={() => onPageChange(Math.min(totalPages, currentPage + 1))}
           disabled={currentPage >= totalPages}
           className="p-1.5 rounded-lg border border-neutral-200/90 bg-white hover:bg-neutral-50 text-neutral-700 disabled:opacity-40 disabled:pointer-events-none transition-colors"
-          title="Halaman Selanjutnya"
+          title="Next Page"
         >
           <ChevronRight className="w-4 h-4" />
         </button>
