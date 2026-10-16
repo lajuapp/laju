@@ -451,64 +451,79 @@ class _FloatingCallOverlayState extends State<FloatingCallOverlay> with SingleTi
           ),
           const SizedBox(height: 14),
 
-          // Caller info row
-          Row(
-            children: [
-              Stack(
-                alignment: Alignment.center,
-                children: [
-                  AnimatedBuilder(
-                    animation: _pulseController,
-                    builder: (context, _) {
-                      return Container(
-                        width: 50 + (_pulseController.value * 8),
-                        height: 50 + (_pulseController.value * 8),
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: AppColors.primary.withValues(alpha: 0.5 - (_pulseController.value * 0.3)),
-                            width: 2,
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                  ModernAvatar(
-                    name: item.senderName ?? item.message.split(' • ').first,
-                    imagePath: item.avatarUrl,
-                    radius: 23,
-                    isVerified: true,
-                  ),
-                ],
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+          // Caller info row (Tap to expand to full-screen incoming call UI)
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () {
+              final lastCallId = CallSessionController.instance.lastRingingCallId;
+              if (lastCallId != null) {
+                AppNotificationService.instance.dismiss();
+                CallSessionController.instance.showIncomingCallScreen(
+                  callId: lastCallId,
+                  callerName: item.senderName ?? item.message.split(' • ').first,
+                  isVideo: item.icon == Icons.videocam_rounded,
+                  avatarUrl: item.avatarUrl,
+                );
+              }
+            },
+            child: Row(
+              children: [
+                Stack(
+                  alignment: Alignment.center,
                   children: [
-                    Text(
-                      item.senderName ?? item.message.split(' • ').first,
-                      style: TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.w700,
-                        color: textPrimary,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                    AnimatedBuilder(
+                      animation: _pulseController,
+                      builder: (context, _) {
+                        return Container(
+                          width: 50 + (_pulseController.value * 8),
+                          height: 50 + (_pulseController.value * 8),
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: AppColors.primary.withValues(alpha: 0.5 - (_pulseController.value * 0.3)),
+                              width: 2,
+                            ),
+                          ),
+                        );
+                      },
                     ),
-                    const SizedBox(height: 2),
-                    Text(
-                      item.message.contains(' • ') ? item.message.split(' • ').last : item.message,
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
-                        color: textSecondary,
-                      ),
+                    ModernAvatar(
+                      name: item.senderName ?? item.message.split(' • ').first,
+                      imagePath: item.avatarUrl,
+                      radius: 23,
+                      isVerified: true,
                     ),
                   ],
                 ),
-              ),
-            ],
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        item.senderName ?? item.message.split(' • ').first,
+                        style: TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w700,
+                          color: textPrimary,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        item.message.contains(' • ') ? item.message.split(' • ').last : item.message,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                          color: textSecondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
           const SizedBox(height: 18),
 

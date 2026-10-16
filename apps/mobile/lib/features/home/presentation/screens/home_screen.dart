@@ -691,7 +691,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _openChat(ConversationModel conv) async {
     // Clear unread badge immediately and optimistically
-    final idx = _conversations.indexWhere((c) => c.id == conv.id);
+    final idx = _conversations.indexWhere((c) =>
+        c.id == conv.id ||
+        (conv.participantUserId != null && c.participantUserId == conv.participantUserId));
     if (idx != -1 && _conversations[idx].unreadCount > 0) {
       setState(() {
         _conversations[idx] = _conversations[idx].copyWith(unreadCount: 0);
@@ -1199,6 +1201,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return ListView.separated(
       physics: const AlwaysScrollableScrollPhysics(),
+      cacheExtent: 1000.0,
       padding: const EdgeInsets.only(bottom: 96),
       itemCount: totalItemCount,
       separatorBuilder: (context, index) {

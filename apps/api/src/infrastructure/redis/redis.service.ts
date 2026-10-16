@@ -60,12 +60,10 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   async subscribeChannel(channel: string): Promise<void> {
     const current = this.channelSubscribers.get(channel) || 0;
     this.channelSubscribers.set(channel, current + 1);
-    if (current === 0) {
-      try {
-        await this.subscriber.subscribe(channel);
-      } catch (err: any) {
-        this.logger.warn(`Redis subscribeChannel error for ${channel}: ${err.message}`);
-      }
+    try {
+      await this.subscriber.subscribe(channel);
+    } catch (err: any) {
+      this.logger.warn(`Redis subscribeChannel error for ${channel}: ${err.message}`);
     }
   }
 

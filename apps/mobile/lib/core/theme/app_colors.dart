@@ -14,10 +14,10 @@ class AppColors {
   static const Color darkSurfaceBorder = Color(0xFF263342);
 
   // Light Mode Theme (Chats, Settings, Welcome, Verification)
-  static const Color lightBackground = Color(0xFFF8F9FA);
+  static const Color lightBackground = Color(0xFFF1F5F9);
   static const Color lightSurface = Color(0xFFFFFFFF);
   static const Color lightSurfaceElevated = Color(0xFFFFFFFF);
-  static const Color lightSurfaceBorder = Color(0xFFE9ECEF);
+  static const Color lightSurfaceBorder = Color(0xFFE2E8F0);
 
   // Default theme pointers (Clean light-based WhatsApp-elevated theme matching the board)
   static const Color background = lightBackground;

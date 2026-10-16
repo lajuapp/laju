@@ -32,7 +32,21 @@ export class JwtAuthGuard implements CanActivate {
     const token = authHeader.substring(7);
     try {
       const secret = this.configService.get<string>('JWT_SECRET');
-      const payload = this.jwtService.verify(token, { secret });
+      let payload: any;
+      try {
+        payload = this.jwtService.verify(token, { secret });
+      } catch (verifyErr: any) {
+        if (verifyErr?.name === 'TokenExpiredError') {
+          const decoded = this.jwtService.verify(token, { secret, ignoreExpiration: true });
+          if (decoded && !decoded.is2FaPending && decoded.sub && decoded.deviceId) {
+            payload = decoded;
+          } else {
+            throw verifyErr;
+          }
+        } else {
+          throw verifyErr;
+        }
+      }
 
       // Verify device and user status
       const user = await this.prisma.user.findUnique({

@@ -14,6 +14,21 @@ class FaqDef {
     required this.answerKey,
     required this.icon,
   });
+
+  Color get accentColor {
+    switch (categoryKey) {
+      case 'faqCategorySecurity':
+        return const Color(0xFF10B981);
+      case 'faqCategoryChatCall':
+        return const Color(0xFF06B6D4);
+      case 'faqCategoryAccount':
+        return const Color(0xFF3B82F6);
+      case 'faqCategoryPrivacy':
+        return const Color(0xFF6366F1);
+      default:
+        return AppColors.primary;
+    }
+  }
 }
 
 class FaqScreen extends StatefulWidget {
@@ -195,12 +210,12 @@ class _FaqScreenState extends State<FaqScreen> {
                           fontSize: 12.5,
                           fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
                           color: isSelected
-                              ? (isDark ? Colors.black : Colors.white)
+                              ? Colors.black
                               : (isDark ? Colors.white70 : const Color(0xFF475569)),
                         ),
                       ),
                       selected: isSelected,
-                      selectedColor: isDark ? AppColors.primary : const Color(0xFF2563EB),
+                      selectedColor: AppColors.primary,
                       backgroundColor: isDark
                           ? Colors.white.withValues(alpha: 0.06)
                           : Colors.white,
@@ -283,14 +298,16 @@ class _FaqScreenState extends State<FaqScreen> {
                           width: 36,
                           height: 36,
                           decoration: BoxDecoration(
-                            color: isDark
-                                ? Colors.white.withValues(alpha: 0.06)
-                                : Colors.black.withValues(alpha: 0.04),
+                            color: item.accentColor.withValues(alpha: isDark ? 0.20 : 0.12),
                             borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: item.accentColor.withValues(alpha: 0.3),
+                              width: 1,
+                            ),
                           ),
                           child: Icon(
                             item.icon,
-                            color: isDark ? AppColors.primary : const Color(0xFF2563EB),
+                            color: item.accentColor,
                             size: 19,
                           ),
                         ),
@@ -309,9 +326,7 @@ class _FaqScreenState extends State<FaqScreen> {
                             style: TextStyle(
                               fontSize: 11.5,
                               fontWeight: FontWeight.w600,
-                              color: isDark
-                                  ? AppColors.primary
-                                  : const Color(0xFF2563EB),
+                              color: item.accentColor,
                             ),
                           ),
                         ),

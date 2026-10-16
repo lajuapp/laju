@@ -26,6 +26,7 @@ services:
         delay: 5s
     labels:
       - "traefik.enable=true"
+      - "traefik.docker.network=${COOLIFY_NETWORK:-coolify}"
       - "traefik.http.services.api.loadbalancer.server.port=3000"
       - "traefik.http.services.api.loadbalancer.healthcheck.path=/health"
       - "traefik.http.services.api.loadbalancer.healthcheck.interval=3s"
@@ -86,6 +87,7 @@ services:
         delay: 5s
     labels:
       - "traefik.enable=true"
+      - "traefik.docker.network=${COOLIFY_NETWORK:-coolify}"
       - "traefik.http.services.backoffice.loadbalancer.server.port=3000"
       - "traefik.http.services.backoffice.loadbalancer.healthcheck.path=/"
       - "traefik.http.services.backoffice.loadbalancer.healthcheck.interval=3s"
@@ -125,6 +127,7 @@ services:
         delay: 5s
     labels:
       - "traefik.enable=true"
+      - "traefik.docker.network=${COOLIFY_NETWORK:-coolify}"
       - "traefik.http.services.portal.loadbalancer.server.port=3002"
       - "traefik.http.services.portal.loadbalancer.healthcheck.path=/"
       - "traefik.http.services.portal.loadbalancer.healthcheck.interval=3s"
@@ -237,6 +240,8 @@ networks:
   internal:
     internal: true
   edge:
+    name: ${COOLIFY_NETWORK:-coolify}
+    external: true
 
 volumes:
   postgres_data:

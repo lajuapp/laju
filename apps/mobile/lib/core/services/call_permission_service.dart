@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../theme/app_colors.dart';
+import '../theme/theme_controller.dart';
 
 enum CallPermissionResult {
   allGranted,
@@ -102,42 +103,56 @@ class CallPermissionService {
     if (context != null && context.mounted) {
       final proceedAudio = await showDialog<bool>(
         context: context,
-        builder: (ctx) => AlertDialog(
-          backgroundColor: const Color(0xFF1E293B),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          title: const Row(
-            children: [
-              Icon(Icons.videocam_off_rounded, color: AppColors.primary, size: 24),
-              SizedBox(width: 8),
-              Text(
-                'Izin Kamera Belum Aktif',
-                style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w700),
+        builder: (ctx) {
+          final isDark = ThemeModeController.instance.isDarkMode(ctx);
+          return AlertDialog(
+            backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            title: Row(
+              children: [
+                const Icon(Icons.videocam_off_rounded, color: AppColors.primary, size: 24),
+                const SizedBox(width: 8),
+                Text(
+                  'Izin Kamera Belum Aktif',
+                  style: TextStyle(
+                    color: isDark ? Colors.white : const Color(0xFF0F172A),
+                    fontSize: 17,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+            content: Text(
+              'Laju tidak dapat mengakses kamera Anda. Ingin melanjutkan panggilan sebagai Panggilan Suara (Audio Saja)?',
+              style: TextStyle(
+                color: isDark ? const Color(0xFFCBD5E1) : const Color(0xFF475569),
+                fontSize: 14,
+                height: 1.4,
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.of(ctx).pop(false);
+                  openAppSettings();
+                },
+                child: Text(
+                  'Buka Pengaturan',
+                  style: TextStyle(color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B)),
+                ),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.of(ctx).pop(true),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  foregroundColor: Colors.black,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                child: const Text('Lanjut Suara Saja', style: TextStyle(fontWeight: FontWeight.w700)),
               ),
             ],
-          ),
-          content: const Text(
-            'Laju tidak dapat mengakses kamera Anda. Ingin melanjutkan panggilan sebagai Panggilan Suara (Audio Saja)?',
-            style: TextStyle(color: Color(0xFFCBD5E1), fontSize: 14, height: 1.4),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(ctx).pop(false);
-                openAppSettings();
-              },
-              child: const Text('Buka Pengaturan', style: TextStyle(color: Color(0xFF94A3B8))),
-            ),
-            ElevatedButton(
-              onPressed: () => Navigator.of(ctx).pop(true),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                foregroundColor: Colors.black,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              ),
-              child: const Text('Lanjut Suara Saja', style: TextStyle(fontWeight: FontWeight.w700)),
-            ),
-          ],
-        ),
+          );
+        },
       );
 
       if (proceedAudio == true) {
@@ -158,45 +173,59 @@ class CallPermissionService {
   }) async {
     await showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1E293B),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Row(
-          children: [
-            const Icon(Icons.security_rounded, color: AppColors.danger, size: 24),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                title,
-                style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700),
+      builder: (ctx) {
+        final isDark = ThemeModeController.instance.isDarkMode(ctx);
+        return AlertDialog(
+          backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: Row(
+            children: [
+              const Icon(Icons.security_rounded, color: AppColors.danger, size: 24),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  title,
+                  style: TextStyle(
+                    color: isDark ? Colors.white : const Color(0xFF0F172A),
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
               ),
-            ),
-          ],
-        ),
-        content: Text(
-          message,
-          style: const TextStyle(color: Color(0xFFCBD5E1), fontSize: 14, height: 1.4),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Batal', style: TextStyle(color: Color(0xFF94A3B8))),
+            ],
           ),
-          if (canOpenSettings)
-            ElevatedButton(
-              onPressed: () {
-                Navigator.of(ctx).pop();
-                openAppSettings();
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                foregroundColor: Colors.black,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              ),
-              child: const Text('Buka Pengaturan', style: TextStyle(fontWeight: FontWeight.w700)),
+          content: Text(
+            message,
+            style: TextStyle(
+              color: isDark ? const Color(0xFFCBD5E1) : const Color(0xFF475569),
+              fontSize: 14,
+              height: 1.4,
             ),
-        ],
-      ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: Text(
+                'Batal',
+                style: TextStyle(color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B)),
+              ),
+            ),
+            if (canOpenSettings)
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.of(ctx).pop();
+                  openAppSettings();
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  foregroundColor: Colors.black,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                child: const Text('Buka Pengaturan', style: TextStyle(fontWeight: FontWeight.w700)),
+              ),
+          ],
+        );
+      },
     );
   }
 }

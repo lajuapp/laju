@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../features/calls/domain/call_session_controller.dart';
 import '../../features/lock/presentation/screens/app_lock_screen.dart';
 import 'app_lock_controller.dart';
 
@@ -38,13 +39,19 @@ class _AppLockGateState extends State<AppLockGate> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable: _lockCtrl,
+      listenable: Listenable.merge([
+        _lockCtrl,
+        CallSessionController.instance,
+      ]),
       builder: (context, _) {
+        final session = CallSessionController.instance;
+        final isCallActiveOrIncoming = session.isActive || session.lastRingingCallId != null;
+
         return Stack(
           fit: StackFit.expand,
           children: [
             widget.child,
-            if (_lockCtrl.isCurrentlyLocked)
+            if (_lockCtrl.isCurrentlyLocked && !isCallActiveOrIncoming)
               Positioned.fill(
                 child: AppLockScreen(
                   isGate: true,

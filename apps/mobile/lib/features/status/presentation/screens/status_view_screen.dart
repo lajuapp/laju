@@ -442,25 +442,36 @@ class _StatusViewScreenState extends State<StatusViewScreen>
   void _confirmDeleteStatus() {
     _isSheetOpen = true;
     _pauseStory();
+    final isDark = ThemeModeController.instance.isDarkMode(context);
     showDialog(
       context: context,
       builder: (dlgCtx) => AlertDialog(
-        backgroundColor: const Color(0xFF1E293B),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text(
+        backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text(
           'Hapus pembaruan status ini?',
-          style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.bold),
+          style: TextStyle(
+            color: isDark ? Colors.white : const Color(0xFF0F172A),
+            fontSize: 17,
+            fontWeight: FontWeight.bold,
+          ),
         ),
-        content: const Text(
+        content: Text(
           'Pembaruan status ini juga akan dihapus untuk semua orang yang menerimanya.',
-          style: TextStyle(color: Colors.white70, fontSize: 14),
+          style: TextStyle(
+            color: isDark ? Colors.white70 : const Color(0xFF475569),
+            fontSize: 14,
+          ),
         ),
         actions: [
           TextButton(
             onPressed: () {
               Navigator.pop(dlgCtx);
             },
-            child: const Text('Batal', style: TextStyle(color: Colors.white70)),
+            child: Text(
+              'Batal',
+              style: TextStyle(color: isDark ? Colors.white70 : const Color(0xFF64748B)),
+            ),
           ),
           TextButton(
             onPressed: () async {

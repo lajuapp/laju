@@ -20,7 +20,7 @@ class AccountScreen extends StatelessWidget {
       backgroundColor: isDark ? AppColors.darkBackground : const Color(0xFFF1F5F9),
       appBar: LajuGlassAppBar(
         leading: IconButton(
-          icon: Icon(Icons.arrow_back_rounded, color: isDark ? Colors.white : const Color(0xFF111827)),
+          icon: Icon(Icons.arrow_back_rounded, color: isDark ? Colors.white : const Color(0xFF0F172A)),
           onPressed: () => Navigator.pop(context),
         ),
         title: Text(
@@ -28,7 +28,7 @@ class AccountScreen extends StatelessWidget {
           style: TextStyle(
             fontSize: 20,
             fontWeight: FontWeight.w800,
-            color: isDark ? Colors.white : const Color(0xFF111827),
+            color: isDark ? Colors.white : const Color(0xFF0F172A),
           ),
         ),
       ),
@@ -49,6 +49,7 @@ class AccountScreen extends StatelessWidget {
                       _buildAccountTile(
                         context,
                         icon: Icons.shield_outlined,
+                        accentColor: const Color(0xFF10B981),
                         titleKey: 'securityNotifications',
                         subtitleKey: 'securityNotificationsSub',
                         isFirst: true,
@@ -63,6 +64,7 @@ class AccountScreen extends StatelessWidget {
                       _buildAccountTile(
                         context,
                         icon: Icons.vpn_key_outlined,
+                        accentColor: const Color(0xFFF59E0B),
                         titleKey: 'passkeys',
                         subtitleKey: 'passkeysSub',
                         onTap: () {
@@ -76,6 +78,7 @@ class AccountScreen extends StatelessWidget {
                       _buildAccountTile(
                         context,
                         icon: Icons.key_rounded,
+                        accentColor: const Color(0xFF06B6D4),
                         titleKey: 'backupIdentityTitle',
                         subtitleKey: 'backupIdentitySub',
                         onTap: () {
@@ -89,6 +92,7 @@ class AccountScreen extends StatelessWidget {
                       _buildAccountTile(
                         context,
                         icon: Icons.phonelink_setup_rounded,
+                        accentColor: const Color(0xFF6366F1),
                         titleKey: 'startMigrationTitle',
                         subtitleKey: 'startMigrationSub',
                         onTap: () {
@@ -102,6 +106,7 @@ class AccountScreen extends StatelessWidget {
                       _buildAccountTile(
                         context,
                         icon: Icons.dialpad_rounded,
+                        accentColor: const Color(0xFF3B82F6),
                         titleKey: 'twoStepVerification',
                         subtitleKey: 'twoStepVerificationSub',
                         onTap: () {
@@ -115,6 +120,7 @@ class AccountScreen extends StatelessWidget {
                   _buildAccountTile(
                     context,
                     icon: Icons.description_outlined,
+                    accentColor: const Color(0xFF8B5CF6),
                     titleKey: 'requestAccountInfo',
                     subtitleKey: 'requestAccountInfoSub',
                     isLast: true,
@@ -204,10 +210,12 @@ class AccountScreen extends StatelessWidget {
     String? subtitleKey,
     String? customSubtitle,
     required VoidCallback onTap,
+    Color? accentColor,
     bool isFirst = false,
     bool isLast = false,
   }) {
     final isDark = ThemeModeController.instance.isDarkMode(context);
+    final color = accentColor ?? AppColors.primary;
     final subtitleText = customSubtitle ?? (subtitleKey != null ? context.tr(subtitleKey) : '');
     return Material(
       color: Colors.transparent,
@@ -220,19 +228,24 @@ class AccountScreen extends StatelessWidget {
         ),
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
         leading: Container(
-          padding: const EdgeInsets.all(8),
+          width: 36,
+          height: 36,
           decoration: BoxDecoration(
-            color: isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.04),
+            color: color.withValues(alpha: isDark ? 0.20 : 0.12),
             borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: color.withValues(alpha: 0.3),
+              width: 1,
+            ),
           ),
-          child: Icon(icon, color: isDark ? AppColors.primary : const Color(0xFF2563EB), size: 20),
+          child: Icon(icon, color: color, size: 19),
         ),
         title: Text(
           context.tr(titleKey),
           style: TextStyle(
             fontSize: 15.5,
             fontWeight: FontWeight.w600,
-            color: isDark ? Colors.white : const Color(0xFF111827),
+            color: isDark ? Colors.white : const Color(0xFF0F172A),
           ),
         ),
         subtitle: Text(

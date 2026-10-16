@@ -236,10 +236,18 @@ class LocalDatabase {
   Future<void> resetUnreadCount(Set<String> conversationIds) async {
     if (conversationIds.isEmpty) return;
     try {
-      final placeholders = List.filled(conversationIds.length, '?').join(', ');
+      final list = conversationIds.toList();
+      final placeholders = List.filled(list.length, '?').join(', ');
+      final userIds = conversationIds
+          .where((id) => id.startsWith('conv-'))
+          .map((id) => id.substring(5))
+          .toList();
+      final allUserIds = [...list, ...userIds];
+      final userPlaceholders = List.filled(allUserIds.length, '?').join(', ');
+
       await _database.rawUpdate(
-        'UPDATE conversations SET unread_count = 0 WHERE id IN ($placeholders)',
-        conversationIds.toList(),
+        'UPDATE conversations SET unread_count = 0 WHERE id IN ($placeholders) OR participant_user_id IN ($userPlaceholders)',
+        [...list, ...allUserIds],
       );
     } catch (e) {
       debugPrint('[LocalDatabase] resetUnreadCount error: $e');

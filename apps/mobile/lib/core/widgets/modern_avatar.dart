@@ -151,9 +151,13 @@ class _ModernAvatarState extends State<ModernAvatar> {
     if (_resolvedProvider != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted && _resolvedProvider != null) {
-          precacheImage(_resolvedProvider!, context).catchError((_) {
-            if (mounted) setState(() => _imageFailed = true);
-          });
+          precacheImage(
+            _resolvedProvider!,
+            context,
+            onError: (_, __) {
+              if (mounted) setState(() => _imageFailed = true);
+            },
+          );
         }
       });
     }
@@ -180,19 +184,6 @@ class _ModernAvatarState extends State<ModernAvatar> {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-        // Painting directly via DecorationImage paints synchronously on canvas if cached, eliminating the 1-frame blank gap
-        image: showImage
-            ? DecorationImage(
-                image: _resolvedProvider!,
-                fit: BoxFit.cover,
-                filterQuality: FilterQuality.medium,
-                onError: (_, __) {
-                  if (mounted) {
-                    setState(() => _imageFailed = true);
-                  }
-                },
-              )
-            : null,
         border: Border.all(
           color: Colors.white.withValues(alpha: 0.35),
           width: 1.5,
@@ -205,27 +196,55 @@ class _ModernAvatarState extends State<ModernAvatar> {
           ),
         ],
       ),
-      alignment: Alignment.center,
-      child: !showImage
-          ? Center(
-              child: Text(
-                initials,
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: effectiveRadius * 0.72,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 0.5,
-                  shadows: const [
-                    Shadow(
-                      color: Colors.black26,
-                      offset: Offset(0, 1),
-                      blurRadius: 2,
+      child: ClipOval(
+        child: showImage
+            ? Image(
+                image: _resolvedProvider!,
+                fit: BoxFit.cover,
+                width: effectiveRadius * 2,
+                height: effectiveRadius * 2,
+                gaplessPlayback: true,
+                filterQuality: FilterQuality.medium,
+                errorBuilder: (_, __, ___) {
+                  return Center(
+                    child: Text(
+                      initials,
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: effectiveRadius * 0.72,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.5,
+                        shadows: const [
+                          Shadow(
+                            color: Colors.black26,
+                            offset: Offset(0, 1),
+                            blurRadius: 2,
+                          ),
+                        ],
+                      ),
                     ),
-                  ],
+                  );
+                },
+              )
+            : Center(
+                child: Text(
+                  initials,
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: effectiveRadius * 0.72,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.5,
+                    shadows: const [
+                      Shadow(
+                        color: Colors.black26,
+                        offset: Offset(0, 1),
+                        blurRadius: 2,
+                      ),
+                    ],
+                  ),
                 ),
               ),
-            )
-          : null,
+      ),
     );
 
     if (widget.heroTag != null && widget.heroTag!.isNotEmpty) {

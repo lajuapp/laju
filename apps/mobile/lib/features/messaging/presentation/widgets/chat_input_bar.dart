@@ -462,67 +462,99 @@ class _ChatInputBarState extends State<ChatInputBar> with SingleTickerProviderSt
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                     child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
-                        // Attachment Button (Encrypted file/media)
-                        IconButton(
-                          icon: const Icon(Icons.add_circle_outline_rounded, color: AppColors.primary, size: 26),
-                          splashRadius: 22,
-                          onPressed: widget.onAttach,
-                          tooltip: 'Attach Encrypted Content',
-                        ),
-                        if (widget.onStickerTap != null) ...[
-                          IconButton(
-                            icon: const Icon(Icons.emoji_emotions_outlined, color: AppColors.primary, size: 26),
-                            splashRadius: 22,
-                            onPressed: () {
-                              _focusNode.unfocus();
-                              FocusManager.instance.primaryFocus?.unfocus();
-                              FocusScope.of(context).unfocus();
-                              widget.onStickerTap!();
-                            },
-                            tooltip: 'Stiker LAJU',
+                        // Compact Attachment Button (Encrypted file/media)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 3),
+                          child: InkWell(
+                            onTap: widget.onAttach,
+                            borderRadius: BorderRadius.circular(20),
+                            child: Container(
+                              width: 38,
+                              height: 38,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: (isDark ? Colors.white : Colors.black).withValues(alpha: isDark ? 0.08 : 0.05),
+                              ),
+                              child: const Icon(
+                                Icons.add_rounded,
+                                color: AppColors.primary,
+                                size: 24,
+                              ),
+                            ),
                           ),
-                        ],
-                        const SizedBox(width: 4),
+                        ),
+                        const SizedBox(width: 8),
 
-                        // Clean Input Text Field
+                        // Clean Spacious Input Text Field Pill
                         Expanded(
                           child: Container(
                             constraints: const BoxConstraints(maxHeight: 120),
                             decoration: BoxDecoration(
                               color: inputBg,
-                              borderRadius: BorderRadius.circular(22),
+                              borderRadius: BorderRadius.circular(24),
                               border: Border.all(color: barBorder, width: 1),
                             ),
-                            child: TextField(
-                              controller: _controller,
-                              focusNode: _focusNode,
-                              maxLines: null,
-                              keyboardType: TextInputType.multiline,
-                              textCapitalization: TextCapitalization.sentences,
-                              style: TextStyle(color: textCol, fontSize: 15),
-                              decoration: InputDecoration(
-                                hintText: widget.editingMessage != null
-                                    ? context.tr('editMessageHint')
-                                    : context.tr('messageHint'),
-                                hintStyle: TextStyle(color: hintCol, fontSize: 14),
-                                isDense: true,
-                                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
-                                border: InputBorder.none,
-                                enabledBorder: InputBorder.none,
-                                focusedBorder: InputBorder.none,
-                                suffixIcon: Padding(
-                                  padding: const EdgeInsets.only(right: 8),
+                            clipBehavior: Clip.antiAlias,
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.center,
+                              children: [
+                                if (widget.onStickerTap != null)
+                                  InkWell(
+                                    onTap: () {
+                                      _focusNode.unfocus();
+                                      FocusManager.instance.primaryFocus?.unfocus();
+                                      FocusScope.of(context).unfocus();
+                                      widget.onStickerTap!();
+                                    },
+                                    borderRadius: BorderRadius.circular(20),
+                                    child: const Padding(
+                                      padding: EdgeInsets.only(left: 10, right: 4),
+                                      child: Icon(
+                                        Icons.emoji_emotions_outlined,
+                                        color: AppColors.primary,
+                                        size: 22,
+                                      ),
+                                    ),
+                                  ),
+                                Expanded(
+                                  child: TextField(
+                                    controller: _controller,
+                                    focusNode: _focusNode,
+                                    maxLines: null,
+                                    keyboardType: TextInputType.multiline,
+                                    textCapitalization: TextCapitalization.sentences,
+                                    style: TextStyle(color: textCol, fontSize: 15),
+                                    decoration: InputDecoration(
+                                      hintText: widget.editingMessage != null
+                                          ? context.tr('editMessageHint')
+                                          : context.tr('messageHint'),
+                                      hintStyle: TextStyle(color: hintCol, fontSize: 14),
+                                      isDense: true,
+                                      filled: false,
+                                      contentPadding: EdgeInsets.symmetric(
+                                        horizontal: widget.onStickerTap != null ? 8 : 16,
+                                        vertical: 11,
+                                      ),
+                                      border: InputBorder.none,
+                                      enabledBorder: InputBorder.none,
+                                      focusedBorder: InputBorder.none,
+                                      disabledBorder: InputBorder.none,
+                                    ),
+                                  ),
+                                ),
+                                Padding(
+                                  padding: const EdgeInsets.only(right: 12),
                                   child: Icon(
                                     widget.editingMessage != null
                                         ? Icons.edit_rounded
                                         : Icons.lock_rounded,
-                                    size: 14,
-                                    color: AppColors.primary,
+                                    size: 15,
+                                    color: AppColors.primary.withValues(alpha: 0.8),
                                   ),
                                 ),
-                                suffixIconConstraints: const BoxConstraints(minWidth: 24, minHeight: 24),
-                              ),
+                              ],
                             ),
                           ),
                         ),

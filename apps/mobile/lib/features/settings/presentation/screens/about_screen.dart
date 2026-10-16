@@ -311,13 +311,25 @@ class AboutScreen extends StatelessWidget {
                     borderRadius: BorderRadius.all(Radius.circular(20)),
                   ),
                   contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                  leading: Icon(Icons.menu_book_rounded, color: isDark ? AppColors.primaryLight : const Color(0xFF2563EB)),
+                  leading: Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withValues(alpha: isDark ? 0.20 : 0.12),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: AppColors.primary.withValues(alpha: 0.3),
+                        width: 1,
+                      ),
+                    ),
+                    child: Icon(Icons.menu_book_rounded, color: isDark ? AppColors.primary : AppColors.primaryDark, size: 19),
+                  ),
                   title: Text(
                     context.tr('aboutLicenses'),
                     style: TextStyle(
                       fontWeight: FontWeight.w600,
                       fontSize: 15,
-                      color: isDark ? Colors.white : const Color(0xFF111827),
+                      color: isDark ? Colors.white : const Color(0xFF0F172A),
                     ),
                   ),
                   trailing: Icon(Icons.arrow_forward_ios_rounded, size: 14, color: isDark ? AppColors.darkTextSecondary : const Color(0xFF9CA3AF)),

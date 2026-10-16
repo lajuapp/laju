@@ -68,8 +68,9 @@ export class DevicesController {
     @Res() res: Response
   ) {
     res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
     res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
     res.flushHeaders?.();
 
     res.write(`data: ${JSON.stringify({ type: 'CONNECTED', userId, timestamp: Date.now() })}\n\n`);
@@ -91,9 +92,24 @@ export class DevicesController {
       subscriber.on('message', onMessage);
     }
 
+    // Replay any active ringing call, missed calls, or unread messages missed while offline/in Doze
+    const sinceParam = req.query?.since ? Number(req.query.since) : undefined;
+    this.devicesService
+      .getPendingPushEvents(userId, sinceParam)
+      .then((pendingEvents) => {
+        if (!res.writableEnded && Array.isArray(pendingEvents)) {
+          for (const ev of pendingEvents) {
+            res.write(`data: ${JSON.stringify(ev)}\n\n`);
+          }
+        }
+      })
+      .catch(() => {});
+
     const heartbeat = setInterval(() => {
-      res.write(`: heartbeat\n\n`);
-    }, 20000);
+      if (!res.writableEnded) {
+        res.write(`: heartbeat ${Date.now()}\n\n`);
+      }
+    }, 25000);
 
     req.on('close', () => {
       clearInterval(heartbeat);

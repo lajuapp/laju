@@ -53,6 +53,7 @@ import android.os.PowerManager
 import android.widget.FrameLayout
 import android.widget.VideoView
 import android.view.View
+import android.view.WindowManager
 import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -234,6 +235,42 @@ class MainActivity : FlutterFragmentActivity() {
         }
     }
 
+    fun enableShowWhenLocked() {
+        runOnUiThread {
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+                    setShowWhenLocked(true)
+                    setTurnScreenOn(true)
+                } else {
+                    @Suppress("DEPRECATION")
+                    window.addFlags(
+                        WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+                        WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
+                        WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
+                    )
+                }
+            } catch (_: Exception) {}
+        }
+    }
+
+    fun disableShowWhenLocked() {
+        runOnUiThread {
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+                    setShowWhenLocked(false)
+                    setTurnScreenOn(false)
+                } else {
+                    @Suppress("DEPRECATION")
+                    window.clearFlags(
+                        WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+                        WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
+                        WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
+                    )
+                }
+            } catch (_: Exception) {}
+        }
+    }
+
     private fun handleIntent(intent: Intent?) {
         if (intent == null) return
         val type = intent.getStringExtra("laju_type")
@@ -243,7 +280,8 @@ class MainActivity : FlutterFragmentActivity() {
         val callerName = intent.getStringExtra("laju_caller_name") ?: "Panggilan"
 
         if (type == "call" && id != null) {
-            if (action == "answer" || action == "decline") {
+            enableShowWhenLocked()
+            if (action == "answer" || action == "decline" || action == "incoming_call") {
                 dispatchCallAction(id, action, isVideo, callerName)
                 return
             }
@@ -1317,6 +1355,15 @@ class MainActivity : FlutterFragmentActivity() {
                     val callerName = call.argument<String>("callerName") ?: "Kontak"
                     val isVideo = call.argument<Boolean>("isVideo") ?: false
                     showSystemCallNotification(callId, callerName, isVideo)
+                    result.success(true)
+                }
+                "setLockscreenActive" -> {
+                    val active = call.argument<Boolean>("active") ?: false
+                    if (active) {
+                        enableShowWhenLocked()
+                    } else {
+                        disableShowWhenLocked()
+                    }
                     result.success(true)
                 }
                 "showMessageNotification" -> {
@@ -2849,6 +2896,25 @@ class MainActivity : FlutterFragmentActivity() {
     private fun showSystemCallNotification(callId: String, callerName: String, isVideo: Boolean) {
         val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
 
+        // Fullscreen & Content Intent (Opens Incoming Call UI without auto-answering)
+        val incomingCallIntent = Intent(this, MainActivity::class.java).apply {
+            action = Intent.ACTION_MAIN
+            addCategory(Intent.CATEGORY_LAUNCHER)
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+            putExtra("laju_type", "call")
+            putExtra("laju_id", callId)
+            putExtra("laju_caller_name", callerName)
+            putExtra("laju_is_video", isVideo)
+            putExtra("laju_action", "incoming_call")
+        }
+        val incomingCallPendingIntent = PendingIntent.getActivity(
+            this,
+            100,
+            incomingCallIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        // Answer intent (ONLY triggered when user explicitly taps "Jawab" button on notification)
         val answerIntent = Intent(this, MainActivity::class.java).apply {
             action = Intent.ACTION_MAIN
             addCategory(Intent.CATEGORY_LAUNCHER)
@@ -2888,8 +2954,8 @@ class MainActivity : FlutterFragmentActivity() {
             .setCategory(NotificationCompat.CATEGORY_CALL)
             .setSound(ringtoneUri)
             .setVibrate(longArrayOf(0, 800, 400, 800, 400, 800))
-            .setFullScreenIntent(answerPendingIntent, true)
-            .setContentIntent(answerPendingIntent)
+            .setFullScreenIntent(incomingCallPendingIntent, true)
+            .setContentIntent(incomingCallPendingIntent)
             .setAutoCancel(true)
             .setOngoing(true)
             .addAction(android.R.drawable.ic_menu_call, "Jawab", answerPendingIntent)

@@ -25,7 +25,7 @@ class HelpScreen extends StatelessWidget {
           style: TextStyle(
             fontSize: 20,
             fontWeight: FontWeight.w800,
-            color: isDark ? Colors.white : const Color(0xFF111827),
+            color: isDark ? Colors.white : const Color(0xFF0F172A),
           ),
         ),
       ),
@@ -125,7 +125,8 @@ class HelpScreen extends StatelessWidget {
                 children: [
                   _buildHelpTile(
                     context,
-                    icon: Icons.help_center_outlined,
+                    icon: Icons.help_center_rounded,
+                    accentColor: const Color(0xFF06B6D4),
                     title: context.tr('helpFaqTitle'),
                     subtitle: context.tr('helpFaqSub'),
                     isFirst: true,
@@ -140,6 +141,7 @@ class HelpScreen extends StatelessWidget {
                   _buildHelpTile(
                     context,
                     icon: Icons.chat_bubble_outline_rounded,
+                    accentColor: const Color(0xFF10B981),
                     title: context.tr('contactUs'),
                     subtitle: context.tr('contactUsSub'),
                     onTap: () {
@@ -152,7 +154,8 @@ class HelpScreen extends StatelessWidget {
                   _buildDivider(isDark),
                   _buildHelpTile(
                     context,
-                    icon: Icons.policy_outlined,
+                    icon: Icons.policy_rounded,
+                    accentColor: const Color(0xFF6366F1),
                     title: context.tr('termsPrivacy'),
                     subtitle: context.tr('termsPrivacySub'),
                     onTap: () {
@@ -166,6 +169,7 @@ class HelpScreen extends StatelessWidget {
                   _buildHelpTile(
                     context,
                     icon: Icons.network_check_rounded,
+                    accentColor: const Color(0xFFF59E0B),
                     title: context.tr('networkDiagnostic'),
                     subtitle: context.tr('networkDiagnosticSub'),
                     onTap: () {
@@ -179,6 +183,7 @@ class HelpScreen extends StatelessWidget {
                   _buildHelpTile(
                     context,
                     icon: Icons.security_update_good_rounded,
+                    accentColor: AppColors.primary,
                     title: context.tr('systemStatus'),
                     subtitle: context.tr('systemStatusSub'),
                     isLast: true,
@@ -227,6 +232,7 @@ class HelpScreen extends StatelessWidget {
   Widget _buildHelpTile(
     BuildContext context, {
     required IconData icon,
+    required Color accentColor,
     required String title,
     required String subtitle,
     required VoidCallback onTap,
@@ -249,24 +255,34 @@ class HelpScreen extends StatelessWidget {
           width: 38,
           height: 38,
           decoration: BoxDecoration(
-            color: isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.04),
+            color: accentColor.withValues(alpha: isDark ? 0.20 : 0.12),
             borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: accentColor.withValues(alpha: 0.3),
+              width: 1,
+            ),
           ),
-          child: Icon(icon, color: isDark ? AppColors.primary : const Color(0xFF2563EB), size: 20),
+          child: Center(
+            child: Icon(
+              icon,
+              color: accentColor,
+              size: 20,
+            ),
+          ),
         ),
         title: Text(
           title,
           style: TextStyle(
             fontSize: 15.5,
             fontWeight: FontWeight.w600,
-            color: isDark ? Colors.white : const Color(0xFF111827),
+            color: isDark ? Colors.white : const Color(0xFF0F172A),
           ),
         ),
         subtitle: Text(
           subtitle,
           style: TextStyle(
             fontSize: 12.5,
-            color: isDark ? AppColors.darkTextSecondary : const Color(0xFF6B7280),
+            color: isDark ? AppColors.darkTextSecondary : const Color(0xFF64748B),
           ),
         ),
         trailing: trailing ??

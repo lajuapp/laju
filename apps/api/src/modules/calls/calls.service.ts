@@ -65,15 +65,35 @@ export class CallsService {
 
       const resolvedCalleeUserId = targetUser.id;
 
+      const ringingCutoff = new Date(Date.now() - 65 * 1000);
+      const connectedCutoff = new Date(Date.now() - 3600 * 1000);
+
+      // Auto-expire any stale unanswered INITIATED calls older than 65s
+      await tx.call.updateMany({
+        where: {
+          state: 'INITIATED',
+          startedAt: { lt: ringingCutoff },
+          participants: {
+            some: { userId: { in: [resolvedCalleeUserId, callerUserId] } }
+          }
+        },
+        data: { state: 'ENDED', endedAt: new Date() }
+      });
+
       // 1. Check if callee is currently in an active or ringing call (Busy)
       const calleeActiveCall = await tx.callParticipant.findFirst({
         where: {
           userId: resolvedCalleeUserId,
-          state: { in: ['CONNECTED', 'RINGING'] },
-          call: {
-            state: { in: ['INITIATED', 'CONNECTED'] },
-            startedAt: { gte: new Date(Date.now() - 3600 * 1000) }
-          }
+          OR: [
+            {
+              state: 'CONNECTED',
+              call: { state: 'CONNECTED', startedAt: { gte: connectedCutoff } }
+            },
+            {
+              state: 'RINGING',
+              call: { state: 'INITIATED', startedAt: { gte: ringingCutoff } }
+            }
+          ]
         }
       });
 
@@ -85,11 +105,16 @@ export class CallsService {
       const callerActiveCall = await tx.callParticipant.findFirst({
         where: {
           userId: callerUserId,
-          state: { in: ['CONNECTED', 'RINGING'] },
-          call: {
-            state: { in: ['INITIATED', 'CONNECTED'] },
-            startedAt: { gte: new Date(Date.now() - 3600 * 1000) }
-          }
+          OR: [
+            {
+              state: 'CONNECTED',
+              call: { state: 'CONNECTED', startedAt: { gte: connectedCutoff } }
+            },
+            {
+              state: 'RINGING',
+              call: { state: 'INITIATED', startedAt: { gte: ringingCutoff } }
+            }
+          ]
         }
       });
 
@@ -238,8 +263,27 @@ export class CallsService {
         }
       }
 
+      this.scheduleRingingTimeout(call.id, callerUserId);
+
       return call;
     });
+  }
+
+  private scheduleRingingTimeout(callId: string, initiatorId: string) {
+    const timer = setTimeout(async () => {
+      try {
+        const current = await this.prisma.call.findUnique({
+          where: { id: callId },
+          select: { id: true, state: true }
+        });
+        if (current && current.state === 'INITIATED') {
+          await this.endCall(initiatorId, callId);
+        }
+      } catch (_) {}
+    }, 60000);
+    if (typeof (timer as any).unref === 'function') {
+      (timer as any).unref();
+    }
   }
 
   async createGroupCall(callerUserId: string, callerDeviceId: string, conversationId: string, isVideo?: boolean) {
@@ -374,6 +418,8 @@ export class CallsService {
         }
       }
 
+      this.scheduleRingingTimeout(call.id, callerUserId);
+
       return {
         ...call,
         conversationId,
@@ -487,7 +533,7 @@ export class CallsService {
       include: { participants: true }
     });
 
-    if (!call) {
+    if (!call || call.state === 'ENDED' || call.state === 'REJECTED') {
       return { success: true };
     }
 
@@ -945,12 +991,31 @@ export class CallsService {
   }
 
   async getIncomingCall(userId: string) {
+    const ringingCutoff = new Date(Date.now() - 65 * 1000);
+
+    // Auto-expire any stale unanswered calls targeting this user
+    const staleParticipant = await this.prisma.callParticipant.findFirst({
+      where: {
+        userId,
+        state: 'RINGING',
+        call: {
+          state: 'INITIATED',
+          startedAt: { lt: ringingCutoff }
+        }
+      },
+      include: { call: true }
+    });
+    if (staleParticipant) {
+      await this.endCall(staleParticipant.call.initiatorId, staleParticipant.callId).catch(() => {});
+    }
+
     const participant = await this.prisma.callParticipant.findFirst({
       where: {
         userId,
         state: 'RINGING',
         call: {
-          state: 'INITIATED'
+          state: 'INITIATED',
+          startedAt: { gte: ringingCutoff }
         }
       },
       include: {

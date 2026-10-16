@@ -98,6 +98,12 @@ class PushNotificationService {
     }
   }
 
+  Future<void> stopBackgroundService() async {
+    try {
+      await _systemNotifChannel.invokeMethod('stopBackgroundService');
+    } catch (_) {}
+  }
+
   Future<void> updatePushSettings({
     bool? enabled,
     String? token,

@@ -10,6 +10,7 @@ class DiagnosticCheckDef {
   final String latency;
   final bool isSuccess;
   final IconData icon;
+  final Color accentColor;
 
   const DiagnosticCheckDef({
     required this.titleKey,
@@ -17,6 +18,7 @@ class DiagnosticCheckDef {
     required this.latency,
     required this.isSuccess,
     required this.icon,
+    required this.accentColor,
   });
 }
 
@@ -89,6 +91,7 @@ class _NetworkDiagnosticScreenState extends State<NetworkDiagnosticScreen> {
           latency: gatewayOk ? '$gatewayLatencyMs ms' : 'Timeout',
           isSuccess: gatewayOk,
           icon: Icons.cloud_done_rounded,
+          accentColor: const Color(0xFF06B6D4),
         ),
         DiagnosticCheckDef(
           titleKey: 'diagWsTitle',
@@ -96,6 +99,7 @@ class _NetworkDiagnosticScreenState extends State<NetworkDiagnosticScreen> {
           latency: wsConnected ? '$wsLatencyMs ms' : (gatewayOk ? 'Siap' : 'Terputus'),
           isSuccess: wsConnected || gatewayOk,
           icon: Icons.sync_alt_rounded,
+          accentColor: const Color(0xFF10B981),
         ),
         DiagnosticCheckDef(
           titleKey: 'diagWebrtcTitle',
@@ -103,6 +107,7 @@ class _NetworkDiagnosticScreenState extends State<NetworkDiagnosticScreen> {
           latency: webrtcConnected ? '$webrtcLatencyMs ms' : (gatewayOk ? 'Siap' : 'Terputus'),
           isSuccess: webrtcConnected || gatewayOk,
           icon: Icons.cell_tower_rounded,
+          accentColor: const Color(0xFF6366F1),
         ),
         DiagnosticCheckDef(
           titleKey: 'diagDbTitle',
@@ -110,6 +115,7 @@ class _NetworkDiagnosticScreenState extends State<NetworkDiagnosticScreen> {
           latency: '$dbLatencyMs ms',
           isSuccess: dbOk,
           icon: Icons.memory_rounded,
+          accentColor: const Color(0xFFF59E0B),
         ),
         DiagnosticCheckDef(
           titleKey: 'diagPushTitle',
@@ -117,6 +123,7 @@ class _NetworkDiagnosticScreenState extends State<NetworkDiagnosticScreen> {
           latency: pushOk ? '$pushLatencyMs ms' : 'Tidak aktif',
           isSuccess: pushOk,
           icon: Icons.notifications_active_rounded,
+          accentColor: const Color(0xFFEC4899),
         ),
       ];
     });
@@ -148,7 +155,7 @@ class _NetworkDiagnosticScreenState extends State<NetworkDiagnosticScreen> {
         leading: IconButton(
           icon: Icon(
             Icons.arrow_back_rounded,
-            color: isDark ? Colors.white : const Color(0xFF111827),
+            color: isDark ? Colors.white : const Color(0xFF0F172A),
           ),
           onPressed: () => Navigator.pop(context),
         ),
@@ -157,7 +164,7 @@ class _NetworkDiagnosticScreenState extends State<NetworkDiagnosticScreen> {
           style: TextStyle(
             fontSize: 19,
             fontWeight: FontWeight.w800,
-            color: isDark ? Colors.white : const Color(0xFF111827),
+            color: isDark ? Colors.white : const Color(0xFF0F172A),
           ),
         ),
         actions: [
@@ -227,7 +234,7 @@ class _NetworkDiagnosticScreenState extends State<NetworkDiagnosticScreen> {
                             fontSize: 11,
                             color: isDark
                                 ? AppColors.primary
-                                : const Color(0xFF2563EB),
+                                : AppColors.primaryDark,
                             fontWeight: FontWeight.w600,
                           ),
                         ),
@@ -281,16 +288,16 @@ class _NetworkDiagnosticScreenState extends State<NetworkDiagnosticScreen> {
                       width: 38,
                       height: 38,
                       decoration: BoxDecoration(
-                        color: isDark
-                            ? Colors.white.withValues(alpha: 0.06)
-                            : Colors.black.withValues(alpha: 0.04),
+                        color: item.accentColor.withValues(alpha: isDark ? 0.20 : 0.12),
                         borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: item.accentColor.withValues(alpha: 0.3),
+                          width: 1,
+                        ),
                       ),
                       child: Icon(
                         item.icon,
-                        color: isDark
-                            ? AppColors.primary
-                            : const Color(0xFF2563EB),
+                        color: item.accentColor,
                         size: 20,
                       ),
                     ),

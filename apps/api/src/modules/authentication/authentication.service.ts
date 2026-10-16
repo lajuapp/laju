@@ -1247,9 +1247,9 @@ export class AuthenticationService {
     const payload = { sub: userId, deviceId };
     const accessToken = this.jwtService.sign(payload, { secret, expiresIn });
 
-    // Store session record for the NEW device
+    // Store session record for the NEW device (365 days lifetime unless revoked/logged out)
     const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + 7);
+    expiresAt.setDate(expiresAt.getDate() + 365);
 
     await prismaClient.session.create({
       data: {

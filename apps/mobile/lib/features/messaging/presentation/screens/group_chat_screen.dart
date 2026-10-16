@@ -1824,9 +1824,19 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                           }
 
                           return ListView.builder(
+                            key: const PageStorageKey('group_chat_messages_list'),
                             controller: _scrollController,
+                            cacheExtent: 1500.0,
                             padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
                             itemCount: displayedMsgs.length,
+                            findChildIndexCallback: (Key key) {
+                              if (key is ValueKey<String>) {
+                                final id = key.value;
+                                final idx = displayedMsgs.indexWhere((m) => m.id == id);
+                                return idx >= 0 ? idx : null;
+                              }
+                              return null;
+                            },
                             itemBuilder: (context, index) {
                               final msg = displayedMsgs[index];
                               final isFirstOrDiffDay = index == 0 ||
@@ -1839,6 +1849,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                               final topMargin = isSameSenderAsPrev ? 1.0 : 4.0;
 
                               final bubble = ChatBubble(
+                                key: ValueKey(msg.id),
                                 message: msg,
                                 isGroup: true,
                                 topMargin: topMargin,
@@ -1876,12 +1887,15 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                               );
 
                               if (isFirstOrDiffDay) {
-                                return Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    _buildDateDivider(msg.timestamp, isDark),
-                                    bubble,
-                                  ],
+                                return KeyedSubtree(
+                                  key: ValueKey(msg.id),
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      _buildDateDivider(msg.timestamp, isDark),
+                                      bubble,
+                                    ],
+                                  ),
                                 );
                               }
                               return bubble;

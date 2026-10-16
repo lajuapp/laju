@@ -39,6 +39,74 @@ class ChatBubble extends StatelessWidget {
 
   static const List<String> kQuickReactions = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
 
+  // Static in-memory caches to prevent base64 re-decoding and frame blinking during scroll
+  static final Map<String, Uint8List> _base64BytesCache = {};
+  static final Map<String, ImageProvider> _imageProviderCache = {};
+
+  static ImageProvider? resolveImageProvider(String? rawPath) {
+    if (rawPath == null || rawPath.trim().isEmpty) return null;
+    final trimmed = rawPath.trim();
+
+    if (_imageProviderCache.containsKey(trimmed)) {
+      return _imageProviderCache[trimmed];
+    }
+
+    String path = trimmed;
+    if (trimmed.startsWith('file://')) {
+      try {
+        path = Uri.parse(trimmed).toFilePath();
+      } catch (_) {
+        path = trimmed.replaceFirst('file://', '');
+      }
+    }
+
+    ImageProvider? provider;
+    if (path.startsWith('data:image') || path.startsWith('data:application') || path.startsWith('data:')) {
+      try {
+        final b64 = path.contains(',') ? path.split(',').last : path;
+        var bytes = _base64BytesCache[b64];
+        if (bytes == null) {
+          bytes = base64Decode(b64);
+          if (_base64BytesCache.length > 250) {
+            _base64BytesCache.clear();
+          }
+          _base64BytesCache[b64] = bytes;
+        }
+        provider = MemoryImage(bytes);
+      } catch (_) {}
+    } else if (path.startsWith('http://') ||
+        path.startsWith('https://') ||
+        path.startsWith('/') ||
+        path.startsWith('admin/media')) {
+      final resolved = resolveMediaUrl(path);
+      final cached = LajuMediaCacheManager.instance.getCachedFileIfPresentSync(resolved);
+      if (cached != null) {
+        provider = FileImage(cached);
+      } else {
+        provider = NetworkImage(resolved);
+        LajuMediaCacheManager.instance.preload(resolved);
+      }
+    } else if (path.startsWith('assets/')) {
+      provider = AssetImage(path);
+    } else {
+      try {
+        final file = File(path);
+        if (file.existsSync()) {
+          provider = FileImage(file);
+        }
+      } catch (_) {}
+    }
+
+    if (provider != null) {
+      if (_imageProviderCache.length > 250) {
+        _imageProviderCache.clear();
+      }
+      _imageProviderCache[trimmed] = provider;
+    }
+
+    return provider;
+  }
+
   void _confirmRecallMessage(BuildContext context) {
     final isDark = ThemeModeController.instance.isDarkMode(context);
 
@@ -422,6 +490,7 @@ class ChatBubble extends StatelessWidget {
                   ],
                 ),
                 child: Column(
+                  mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     // Sender Name (Only shown in group chats for incoming messages)
@@ -502,7 +571,7 @@ class ChatBubble extends StatelessWidget {
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               if (message.isDisappearing) ...[
-                                Icon(Icons.timer_outlined, size: 10.5, color: isOut ? Colors.white70 : AppColors.cyan),
+                                Icon(Icons.timer_outlined, size: 10.5, color: isOut ? (isDark ? Colors.white70 : const Color(0xFF667781)) : AppColors.cyan),
                                 const SizedBox(width: 2.5),
                               ],
                               Text(
@@ -1483,29 +1552,21 @@ class ChatBubble extends StatelessWidget {
   }
 
   Widget _buildImageContent(BuildContext context, bool isDark, bool isOut, String timeStr) {
-    Widget imageWidget;
     final path = message.attachmentPath ?? '';
+    final provider = resolveImageProvider(path);
 
-    if (path.startsWith('data:')) {
-      try {
-        final b64 = path.contains(',') ? path.split(',').last : path;
-        final bytes = base64Decode(b64);
-        imageWidget = Image.memory(
-          bytes,
-          fit: BoxFit.cover,
-          width: double.infinity,
-          height: double.infinity,
-          errorBuilder: (_, __, stackTrace) => _buildImagePlaceholder(isDark),
-        );
-      } catch (_) {
-        imageWidget = _buildImagePlaceholder(isDark);
-      }
-    } else if (File(path).existsSync()) {
-      imageWidget = Image.file(
-        File(path),
+    final screenWidth = MediaQuery.of(context).size.width;
+    final mediaWidth = (screenWidth * 0.74).clamp(240.0, 280.0);
+
+    final Widget imageWidget;
+    if (provider != null) {
+      imageWidget = Image(
+        image: provider,
         fit: BoxFit.cover,
         width: double.infinity,
         height: double.infinity,
+        gaplessPlayback: true,
+        filterQuality: FilterQuality.medium,
         errorBuilder: (_, __, stackTrace) => _buildImagePlaceholder(isDark),
       );
     } else {
@@ -1514,157 +1575,166 @@ class ChatBubble extends StatelessWidget {
 
     final hasCaption = _hasImageCaption();
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // Image Canvas
-        GestureDetector(
-          onTap: () {
-            if (path.isNotEmpty) {
-              LajuImageViewer.show(
-                context,
-                imagePath: path,
-                title: isOut
-                    ? 'Anda'
-                    : (message.senderName.isNotEmpty ? message.senderName : 'Foto'),
-                subtitle: DateFormat('dd MMMM yyyy, HH:mm').format(message.timestamp.toLocal()),
-              );
-            }
-          },
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(14),
-            child: Container(
-              constraints: const BoxConstraints(
-                maxHeight: 280,
-                maxWidth: 280,
-                minWidth: 200,
-                minHeight: 140,
-              ),
-              color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF1F5F9),
-              child: Stack(
-                fit: StackFit.passthrough,
-                children: [
-                  imageWidget,
+    return SizedBox(
+      width: mediaWidth,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Image Canvas
+          GestureDetector(
+            onTap: () {
+              if (path.isNotEmpty) {
+                LajuImageViewer.show(
+                  context,
+                  imagePath: path,
+                  title: isOut
+                      ? 'Anda'
+                      : (message.senderName.isNotEmpty ? message.senderName : 'Foto'),
+                  subtitle: DateFormat('dd MMMM yyyy, HH:mm').format(message.timestamp.toLocal()),
+                );
+              }
+            },
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: Container(
+                width: mediaWidth,
+                constraints: const BoxConstraints(
+                  maxHeight: 280,
+                  minHeight: 140,
+                ),
+                color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF1F5F9),
+                child: Stack(
+                  fit: StackFit.passthrough,
+                  children: [
+                    imageWidget,
 
-                  // Subtle gradient shadow at bottom for timestamp readability if no caption
-                  if (!hasCaption)
-                    Positioned(
-                      left: 0,
-                      right: 0,
-                      bottom: 0,
-                      height: 40,
-                      child: Container(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                            colors: [
-                              Colors.transparent,
-                              Colors.black.withValues(alpha: 0.60),
+                    // Subtle gradient shadow at bottom for timestamp readability if no caption
+                    if (!hasCaption)
+                      Positioned(
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        height: 40,
+                        child: Container(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [
+                                Colors.transparent,
+                                Colors.black.withValues(alpha: 0.60),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+
+                    // Floating Timestamp Pill Overlay (if no caption)
+                    if (!hasCaption)
+                      Positioned(
+                        bottom: 6,
+                        right: 7,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.50),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (message.isDisappearing) ...[
+                                const Icon(Icons.timer_outlined, size: 11, color: Colors.white70),
+                                const SizedBox(width: 3),
+                              ],
+                              Text(
+                                timeStr,
+                                style: const TextStyle(
+                                  fontSize: 10.5,
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              if (isOut) ...[
+                                const SizedBox(width: 4),
+                                _buildStatusIcon(message.status, isOut: true, forcedWhite: true),
+                              ],
                             ],
                           ),
                         ),
                       ),
-                    ),
-
-                  // Floating Timestamp Pill Overlay (if no caption)
-                  if (!hasCaption)
-                    Positioned(
-                      bottom: 6,
-                      right: 7,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withValues(alpha: 0.50),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            if (message.isDisappearing) ...[
-                              const Icon(Icons.timer_outlined, size: 11, color: Colors.white70),
-                              const SizedBox(width: 3),
-                            ],
-                            Text(
-                              timeStr,
-                              style: const TextStyle(
-                                fontSize: 10.5,
-                                color: Colors.white,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                            if (isOut) ...[
-                              const SizedBox(width: 4),
-                              _buildStatusIcon(message.status, isOut: true, forcedWhite: true),
-                            ],
-                          ],
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          ),
-        ),
-
-        // Caption & Timestamp (if caption exists)
-        if (hasCaption) ...[
-          const SizedBox(height: 6),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4),
-            child: Text(
-              message.content,
-              style: TextStyle(
-                fontSize: 14.5 * ChatAppearanceController.instance.fontScale,
-                color: isOut ? Colors.white : (isDark ? Colors.white : const Color(0xFF0F172A)),
-                height: 1.35,
-              ),
-            ),
-          ),
-          const SizedBox(height: 2),
-          Align(
-            alignment: Alignment.bottomRight,
-            child: Padding(
-              padding: const EdgeInsets.only(right: 2),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (message.isDisappearing) ...[
-                    Icon(Icons.timer_outlined, size: 11, color: isOut ? Colors.white70 : AppColors.cyan),
-                    const SizedBox(width: 3),
                   ],
-                  if (message.isEdited) ...[
-                    Text(
-                      'diedit ',
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontStyle: FontStyle.italic,
+                ),
+              ),
+            ),
+          ),
+
+          // Caption & Timestamp (if caption exists)
+          if (hasCaption) ...[
+            const SizedBox(height: 5),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: Text(
+                message.content,
+                style: TextStyle(
+                  fontSize: 14.5 * ChatAppearanceController.instance.fontScale,
+                  color: isDark ? const Color(0xFFE9EDEF) : const Color(0xFF111B21),
+                  height: 1.35,
+                ),
+              ),
+            ),
+            const SizedBox(height: 2),
+            Align(
+              alignment: Alignment.bottomRight,
+              child: Padding(
+                padding: const EdgeInsets.only(right: 2, bottom: 1),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (message.isDisappearing) ...[
+                      Icon(
+                        Icons.timer_outlined,
+                        size: 11,
                         color: isOut
-                            ? Colors.white.withValues(alpha: 0.75)
+                            ? (isDark ? Colors.white70 : const Color(0xFF667781))
+                            : AppColors.cyan,
+                      ),
+                      const SizedBox(width: 3),
+                    ],
+                    if (message.isEdited) ...[
+                      Text(
+                        'diedit ',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontStyle: FontStyle.italic,
+                          color: isOut
+                              ? (isDark ? Colors.white.withValues(alpha: 0.75) : const Color(0xFF667781))
+                              : (isDark ? const Color(0xFF94A3B8) : const Color(0xFF6B7280)),
+                        ),
+                      ),
+                    ],
+                    Text(
+                      timeStr,
+                      style: TextStyle(
+                        fontSize: 10.5,
+                        color: isOut
+                            ? (isDark ? Colors.white.withValues(alpha: 0.8) : const Color(0xFF667781))
                             : (isDark ? const Color(0xFF94A3B8) : const Color(0xFF6B7280)),
+                        fontWeight: FontWeight.w400,
                       ),
                     ),
+                    if (isOut) ...[
+                      const SizedBox(width: 4),
+                      _buildStatusIcon(message.status, isOut: true, isDark: isDark),
+                    ],
                   ],
-                  Text(
-                    timeStr,
-                    style: TextStyle(
-                      fontSize: 10.5,
-                      color: isOut
-                          ? Colors.white.withValues(alpha: 0.8)
-                          : (isDark ? const Color(0xFF94A3B8) : const Color(0xFF6B7280)),
-                      fontWeight: FontWeight.w400,
-                    ),
-                  ),
-                  if (isOut) ...[
-                    const SizedBox(width: 4),
-                    _buildStatusIcon(message.status, isOut: true),
-                  ],
-                ],
+                ),
               ),
             ),
-          ),
+          ],
         ],
-      ],
+      ),
     );
   }
 
@@ -1843,39 +1913,13 @@ class ChatBubble extends StatelessWidget {
         ? const Icon(Icons.emoji_emotions_rounded, size: 20, color: Colors.white54)
         : const Icon(Icons.image, size: 20, color: Colors.white54);
 
-    if (path.startsWith('data:image')) {
-      try {
-        final b64 = path.contains(',') ? path.split(',').last : path;
-        return Image.memory(
-          base64Decode(b64),
-          fit: fit,
-          errorBuilder: (_, __, ___) => fallbackIcon,
-        );
-      } catch (_) {}
-    }
-    if (path.startsWith('http://') ||
-        path.startsWith('https://') ||
-        path.startsWith('/') ||
-        path.startsWith('admin/media')) {
-      return LajuCachedImage(
-        imageUrlOrPath: path,
+    final provider = resolveImageProvider(path);
+    if (provider != null) {
+      return Image(
+        image: provider,
         fit: fit,
-        cacheWidth: 512,
-        cacheHeight: 512,
-        errorWidget: fallbackIcon,
-      );
-    }
-    if (File(path).existsSync()) {
-      return Image.file(
-        File(path),
-        fit: fit,
-        errorBuilder: (_, __, ___) => fallbackIcon,
-      );
-    }
-    if (path.startsWith('assets/')) {
-      return Image.asset(
-        path,
-        fit: fit,
+        gaplessPlayback: true,
+        filterQuality: FilterQuality.medium,
         errorBuilder: (_, __, ___) => fallbackIcon,
       );
     }
@@ -2604,23 +2648,15 @@ class ChatBubble extends StatelessWidget {
 
     if (isImage && message.attachmentPath != null) {
       Widget? imageWidget;
-      if (message.attachmentPath!.startsWith('data:')) {
-        try {
-          final b64 = message.attachmentPath!.contains(',')
-              ? message.attachmentPath!.split(',').last
-              : message.attachmentPath!;
-          final bytes = base64Decode(b64);
-          imageWidget = Image.memory(
-            bytes,
-            fit: BoxFit.cover,
-            errorBuilder: (context, error, stackTrace) =>
-                Center(child: Icon(Icons.broken_image_rounded, color: iconColor, size: 36)),
-          );
-        } catch (_) {}
-      } else if (File(message.attachmentPath!).existsSync()) {
-        imageWidget = Image.file(
-          File(message.attachmentPath!),
+      final provider = resolveImageProvider(message.attachmentPath);
+      if (provider != null) {
+        imageWidget = Image(
+          image: provider,
           fit: BoxFit.cover,
+          gaplessPlayback: true,
+          filterQuality: FilterQuality.medium,
+          errorBuilder: (context, error, stackTrace) =>
+              Center(child: Icon(Icons.broken_image_rounded, color: iconColor, size: 36)),
         );
       }
 
@@ -2702,27 +2738,29 @@ class ChatBubble extends StatelessWidget {
                 border: Border.all(color: iconColor.withValues(alpha: 0.25), width: 1),
               ),
               clipBehavior: Clip.antiAlias,
-              child: isImage && message.attachmentPath != null && message.attachmentPath!.startsWith('data:')
-                  ? Image.memory(
-                      base64Decode(message.attachmentPath!.contains(',')
-                          ? message.attachmentPath!.split(',').last
-                          : message.attachmentPath!),
-                      fit: BoxFit.cover,
-                      errorBuilder: (context, error, stackTrace) => Center(
-                        child: Icon(fileIcon, color: iconColor, size: 24),
-                      ),
-                    )
-                  : (isImage && message.attachmentPath != null && File(message.attachmentPath!).existsSync()
-                      ? Image.file(
-                          File(message.attachmentPath!),
-                          fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) => Center(
-                            child: Icon(fileIcon, color: iconColor, size: 24),
-                          ),
-                        )
-                      : Center(
+              child: isImage && message.attachmentPath != null
+                  ? Builder(
+                      builder: (context) {
+                        final provider = resolveImageProvider(message.attachmentPath);
+                        if (provider != null) {
+                          return Image(
+                            image: provider,
+                            fit: BoxFit.cover,
+                            gaplessPlayback: true,
+                            filterQuality: FilterQuality.medium,
+                            errorBuilder: (context, error, stackTrace) => Center(
+                              child: Icon(fileIcon, color: iconColor, size: 24),
+                            ),
+                          );
+                        }
+                        return Center(
                           child: Icon(fileIcon, color: iconColor, size: 24),
-                        )),
+                        );
+                      },
+                    )
+                  : Center(
+                      child: Icon(fileIcon, color: iconColor, size: 24),
+                    ),
             ),
             const SizedBox(width: 11),
 
@@ -2800,13 +2838,16 @@ class _SwipeToReplyWrapper extends StatefulWidget {
 }
 
 class _SwipeToReplyWrapperState extends State<_SwipeToReplyWrapper>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, AutomaticKeepAliveClientMixin<_SwipeToReplyWrapper> {
   late AnimationController _controller;
   late Animation<double> _animation;
   double _dragOffset = 0.0;
   static const double _triggerThreshold = 55.0;
   static const double _maxDragOffset = 75.0;
   bool _hasHapticTriggered = false;
+
+  @override
+  bool get wantKeepAlive => true;
 
   @override
   void initState() {
@@ -2862,6 +2903,7 @@ class _SwipeToReplyWrapperState extends State<_SwipeToReplyWrapper>
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     if (widget.onReply == null) {
       return widget.child;
     }

@@ -640,5 +640,179 @@ export class DevicesService {
       clientToken: process.env.GOTIFY_CLIENT_TOKEN || ''
     };
   }
+
+  /**
+   * Retrieves pending push events (active ringing calls <60s, missed calls, and unread messages)
+   * that occurred while the device's background push stream was temporarily asleep or disconnected.
+   */
+  async getPendingPushEvents(userId: string, sinceMs?: number): Promise<any[]> {
+    const events: any[] = [];
+    const now = Date.now();
+    const ringingCutoff = new Date(now - 60 * 1000);
+    const maxLookbackMs = now - 7 * 24 * 3600 * 1000;
+    const defaultLookbackMs = now - 30 * 60 * 1000;
+    const effectiveSinceMs =
+      sinceMs && !Number.isNaN(sinceMs) && sinceMs > 0
+        ? Math.max(sinceMs, maxLookbackMs)
+        : defaultLookbackMs;
+    const sinceDate = new Date(effectiveSinceMs);
+
+    try {
+      // 1. Auto-expire stale unanswered calls older than 60s so they are caught as missed calls below
+      await this.prisma.call.updateMany({
+        where: {
+          state: 'INITIATED',
+          startedAt: { lt: ringingCutoff },
+          participants: {
+            some: { userId, state: 'RINGING' }
+          }
+        },
+        data: { state: 'ENDED', endedAt: new Date() }
+      });
+
+      // 2. Check for an active ringing call (<60s old)
+      const ringingParticipant = await this.prisma.callParticipant.findFirst({
+        where: {
+          userId,
+          state: 'RINGING',
+          call: {
+            state: 'INITIATED',
+            startedAt: { gte: ringingCutoff }
+          }
+        },
+        include: { call: true },
+        orderBy: { joinedAt: 'desc' }
+      });
+
+      if (ringingParticipant && ringingParticipant.call.initiatorId !== userId) {
+        const caller = await this.prisma.user.findUnique({
+          where: { id: ringingParticipant.call.initiatorId },
+          select: { username: true }
+        });
+        let isVideo = false;
+        let isGroup = false;
+        let groupName: string | undefined;
+        let conversationId: string | undefined;
+        try {
+          const metaStr = await this.redisService.get(`call:${ringingParticipant.callId}:meta`);
+          if (metaStr) {
+            const meta = JSON.parse(metaStr);
+            isVideo = !!meta.isVideo;
+            isGroup = !!meta.isGroup;
+            groupName = meta.groupName;
+            conversationId = meta.conversationId;
+          }
+        } catch (_) {}
+
+        events.push({
+          type: 'CALL_INCOMING',
+          callId: ringingParticipant.callId,
+          conversationId: conversationId || '',
+          initiatorId: ringingParticipant.call.initiatorId,
+          initiatorName: caller?.username || 'Kontak',
+          isVideo,
+          isGroup,
+          groupName,
+          timestamp: ringingParticipant.call.startedAt.getTime()
+        });
+      }
+
+      // 3. Check for missed calls that occurred while disconnected (since sinceDate)
+      const missedParticipants = await this.prisma.callParticipant.findMany({
+        where: {
+          userId,
+          state: 'RINGING',
+          joinedAt: { gte: sinceDate },
+          call: {
+            initiatorId: { not: userId },
+            state: 'ENDED',
+            startedAt: { gte: sinceDate }
+          }
+        },
+        include: { call: true },
+        orderBy: { joinedAt: 'asc' },
+        take: 5
+      });
+
+      for (const mp of missedParticipants) {
+        const caller = await this.prisma.user.findUnique({
+          where: { id: mp.call.initiatorId },
+          select: { username: true }
+        });
+        let isVideo = false;
+        let conversationId = '';
+        try {
+          const metaStr = await this.redisService.get(`call:${mp.callId}:meta`);
+          if (metaStr) {
+            const meta = JSON.parse(metaStr);
+            isVideo = !!meta.isVideo;
+            conversationId = meta.conversationId || '';
+          }
+        } catch (_) {}
+
+        events.push({
+          type: 'CALL_MISSED',
+          callId: mp.callId,
+          conversationId,
+          initiatorId: mp.call.initiatorId,
+          initiatorName: caller?.username || 'Kontak',
+          isVideo,
+          timestamp: mp.call.startedAt.getTime()
+        });
+      }
+
+      // 4. Check for unread incoming messages (state = 'SENT') since sinceDate
+      const unreadMessages = await this.prisma.message.findMany({
+        where: {
+          senderUserId: { not: userId },
+          state: 'SENT',
+          nonce: { not: 'call-log' },
+          createdAt: { gte: sinceDate },
+          conversation: {
+            members: {
+              some: { userId, leftAt: null }
+            }
+          }
+        },
+        include: {
+          senderUser: {
+            select: { id: true, username: true }
+          }
+        },
+        orderBy: { createdAt: 'asc' },
+        take: 10
+      });
+
+      for (const msg of unreadMessages) {
+        const senderName = msg.senderUser?.username || 'Pesan Baru';
+        const preview =
+          msg.messageType === 'TEXT'
+            ? 'Pesan baru terenkripsi'
+            : `Mengirim ${msg.messageType.toLowerCase()}`;
+        events.push({
+          type: 'NEW_MESSAGE',
+          conversationId: msg.conversationId,
+          senderName,
+          preview,
+          messageId: msg.id,
+          timestamp: msg.createdAt.getTime(),
+          message: {
+            id: msg.id,
+            conversationId: msg.conversationId,
+            senderUserId: msg.senderUserId,
+            senderDeviceId: msg.senderDeviceId,
+            messageType: msg.messageType,
+            state: msg.state,
+            createdAt: msg.createdAt,
+            sequence: msg.sequence
+          }
+        });
+      }
+    } catch (err: any) {
+      this.logger.warn(`getPendingPushEvents error for user ${userId}: ${err.message}`);
+    }
+
+    return events;
+  }
 }
 

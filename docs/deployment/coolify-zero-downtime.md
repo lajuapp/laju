@@ -49,14 +49,27 @@ Jika Anda mendeploy setiap aplikasi secara terpisah di Coolify (bukan 1 file Com
   - Health Check Retries: `5`
   - Health Check Start Period: `5` detik
 
-### C. Docker Network Traefik di Coolify
-Coolify secara bawaan menjalankan Traefik di network bernama `coolify`.
-Pada `docker-compose.yml`, service `api`, `portal`, dan `backoffice` terhubung ke network `edge`.
-Jika Traefik di server Coolify Anda menggunakan network `coolify`, pastikan di file `.env` Coolify terpasang:
-```env
-COOLIFY_NETWORK=coolify
-```
-Atau tambahkan network `coolify` sebagai external network pada service publik di Coolify.
+### C. Docker Network Traefik & Multi-Network Resolution
+Coolify secara bawaan menjalankan reverse proxy Traefik di Docker network bernama `coolify`.
+Pada `docker-compose.yml`, service `api`, `portal`, dan `backoffice` terhubung ke dua network: `internal` (untuk akses DB/Redis) dan `edge` (external network `coolify`).
+
+Untuk mencegah Traefik salah memilih IP `internal` (yang menyebabkan error 502 Bad Gateway saat rolling update):
+1. Setiap service publik (`api`, `portal`, `backoffice`) dilengkapi label:
+   ```yaml
+   - "traefik.docker.network=${COOLIFY_NETWORK:-coolify}"
+   ```
+2. Network `edge` telah diselaraskan langsung ke external network `coolify`:
+   ```yaml
+   networks:
+     edge:
+       name: ${COOLIFY_NETWORK:-coolify}
+       external: true
+   ```
+
+### D. Keamanan Data Produksi (Data Persistence Guarantee)
+Konfigurasi Zero-Downtime ini murni mengatur alur *rolling update* dan perutean proxy Traefik pada level reverse proxy:
+- Volume penyimpanan database (`postgres_data`, `redis_data`, `gotify_data`, `seaweedfs_*`, `admin_media_data`) **100% aman dan tidak tersentuh**.
+- Data produksi, riwayat chat, media, dan pengguna tetap tersimpan utuh di persistent storage host.
 
 ---
 

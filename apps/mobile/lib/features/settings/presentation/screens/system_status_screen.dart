@@ -158,7 +158,7 @@ class _SystemStatusScreenState extends State<SystemStatusScreen> {
         leading: IconButton(
           icon: Icon(
             Icons.arrow_back_rounded,
-            color: isDark ? Colors.white : const Color(0xFF111827),
+            color: isDark ? Colors.white : const Color(0xFF0F172A),
           ),
           onPressed: () => Navigator.pop(context),
         ),
@@ -167,7 +167,7 @@ class _SystemStatusScreenState extends State<SystemStatusScreen> {
           style: TextStyle(
             fontSize: 19,
             fontWeight: FontWeight.w800,
-            color: isDark ? Colors.white : const Color(0xFF111827),
+            color: isDark ? Colors.white : const Color(0xFF0F172A),
           ),
         ),
         actions: [
@@ -288,16 +288,16 @@ class _SystemStatusScreenState extends State<SystemStatusScreen> {
                       width: 36,
                       height: 36,
                       decoration: BoxDecoration(
-                        color: isDark
-                            ? Colors.white.withValues(alpha: 0.06)
-                            : Colors.black.withValues(alpha: 0.04),
+                        color: AppColors.primary.withValues(alpha: isDark ? 0.20 : 0.12),
                         borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: AppColors.primary.withValues(alpha: 0.3),
+                          width: 1,
+                        ),
                       ),
                       child: Icon(
                         s.icon,
-                        color: isDark
-                            ? AppColors.primary
-                            : const Color(0xFF2563EB),
+                        color: isDark ? AppColors.primary : AppColors.primaryDark,
                         size: 19,
                       ),
                     ),

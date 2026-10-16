@@ -1,5 +1,6 @@
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
+import '../localization/app_localization.dart';
 import '../services/app_update_controller.dart';
 import '../theme/app_colors.dart';
 import '../theme/theme_controller.dart';
@@ -39,7 +40,11 @@ class _AppUpdateGateState extends State<AppUpdateGate> with WidgetsBindingObserv
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable: _updateCtrl,
+      listenable: Listenable.merge([
+        _updateCtrl,
+        ThemeModeController.instance,
+        LocaleController.instance,
+      ]),
       builder: (context, _) {
         final shouldShow = _updateCtrl.shouldShowGate;
         final status = _updateCtrl.status;
@@ -103,6 +108,21 @@ class _AppUpdateOverlay extends StatelessWidget {
 
     final fileSizeText = _formatFileSize(config?.apkSize);
 
+    // Theme adaptive colors
+    final cardBg = isDark ? const Color(0xFF0E131F) : Colors.white;
+    final titleColor = isDark ? Colors.white : const Color(0xFF0F172A);
+    final bodyColor = isDark ? Colors.white.withValues(alpha: 0.78) : const Color(0xFF475569);
+    final subCardBg = isDark ? Colors.white.withValues(alpha: 0.05) : const Color(0xFFF8FAFC);
+    final subCardBorder = isDark ? Colors.white.withValues(alpha: 0.08) : const Color(0xFFE2E8F0);
+    final labelColor = isDark ? Colors.white.withValues(alpha: 0.5) : const Color(0xFF64748B);
+    final valueColor = isDark ? Colors.white : const Color(0xFF0F172A);
+    final dividerColor = isDark ? Colors.white.withValues(alpha: 0.12) : const Color(0xFFCBD5E1);
+    final releaseNotesBg = isDark ? Colors.black.withValues(alpha: 0.25) : const Color(0xFFF1F5F9);
+    final releaseNotesBorder = isDark ? Colors.white.withValues(alpha: 0.06) : const Color(0xFFE2E8F0);
+    final releaseNotesTextColor = isDark ? Colors.white.withValues(alpha: 0.85) : const Color(0xFF334155);
+    final progressTrackColor = isDark ? Colors.white.withValues(alpha: 0.1) : const Color(0xFFE2E8F0);
+    final manualLinkColor = isDark ? Colors.white.withValues(alpha: 0.5) : const Color(0xFF64748B);
+
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: Stack(
@@ -116,7 +136,9 @@ class _AppUpdateOverlay extends StatelessWidget {
               child: BackdropFilter(
                 filter: ui.ImageFilter.blur(sigmaX: 18, sigmaY: 18),
                 child: Container(
-                  color: Colors.black.withValues(alpha: isDark ? 0.78 : 0.65),
+                  color: isDark
+                      ? Colors.black.withValues(alpha: 0.78)
+                      : const Color(0xFF0F172A).withValues(alpha: 0.5),
                 ),
               ),
             ),
@@ -132,17 +154,19 @@ class _AppUpdateOverlay extends StatelessWidget {
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(28),
                     border: Border.all(
-                      color: accentColor.withValues(alpha: 0.35),
+                      color: accentColor.withValues(alpha: isDark ? 0.35 : 0.28),
                       width: 1.5,
                     ),
                     boxShadow: [
                       BoxShadow(
-                        color: accentColor.withValues(alpha: 0.2),
+                        color: accentColor.withValues(alpha: isDark ? 0.2 : 0.12),
                         blurRadius: 36,
                         spreadRadius: 2,
                       ),
                       BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.6),
+                        color: isDark
+                            ? Colors.black.withValues(alpha: 0.6)
+                            : const Color(0xFF0F172A).withValues(alpha: 0.15),
                         blurRadius: 30,
                         offset: const Offset(0, 14),
                       ),
@@ -151,7 +175,7 @@ class _AppUpdateOverlay extends StatelessWidget {
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(28),
                     child: Container(
-                      color: isDark ? const Color(0xFF0E131F) : const Color(0xFF1E293B),
+                      color: cardBg,
                       padding: const EdgeInsets.all(26),
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
@@ -164,12 +188,12 @@ class _AppUpdateOverlay extends StatelessWidget {
                               shape: BoxShape.circle,
                               gradient: RadialGradient(
                                 colors: [
-                                  accentColor.withValues(alpha: 0.28),
+                                  accentColor.withValues(alpha: isDark ? 0.28 : 0.2),
                                   accentColor.withValues(alpha: 0.05),
                                 ],
                               ),
                               border: Border.all(
-                                color: accentColor.withValues(alpha: 0.4),
+                                color: accentColor.withValues(alpha: isDark ? 0.4 : 0.35),
                                 width: 2,
                               ),
                             ),
@@ -193,22 +217,22 @@ class _AppUpdateOverlay extends StatelessWidget {
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
                             decoration: BoxDecoration(
-                              color: accentColor.withValues(alpha: 0.15),
+                              color: accentColor.withValues(alpha: isDark ? 0.15 : 0.12),
                               borderRadius: BorderRadius.circular(20),
                               border: Border.all(
-                                color: accentColor.withValues(alpha: 0.3),
+                                color: accentColor.withValues(alpha: isDark ? 0.3 : 0.25),
                               ),
                             ),
                             child: Text(
                               isMaintenance
-                                  ? 'PEMELIHARAAN SISTEM'
+                                  ? context.tr('updateTagMaintenance')
                                   : (isDownloadComplete
-                                      ? 'SIAP DIPASANG'
+                                      ? context.tr('updateTagReady')
                                       : (isDownloading
-                                          ? 'MENGUNDUH PEMBARUAN'
+                                          ? context.tr('updateTagDownloading')
                                           : (isOptional
-                                              ? 'PEMBARUAN TERSEDIA'
-                                              : 'PEMBARUAN WAJIB'))),
+                                              ? context.tr('updateTagAvailable')
+                                              : context.tr('updateTagRequired')))),
                               style: TextStyle(
                                 color: isDownloadComplete ? AppColors.primary : accentColor,
                                 fontSize: 11,
@@ -222,17 +246,17 @@ class _AppUpdateOverlay extends StatelessWidget {
                           // Title
                           Text(
                             isMaintenance
-                                ? 'Sistem Sedang Ditingkatkan'
+                                ? context.tr('updateTitleMaintenance')
                                 : (isDownloadComplete
-                                    ? 'Berkas Siap Dipasang'
+                                    ? context.tr('updateTitleReady')
                                     : (isDownloading
-                                        ? 'Mengunduh Pembaruan OTA'
+                                        ? context.tr('updateTitleDownloading')
                                         : (isOptional
-                                            ? 'Versi Baru Tersedia'
-                                            : 'Aplikasi Perlu Diperbarui'))),
+                                            ? context.tr('updateTitleAvailable')
+                                            : context.tr('updateTitleRequired')))),
                             textAlign: TextAlign.center,
-                            style: const TextStyle(
-                              color: Colors.white,
+                            style: TextStyle(
+                              color: titleColor,
                               fontSize: 20,
                               fontWeight: FontWeight.w800,
                               letterSpacing: -0.3,
@@ -245,17 +269,17 @@ class _AppUpdateOverlay extends StatelessWidget {
                             isMaintenance
                                 ? (config?.maintenanceMessage?.isNotEmpty == true
                                     ? config!.maintenanceMessage!
-                                    : 'Sistem LAJU sedang dalam pemeliharaan berkala demi stabilitas dan keamanan. Silakan coba kembali beberapa saat lagi.')
+                                    : context.tr('updateDescMaintenanceDefault'))
                                 : (isDownloadComplete
-                                    ? 'Pembaruan LAJU telah berhasil diunduh secara langsung. Ketuk tombol di bawah untuk memasang ke perangkat Anda.'
+                                    ? context.tr('updateDescReady')
                                     : (isDownloading
-                                        ? 'Sedang mengunduh berkas APK langsung dari server. Jangan tutup aplikasi hingga unduhan selesai.'
+                                        ? context.tr('updateDescDownloading')
                                         : (isOptional
-                                            ? 'Versi terbaru LAJU hadir dengan peningkatan performa, perbaikan keamanan, dan fitur komunikasi terkini.'
-                                            : 'Versi aplikasi Anda sudah tidak didukung oleh server. Harap perbarui sekarang untuk melanjutkan penggunaan LAJU.'))),
+                                            ? context.tr('updateDescAvailable')
+                                            : context.tr('updateDescRequired')))),
                             textAlign: TextAlign.center,
                             style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.78),
+                              color: bodyColor,
                               fontSize: 13.5,
                               height: 1.45,
                             ),
@@ -267,10 +291,10 @@ class _AppUpdateOverlay extends StatelessWidget {
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                               decoration: BoxDecoration(
-                                color: Colors.white.withValues(alpha: 0.05),
+                                color: subCardBg,
                                 borderRadius: BorderRadius.circular(16),
                                 border: Border.all(
-                                  color: Colors.white.withValues(alpha: 0.08),
+                                  color: subCardBorder,
                                 ),
                               ),
                               child: Row(
@@ -280,9 +304,9 @@ class _AppUpdateOverlay extends StatelessWidget {
                                   Column(
                                     children: [
                                       Text(
-                                        'Versi Anda',
+                                        context.tr('updateYourVersion'),
                                         style: TextStyle(
-                                          color: Colors.white.withValues(alpha: 0.5),
+                                          color: labelColor,
                                           fontSize: 11,
                                           fontWeight: FontWeight.w500,
                                         ),
@@ -290,8 +314,8 @@ class _AppUpdateOverlay extends StatelessWidget {
                                       const SizedBox(height: 3),
                                       Text(
                                         'v${controller.currentVersion}',
-                                        style: const TextStyle(
-                                          color: Colors.white,
+                                        style: TextStyle(
+                                          color: valueColor,
                                           fontSize: 14,
                                           fontWeight: FontWeight.w700,
                                         ),
@@ -310,9 +334,9 @@ class _AppUpdateOverlay extends StatelessWidget {
                                   Column(
                                     children: [
                                       Text(
-                                        'Versi Terbaru',
+                                        context.tr('updateLatestVersion'),
                                         style: TextStyle(
-                                          color: Colors.white.withValues(alpha: 0.5),
+                                          color: labelColor,
                                           fontSize: 11,
                                           fontWeight: FontWeight.w500,
                                         ),
@@ -334,14 +358,14 @@ class _AppUpdateOverlay extends StatelessWidget {
                                     Container(
                                       width: 1,
                                       height: 26,
-                                      color: Colors.white.withValues(alpha: 0.12),
+                                      color: dividerColor,
                                     ),
                                     Column(
                                       children: [
                                         Text(
-                                          'Ukuran APK',
+                                          context.tr('updateApkSize'),
                                           style: TextStyle(
-                                            color: Colors.white.withValues(alpha: 0.5),
+                                            color: labelColor,
                                             fontSize: 11,
                                             fontWeight: FontWeight.w500,
                                           ),
@@ -349,8 +373,8 @@ class _AppUpdateOverlay extends StatelessWidget {
                                         const SizedBox(height: 3),
                                         Text(
                                           fileSizeText,
-                                          style: const TextStyle(
-                                            color: Colors.white,
+                                          style: TextStyle(
+                                            color: valueColor,
                                             fontSize: 13,
                                             fontWeight: FontWeight.w600,
                                           ),
@@ -372,10 +396,10 @@ class _AppUpdateOverlay extends StatelessWidget {
                                 constraints: const BoxConstraints(maxHeight: 110),
                                 padding: const EdgeInsets.all(12),
                                 decoration: BoxDecoration(
-                                  color: Colors.black.withValues(alpha: 0.25),
+                                  color: releaseNotesBg,
                                   borderRadius: BorderRadius.circular(14),
                                   border: Border.all(
-                                    color: Colors.white.withValues(alpha: 0.06),
+                                    color: releaseNotesBorder,
                                   ),
                                 ),
                                 child: SingleChildScrollView(
@@ -391,7 +415,7 @@ class _AppUpdateOverlay extends StatelessWidget {
                                           ),
                                           const SizedBox(width: 6),
                                           Text(
-                                            'Catatan Pembaruan:',
+                                            context.tr('updateReleaseNotes'),
                                             style: TextStyle(
                                               color: accentColor,
                                               fontSize: 11,
@@ -404,7 +428,7 @@ class _AppUpdateOverlay extends StatelessWidget {
                                       Text(
                                         config.releaseNotes!.trim(),
                                         style: TextStyle(
-                                          color: Colors.white.withValues(alpha: 0.85),
+                                          color: releaseNotesTextColor,
                                           fontSize: 12,
                                           height: 1.4,
                                         ),
@@ -422,10 +446,10 @@ class _AppUpdateOverlay extends StatelessWidget {
                             Container(
                               padding: const EdgeInsets.all(16),
                               decoration: BoxDecoration(
-                                color: Colors.white.withValues(alpha: 0.05),
+                                color: subCardBg,
                                 borderRadius: BorderRadius.circular(18),
                                 border: Border.all(
-                                  color: AppColors.primary.withValues(alpha: 0.2),
+                                  color: AppColors.primary.withValues(alpha: isDark ? 0.2 : 0.35),
                                 ),
                               ),
                               child: Column(
@@ -434,9 +458,11 @@ class _AppUpdateOverlay extends StatelessWidget {
                                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                     children: [
                                       Text(
-                                        'Mengunduh APK...',
+                                        context.tr('updateDownloadingApk'),
                                         style: TextStyle(
-                                          color: Colors.white.withValues(alpha: 0.7),
+                                          color: isDark
+                                              ? Colors.white.withValues(alpha: 0.7)
+                                              : const Color(0xFF334155),
                                           fontSize: 12.5,
                                           fontWeight: FontWeight.w500,
                                         ),
@@ -459,7 +485,7 @@ class _AppUpdateOverlay extends StatelessWidget {
                                           ? controller.downloadProgress
                                           : null,
                                       minHeight: 8,
-                                      backgroundColor: Colors.white.withValues(alpha: 0.1),
+                                      backgroundColor: progressTrackColor,
                                       valueColor: const AlwaysStoppedAnimation<Color>(
                                         AppColors.primary,
                                       ),
@@ -472,14 +498,14 @@ class _AppUpdateOverlay extends StatelessWidget {
                                       Text(
                                         _formatFileSize(controller.downloadedBytes),
                                         style: TextStyle(
-                                          color: Colors.white.withValues(alpha: 0.5),
+                                          color: labelColor,
                                           fontSize: 11,
                                         ),
                                       ),
                                       Text(
                                         _formatFileSize(controller.totalBytes),
                                         style: TextStyle(
-                                          color: Colors.white.withValues(alpha: 0.5),
+                                          color: labelColor,
                                           fontSize: 11,
                                         ),
                                       ),
@@ -498,10 +524,10 @@ class _AppUpdateOverlay extends StatelessWidget {
                               padding: const EdgeInsets.all(12),
                               margin: const EdgeInsets.only(bottom: 16),
                               decoration: BoxDecoration(
-                                color: Colors.red.withValues(alpha: 0.15),
+                                color: Colors.red.withValues(alpha: isDark ? 0.15 : 0.1),
                                 borderRadius: BorderRadius.circular(12),
                                 border: Border.all(
-                                  color: Colors.red.withValues(alpha: 0.3),
+                                  color: Colors.red.withValues(alpha: isDark ? 0.3 : 0.25),
                                 ),
                               ),
                               child: Row(
@@ -511,8 +537,8 @@ class _AppUpdateOverlay extends StatelessWidget {
                                   Expanded(
                                     child: Text(
                                       controller.downloadError!,
-                                      style: const TextStyle(
-                                        color: Colors.white,
+                                      style: TextStyle(
+                                        color: isDark ? Colors.white : const Color(0xFFB91C1C),
                                         fontSize: 12,
                                       ),
                                     ),
@@ -525,7 +551,7 @@ class _AppUpdateOverlay extends StatelessWidget {
                           // Action Buttons
                           if (isMaintenance) ...[
                             LajuButton(
-                              label: 'Periksa Status Server',
+                              label: context.tr('updateCheckServerStatus'),
                               icon: Icons.refresh_rounded,
                               variant: LajuButtonVariant.primary,
                               isLoading: controller.isChecking,
@@ -534,7 +560,7 @@ class _AppUpdateOverlay extends StatelessWidget {
                           ] else if (isDownloadComplete) ...[
                             // Ready to install
                             LajuButton(
-                              label: 'Pasang Sekarang',
+                              label: context.tr('updateInstallNow'),
                               icon: Icons.install_mobile_rounded,
                               variant: LajuButtonVariant.primary,
                               onPressed: () => controller.installDownloadedApk(),
@@ -542,7 +568,7 @@ class _AppUpdateOverlay extends StatelessWidget {
                           ] else if (isDownloading) ...[
                             // Downloading indicator
                             LajuButton(
-                              label: 'Mengunduh (${(controller.downloadProgress * 100).toStringAsFixed(0)}%)...',
+                              label: '${context.tr('updateDownloadingBtn')} (${(controller.downloadProgress * 100).toStringAsFixed(0)}%)...',
                               variant: LajuButtonVariant.secondary,
                               isLoading: true,
                               onPressed: null,
@@ -552,7 +578,7 @@ class _AppUpdateOverlay extends StatelessWidget {
                               children: [
                                 Expanded(
                                   child: LajuButton(
-                                    label: 'Nanti Saja',
+                                    label: context.tr('updateLater'),
                                     variant: LajuButtonVariant.secondary,
                                     onPressed: () => controller.dismissOptionalUpdate(),
                                   ),
@@ -560,7 +586,7 @@ class _AppUpdateOverlay extends StatelessWidget {
                                 const SizedBox(width: 12),
                                 Expanded(
                                   child: LajuButton(
-                                    label: 'Perbarui',
+                                    label: context.tr('updateBtn'),
                                     icon: Icons.system_update_rounded,
                                     variant: LajuButtonVariant.primary,
                                     onPressed: () => controller.startInAppOtaUpdate(),
@@ -571,7 +597,7 @@ class _AppUpdateOverlay extends StatelessWidget {
                           ] else ...[
                             // Force Update
                             LajuButton(
-                              label: 'Perbarui Sekarang',
+                              label: context.tr('updateNowBtn'),
                               icon: Icons.system_update_rounded,
                               variant: LajuButtonVariant.primary,
                               onPressed: () => controller.startInAppOtaUpdate(),
@@ -581,10 +607,10 @@ class _AppUpdateOverlay extends StatelessWidget {
                             GestureDetector(
                               onTap: () => controller.openExternalBrowserDownload(),
                               child: Text(
-                                'Atau unduh manual melalui peramban web',
+                                context.tr('updateDownloadManualWeb'),
                                 textAlign: TextAlign.center,
                                 style: TextStyle(
-                                  color: Colors.white.withValues(alpha: 0.5),
+                                  color: manualLinkColor,
                                   fontSize: 11.5,
                                   decoration: TextDecoration.underline,
                                 ),

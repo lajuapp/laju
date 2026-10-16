@@ -6,11 +6,15 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.media.AudioAttributes
 import android.media.RingtoneManager
-import android.content.pm.ServiceInfo
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
 import android.os.Build
 import android.os.IBinder
+import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import org.json.JSONObject
 import java.io.BufferedReader
@@ -31,17 +35,24 @@ class LajuPushService : Service() {
         const val ACTION_START = "com.laju.START_PUSH_SERVICE"
         const val ACTION_STOP = "com.laju.STOP_PUSH_SERVICE"
         const val ACTION_DECLINE = "com.laju.DECLINE_CALL"
+        const val ACTION_RESTART = "com.laju.RESTART_PUSH_SERVICE"
+        const val ACTION_WATCHDOG = "com.laju.PUSH_WATCHDOG"
 
         const val PREFS_NAME = "laju_push_prefs"
         const val KEY_BASE_URL = "base_url"
         const val KEY_TOKEN = "auth_token"
+        const val KEY_LAST_EVENT_TS = "last_event_ts"
+        const val KEY_NOTIFIED_IDS = "notified_ids"
 
         fun startService(context: Context, baseUrl: String, token: String) {
             val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            prefs.edit()
+            val edit = prefs.edit()
                 .putString(KEY_BASE_URL, baseUrl)
                 .putString(KEY_TOKEN, token)
-                .apply()
+            if (!prefs.contains(KEY_LAST_EVENT_TS)) {
+                edit.putLong(KEY_LAST_EVENT_TS, System.currentTimeMillis() - 15 * 60 * 1000L)
+            }
+            edit.apply()
 
             val intent = Intent(context, LajuPushService::class.java).apply {
                 action = ACTION_START
@@ -49,7 +60,7 @@ class LajuPushService : Service() {
                 putExtra(KEY_TOKEN, token)
             }
             try {
-                // Prefer standard background service - silent, no persistent notification in status bar like WhatsApp!
+                // Prefer standard silent background service - zero persistent notification in status bar / drawer!
                 context.startService(intent)
             } catch (e: Exception) {
                 try {
@@ -60,9 +71,13 @@ class LajuPushService : Service() {
                     e2.printStackTrace()
                 }
             }
+
+            // Arm 3-minute exact watchdog
+            scheduleWatchdog(context)
         }
 
         fun stopService(context: Context) {
+            cancelWatchdog(context)
             val intent = Intent(context, LajuPushService::class.java).apply {
                 action = ACTION_STOP
             }
@@ -72,18 +87,121 @@ class LajuPushService : Service() {
                 e.printStackTrace()
             }
         }
+
+        fun scheduleWatchdog(context: Context) {
+            try {
+                val am = context.getSystemService(Context.ALARM_SERVICE) as? android.app.AlarmManager ?: return
+                val intent = Intent(context, LajuPushReceiver::class.java).apply {
+                    action = ACTION_WATCHDOG
+                }
+                val pi = PendingIntent.getBroadcast(
+                    context,
+                    2001,
+                    intent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
+                val intervalMs = 3 * 60 * 1000L // 3 minutes
+                val triggerAt = System.currentTimeMillis() + intervalMs
+
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    try {
+                        am.setExactAndAllowWhileIdle(android.app.AlarmManager.RTC_WAKEUP, triggerAt, pi)
+                    } catch (_: SecurityException) {
+                        am.setAndAllowWhileIdle(android.app.AlarmManager.RTC_WAKEUP, triggerAt, pi)
+                    }
+                } else {
+                    am.set(android.app.AlarmManager.RTC_WAKEUP, triggerAt, pi)
+                }
+            } catch (_: Exception) {}
+        }
+
+        fun cancelWatchdog(context: Context) {
+            try {
+                val am = context.getSystemService(Context.ALARM_SERVICE) as? android.app.AlarmManager ?: return
+                val intent = Intent(context, LajuPushReceiver::class.java).apply {
+                    action = ACTION_WATCHDOG
+                }
+                val pi = PendingIntent.getBroadcast(
+                    context,
+                    2001,
+                    intent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
+                am.cancel(pi)
+            } catch (_: Exception) {}
+        }
     }
 
     @Volatile private var isRunning = false
     @Volatile private var currentToken = ""
     @Volatile private var currentBaseUrl = ""
+    @Volatile private var lastStreamActivityMs = 0L
+    @Volatile private var activeConnection: HttpURLConnection? = null
     private var streamThread: Thread? = null
+    private var networkCallback: ConnectivityManager.NetworkCallback? = null
+    private var callWakeLock: PowerManager.WakeLock? = null
+    private var streamWakeLock: PowerManager.WakeLock? = null
+    private val notifiedEventIds = java.util.Collections.synchronizedSet( LinkedHashSet<String>() )
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
         super.onCreate()
         ensureNotificationChannels()
+        registerNetworkCallback()
+        loadNotifiedIds()
+    }
+
+    private fun loadNotifiedIds() {
+        try {
+            val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            val saved = prefs.getStringSet(KEY_NOTIFIED_IDS, null)
+            if (saved != null) {
+                notifiedEventIds.addAll(saved)
+            }
+        } catch (_: Exception) {}
+    }
+
+    private fun markEventNotified(eventId: String): Boolean {
+        if (eventId.isEmpty()) return true
+        synchronized(notifiedEventIds) {
+            if (notifiedEventIds.contains(eventId)) {
+                return false
+            }
+            notifiedEventIds.add(eventId)
+            while (notifiedEventIds.size > 150) {
+                val first = notifiedEventIds.iterator().next()
+                notifiedEventIds.remove(first)
+            }
+            try {
+                val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                prefs.edit().putStringSet(KEY_NOTIFIED_IDS, HashSet(notifiedEventIds)).apply()
+            } catch (_: Exception) {}
+            return true
+        }
+    }
+
+    private fun acquireStreamWakeLock(timeoutMs: Long = 10000L) {
+        try {
+            val pm = getSystemService(Context.POWER_SERVICE) as? PowerManager ?: return
+            if (streamWakeLock == null) {
+                streamWakeLock = pm.newWakeLock(
+                    PowerManager.PARTIAL_WAKE_LOCK,
+                    "laju:push_stream_wake"
+                ).apply {
+                    setReferenceCounted(false)
+                }
+            }
+            streamWakeLock?.acquire(timeoutMs)
+        } catch (_: Exception) {}
+    }
+
+    private fun releaseStreamWakeLock() {
+        try {
+            if (streamWakeLock?.isHeld == true) {
+                streamWakeLock?.release()
+            }
+        } catch (_: Exception) {}
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -92,6 +210,7 @@ class LajuPushService : Service() {
         if (action == ACTION_DECLINE) {
             val callId = intent.getStringExtra("call_id") ?: ""
             val callerName = intent.getStringExtra("caller_name") ?: "Panggilan"
+            releaseCallWakeLock()
             if (callId.isNotEmpty()) {
                 declineCallInBackground(callId)
             }
@@ -108,6 +227,8 @@ class LajuPushService : Service() {
         }
 
         if (action == ACTION_STOP) {
+            releaseCallWakeLock()
+            releaseStreamWakeLock()
             stopStream()
             try {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
@@ -122,13 +243,33 @@ class LajuPushService : Service() {
         }
 
         // Satisfy startForeground contract if started via startForegroundService, then immediately dismiss
+        // This ensures ZERO persistent notifications exist in status bar or drawer while idle
         dismissForegroundSyncNotification()
 
+        // Always re-arm the 3-minute watchdog on every service start/wakeup
+        scheduleWatchdog(applicationContext)
+
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val flutterPrefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+        val isAuthenticated = flutterPrefs.getBoolean("flutter.laju_is_authenticated", true)
+        if (!isAuthenticated) {
+            stopStream()
+            stopSelf()
+            return START_NOT_STICKY
+        }
+
         val baseUrl = intent?.getStringExtra(KEY_BASE_URL) ?: prefs.getString(KEY_BASE_URL, "") ?: ""
-        val token = intent?.getStringExtra(KEY_TOKEN) ?: prefs.getString(KEY_TOKEN, "") ?: ""
+        val flutterToken = flutterPrefs.getString("flutter.laju_auth_token", "") ?: ""
+        val intentToken = intent?.getStringExtra(KEY_TOKEN) ?: ""
+        val savedToken = prefs.getString(KEY_TOKEN, "") ?: ""
+        val token = when {
+            intentToken.isNotEmpty() -> intentToken
+            flutterToken.isNotEmpty() -> flutterToken
+            else -> savedToken
+        }
 
         if (baseUrl.isNotEmpty() && token.isNotEmpty()) {
+            prefs.edit().putString(KEY_BASE_URL, baseUrl).putString(KEY_TOKEN, token).apply()
             startPushStream(baseUrl, token)
         }
 
@@ -175,7 +316,7 @@ class LajuPushService : Service() {
                     startForeground(NOTIFICATION_ID_SYNC, emptyNotif)
                 }
 
-                // Immediately remove from notification bar & drawer like WhatsApp
+                // Immediately remove from notification bar & drawer - 100% clean like WhatsApp
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
                     stopForeground(STOP_FOREGROUND_REMOVE)
                 } else {
@@ -184,6 +325,142 @@ class LajuPushService : Service() {
                 }
                 nm.cancel(NOTIFICATION_ID_SYNC)
             } catch (_: Exception) {}
+        }
+    }
+
+    private fun isConnectedToWifi(): Boolean {
+        val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return false
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            val network = cm.activeNetwork ?: return false
+            val caps = cm.getNetworkCapabilities(network) ?: return false
+            caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
+        } else {
+            @Suppress("DEPRECATION")
+            val info = cm.activeNetworkInfo
+            @Suppress("DEPRECATION")
+            info != null && info.type == ConnectivityManager.TYPE_WIFI
+        }
+    }
+
+    private fun registerNetworkCallback() {
+        if (networkCallback != null) return
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return
+            networkCallback = object : ConnectivityManager.NetworkCallback() {
+                override fun onAvailable(network: Network) {
+                    // Fast instant network reconnection on handover (Wi-Fi <-> Cellular)
+                    restartStreamImmediately()
+                }
+
+                override fun onLost(network: Network) {
+                    interruptCurrentConnection()
+                }
+            }
+            try {
+                cm.registerDefaultNetworkCallback(networkCallback!!)
+            } catch (_: Exception) {}
+        }
+    }
+
+    private fun unregisterNetworkCallback() {
+        networkCallback?.let {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+                try {
+                    cm?.unregisterNetworkCallback(it)
+                } catch (_: Exception) {}
+            }
+        }
+        networkCallback = null
+    }
+
+    private fun interruptCurrentConnection() {
+        try {
+            activeConnection?.disconnect()
+        } catch (_: Exception) {}
+    }
+
+    private fun restartStreamImmediately() {
+        if (!isRunning) {
+            val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            val bUrl = prefs.getString(KEY_BASE_URL, "") ?: ""
+            val tok = resolveLatestToken(prefs.getString(KEY_TOKEN, "") ?: "")
+            if (bUrl.isNotEmpty() && tok.isNotEmpty()) {
+                startPushStream(bUrl, tok)
+            }
+            return
+        }
+        lastStreamActivityMs = 0L
+        interruptCurrentConnection()
+    }
+
+    private fun resolveLatestToken(fallback: String): String {
+        return try {
+            val flutterPrefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+            val flutterTok = flutterPrefs.getString("flutter.laju_auth_token", "") ?: ""
+            if (flutterTok.isNotEmpty()) flutterTok else fallback
+        } catch (_: Exception) {
+            fallback
+        }
+    }
+
+    private fun tryRefreshTokenInBackground(rawBase: String, oldToken: String): String? {
+        var conn: HttpURLConnection? = null
+        return try {
+            val flutterPrefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+            val isAuthenticated = flutterPrefs.getBoolean("flutter.laju_is_authenticated", true)
+            if (!isAuthenticated) return null
+
+            val latestFlutterTok = flutterPrefs.getString("flutter.laju_auth_token", "") ?: ""
+            if (latestFlutterTok.isNotEmpty() && latestFlutterTok != oldToken) {
+                getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                    .edit()
+                    .putString(KEY_TOKEN, latestFlutterTok)
+                    .apply()
+                return latestFlutterTok
+            }
+
+            val deviceUuid = flutterPrefs.getString("flutter.laju_local_device_uuid", "") ?: ""
+            if (deviceUuid.isEmpty()) return null
+
+            val url = URL("$rawBase/auth/refresh-device")
+            conn = (url.openConnection() as HttpURLConnection).apply {
+                requestMethod = "POST"
+                setRequestProperty("Authorization", "Bearer $oldToken")
+                setRequestProperty("Content-Type", "application/json")
+                connectTimeout = 10000
+                readTimeout = 10000
+                doOutput = true
+                doInput = true
+            }
+            val bodyJson = JSONObject().apply {
+                put("deviceUuid", deviceUuid)
+                put("deviceName", "Mobile Device")
+            }.toString()
+            conn.outputStream.use { os ->
+                os.write(bodyJson.toByteArray(Charsets.UTF_8))
+                os.flush()
+            }
+
+            if (conn.responseCode in 200..201) {
+                val respStr = BufferedReader(InputStreamReader(conn.inputStream)).use { it.readText() }
+                val respObj = JSONObject(respStr)
+                val dataObj = respObj.optJSONObject("data") ?: respObj
+                val newTok = dataObj.optString("accessToken", dataObj.optString("token", ""))
+                if (newTok.isNotEmpty()) {
+                    getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                        .edit()
+                        .putString(KEY_TOKEN, newTok)
+                        .apply()
+                    flutterPrefs.edit().putString("flutter.laju_auth_token", newTok).apply()
+                    return newTok
+                }
+            }
+            null
+        } catch (_: Exception) {
+            null
+        } finally {
+            try { conn?.disconnect() } catch (_: Exception) {}
         }
     }
 
@@ -234,11 +511,21 @@ class LajuPushService : Service() {
     }
 
     private fun startPushStream(baseUrl: String, token: String) {
-        if (isRunning && token == currentToken && baseUrl == currentBaseUrl) return
+        val effectiveToken = resolveLatestToken(token)
+        val now = System.currentTimeMillis()
+        val isStreamHealthy = isRunning &&
+            streamThread?.isAlive == true &&
+            (now - lastStreamActivityMs) < 75_000L &&
+            effectiveToken == currentToken &&
+            baseUrl == currentBaseUrl
+
+        if (isStreamHealthy) return
+
         stopStream()
         isRunning = true
-        currentToken = token
+        currentToken = effectiveToken
         currentBaseUrl = baseUrl
+        lastStreamActivityMs = now
 
         streamThread = thread(start = true, isDaemon = true) {
             var retryDelay = 3000L
@@ -248,43 +535,69 @@ class LajuPushService : Service() {
                 var reader: BufferedReader? = null
 
                 try {
+                    acquireStreamWakeLock(12000L)
+                    currentToken = resolveLatestToken(currentToken)
+
+                    val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                    val sinceTs = prefs.getLong(KEY_LAST_EVENT_TS, System.currentTimeMillis() - 15 * 60 * 1000L)
+
                     val cleanBase = if (baseUrl.endsWith("/")) baseUrl.substring(0, baseUrl.length - 1) else baseUrl
                     val rawBase = if (cleanBase.endsWith("/api/v1")) cleanBase.substring(0, cleanBase.length - 7) else cleanBase
-                    val streamUrl = "$rawBase/devices/push-stream"
+                    val streamUrl = "$rawBase/devices/push-stream?since=$sinceTs"
                     val url = URL(streamUrl)
 
+                    // Server sends heartbeat every 25s; 65s read timeout detects dead/half-open NAT sockets fast
                     conn = (url.openConnection() as HttpURLConnection).apply {
                         requestMethod = "GET"
-                        setRequestProperty("Authorization", "Bearer $token")
+                        setRequestProperty("Authorization", "Bearer $currentToken")
                         setRequestProperty("Accept", "text/event-stream")
+                        setRequestProperty("Cache-Control", "no-cache")
                         connectTimeout = 15000
-                        readTimeout = 60000
+                        readTimeout = 65000
                         doInput = true
                     }
+                    activeConnection = conn
 
                     val code = conn.responseCode
                     if (code == 200) {
                         retryDelay = 3000L // Reset backoff
+                        lastStreamActivityMs = System.currentTimeMillis()
                         reader = BufferedReader(InputStreamReader(conn.inputStream))
 
                         var line: String? = null
+                        // Blocking readLine on kernel socket wait: 0.0% CPU utilization
                         while (isRunning && reader.readLine().also { line = it } != null) {
+                            lastStreamActivityMs = System.currentTimeMillis()
                             val l = line?.trim() ?: continue
                             if (l.startsWith("data:")) {
+                                acquireStreamWakeLock(10000L)
                                 val dataStr = l.substring(5).trim()
                                 handlePushEvent(dataStr)
                             }
                         }
                     } else if (code == 401) {
-                        // Unauthorized - Stop retrying until re-authenticated
-                        isRunning = false
-                        break
+                        // Attempt background token refresh before giving up
+                        val refreshed = tryRefreshTokenInBackground(rawBase, currentToken)
+                        if (!refreshed.isNullOrEmpty()) {
+                            currentToken = refreshed
+                            retryDelay = 1000L
+                        } else {
+                            val flutterPrefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+                            val stillAuth = flutterPrefs.getBoolean("flutter.laju_is_authenticated", true)
+                            if (!stillAuth) {
+                                isRunning = false
+                                break
+                            }
+                            retryDelay = 30000L
+                        }
                     }
-                } catch (e: Exception) {
-                    // Connection lost or network transition
+                } catch (_: Exception) {
+                    // Normal network timeout / transition handover
                 } finally {
                     try { reader?.close() } catch (_: Exception) {}
                     try { conn?.disconnect() } catch (_: Exception) {}
+                    activeConnection = null
+                    releaseStreamWakeLock()
                 }
 
                 if (isRunning) {
@@ -299,32 +612,81 @@ class LajuPushService : Service() {
 
     private fun stopStream() {
         isRunning = false
+        interruptCurrentConnection()
         try {
             streamThread?.interrupt()
         } catch (_: Exception) {}
         streamThread = null
     }
 
+    private fun updateLastEventTimestamp(eventTs: Long = 0L) {
+        try {
+            val now = System.currentTimeMillis()
+            val ts = if (eventTs > 0L && eventTs <= now + 60000L) eventTs else now
+            val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            val prev = prefs.getLong(KEY_LAST_EVENT_TS, 0L)
+            if (ts >= prev) {
+                prefs.edit().putLong(KEY_LAST_EVENT_TS, ts).apply()
+            }
+        } catch (_: Exception) {}
+    }
+
     private fun handlePushEvent(jsonStr: String) {
         try {
             val obj = JSONObject(jsonStr)
             val type = obj.optString("type", "")
+            val eventTs = obj.optLong("timestamp", System.currentTimeMillis())
+
+            if (type != "CONNECTED") {
+                updateLastEventTimestamp(eventTs)
+            }
 
             when (type) {
                 "CALL_INCOMING" -> {
                     val callId = obj.optString("callId", "")
                     val callerName = obj.optString("initiatorName", "Kontak")
                     val isVideo = obj.optBoolean("isVideo", false)
+
+                    if (callId.isNotEmpty() && !markEventNotified("call_in_$callId")) {
+                        return
+                    }
+
+                    // Acquire WakeLock with a STRICT 10-second hard safety timeout to turn on the screen
                     try {
-                        val pm = getSystemService(Context.POWER_SERVICE) as? android.os.PowerManager
-                        val wl = pm?.newWakeLock(
-                            android.os.PowerManager.SCREEN_BRIGHT_WAKE_LOCK or android.os.PowerManager.ACQUIRE_CAUSES_WAKEUP,
+                        val pm = getSystemService(Context.POWER_SERVICE) as? PowerManager
+                        releaseCallWakeLock()
+                        callWakeLock = pm?.newWakeLock(
+                            PowerManager.SCREEN_BRIGHT_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP,
                             "laju:incoming_call_wake"
-                        )
-                        wl?.acquire(10000L)
+                        )?.apply {
+                            setReferenceCounted(false)
+                            acquire(10000L)
+                        }
                     } catch (_: Exception) {}
+
                     if (!MainActivity.isAppInForeground) {
                         showIncomingCallNotification(callId, callerName, isVideo)
+                    }
+                }
+                "CALL_MISSED" -> {
+                    val callId = obj.optString("callId", "")
+                    val convId = obj.optString("conversationId", callId)
+                    val callerName = obj.optString("initiatorName", "Kontak")
+                    val isVideo = obj.optBoolean("isVideo", false)
+
+                    releaseCallWakeLock()
+                    try {
+                        val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+                        nm.cancel(NOTIFICATION_ID_CALL)
+                    } catch (_: Exception) {}
+
+                    if (callId.isNotEmpty() && !markEventNotified("call_missed_$callId")) {
+                        return
+                    }
+
+                    if (!MainActivity.isAppInForeground) {
+                        val preview = if (isVideo) "📹 Panggilan video tak terjawab" else "📞 Panggilan suara tak terjawab"
+                        showMessageNotification(convId.ifEmpty { "missed_$callId" }, callerName, preview)
                     }
                 }
                 "NEW_MESSAGE" -> {
@@ -333,6 +695,7 @@ class LajuPushService : Service() {
 
                     val msgObj = obj.optJSONObject("message")
                     val senderUserId = msgObj?.optString("senderUserId", "") ?: ""
+                    val msgId = obj.optString("messageId", msgObj?.optString("id", "") ?: "")
 
                     val flutterPrefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
                     val currentUserId = flutterPrefs.getString("flutter.laju_user_id", "") 
@@ -340,6 +703,10 @@ class LajuPushService : Service() {
 
                     if (currentUserId.isNotEmpty() && senderUserId == currentUserId) {
                         // Silent sync: sender must NOT get a notification banner for their own outgoing messages!
+                        return
+                    }
+
+                    if (msgId.isNotEmpty() && !markEventNotified("msg_$msgId")) {
                         return
                     }
 
@@ -356,8 +723,10 @@ class LajuPushService : Service() {
                     MainActivity.instance?.dispatchPushMessage(convId, senderName, preview)
                 }
                 "CALL_ENDED", "CALL_REJECTED" -> {
+                    releaseCallWakeLock()
                     val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
                     nm.cancel(NOTIFICATION_ID_CALL)
+                    MainActivity.instance?.disableShowWhenLocked()
                 }
                 "SYSTEM_ANNOUNCEMENT" -> {
                     val title = obj.optString("title", "Pengumuman Resmi")
@@ -370,10 +739,37 @@ class LajuPushService : Service() {
         }
     }
 
+    private fun releaseCallWakeLock() {
+        try {
+            if (callWakeLock?.isHeld == true) {
+                callWakeLock?.release()
+            }
+        } catch (_: Exception) {}
+        callWakeLock = null
+    }
+
     private fun showIncomingCallNotification(callId: String, callerName: String, isVideo: Boolean) {
         val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
 
-        // Answer intent
+        // Fullscreen & Content Intent (Opens Incoming Call UI without auto-answering)
+        val incomingCallIntent = Intent(this, MainActivity::class.java).apply {
+            action = Intent.ACTION_MAIN
+            addCategory(Intent.CATEGORY_LAUNCHER)
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+            putExtra("laju_type", "call")
+            putExtra("laju_id", callId)
+            putExtra("laju_caller_name", callerName)
+            putExtra("laju_is_video", isVideo)
+            putExtra("laju_action", "incoming_call")
+        }
+        val incomingCallPendingIntent = PendingIntent.getActivity(
+            this,
+            100,
+            incomingCallIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        // Answer intent (ONLY triggered when user explicitly taps "Jawab" button on notification)
         val answerIntent = Intent(this, MainActivity::class.java).apply {
             action = Intent.ACTION_MAIN
             addCategory(Intent.CATEGORY_LAUNCHER)
@@ -391,7 +787,7 @@ class LajuPushService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        // Decline intent
+        // Decline intent (Triggered when user taps "Tolak" button on notification)
         val declineIntent = Intent(this, LajuPushService::class.java).apply {
             action = ACTION_DECLINE
             putExtra("call_id", callId)
@@ -417,8 +813,8 @@ class LajuPushService : Service() {
             .setCategory(NotificationCompat.CATEGORY_CALL)
             .setSound(ringtoneUri)
             .setVibrate(longArrayOf(0, 800, 400, 800, 400, 800))
-            .setFullScreenIntent(answerPendingIntent, true)
-            .setContentIntent(answerPendingIntent)
+            .setFullScreenIntent(incomingCallPendingIntent, true)
+            .setContentIntent(incomingCallPendingIntent)
             .setAutoCancel(true)
             .setOngoing(true)
             .addAction(android.R.drawable.ic_menu_call, "Jawab", answerPendingIntent)
@@ -516,11 +912,16 @@ class LajuPushService : Service() {
         }
     }
 
-    override fun onTaskRemoved(rootIntent: Intent?) {
-        super.onTaskRemoved(rootIntent)
+    private fun scheduleImmediateRestart() {
         try {
+            val flutterPrefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+            val isAuthenticated = flutterPrefs.getBoolean("flutter.laju_is_authenticated", true)
+            if (!isAuthenticated) return
+
+            scheduleWatchdog(applicationContext)
+
             val restartIntent = Intent(applicationContext, LajuPushReceiver::class.java).apply {
-                action = "com.laju.RESTART_PUSH_SERVICE"
+                action = ACTION_RESTART
             }
             val restartPendingIntent = PendingIntent.getBroadcast(
                 applicationContext,
@@ -529,16 +930,30 @@ class LajuPushService : Service() {
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
             val alarmManager = getSystemService(Context.ALARM_SERVICE) as? android.app.AlarmManager
-            alarmManager?.set(
-                android.app.AlarmManager.ELAPSED_REALTIME,
-                android.os.SystemClock.elapsedRealtime() + 1000,
-                restartPendingIntent
-            )
+            val triggerAt = System.currentTimeMillis() + 2000L
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                try {
+                    alarmManager?.setExactAndAllowWhileIdle(android.app.AlarmManager.RTC_WAKEUP, triggerAt, restartPendingIntent)
+                } catch (_: SecurityException) {
+                    alarmManager?.setAndAllowWhileIdle(android.app.AlarmManager.RTC_WAKEUP, triggerAt, restartPendingIntent)
+                }
+            } else {
+                alarmManager?.set(android.app.AlarmManager.RTC_WAKEUP, triggerAt, restartPendingIntent)
+            }
         } catch (_: Exception) {}
     }
 
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        super.onTaskRemoved(rootIntent)
+        scheduleImmediateRestart()
+    }
+
     override fun onDestroy() {
+        releaseCallWakeLock()
+        releaseStreamWakeLock()
+        unregisterNetworkCallback()
         stopStream()
+        scheduleImmediateRestart()
         super.onDestroy()
     }
 }

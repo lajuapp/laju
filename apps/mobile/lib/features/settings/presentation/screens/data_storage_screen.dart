@@ -274,12 +274,17 @@ class _DataStorageScreenState extends State<DataStorageScreen> {
                           ),
                           contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                           leading: Container(
-                            padding: const EdgeInsets.all(8),
+                            width: 36,
+                            height: 36,
                             decoration: BoxDecoration(
-                              color: isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.04),
+                              color: AppColors.primary.withValues(alpha: isDark ? 0.20 : 0.12),
                               borderRadius: BorderRadius.circular(10),
+                              border: Border.all(
+                                color: AppColors.primary.withValues(alpha: 0.3),
+                                width: 1,
+                              ),
                             ),
-                            child: Icon(Icons.folder_outlined, color: isDark ? AppColors.primary : const Color(0xFF2563EB), size: 20),
+                            child: Icon(Icons.folder_outlined, color: isDark ? AppColors.primary : AppColors.primaryDark, size: 20),
                           ),
                           title: Text(
                             context.tr('manageStorage'),

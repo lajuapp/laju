@@ -73,7 +73,7 @@ class _MyQrCodeScreenState extends State<MyQrCodeScreen> with TickerProviderStat
 
     // 3. User Avatar Circle with Initials
     final avatarCenter = const Offset(width / 2, 130);
-    final avatarPaint = Paint()..color = const Color(0xFF2563EB);
+    final avatarPaint = Paint()..color = AppColors.primary;
     canvas.drawCircle(avatarCenter, 42, avatarPaint);
 
     final initial = name.trim().isNotEmpty ? name.trim()[0].toUpperCase() : 'L';
@@ -81,7 +81,7 @@ class _MyQrCodeScreenState extends State<MyQrCodeScreen> with TickerProviderStat
       text: TextSpan(
         text: initial,
         style: const TextStyle(
-          color: Colors.white,
+          color: Colors.black,
           fontSize: 38,
           fontWeight: FontWeight.bold,
         ),
@@ -160,7 +160,7 @@ class _MyQrCodeScreenState extends State<MyQrCodeScreen> with TickerProviderStat
       text: const TextSpan(
         text: 'laju.chat • Pindai untuk menambahkan teman',
         style: TextStyle(
-          color: Color(0xFF2563EB),
+          color: Color(0xFF059669),
           fontSize: 16,
           fontWeight: FontWeight.w600,
         ),

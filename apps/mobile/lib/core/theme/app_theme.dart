@@ -13,7 +13,7 @@ class AppTheme {
         secondary: AppColors.primaryDark,
         surface: AppColors.lightSurface,
         error: AppColors.danger,
-        onPrimary: Colors.white,
+        onPrimary: Colors.black,
         onSurface: AppColors.textPrimary,
       ),
       appBarTheme: const AppBarTheme(
@@ -60,9 +60,52 @@ class AppTheme {
         backgroundColor: AppColors.lightSurface,
         surfaceTintColor: Colors.transparent,
       ),
-      dialogTheme: const DialogThemeData(
+      dialogTheme: DialogThemeData(
         backgroundColor: AppColors.lightSurface,
         surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        titleTextStyle: const TextStyle(
+          color: AppColors.textPrimary,
+          fontSize: 18,
+          fontWeight: FontWeight.w700,
+          letterSpacing: -0.2,
+        ),
+        contentTextStyle: const TextStyle(
+          color: AppColors.textSecondary,
+          fontSize: 14.5,
+          height: 1.45,
+        ),
+      ),
+      switchTheme: SwitchThemeData(
+        thumbColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) {
+            return AppColors.primary;
+          }
+          return const Color(0xFF94A3B8);
+        }),
+        trackColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) {
+            return AppColors.primary.withValues(alpha: 0.35);
+          }
+          return const Color(0xFFE2E8F0);
+        }),
+        trackOutlineColor: WidgetStateProperty.all(Colors.transparent),
+      ),
+      elevatedButtonTheme: ElevatedButtonThemeData(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: AppColors.primary,
+          foregroundColor: Colors.black,
+          elevation: 0,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+        ),
+      ),
+      textButtonTheme: TextButtonThemeData(
+        style: TextButton.styleFrom(
+          foregroundColor: AppColors.primaryDark,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          textStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+        ),
       ),
       popupMenuTheme: const PopupMenuThemeData(
         color: AppColors.lightSurface,
@@ -138,9 +181,52 @@ class AppTheme {
         backgroundColor: AppColors.darkSurface,
         surfaceTintColor: Colors.transparent,
       ),
-      dialogTheme: const DialogThemeData(
-        backgroundColor: AppColors.darkSurface,
+      dialogTheme: DialogThemeData(
+        backgroundColor: AppColors.darkSurfaceElevated,
         surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        titleTextStyle: const TextStyle(
+          color: AppColors.darkTextPrimary,
+          fontSize: 18,
+          fontWeight: FontWeight.w700,
+          letterSpacing: -0.2,
+        ),
+        contentTextStyle: const TextStyle(
+          color: AppColors.darkTextSecondary,
+          fontSize: 14.5,
+          height: 1.45,
+        ),
+      ),
+      switchTheme: SwitchThemeData(
+        thumbColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) {
+            return AppColors.primary;
+          }
+          return const Color(0xFF64748B);
+        }),
+        trackColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) {
+            return AppColors.primary.withValues(alpha: 0.35);
+          }
+          return const Color(0xFF1E293B);
+        }),
+        trackOutlineColor: WidgetStateProperty.all(Colors.transparent),
+      ),
+      elevatedButtonTheme: ElevatedButtonThemeData(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: AppColors.primary,
+          foregroundColor: Colors.black,
+          elevation: 0,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+        ),
+      ),
+      textButtonTheme: TextButtonThemeData(
+        style: TextButton.styleFrom(
+          foregroundColor: AppColors.primary,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          textStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+        ),
       ),
       popupMenuTheme: const PopupMenuThemeData(
         color: AppColors.darkSurfaceElevated,

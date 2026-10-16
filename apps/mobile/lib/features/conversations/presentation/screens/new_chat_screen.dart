@@ -121,9 +121,9 @@ class _NewChatScreenState extends State<NewChatScreen> {
     final isDark = ThemeModeController.instance.isDarkMode(context);
 
     return Scaffold(
-      backgroundColor: isDark ? AppColors.darkBackground : Colors.white,
+      backgroundColor: isDark ? AppColors.darkBackground : AppColors.lightBackground,
       appBar: AppBar(
-        backgroundColor: isDark ? AppColors.darkSurface : Colors.white,
+        backgroundColor: isDark ? AppColors.darkSurface : AppColors.lightSurface,
         elevation: 0.5,
         leading: IconButton(
           icon: Icon(Icons.arrow_back_rounded, color: isDark ? Colors.white : const Color(0xFF111827)),
@@ -270,7 +270,7 @@ class _NewChatScreenState extends State<NewChatScreen> {
 
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: Divider(height: 1, color: isDark ? AppColors.darkSurfaceBorder : const Color(0xFFE5E7EB)),
+              child: Divider(height: 1, color: isDark ? AppColors.darkSurfaceBorder : AppColors.lightSurfaceBorder),
             ),
 
             // Section Header: Kontak Personal

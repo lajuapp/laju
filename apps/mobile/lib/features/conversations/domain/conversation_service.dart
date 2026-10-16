@@ -124,7 +124,8 @@ class ConversationService {
         (m.clientMessageId != null &&
             msg.clientMessageId != null &&
             m.clientMessageId == msg.clientMessageId));
-    if (existingIdx != -1) {
+    final isNewMessage = existingIdx == -1;
+    if (!isNewMessage) {
       current[existingIdx] = msg;
     } else {
       current.add(msg);
@@ -140,10 +141,18 @@ class ConversationService {
       if (idx != -1) {
         final conv = inMemoryConversations![idx];
         final isCurOpen = isConversationOpen(conv.id) || isConversationOpen(conversationId);
+        int newUnread;
+        if (isCurOpen || msg.isOutgoing) {
+          newUnread = 0;
+        } else if (isNewMessage) {
+          newUnread = conv.unreadCount + 1;
+        } else {
+          newUnread = conv.unreadCount;
+        }
         final updated = conv.copyWith(
           lastMessage: msg.displaySnippet,
           lastMessageTime: msg.timestamp,
-          unreadCount: isCurOpen ? 0 : conv.unreadCount + (msg.isOutgoing ? 0 : 1),
+          unreadCount: newUnread,
         );
         inMemoryConversations![idx] = updated;
         conversationsNotifier.value = List.from(inMemoryConversations!);
@@ -247,8 +256,14 @@ class ConversationService {
     for (int i = 0; i < list.length; i++) {
       final c = list[i];
       final isMatch = allIds.contains(c.id) ||
-          (c.participantUserId != null && allIds.contains('conv-${c.participantUserId}'));
+          (c.participantUserId != null &&
+              (allIds.contains(c.participantUserId) || allIds.contains('conv-${c.participantUserId}')));
       if (isMatch) {
+        allIds.add(c.id);
+        if (c.participantUserId != null) {
+          allIds.add(c.participantUserId!);
+          allIds.add('conv-${c.participantUserId}');
+        }
         if (c.unreadCount > 0) {
           list[i] = c.copyWith(unreadCount: 0);
           changed = true;
@@ -590,25 +605,46 @@ class ConversationService {
             final senderId = latest['senderUserId'] as String?;
 
             if (latestMsgId != null) {
-              if (!_seenMessageIds.contains(latestMsgId)) {
-                _seenMessageIds.add(latestMsgId);
+              final isSeen = _seenMessageIds.contains(latestMsgId);
+              _seenMessageIds.add(latestMsgId);
 
-                // Instantly pipe to active screen and memory cache
-                final parsedMsg = parseMessageFromJson(latest, convId);
+              // Update in-memory message cache & SQLite without falsely incrementing unreadCount on historical messages
+              final parsedMsg = parseMessageFromJson(latest, convId);
+              final current = _inMemoryMessages[convId] ?? [];
+              final existingIdx = current.indexWhere((m) => m.id == parsedMsg.id);
+              if (existingIdx != -1) {
+                current[existingIdx] = parsedMsg;
+              } else {
+                current.add(parsedMsg);
+              }
+              _inMemoryMessages[convId] = current;
+              LocalDatabase.instance.upsertMessages(convId, [parsedMsg]).catchError((_) {});
+
+              final old = cachedMap[convId];
+              final isOutgoing = senderId == currentUserId;
+              final msgTimestamp = parsedMsg.timestamp;
+              final isGenuinelyNew = !isSeen &&
+                  _isInitialSyncComplete &&
+                  old != null &&
+                  msgTimestamp.isAfter(old.lastMessageTime) &&
+                  !isOutgoing;
+
+              if (isGenuinelyNew) {
                 _handleRealtimeNewMessage(convId, parsedMsg);
+              }
 
-                if (senderId != null && senderId != currentUserId) {
-                  if (_isInitialSyncComplete) {
-                    final msgType = latest['messageType'] as String?;
-                    DataStorageController.instance.recordMessageReceived(
-                      bytes: rawMsg.isNotEmpty ? rawMsg.length : 64,
-                      isMedia: msgType == 'ATTACHMENT' || rawMsg.contains('"media"'),
-                    );
-                  }
+              if (senderId != null && senderId != currentUserId) {
+                if (_isInitialSyncComplete && isGenuinelyNew) {
+                  final msgType = latest['messageType'] as String?;
+                  DataStorageController.instance.recordMessageReceived(
+                    bytes: rawMsg.isNotEmpty ? rawMsg.length : 64,
+                    isMedia: msgType == 'ATTACHMENT' || rawMsg.contains('"media"'),
+                  );
+                }
 
-                  // If initial sync is complete and user is not currently in this chat, trigger notification!
-                  final isConvMuted = cachedMap[convId]?.isMuted ?? false;
-                  if (_isInitialSyncComplete && !isConversationOpen(convId) && !isConvMuted) {
+                // If initial sync is complete and user is not currently in this chat, trigger notification!
+                final isConvMuted = cachedMap[convId]?.isMuted ?? false;
+                if (_isInitialSyncComplete && isGenuinelyNew && !isConversationOpen(convId) && !isConvMuted) {
                   final isGroup = item['type'] == 'GROUP';
                   String notifTitle = item['title'] ?? '';
                   String? avatarUrl;
@@ -689,8 +725,7 @@ class ConversationService {
             }
           }
         }
-      }
-      _isInitialSyncComplete = true;
+        _isInitialSyncComplete = true;
 
         final conversations = list.map((item) {
           final isGroup = item['type'] == 'GROUP';
@@ -809,7 +844,7 @@ class ConversationService {
           final isArchived = old?.isArchived ?? false;
           final isMuted = old?.isMuted ?? false;
           final isCurOpen = isConversationOpen(convId);
-          final unreadCount = isCurOpen ? 0 : (old?.unreadCount ?? 0);
+          final unreadCount = (isCurOpen || isOutgoingLatest) ? 0 : (old?.unreadCount ?? 0);
 
           return ConversationModel(
             id: convId,

@@ -49,36 +49,22 @@ class _TermsPrivacyScreenState extends State<TermsPrivacyScreen>
           style: TextStyle(
             fontSize: 19,
             fontWeight: FontWeight.w800,
-            color: isDark ? Colors.white : const Color(0xFF111827),
+            color: isDark ? Colors.white : const Color(0xFF0F172A),
           ),
         ),
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(48),
-          child: Container(
-            margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-            decoration: BoxDecoration(
-              color: isDark
-                  ? Colors.white.withValues(alpha: 0.05)
-                  : const Color(0xFFE2E8F0),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: TabBar(
-              controller: _tabController,
-              indicator: BoxDecoration(
-                color: isDark ? AppColors.primary : const Color(0xFF2563EB),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              indicatorSize: TabBarIndicatorSize.tab,
-              labelColor: isDark ? Colors.black : Colors.white,
-              unselectedLabelColor:
-                  isDark ? AppColors.darkTextSecondary : const Color(0xFF64748B),
-              labelStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5),
-              tabs: [
-                Tab(text: context.tr('tabPrivacyPolicy')),
-                Tab(text: context.tr('tabTermsOfService')),
-              ],
-            ),
-          ),
+        bottom: TabBar(
+          controller: _tabController,
+          indicatorColor: AppColors.primary,
+          indicatorWeight: 3,
+          labelColor: AppColors.primary,
+          unselectedLabelColor: isDark ? AppColors.darkTextSecondary : const Color(0xFF64748B),
+          labelStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14.5),
+          unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.w500, fontSize: 14.5),
+          dividerColor: Colors.transparent,
+          tabs: [
+            Tab(text: context.tr('tabPrivacyPolicy')),
+            Tab(text: context.tr('tabTermsOfService')),
+          ],
         ),
       ),
       body: LajuGlassBackground(

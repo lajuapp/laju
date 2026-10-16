@@ -8,9 +8,10 @@ import '../../conversations/domain/models/conversation_model.dart';
 import '../../messaging/domain/models/message_model.dart';
 import '../../settings/domain/data_storage_controller.dart';
 import '../presentation/screens/active_call_screen.dart';
+import '../presentation/screens/active_group_call_screen.dart';
+import '../presentation/screens/incoming_call_screen.dart';
 import 'webrtc_call_service.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
-import '../presentation/screens/active_group_call_screen.dart';
 
 enum CallStatus {
   idle,
@@ -23,6 +24,8 @@ enum CallStatus {
 }
 
 class CallSessionController extends ChangeNotifier with WidgetsBindingObserver {
+  String? _currentIncomingCallId;
+
   CallSessionController._() {
     WidgetsBinding.instance.addObserver(this);
     AppNotificationService.instance.isCallActiveChecker = () => _isActive;
@@ -128,6 +131,7 @@ class CallSessionController extends ChangeNotifier with WidgetsBindingObserver {
   bool get isMinimized => _isMinimized;
   bool get isActive => _isActive;
   CallStatus get status => _status;
+  String? get lastRingingCallId => _lastRingingCallId;
 
   String get formattedDuration {
     final minutes = (_durationSeconds ~/ 60).toString().padLeft(2, '0');
@@ -565,6 +569,7 @@ class CallSessionController extends ChangeNotifier with WidgetsBindingObserver {
     notifyListeners();
 
     _systemNotifChannel.invokeMethod('cancelNotification', {'id': 9999}).catchError((_) {});
+    _systemNotifChannel.invokeMethod('setLockscreenActive', {'active': false}).catchError((_) {});
 
     if (curCallId != null) {
       _dispatchEndCallToBackend(curCallId);
@@ -749,6 +754,7 @@ class CallSessionController extends ChangeNotifier with WidgetsBindingObserver {
           _lastRingingCallerPhone = callerPhone;
           _lastRingingCallerAvatar = resolvedAvatar;
           _lastRingingIsVideo = isVideo;
+          _status = CallStatus.ringing;
 
           final isForeground = WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
 
@@ -833,14 +839,68 @@ class CallSessionController extends ChangeNotifier with WidgetsBindingObserver {
           _lastRingingCallerId = null;
           _lastRingingCallerPhone = null;
           _lastRingingCallerAvatar = null;
+          _status = CallStatus.idle;
           AppNotificationService.instance.dismissAll();
           _systemNotifChannel.invokeMethod('cancelNotification', {'id': 9999}).catchError((_) {});
           _systemNotifChannel.invokeMethod('cancelAll').catchError((_) {});
+          _systemNotifChannel.invokeMethod('setLockscreenActive', {'active': false}).catchError((_) {});
           notifyListeners();
         }
       }
 
     } catch (_) {}
+  }
+
+  void showIncomingCallScreen({
+    required String callId,
+    required String callerName,
+    required bool isVideo,
+    String? callerId,
+    String? callerPhone,
+    String? avatarUrl,
+    bool isGroup = false,
+    String? groupName,
+    String? conversationId,
+  }) {
+    if (_isActive && _status == CallStatus.connected) return;
+    if (_currentIncomingCallId == callId) return;
+    _currentIncomingCallId = callId;
+    _status = CallStatus.ringing;
+
+    _systemNotifChannel.invokeMethod('setLockscreenActive', {'active': true}).catchError((_) {});
+
+    void pushScreen() {
+      final nav = AppNavigation.navigatorKey.currentState;
+      if (nav != null) {
+        nav.push(
+          MaterialPageRoute(
+            builder: (_) => IncomingCallScreen(
+              callId: callId,
+              callerName: callerName,
+              isVideo: isVideo,
+              callerId: callerId,
+              callerPhone: callerPhone,
+              avatarUrl: avatarUrl,
+              isGroup: isGroup,
+              groupName: groupName,
+              conversationId: conversationId,
+            ),
+          ),
+        ).then((_) {
+          if (_currentIncomingCallId == callId) {
+            _currentIncomingCallId = null;
+          }
+        });
+      } else {
+        Future.delayed(const Duration(milliseconds: 150), () {
+          if (_currentIncomingCallId == callId) {
+            pushScreen();
+          }
+        });
+      }
+    }
+
+    pushScreen();
   }
 
   void _initChannelHandler() {
@@ -855,7 +915,16 @@ class CallSessionController extends ChangeNotifier with WidgetsBindingObserver {
         final callerPhone = args?['callerPhone'] as String?;
         final callerAvatar = (args?['avatarUrl'] as String?) ?? _resolveAvatar(callerId, callerPhone, callerName);
         if (callId != null && callId.isNotEmpty) {
-          if (action == 'answer') {
+          if (action == 'incoming_call') {
+            showIncomingCallScreen(
+              callId: callId,
+              callerName: callerName,
+              isVideo: isVideo,
+              callerId: callerId,
+              callerPhone: callerPhone,
+              avatarUrl: callerAvatar,
+            );
+          } else if (action == 'answer') {
             await answerIncomingCall(
               callId,
               callerName: callerName,
@@ -902,6 +971,7 @@ class CallSessionController extends ChangeNotifier with WidgetsBindingObserver {
     _lastRingingCallerAvatar = null;
     _systemNotifChannel.invokeMethod('cancelNotification', {'id': 9999}).catchError((_) {});
     _systemNotifChannel.invokeMethod('cancelAll').catchError((_) {});
+    _systemNotifChannel.invokeMethod('setLockscreenActive', {'active': true}).catchError((_) {});
     AppNotificationService.instance.dismissAll();
 
     var effectiveIsVideo = isVideo;
@@ -986,6 +1056,7 @@ class CallSessionController extends ChangeNotifier with WidgetsBindingObserver {
     _lastRingingCallerAvatar = null;
     _systemNotifChannel.invokeMethod('cancelNotification', {'id': 9999}).catchError((_) {});
     _systemNotifChannel.invokeMethod('cancelAll').catchError((_) {});
+    _systemNotifChannel.invokeMethod('setLockscreenActive', {'active': true}).catchError((_) {});
     AppNotificationService.instance.dismissAll();
 
     var effectiveIsVideo = isVideo;
@@ -1074,6 +1145,7 @@ class CallSessionController extends ChangeNotifier with WidgetsBindingObserver {
     _lastRingingCallerAvatar = null;
     _systemNotifChannel.invokeMethod('cancelNotification', {'id': 9999}).catchError((_) {});
     _systemNotifChannel.invokeMethod('cancelAll').catchError((_) {});
+    _systemNotifChannel.invokeMethod('setLockscreenActive', {'active': false}).catchError((_) {});
     AppNotificationService.instance.dismissAll();
 
     final resolvedAvatar = avatarUrl ?? _resolveAvatar(callerId, callerPhone, callerName);
@@ -1110,7 +1182,16 @@ class CallSessionController extends ChangeNotifier with WidgetsBindingObserver {
         final callerPhone = payload['callerPhone'] as String?;
         final callerAvatar = (payload['avatarUrl'] as String?) ?? _resolveAvatar(callerId, callerPhone, callerName);
         if (callId != null && callId.isNotEmpty) {
-          if (action == 'answer') {
+          if (action == 'incoming_call') {
+            showIncomingCallScreen(
+              callId: callId,
+              callerName: callerName,
+              isVideo: isVideo,
+              callerId: callerId,
+              callerPhone: callerPhone,
+              avatarUrl: callerAvatar,
+            );
+          } else if (action == 'answer') {
             await answerIncomingCall(
               callId,
               callerName: callerName,

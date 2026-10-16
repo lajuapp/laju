@@ -4,6 +4,7 @@ import 'core/core.dart';
 import 'features/auth/domain/auth_controller.dart';
 import 'features/auth/presentation/screens/splash_screen.dart';
 import 'features/auth/presentation/screens/suspended_account_screen.dart';
+import 'features/calls/domain/call_session_controller.dart';
 import 'features/calls/presentation/widgets/floating_call_overlay.dart';
 import 'features/home/presentation/screens/home_screen.dart';
 import 'features/settings/domain/account_controller.dart';
@@ -30,6 +31,7 @@ void main() async {
   }
   await PushNotificationService.instance.init();
   ForegroundSyncService.instance.init();
+  CallSessionController.instance;
   runApp(const LajuApp());
 }
 

@@ -81,8 +81,11 @@ export class GotifyService {
     const { targetToken, title, message, conversationId, priority = 6 } = params;
     let delivered = false;
 
-    // 1. Try sending via Gotify only if a valid specific target client token is provided
-    let activeGotifyToken = targetToken && !targetToken.startsWith('fcm_') && !targetToken.startsWith('gotify_device_') ? targetToken : null;
+    // 1. Try sending via Gotify (use specific token or fallback to provisioned app token for gotify_device_*)
+    let activeGotifyToken =
+      targetToken && !targetToken.startsWith('fcm_') && !targetToken.startsWith('gotify_device_')
+        ? targetToken
+        : (!targetToken || targetToken.startsWith('gotify_device_') ? (this.token || (await this.getOrProvisionAppToken())) : null);
     if (activeGotifyToken) {
       try {
         const payload: any = {

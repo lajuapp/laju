@@ -1385,6 +1385,9 @@ class AuthController extends ChangeNotifier {
             await prefs.setString('laju_user_id', userId.toString());
           }
 
+          // Immediately sync the newly issued token to native LajuPushService
+          PushNotificationService.instance.syncPushTokenToBackend();
+
           debugPrint('[AuthController] Device refreshed successfully, new token issued');
         }
       } else if (response.statusCode == 401 || response.statusCode == 404) {
@@ -1472,6 +1475,7 @@ class AuthController extends ChangeNotifier {
     if (!_isAuthenticated) return; // Already logged out — avoid duplicate calls
     _isDeviceReplaced = true;
     ForegroundSyncService.instance.stop();
+    PushNotificationService.instance.stopBackgroundService();
     CallSessionController.instance.endCall();
     ApiClient.instance.clearAuth();
     _isAuthenticated = false;
@@ -1487,6 +1491,7 @@ class AuthController extends ChangeNotifier {
   void logout() {
     _isDeviceReplaced = false; // Clear replaced flag on explicit logout
     ForegroundSyncService.instance.stop();
+    PushNotificationService.instance.stopBackgroundService();
     CallSessionController.instance.endCall();
     try {
       ApiClient.instance.post(ApiEndpoints.logout);

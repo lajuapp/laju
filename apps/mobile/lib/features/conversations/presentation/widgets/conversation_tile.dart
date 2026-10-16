@@ -72,7 +72,6 @@ class ConversationTile extends StatelessWidget {
                 isOnline: !conversation.isGroup && conversation.isOnline,
                 showOfflineDot: !conversation.isGroup,
                 isVerified: conversation.isKeyVerified,
-                heroTag: conversation.id.isNotEmpty ? 'avatar_${conversation.id}' : null,
               ),
               const SizedBox(width: 14),
               Expanded(
