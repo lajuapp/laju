@@ -7,7 +7,7 @@ services:
       dockerfile: apps/api/Dockerfile
     restart: unless-stopped
     stop_grace_period: 25s
-    command: sh -c "npx prisma db push --accept-data-loss --skip-generate || true; exec node dist/main.js"
+    command: sh -c "node_modules/.bin/prisma db push --accept-data-loss --skip-generate || npx prisma db push --accept-data-loss --skip-generate || true; exec node dist/main.js"
     env_file:
       - .env
     environment:
@@ -34,9 +34,9 @@ services:
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://127.0.0.1:3000/health || exit 1"]
       interval: 5s
-      timeout: 3s
-      retries: 5
-      start_period: 20s
+      timeout: 5s
+      retries: 10
+      start_period: 90s
     depends_on:
       postgres:
         condition: service_healthy
@@ -56,8 +56,8 @@ services:
       test: ["CMD-SHELL", "ps aux | grep 'worker/main.js' | grep -v grep || exit 1"]
       interval: 15s
       timeout: 5s
-      retries: 3
-      start_period: 10s
+      retries: 5
+      start_period: 30s
     depends_on:
       postgres:
         condition: service_healthy
@@ -96,8 +96,8 @@ services:
       test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:3000/ || exit 1"]
       interval: 5s
       timeout: 3s
-      retries: 5
-      start_period: 5s
+      retries: 10
+      start_period: 45s
     depends_on:
       api:
         condition: service_healthy
@@ -136,8 +136,8 @@ services:
       test: ["CMD-SHELL", "curl -f http://127.0.0.1:3002/ || exit 1"]
       interval: 5s
       timeout: 3s
-      retries: 5
-      start_period: 15s
+      retries: 10
+      start_period: 45s
     depends_on:
       api:
         condition: service_healthy

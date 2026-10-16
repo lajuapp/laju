@@ -27,6 +27,8 @@ import {
   AdminPasswordLoginDto,
   CreateAdminDto,
   UpdateAdminDto,
+  ChangeAdminPasswordDto,
+  ResetAdminPasswordDto,
   CreateWallpaperDto,
   UpdateWallpaperDto,
   CreateStickerPackDto,
@@ -96,6 +98,17 @@ export class AdminController {
     return this.adminService.logout(token);
   }
 
+  @Post('auth/change-password')
+  @UseGuards(AdminAuthGuard)
+  changeMyPassword(@Req() req: any, @Body() dto: ChangeAdminPasswordDto) {
+    const authHeader = req.headers['authorization'];
+    const bearer = typeof authHeader === 'string' && authHeader.startsWith('Bearer ')
+      ? authHeader.substring(7)
+      : null;
+    const currentToken = bearer || req.headers['x-admin-token'];
+    return this.adminService.changeMyPassword(req.admin.adminId, dto, currentToken, req.ip);
+  }
+
   // Legacy Session bootstrap
   @Post('session')
   createSession(@Body() dto: AdminLoginDto) {
@@ -162,6 +175,17 @@ export class AdminController {
   @RequirePermissions(AdminPermission.ADMIN_ROLE_MANAGE)
   updateAdmin(@Param('id') id: string, @Body() dto: UpdateAdminDto) {
     return this.adminService.updateAdmin(id, dto);
+  }
+
+  @Post('admins/:id/reset-password')
+  @UseGuards(AdminAuthGuard)
+  @RequirePermissions(AdminPermission.ADMIN_ROLE_MANAGE)
+  resetAdminPassword(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Body() dto: ResetAdminPasswordDto
+  ) {
+    return this.adminService.resetAdminPassword(id, dto, req.admin.adminId, req.ip);
   }
 
   @Delete('admins/:id')

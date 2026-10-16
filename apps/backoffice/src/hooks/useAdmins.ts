@@ -82,3 +82,17 @@ export function useDeleteAdmin() {
     },
   });
 }
+
+export function useResetAdminPassword() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ id, newPassword }: { id: string; newPassword: string }) => {
+      const res = await apiClient.post(`/admin/admins/${id}/reset-password`, { newPassword });
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'admins'] });
+    },
+  });
+}

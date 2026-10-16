@@ -8,6 +8,14 @@ import {
   CheckCircle,
   XCircle,
   AlertCircle,
+  Key,
+  Edit3,
+  Copy,
+  Check,
+  Eye,
+  EyeOff,
+  Sparkles,
+  ShieldAlert,
 } from 'lucide-react';
 import {
   useAdminsList,
@@ -15,6 +23,7 @@ import {
   useCreateAdmin,
   useUpdateAdmin,
   useDeleteAdmin,
+  useResetAdminPassword,
 } from '../hooks/useAdmins';
 import { Button } from '../components/ui/Button';
 import { Modal } from '../components/ui/Modal';
@@ -23,6 +32,7 @@ import { Input } from '../components/ui/Input';
 import { Badge } from '../components/ui/Badge';
 import { Pagination } from '../components/ui/Pagination';
 import { usePagination } from '../hooks/usePagination';
+import { AdminUser } from '../api/types';
 
 const createAdminSchema = z.object({
   name: z.string().min(2, 'Name must be at least 2 characters'),
@@ -37,33 +47,147 @@ const createAdminSchema = z.object({
 
 type CreateAdminFormData = z.infer<typeof createAdminSchema>;
 
+const editAdminSchema = z.object({
+  name: z.string().min(2, 'Name must be at least 2 characters'),
+  username: z
+    .string()
+    .min(3, 'Username must be at least 3 characters')
+    .regex(/^[a-zA-Z0-9_]+$/, 'Only letters, numbers, and underscore allowed'),
+  email: z.string().email('Invalid email address format'),
+  roleId: z.string().min(1, 'Role must be selected'),
+});
+
+type EditAdminFormData = z.infer<typeof editAdminSchema>;
+
 export function AdminsPage() {
   const { data: admins, isLoading } = useAdminsList();
   const { data: roles } = useAdminRoles();
   const createAdmin = useCreateAdmin();
   const updateAdmin = useUpdateAdmin();
   const deleteAdmin = useDeleteAdmin();
+  const resetPassword = useResetAdminPassword();
 
   const pagination = usePagination(admins || [], { initialPageSize: 10 });
 
+  // Add Admin Modal
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
+  // Edit Admin Modal
+  const [editAdmin, setEditAdmin] = useState<AdminUser | null>(null);
+  const [editErrorMessage, setEditErrorMessage] = useState<string | null>(null);
+
+  // Reset Password Modal
+  const [resetModalAdmin, setResetModalAdmin] = useState<AdminUser | null>(null);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [resetError, setResetError] = useState<string | null>(null);
+  const [resetSuccess, setResetSuccess] = useState<string | null>(null);
+
+  // Delete Admin Modal
+  const [deleteModal, setDeleteModal] = useState<{
+    isOpen: boolean;
+    adminId: string;
+    username: string;
+  }>({ isOpen: false, adminId: '', username: '' });
+
   const {
-    register,
-    handleSubmit,
-    reset,
-    formState: { errors },
+    register: registerCreate,
+    handleSubmit: handleSubmitCreate,
+    reset: resetCreate,
+    formState: { errors: errorsCreate },
   } = useForm<CreateAdminFormData>({
     resolver: zodResolver(createAdminSchema),
   });
 
-  const onSubmit = (data: CreateAdminFormData) => {
+  const {
+    register: registerEdit,
+    handleSubmit: handleSubmitEdit,
+    reset: resetEdit,
+    setValue: setEditValue,
+    formState: { errors: errorsEdit },
+  } = useForm<EditAdminFormData>({
+    resolver: zodResolver(editAdminSchema),
+  });
+
+  const handleOpenEdit = (admin: AdminUser) => {
+    setEditAdmin(admin);
+    setEditErrorMessage(null);
+    setEditValue('name', admin.name);
+    setEditValue('username', admin.username);
+    setEditValue('email', admin.email);
+    setEditValue('roleId', admin.roleId || (typeof admin.role === 'object' ? (admin.role as any)?.id : ''));
+  };
+
+  const handleOpenReset = (admin: AdminUser) => {
+    setResetModalAdmin(admin);
+    setNewPassword('');
+    setConfirmPassword('');
+    setShowPassword(false);
+    setCopied(false);
+    setResetError(null);
+    setResetSuccess(null);
+  };
+
+  const handleGeneratePassword = () => {
+    const chars = 'abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789!@#$%&*';
+    let generated = '';
+    for (let i = 0; i < 14; i++) {
+      generated += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    setNewPassword(generated);
+    setConfirmPassword(generated);
+    setShowPassword(true);
+
+    navigator.clipboard.writeText(generated).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 3000);
+    });
+  };
+
+  const handleConfirmResetPassword = (e: React.FormEvent) => {
+    e.preventDefault();
+    setResetError(null);
+    setResetSuccess(null);
+
+    if (!resetModalAdmin) return;
+
+    if (!newPassword || newPassword.length < 6) {
+      setResetError('Password baru minimal 6 karakter');
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      setResetError('Konfirmasi password tidak cocok');
+      return;
+    }
+
+    resetPassword.mutate(
+      { id: resetModalAdmin.id, newPassword },
+      {
+        onSuccess: (res: any) => {
+          setResetSuccess(res?.message || 'Password berhasil di-reset.');
+          setTimeout(() => {
+            setResetModalAdmin(null);
+          }, 1500);
+        },
+        onError: (err: any) => {
+          setResetError(
+            err.response?.data?.message || 'Gagal mereset password administrator'
+          );
+        },
+      }
+    );
+  };
+
+  const onSubmitCreate = (data: CreateAdminFormData) => {
     setErrorMessage(null);
     createAdmin.mutate(data, {
       onSuccess: () => {
         setIsModalOpen(false);
-        reset();
+        resetCreate();
       },
       onError: (err: any) => {
         setErrorMessage(
@@ -73,15 +197,28 @@ export function AdminsPage() {
     });
   };
 
+  const onSubmitEdit = (data: EditAdminFormData) => {
+    if (!editAdmin) return;
+    setEditErrorMessage(null);
+    updateAdmin.mutate(
+      { id: editAdmin.id, ...data },
+      {
+        onSuccess: () => {
+          setEditAdmin(null);
+          resetEdit();
+        },
+        onError: (err: any) => {
+          setEditErrorMessage(
+            err.response?.data?.message || 'Failed to update administrator'
+          );
+        },
+      }
+    );
+  };
+
   const handleToggleActive = (id: string, currentStatus: boolean) => {
     updateAdmin.mutate({ id, isActive: !currentStatus });
   };
-
-  const [deleteModal, setDeleteModal] = useState<{
-    isOpen: boolean;
-    adminId: string;
-    username: string;
-  }>({ isOpen: false, adminId: '', username: '' });
 
   const handleOpenDelete = (id: string, username: string) => {
     setDeleteModal({ isOpen: true, adminId: id, username });
@@ -104,7 +241,7 @@ export function AdminsPage() {
             Admin Team Management
           </h1>
           <p className="text-xs text-neutral-500 mt-1">
-            Manage console administrators, role privileges, and system access states.
+            Manage console administrators, role privileges, access keys, and system states.
           </p>
         </div>
 
@@ -183,7 +320,31 @@ export function AdminsPage() {
                         year: 'numeric',
                       })}
                     </td>
-                    <td className="px-5 py-3.5 text-right space-x-2">
+                    <td className="px-5 py-3.5 text-right space-x-1.5 whitespace-nowrap">
+                      {/* Edit Admin Button */}
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        icon={<Edit3 className="w-3.5 h-3.5 text-neutral-600" />}
+                        onClick={() => handleOpenEdit(adm)}
+                        title="Edit Admin Information"
+                      >
+                        Edit
+                      </Button>
+
+                      {/* Reset Password Button */}
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        icon={<Key className="w-3.5 h-3.5 text-amber-600" />}
+                        onClick={() => handleOpenReset(adm)}
+                        title="Reset Account Password"
+                        className="hover:border-amber-300 hover:bg-amber-50/50"
+                      >
+                        Reset Password
+                      </Button>
+
+                      {/* Activate / Deactivate Toggle */}
                       <Button
                         size="sm"
                         variant="outline"
@@ -191,12 +352,15 @@ export function AdminsPage() {
                       >
                         {adm.isActive ? 'Deactivate' : 'Activate'}
                       </Button>
+
+                      {/* Delete Admin */}
                       {adm.username !== 'admin' && (
                         <Button
                           size="sm"
                           variant="ghost"
                           className="text-rose-600 hover:text-rose-700 hover:bg-rose-50"
                           onClick={() => handleOpenDelete(adm.id, adm.username)}
+                          title="Remove Admin Account"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </Button>
@@ -228,7 +392,7 @@ export function AdminsPage() {
         </div>
       </div>
 
-      {/* Add Admin Modal with Zod Form */}
+      {/* Add Admin Modal */}
       <Modal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
@@ -242,35 +406,35 @@ export function AdminsPage() {
           </div>
         )}
 
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-3.5">
+        <form onSubmit={handleSubmitCreate(onSubmitCreate)} className="space-y-3.5">
           <Input
             label="Full Name"
             placeholder="e.g. John Doe"
-            error={errors.name?.message}
-            {...register('name')}
+            error={errorsCreate.name?.message}
+            {...registerCreate('name')}
           />
 
           <Input
             label="Username"
             placeholder="johndoe (alphanumeric)"
-            error={errors.username?.message}
-            {...register('username')}
+            error={errorsCreate.username?.message}
+            {...registerCreate('username')}
           />
 
           <Input
             label="Email Address"
             type="email"
             placeholder="john@laju.chat"
-            error={errors.email?.message}
-            {...register('email')}
+            error={errorsCreate.email?.message}
+            {...registerCreate('email')}
           />
 
           <Input
             label="Initial Password"
             type="password"
             placeholder="At least 6 characters"
-            error={errors.password?.message}
-            {...register('password')}
+            error={errorsCreate.password?.message}
+            {...registerCreate('password')}
           />
 
           <div className="space-y-1.5">
@@ -279,7 +443,7 @@ export function AdminsPage() {
             </label>
             <select
               className="w-full px-3 py-2 text-xs rounded-xl border border-neutral-200 bg-white text-neutral-900 focus:outline-none focus:border-neutral-900"
-              {...register('roleId')}
+              {...registerCreate('roleId')}
             >
               <option value="">-- Select Admin Role --</option>
               {roles?.map((r) => (
@@ -288,9 +452,9 @@ export function AdminsPage() {
                 </option>
               ))}
             </select>
-            {errors.roleId && (
+            {errorsCreate.roleId && (
               <p className="text-[11px] text-rose-600 font-medium">
-                {errors.roleId.message}
+                {errorsCreate.roleId.message}
               </p>
             )}
           </div>
@@ -309,6 +473,187 @@ export function AdminsPage() {
               isLoading={createAdmin.isPending}
             >
               Save New Admin
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Edit Admin Modal */}
+      <Modal
+        isOpen={!!editAdmin}
+        onClose={() => setEditAdmin(null)}
+        title="Edit Administrator Details"
+        description={`Update account profile and privilege roles for "${editAdmin?.username}".`}
+      >
+        {editErrorMessage && (
+          <div className="mb-4 p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 flex-shrink-0" />
+            <span>{editErrorMessage}</span>
+          </div>
+        )}
+
+        <form onSubmit={handleSubmitEdit(onSubmitEdit)} className="space-y-3.5">
+          <Input
+            label="Full Name"
+            placeholder="e.g. John Doe"
+            error={errorsEdit.name?.message}
+            {...registerEdit('name')}
+          />
+
+          <Input
+            label="Username"
+            placeholder="johndoe (alphanumeric)"
+            error={errorsEdit.username?.message}
+            {...registerEdit('username')}
+          />
+
+          <Input
+            label="Email Address"
+            type="email"
+            placeholder="john@laju.chat"
+            error={errorsEdit.email?.message}
+            {...registerEdit('email')}
+          />
+
+          <div className="space-y-1.5">
+            <label className="block text-xs font-semibold text-neutral-700">
+              Privilege Role
+            </label>
+            <select
+              className="w-full px-3 py-2 text-xs rounded-xl border border-neutral-200 bg-white text-neutral-900 focus:outline-none focus:border-neutral-900"
+              {...registerEdit('roleId')}
+            >
+              <option value="">-- Select Admin Role --</option>
+              {roles?.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.name} ({r.description || 'Standard'})
+                </option>
+              ))}
+            </select>
+            {errorsEdit.roleId && (
+              <p className="text-[11px] text-rose-600 font-medium">
+                {errorsEdit.roleId.message}
+              </p>
+            )}
+          </div>
+
+          <div className="flex justify-end gap-2 pt-4 border-t border-neutral-100">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setEditAdmin(null)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              variant="primary"
+              isLoading={updateAdmin.isPending}
+            >
+              Save Changes
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Reset Password Modal */}
+      <Modal
+        isOpen={!!resetModalAdmin}
+        onClose={() => setResetModalAdmin(null)}
+        title="Reset Administrator Password"
+        description={`Set a new secure access password for administrator "${resetModalAdmin?.name}" (@${resetModalAdmin?.username}).`}
+      >
+        {resetError && (
+          <div className="mb-4 p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 flex-shrink-0" />
+            <span>{resetError}</span>
+          </div>
+        )}
+
+        {resetSuccess && (
+          <div className="mb-4 p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex items-center gap-2">
+            <CheckCircle className="w-4 h-4 flex-shrink-0 text-emerald-600" />
+            <span>{resetSuccess}</span>
+          </div>
+        )}
+
+        {/* Security Warning Notice */}
+        <div className="mb-4 p-3 rounded-xl bg-amber-50/80 border border-amber-200/80 text-amber-900 text-xs flex items-start gap-2.5">
+          <ShieldAlert className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+          <div className="text-[11px] leading-relaxed">
+            <span className="font-bold">Security Notice: </span>
+            Resetting this password will immediately invalidate all active login sessions for @{resetModalAdmin?.username}. They will be required to sign in again with the new credentials.
+          </div>
+        </div>
+
+        <form onSubmit={handleConfirmResetPassword} className="space-y-4">
+          <div className="flex items-center justify-between">
+            <label className="block text-xs font-semibold text-neutral-700">
+              New Password
+            </label>
+            <button
+              type="button"
+              onClick={handleGeneratePassword}
+              className="text-[11px] font-bold text-brand-700 hover:text-brand-800 flex items-center gap-1.5 px-2 py-1 rounded-lg bg-brand-50 hover:bg-brand-100/80 transition-colors"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-brand-600" />
+              <span>Generate Strong Key</span>
+              {copied ? (
+                <span className="text-[10px] text-emerald-600 flex items-center gap-0.5 ml-1 font-semibold">
+                  <Check className="w-3 h-3" /> Copied!
+                </span>
+              ) : (
+                <Copy className="w-3 h-3 text-neutral-400 ml-0.5" />
+              )}
+            </button>
+          </div>
+
+          <div className="relative">
+            <Input
+              type={showPassword ? 'text' : 'password'}
+              placeholder="Enter or generate new password"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              className="pr-10 font-mono text-xs"
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword(!showPassword)}
+              className="absolute right-3 top-2.5 text-neutral-400 hover:text-neutral-700 transition-colors"
+              title={showPassword ? 'Hide password' : 'Show password'}
+            >
+              {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+            </button>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-neutral-700 mb-1">
+              Confirm New Password
+            </label>
+            <Input
+              type={showPassword ? 'text' : 'password'}
+              placeholder="Confirm new password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              className="font-mono text-xs"
+            />
+          </div>
+
+          <div className="flex justify-end gap-2 pt-4 border-t border-neutral-100">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setResetModalAdmin(null)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              variant="primary"
+              isLoading={resetPassword.isPending}
+              icon={<Key className="w-3.5 h-3.5" />}
+            >
+              Save & Reset Password
             </Button>
           </div>
         </form>

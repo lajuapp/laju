@@ -17,6 +17,8 @@ import {
   AdminPasswordLoginDto,
   CreateAdminDto,
   UpdateAdminDto,
+  ChangeAdminPasswordDto,
+  ResetAdminPasswordDto,
   CreateWallpaperDto,
   UpdateWallpaperDto,
   CreateStickerPackDto,
@@ -170,6 +172,65 @@ export class AdminService {
       where: { tokenHash: token }
     });
     return { success: true };
+  }
+
+  async changeMyPassword(adminId: string, dto: ChangeAdminPasswordDto, currentToken?: string | null, ipAddress?: string) {
+    const admin = await this.prisma.adminUser.findUnique({
+      where: { id: adminId }
+    });
+    if (!admin) {
+      throw new NotFoundException('Akun admin tidak ditemukan');
+    }
+
+    const isMatch = await bcrypt.compare(dto.currentPassword, admin.passwordHash);
+    if (!isMatch) {
+      throw new BadRequestException('Password lama yang Anda masukkan salah');
+    }
+
+    if (dto.newPassword.length < 6) {
+      throw new BadRequestException('Password baru minimal 6 karakter');
+    }
+
+    const salt = await bcrypt.genSalt(10);
+    const newPasswordHash = await bcrypt.hash(dto.newPassword, salt);
+
+    await this.prisma.adminUser.update({
+      where: { id: adminId },
+      data: { passwordHash: newPasswordHash }
+    });
+
+    // Invalidate other active sessions for this admin, but preserve current session
+    if (currentToken) {
+      await this.prisma.adminSession.deleteMany({
+        where: {
+          adminId,
+          tokenHash: { not: currentToken }
+        }
+      });
+    }
+
+    // Record in Audit Log
+    try {
+      await this.prisma.adminAuditEvent.create({
+        data: {
+          adminId,
+          action: 'ADMIN_PASSWORD_CHANGED',
+          resource: 'adminUser',
+          resourceId: adminId,
+          details: JSON.stringify({
+            username: admin.username,
+            reason: 'User changed their own administrative password',
+            revokedOtherSessions: true
+          }),
+          ipAddress: ipAddress || 'unknown'
+        }
+      });
+    } catch (_) {}
+
+    return {
+      success: true,
+      message: 'Password berhasil diubah. Sesi Anda di perangkat/browser lain telah dicabut.'
+    };
   }
 
   // Dashboard Aggregation Stats with Complete Analytics & Growth Metrics
@@ -1000,6 +1061,56 @@ export class AdminService {
         updatedAt: true
       }
     });
+  }
+
+  async resetAdminPassword(targetAdminId: string, dto: ResetAdminPasswordDto, performerAdminId: string, ipAddress?: string) {
+    const targetAdmin = await this.prisma.adminUser.findUnique({
+      where: { id: targetAdminId }
+    });
+    if (!targetAdmin) {
+      throw new NotFoundException('Admin user not found');
+    }
+
+    if (dto.newPassword.length < 6) {
+      throw new BadRequestException('Password baru minimal 6 karakter');
+    }
+
+    const salt = await bcrypt.genSalt(10);
+    const passwordHash = await bcrypt.hash(dto.newPassword, salt);
+
+    // Update password and revoke ALL active sessions for this target admin
+    await this.prisma.$transaction([
+      this.prisma.adminUser.update({
+        where: { id: targetAdminId },
+        data: { passwordHash }
+      }),
+      this.prisma.adminSession.deleteMany({
+        where: { adminId: targetAdminId }
+      })
+    ]);
+
+    // Record in Audit Log
+    try {
+      await this.prisma.adminAuditEvent.create({
+        data: {
+          adminId: performerAdminId,
+          action: 'ADMIN_PASSWORD_RESET',
+          resource: 'adminUser',
+          resourceId: targetAdminId,
+          details: JSON.stringify({
+            targetUsername: targetAdmin.username,
+            reason: 'Administrative password reset performed by administrator',
+            revokedSessionsCount: 'all'
+          }),
+          ipAddress: ipAddress || 'unknown'
+        }
+      });
+    } catch (_) {}
+
+    return {
+      success: true,
+      message: `Password administrator "${targetAdmin.username}" berhasil di-reset. Semua sesi aktif akun tersebut telah dicabut.`
+    };
   }
 
   async deleteAdmin(id: string) {

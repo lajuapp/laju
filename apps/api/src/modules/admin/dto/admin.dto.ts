@@ -71,6 +71,24 @@ export class UpdateAdminDto {
   isActive?: boolean;
 }
 
+export class ChangeAdminPasswordDto {
+  @IsString()
+  @IsNotEmpty()
+  currentPassword: string;
+
+  @IsString()
+  @IsNotEmpty()
+  @MinLength(6)
+  newPassword: string;
+}
+
+export class ResetAdminPasswordDto {
+  @IsString()
+  @IsNotEmpty()
+  @MinLength(6)
+  newPassword: string;
+}
+
 export class CreateWallpaperDto {
   @IsString()
   @IsNotEmpty()
