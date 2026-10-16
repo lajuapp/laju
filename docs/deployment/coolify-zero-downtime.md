@@ -49,22 +49,9 @@ Jika Anda mendeploy setiap aplikasi secara terpisah di Coolify (bukan 1 file Com
   - Health Check Retries: `5`
   - Health Check Start Period: `5` detik
 
-### C. Docker Network Traefik & Multi-Network Resolution
-Coolify secara bawaan menjalankan reverse proxy Traefik di Docker network bernama `coolify`.
-Pada `docker-compose.yml`, service `api`, `portal`, dan `backoffice` terhubung ke dua network: `internal` (untuk akses DB/Redis) dan `edge` (external network `coolify`).
-
-Untuk mencegah Traefik salah memilih IP `internal` (yang menyebabkan error 502 Bad Gateway saat rolling update):
-1. Setiap service publik (`api`, `portal`, `backoffice`) dilengkapi label:
-   ```yaml
-   - "traefik.docker.network=${COOLIFY_NETWORK:-coolify}"
-   ```
-2. Network `edge` telah diselaraskan langsung ke external network `coolify`:
-   ```yaml
-   networks:
-     edge:
-       name: ${COOLIFY_NETWORK:-coolify}
-       external: true
-   ```
+### C. Docker Network Traefik & Compose Network
+Pada `docker-compose.yml`, service `api`, `portal`, dan `backoffice` terhubung ke dua network internal: `internal` (network terisolasi untuk akses database PostgreSQL, Redis, Gotify, SeaweedFS) dan `edge` (network untuk routing Traefik/Coolify).
+Coolify secara otomatis mengintegrasikan proxy Traefik ke port yang di-expose oleh service publik tanpa memerlukan intervensi manual pada nama network external.
 
 ### D. Keamanan Data Produksi (Data Persistence Guarantee)
 Konfigurasi Zero-Downtime ini murni mengatur alur *rolling update* dan perutean proxy Traefik pada level reverse proxy:
