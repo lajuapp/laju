@@ -15,19 +15,19 @@ export default function AboutPage() {
 
   return (
     <div className="py-12 sm:py-20 bg-[#F5F4EF] min-h-screen">
-      <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         
         {/* Back Link */}
         <Link
           href="/"
-          className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-slate-900 mb-10 transition-colors"
+          className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-slate-900 mb-8 sm:mb-10 transition-colors"
         >
           <ArrowLeft className="h-4 w-4" />
           <span>{t('about_back')}</span>
         </Link>
 
         {/* Editorial Header */}
-        <header className="space-y-4 mb-12 sm:mb-16 text-left">
+        <header className="space-y-4 mb-12 sm:mb-16 text-left max-w-4xl">
           <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">
             {t('about_hero_tag')}
           </p>
@@ -43,14 +43,14 @@ export default function AboutPage() {
 
         {/* Serene Atmosphere Image */}
         <figure className="mb-14 sm:mb-20">
-          <div className="relative w-full rounded-[2rem] overflow-hidden shadow-xl border border-stone-200/80 bg-white">
+          <div className="relative w-full rounded-[2rem] sm:rounded-[2.5rem] overflow-hidden shadow-2xl border border-stone-200/80 bg-white">
             <img
               src="/images/disappearing-lake.jpg"
               alt="LAJU - Ruang yang tenang"
-              className="w-full h-72 sm:h-96 md:h-[420px] object-cover object-center"
+              className="w-full h-72 sm:h-[420px] md:h-[500px] lg:h-[560px] object-cover object-center"
             />
           </div>
-          <figcaption className="mt-3 text-xs sm:text-sm text-slate-500 italic text-left pl-1">
+          <figcaption className="mt-3.5 text-xs sm:text-sm text-slate-500 italic text-left pl-1">
             {t('about_photo_caption')}
           </figcaption>
         </figure>
@@ -59,7 +59,7 @@ export default function AboutPage() {
         <article className="space-y-12 sm:space-y-16 text-left text-slate-700">
           
           {/* Section 1 */}
-          <section className="space-y-4">
+          <section className="space-y-4 max-w-4xl">
             <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
               {t('about_section1_title')}
             </h2>
@@ -70,7 +70,7 @@ export default function AboutPage() {
           </section>
 
           {/* Section 2 */}
-          <section className="space-y-4">
+          <section className="space-y-4 max-w-4xl">
             <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
               {t('about_section2_title')}
             </h2>
@@ -81,49 +81,69 @@ export default function AboutPage() {
           </section>
 
           {/* Core Principles */}
-          <section className="pt-8 border-t border-[#EAE8DE] space-y-8">
-            <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
-              {t('about_principles_title')}
-            </h2>
+          <section className="pt-10 sm:pt-12 border-t border-[#EAE8DE] space-y-8">
+            <div className="max-w-4xl">
+              <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
+                {t('about_principles_title')}
+              </h2>
+            </div>
 
-            <div className="space-y-8 divide-y divide-[#EAE8DE]">
-              <div className="pt-2 space-y-2">
-                <h3 className="text-lg sm:text-xl font-bold text-slate-900">
-                  {t('about_principle1_title')}
-                </h3>
-                <p className="text-sm sm:text-base text-slate-600 leading-relaxed">
-                  {t('about_principle1_desc')}
-                </p>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 sm:gap-8">
+              {/* Principle 1 */}
+              <div className="rounded-3xl bg-white border border-[#EAE8DE] p-7 sm:p-8 shadow-xs hover:border-stone-300 transition-all flex flex-col justify-between">
+                <div>
+                  <div className="h-11 w-11 rounded-2xl bg-[#0D382C]/10 text-[#0D382C] flex items-center justify-center mb-5">
+                    <ShieldCheck className="h-6 w-6 stroke-[1.75]" />
+                  </div>
+                  <h3 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight mb-2.5">
+                    {t('about_principle1_title')}
+                  </h3>
+                  <p className="text-sm sm:text-base text-slate-600 leading-relaxed">
+                    {t('about_principle1_desc')}
+                  </p>
+                </div>
               </div>
 
-              <div className="pt-6 space-y-2">
-                <h3 className="text-lg sm:text-xl font-bold text-slate-900">
-                  {t('about_principle2_title')}
-                </h3>
-                <p className="text-sm sm:text-base text-slate-600 leading-relaxed">
-                  {t('about_principle2_desc')}
-                </p>
+              {/* Principle 2 */}
+              <div className="rounded-3xl bg-white border border-[#EAE8DE] p-7 sm:p-8 shadow-xs hover:border-stone-300 transition-all flex flex-col justify-between">
+                <div>
+                  <div className="h-11 w-11 rounded-2xl bg-[#0D382C]/10 text-[#0D382C] flex items-center justify-center mb-5">
+                    <Compass className="h-6 w-6 stroke-[1.75]" />
+                  </div>
+                  <h3 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight mb-2.5">
+                    {t('about_principle2_title')}
+                  </h3>
+                  <p className="text-sm sm:text-base text-slate-600 leading-relaxed">
+                    {t('about_principle2_desc')}
+                  </p>
+                </div>
               </div>
 
-              <div className="pt-6 space-y-2">
-                <h3 className="text-lg sm:text-xl font-bold text-slate-900">
-                  {t('about_principle3_title')}
-                </h3>
-                <p className="text-sm sm:text-base text-slate-600 leading-relaxed">
-                  {t('about_principle3_desc')}
-                </p>
+              {/* Principle 3 */}
+              <div className="rounded-3xl bg-white border border-[#EAE8DE] p-7 sm:p-8 shadow-xs hover:border-stone-300 transition-all flex flex-col justify-between">
+                <div>
+                  <div className="h-11 w-11 rounded-2xl bg-[#0D382C]/10 text-[#0D382C] flex items-center justify-center mb-5">
+                    <HeartHandshake className="h-6 w-6 stroke-[1.75]" />
+                  </div>
+                  <h3 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight mb-2.5">
+                    {t('about_principle3_title')}
+                  </h3>
+                  <p className="text-sm sm:text-base text-slate-600 leading-relaxed">
+                    {t('about_principle3_desc')}
+                  </p>
+                </div>
               </div>
             </div>
           </section>
 
           {/* Open Source & GitHub Note */}
-          <section className="pt-10 border-t border-[#EAE8DE] pb-8">
-            <div className="rounded-3xl bg-white border border-[#EAE8DE] p-7 sm:p-9 shadow-xs space-y-6">
-              <p className="text-base sm:text-lg text-slate-700 leading-relaxed">
+          <section className="pt-8 border-t border-[#EAE8DE] pb-4">
+            <div className="rounded-3xl bg-white border border-[#EAE8DE] p-7 sm:p-9 shadow-xs flex flex-col md:flex-row md:items-center md:justify-between gap-6">
+              <p className="text-base sm:text-lg text-slate-700 leading-relaxed max-w-2xl">
                 {t('about_open_source_closing')}
               </p>
 
-              <div className="pt-2">
+              <div className="shrink-0">
                 <a
                   href="https://github.com/lajuapp/laju"
                   target="_blank"
