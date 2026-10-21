@@ -41,7 +41,7 @@ class _IncomingCallScreenState extends State<IncomingCallScreen>
   bool _isActionTaken = false;
 
   static const MethodChannel _systemNotifChannel =
-      MethodChannel('com.laju.laju_mobile/system_notifications');
+      MethodChannel('com.laju/system_notifications');
 
   @override
   void initState() {
@@ -106,6 +106,12 @@ class _IncomingCallScreenState extends State<IncomingCallScreen>
     if (!mounted || _isActionTaken) return;
     final session = CallSessionController.instance;
 
+    // If call was accepted from notification, dismiss incoming screen immediately
+    if (session.status == CallStatus.connected && session.callId == widget.callId) {
+      _dismissScreen();
+      return;
+    }
+
     // If call was rejected, busy, ended remotely, or caller cancelled before answer
     if (session.status == CallStatus.ended ||
         session.status == CallStatus.rejected ||
@@ -120,6 +126,7 @@ class _IncomingCallScreenState extends State<IncomingCallScreen>
     _isActionTaken = true;
     _stopRingtoneAndVibration();
     _disableLockscreenWindow();
+    _systemNotifChannel.invokeMethod('cancelNotification', {'id': 9999}).catchError((_) {});
     if (Navigator.canPop(context)) {
       Navigator.pop(context);
     }
@@ -129,6 +136,8 @@ class _IncomingCallScreenState extends State<IncomingCallScreen>
     if (_isActionTaken) return;
     _isActionTaken = true;
     _stopRingtoneAndVibration();
+    _disableLockscreenWindow();
+    _systemNotifChannel.invokeMethod('cancelNotification', {'id': 9999}).catchError((_) {});
     HapticFeedback.heavyImpact();
 
     try {
@@ -184,6 +193,7 @@ class _IncomingCallScreenState extends State<IncomingCallScreen>
     _isActionTaken = true;
     _stopRingtoneAndVibration();
     _disableLockscreenWindow();
+    _systemNotifChannel.invokeMethod('cancelNotification', {'id': 9999}).catchError((_) {});
     HapticFeedback.mediumImpact();
 
     try {

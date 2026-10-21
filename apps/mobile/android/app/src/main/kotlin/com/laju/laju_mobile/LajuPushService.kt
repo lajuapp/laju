@@ -16,6 +16,7 @@ import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
 import androidx.core.app.NotificationCompat
+import androidx.core.app.Person
 import org.json.JSONObject
 import java.io.BufferedReader
 import java.io.InputStreamReader
@@ -60,13 +61,14 @@ class LajuPushService : Service() {
                 putExtra(KEY_TOKEN, token)
             }
             try {
-                // Prefer standard silent background service - zero persistent notification in status bar / drawer!
-                context.startService(intent)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    context.startForegroundService(intent)
+                } else {
+                    context.startService(intent)
+                }
             } catch (e: Exception) {
                 try {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                        context.startForegroundService(intent)
-                    }
+                    context.startService(intent)
                 } catch (e2: Exception) {
                     e2.printStackTrace()
                 }
@@ -148,6 +150,7 @@ class LajuPushService : Service() {
     override fun onCreate() {
         super.onCreate()
         ensureNotificationChannels()
+        dismissForegroundSyncNotification()
         registerNetworkCallback()
         loadNotifiedIds()
     }
@@ -243,7 +246,7 @@ class LajuPushService : Service() {
         }
 
         // Satisfy startForeground contract if started via startForegroundService, then immediately dismiss
-        // This ensures ZERO persistent notifications exist in status bar or drawer while idle
+        // This ensures zero persistent notifications exist in status bar or drawer while idle
         dismissForegroundSyncNotification()
 
         // Always re-arm the 3-minute watchdog on every service start/wakeup
@@ -288,6 +291,7 @@ class LajuPushService : Service() {
                 setShowBadge(false)
                 enableLights(false)
                 enableVibration(false)
+                setSound(null, null)
             }
             nm.createNotificationChannel(syncChannel)
 
@@ -316,7 +320,7 @@ class LajuPushService : Service() {
                     startForeground(NOTIFICATION_ID_SYNC, emptyNotif)
                 }
 
-                // Immediately remove from notification bar & drawer - 100% clean like WhatsApp
+                // Immediately remove from notification bar & drawer - 100% clean and silent, zero notification in drawer
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
                     stopForeground(STOP_FOREGROUND_REMOVE)
                 } else {
@@ -324,6 +328,7 @@ class LajuPushService : Service() {
                     stopForeground(true)
                 }
                 nm.cancel(NOTIFICATION_ID_SYNC)
+                nm.cancel(9001)
             } catch (_: Exception) {}
         }
     }
@@ -651,20 +656,34 @@ class LajuPushService : Service() {
                         return
                     }
 
-                    // Acquire WakeLock with a STRICT 10-second hard safety timeout to turn on the screen
-                    try {
-                        val pm = getSystemService(Context.POWER_SERVICE) as? PowerManager
-                        releaseCallWakeLock()
-                        callWakeLock = pm?.newWakeLock(
-                            PowerManager.SCREEN_BRIGHT_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP,
-                            "laju:incoming_call_wake"
-                        )?.apply {
-                            setReferenceCounted(false)
-                            acquire(10000L)
-                        }
-                    } catch (_: Exception) {}
+                    if (MainActivity.isAppInForeground) {
+                        // App is active and open: DO NOT show system heads-up notification from the top (no duplicate!)
+                        try {
+                            val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+                            nm.cancel(NOTIFICATION_ID_CALL)
+                            nm.cancel(9999)
+                        } catch (_: Exception) {}
 
-                    if (!MainActivity.isAppInForeground) {
+                        // Directly dispatch to MainActivity to display non-blocking in-app floating banner
+                        MainActivity.instance?.let { activity ->
+                            activity.dispatchCallAction(callId, "incoming_call", isVideo, callerName, fromSystemIntent = false)
+                        }
+                    } else {
+                        // App is in background or screen is locked:
+                        // Acquire WakeLock with a 15-second safety timeout to turn on the screen
+                        try {
+                            val pm = getSystemService(Context.POWER_SERVICE) as? PowerManager
+                            releaseCallWakeLock()
+                            callWakeLock = pm?.newWakeLock(
+                                PowerManager.SCREEN_BRIGHT_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP,
+                                "laju:incoming_call_wake"
+                            )?.apply {
+                                setReferenceCounted(false)
+                                acquire(15000L)
+                            }
+                        } catch (_: Exception) {}
+
+                        // Show system incoming call notification with fullScreenIntent on lockscreen/background
                         showIncomingCallNotification(callId, callerName, isVideo)
                     }
                 }
@@ -726,6 +745,9 @@ class LajuPushService : Service() {
                     releaseCallWakeLock()
                     val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
                     nm.cancel(NOTIFICATION_ID_CALL)
+                    nm.cancel(9999)
+                    MainActivity.instance?.stopCurrentRingtone()
+                    MainActivity.instance?.stopCallTone()
                     MainActivity.instance?.disableShowWhenLocked()
                 }
                 "SYSTEM_ANNOUNCEMENT" -> {
@@ -805,20 +827,33 @@ class LajuPushService : Service() {
 
         val ringtoneUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
 
+        val callerPerson = Person.Builder()
+            .setName(callerName)
+            .setImportant(true)
+            .build()
+
         val builder = NotificationCompat.Builder(this, CHANNEL_CALLS)
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle(title)
             .setContentText(content)
+            .setColor(android.graphics.Color.parseColor("#00C896"))
+            .setColorized(true)
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_CALL)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setSound(ringtoneUri)
             .setVibrate(longArrayOf(0, 800, 400, 800, 400, 800))
             .setFullScreenIntent(incomingCallPendingIntent, true)
             .setContentIntent(incomingCallPendingIntent)
-            .setAutoCancel(true)
+            .setAutoCancel(false)
             .setOngoing(true)
-            .addAction(android.R.drawable.ic_menu_call, "Jawab", answerPendingIntent)
-            .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Tolak", declinePendingIntent)
+            .setStyle(
+                NotificationCompat.CallStyle.forIncomingCall(
+                    callerPerson,
+                    declinePendingIntent,
+                    answerPendingIntent
+                )
+            )
 
         nm.notify(NOTIFICATION_ID_CALL, builder.build())
     }

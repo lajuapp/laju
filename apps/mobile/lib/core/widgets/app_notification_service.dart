@@ -171,6 +171,11 @@ class AppNotificationService extends ChangeNotifier {
         SystemSound.play(SystemSoundType.alert);
       } catch (_) {}
     }
+
+    // Safety timeout: automatically dismiss and silence ringing after 40s if unhandled
+    _dismissTimer = Timer(const Duration(seconds: 40), () {
+      dismiss();
+    });
   }
 
 

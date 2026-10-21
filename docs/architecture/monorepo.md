@@ -7,6 +7,7 @@ apps/api          NestJS
 apps/worker       NestJS worker runtime
 apps/mobile       Flutter Android
 apps/backoffice   Next.js
+apps/portal       Next.js Public Portal & Landing Page
 packages/*        shared contracts/types/UI
 docs/*            system documentation
 ```

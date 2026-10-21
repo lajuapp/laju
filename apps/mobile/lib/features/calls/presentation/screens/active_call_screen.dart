@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../../../../core/core.dart';
 import '../../../home/presentation/screens/home_screen.dart';
@@ -28,10 +29,11 @@ class ActiveCallScreen extends StatefulWidget {
   State<ActiveCallScreen> createState() => _ActiveCallScreenState();
 }
 
-class _ActiveCallScreenState extends State<ActiveCallScreen> {
+class _ActiveCallScreenState extends State<ActiveCallScreen> with SingleTickerProviderStateMixin {
   late bool _isVideoEnabled;
   bool _isFrontCamera = true;
   bool _isCameraInMainView = false;
+  late final AnimationController _waveController;
 
   String? get _resolvedAvatarUrl =>
       widget.avatarUrl ?? CallSessionController.instance.avatarUrl;
@@ -40,6 +42,11 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
   void initState() {
     super.initState();
     _isVideoEnabled = widget.isVideo;
+
+    _waveController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1400),
+    )..repeat();
 
     final session = CallSessionController.instance;
     session.addListener(_onSessionUpdated);
@@ -71,6 +78,7 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
 
   @override
   void dispose() {
+    _waveController.dispose();
     CallSessionController.instance.removeListener(_onSessionUpdated);
     super.dispose();
   }
@@ -594,24 +602,53 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
                 ),
                 const SizedBox(height: 32),
                 // Animated glass equalizer waveform bars
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: List.generate(14, (index) {
-                    final heights = [14.0, 26.0, 42.0, 18.0, 36.0, 50.0, 28.0, 44.0, 20.0, 32.0, 16.0, 38.0, 22.0, 12.0];
-                    return Container(
-                      width: 3.5,
-                      height: heights[index % heights.length],
-                      margin: const EdgeInsets.symmetric(horizontal: 2.5),
-                      decoration: BoxDecoration(
-                        gradient: const LinearGradient(
-                          begin: Alignment.bottomCenter,
-                          end: Alignment.topCenter,
-                          colors: [AppColors.primary, AppColors.cyan],
-                        ),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
+                AnimatedBuilder(
+                  animation: _waveController,
+                  builder: (context, child) {
+                    final isConnected = session.status == CallStatus.connected;
+                    final isSpeaking = isConnected && !session.isMuted;
+                    final baseProfiles = [14.0, 22.0, 34.0, 46.0, 54.0, 60.0, 64.0, 60.0, 54.0, 46.0, 34.0, 22.0, 16.0, 12.0];
+
+                    return Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: List.generate(14, (index) {
+                        double height = 5.0;
+                        if (isSpeaking) {
+                          final phase = (index / 14) * 2 * math.pi;
+                          final t = _waveController.value * 2 * math.pi;
+                          final rawWave = (math.sin(t * 1.6 + phase) * 0.45 +
+                                           math.sin(t * 2.8 - phase * 1.5) * 0.35 +
+                                           math.cos(t * 0.9 + phase * 0.7) * 0.2);
+                          final waveFactor = ((rawWave + 1.0) / 2.0).clamp(0.15, 1.0);
+                          final maxHeight = baseProfiles[index % baseProfiles.length];
+                          height = 6.0 + (maxHeight - 6.0) * waveFactor;
+                        }
+
+                        return Container(
+                          width: 3.5,
+                          height: height,
+                          margin: const EdgeInsets.symmetric(horizontal: 2.5),
+                          decoration: BoxDecoration(
+                            gradient: isSpeaking
+                                ? const LinearGradient(
+                                    begin: Alignment.bottomCenter,
+                                    end: Alignment.topCenter,
+                                    colors: [AppColors.primary, AppColors.cyan],
+                                  )
+                                : LinearGradient(
+                                    begin: Alignment.bottomCenter,
+                                    end: Alignment.topCenter,
+                                    colors: [
+                                      (isDark ? Colors.white : Colors.black).withValues(alpha: 0.25),
+                                      (isDark ? Colors.white : Colors.black).withValues(alpha: 0.12),
+                                    ],
+                                  ),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                        );
+                      }),
                     );
-                  }),
+                  },
                 ),
               ],
             ),

@@ -16,12 +16,20 @@ secure-messenger/
 │   │   ├── android/
 │   │   ├── lib/
 │   │   └── pubspec.yaml
-│   └── backoffice/
+│   ├── backoffice/
+│   │   ├── app/
+│   │   ├── components/
+│   │   ├── lib/
+│   │   ├── middleware.ts
+│   │   ├── next.config.ts
+│   │   └── Dockerfile
+│   └── portal/
 │       ├── app/
 │       ├── components/
-│       ├── lib/
-│       ├── middleware.ts
-│       ├── next.config.ts
+│       ├── context/
+│       ├── locales/
+│       ├── public/
+│       ├── next.config.mjs
 │       └── Dockerfile
 ├── packages/
 │   ├── contracts/

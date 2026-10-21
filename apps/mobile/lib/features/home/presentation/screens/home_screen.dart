@@ -73,6 +73,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 MaterialPageRoute(builder: (context) => NewChatScreen(initialSearchQuery: username)),
               );
             }
+          } else if (payload['type'] == 'call' || payload.containsKey('callId')) {
+            CallSessionController.instance.handleCallPayload(payload);
           }
         }
       } catch (e) {

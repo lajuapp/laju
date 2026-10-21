@@ -103,6 +103,7 @@ class CallSessionController extends ChangeNotifier with WidgetsBindingObserver {
   Timer? _timer;
   Timer? _incomingCallPoller;
   Timer? _statusPoller;
+  Timer? _ringingTimeoutTimer;
   String? _declinedCallId;
   String? _lastRingingCallId;
   String? _lastRingingCallerName;
@@ -163,6 +164,25 @@ class CallSessionController extends ChangeNotifier with WidgetsBindingObserver {
     _incomingCallPoller = Timer.periodic(const Duration(seconds: 2), (_) {
       checkForIncomingCalls();
     });
+  }
+
+  void _startRingingTimeoutTimer(String callId, {String? callerName, bool isVideo = false}) {
+    _ringingTimeoutTimer?.cancel();
+    _ringingTimeoutTimer = Timer(const Duration(seconds: 40), () {
+      if (_status == CallStatus.ringing && _lastRingingCallId == callId && !_isActive) {
+        debugPrint('[CallSessionController] Ringing safety timeout reached (40s) -> Auto-dismissing call $callId');
+        declineIncomingCall(
+          callId,
+          callerName: callerName ?? 'Panggilan',
+          isVideo: isVideo,
+        );
+      }
+    });
+  }
+
+  void _cancelRingingTimeoutTimer() {
+    _ringingTimeoutTimer?.cancel();
+    _ringingTimeoutTimer = null;
   }
 
   String? _resolveAvatar(String? userId, String? phone, String contactName) {
@@ -543,9 +563,11 @@ class CallSessionController extends ChangeNotifier with WidgetsBindingObserver {
     final isOut = _isOutgoing;
 
     _timer?.cancel();
+    _cancelRingingTimeoutTimer();
     _stopCallStatusPoller();
     _stopCallAudio();
     _playCallTone('stop');
+    LajuSoundService.stopRingtone();
 
     // Ensure call log is recorded if not logged yet
     if (!_hasLoggedCurrentCall && (_title.isNotEmpty || _contactUserId != null || _contactPhone != null)) {
@@ -727,9 +749,13 @@ class CallSessionController extends ChangeNotifier with WidgetsBindingObserver {
       // RE-CHECK: user could have answered or started a call while awaiting HTTP
       if (_isActive) return;
 
-      if (resp.isSuccess && resp.rawJson is Map) {
-        final data = resp.rawJson;
-        final incomingCallId = data['callId'] as String?;
+      final hasActiveIncomingCall = resp.isSuccess &&
+          resp.rawJson is Map &&
+          (resp.rawJson['callId'] as String?)?.isNotEmpty == true;
+
+      if (hasActiveIncomingCall) {
+        final data = resp.rawJson as Map;
+        final incomingCallId = data['callId'] as String;
         final callerName = data['initiatorName'] as String? ?? 'Kontak';
         final callerId = data['initiatorId'] as String?;
         final callerPhone = data['initiatorPhone'] as String?;
@@ -743,11 +769,20 @@ class CallSessionController extends ChangeNotifier with WidgetsBindingObserver {
             ? groupName
             : callerName;
 
-        if (incomingCallId != null &&
+        if (incomingCallId.isNotEmpty &&
             incomingCallId != _callId &&
             !_handledCallIds.contains(incomingCallId) &&
             incomingCallId != _lastRingingCallId &&
             incomingCallId != _declinedCallId) {
+
+          // If already in an active connected call, reject incoming call as busy
+          if (_isActive && _status == CallStatus.connected) {
+            try {
+              ApiClient.instance.post(ApiEndpoints.callReject(incomingCallId));
+            } catch (_) {}
+            return;
+          }
+
           _lastRingingCallId = incomingCallId;
           _lastRingingCallerName = effectiveDisplayName;
           _lastRingingCallerId = callerId;
@@ -756,17 +791,23 @@ class CallSessionController extends ChangeNotifier with WidgetsBindingObserver {
           _lastRingingIsVideo = isVideo;
           _status = CallStatus.ringing;
 
+          // Start 40-second safety timeout: auto-reject and silence if caller cancels or no answer
+          _startRingingTimeoutTimer(incomingCallId, callerName: effectiveDisplayName, isVideo: isVideo);
+
           final isForeground = WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
 
           if (isForeground) {
-            // Foreground: ONLY show in-app popup overlay banner. Cancel any system notification.
+            // Cancel native system notification to avoid duplicates
             _systemNotifChannel.invokeMethod('cancelNotification', {'id': 9999}).catchError((_) {});
             _systemNotifChannel.invokeMethod('cancelAll').catchError((_) {});
+
+            // Show non-blocking in-app floating banner so user is never blocked and can ignore if desired!
             AppNotificationService.instance.showIncomingCall(
               callerName: isGroup ? '$effectiveDisplayName (Grup)' : effectiveDisplayName,
               isVideo: isVideo,
               avatarUrl: resolvedAvatar,
               onAccept: () {
+                _cancelRingingTimeoutTimer();
                 if (isGroup) {
                   answerIncomingGroupCall(
                     incomingCallId,
@@ -778,7 +819,7 @@ class CallSessionController extends ChangeNotifier with WidgetsBindingObserver {
                 } else {
                   answerIncomingCall(
                     incomingCallId,
-                    callerName: callerName,
+                    callerName: effectiveDisplayName,
                     isVideo: isVideo,
                     callerId: callerId,
                     callerPhone: callerPhone,
@@ -786,14 +827,17 @@ class CallSessionController extends ChangeNotifier with WidgetsBindingObserver {
                   );
                 }
               },
-              onDecline: () => declineIncomingCall(
-                incomingCallId,
-                callerName: effectiveDisplayName,
-                isVideo: isVideo,
-                callerId: callerId,
-                callerPhone: callerPhone,
-                avatarUrl: resolvedAvatar,
-              ),
+              onDecline: () {
+                _cancelRingingTimeoutTimer();
+                declineIncomingCall(
+                  incomingCallId,
+                  callerName: effectiveDisplayName,
+                  isVideo: isVideo,
+                  callerId: callerId,
+                  callerPhone: callerPhone,
+                  avatarUrl: resolvedAvatar,
+                );
+              },
             );
           } else {
             // Background / Minimized: Trigger native Android system notification
@@ -807,6 +851,7 @@ class CallSessionController extends ChangeNotifier with WidgetsBindingObserver {
       } else {
         _declinedCallId = null;
         if (_lastRingingCallId != null && !_isActive) {
+          _cancelRingingTimeoutTimer();
           // Caller ended or cancelled before receiver answered -> Log as missed call!
           final missedCallId = _lastRingingCallId;
           final missedName = _lastRingingCallerName ?? 'Panggilan';
@@ -841,6 +886,7 @@ class CallSessionController extends ChangeNotifier with WidgetsBindingObserver {
           _lastRingingCallerAvatar = null;
           _status = CallStatus.idle;
           AppNotificationService.instance.dismissAll();
+          LajuSoundService.stopRingtone();
           _systemNotifChannel.invokeMethod('cancelNotification', {'id': 9999}).catchError((_) {});
           _systemNotifChannel.invokeMethod('cancelAll').catchError((_) {});
           _systemNotifChannel.invokeMethod('setLockscreenActive', {'active': false}).catchError((_) {});
@@ -866,6 +912,10 @@ class CallSessionController extends ChangeNotifier with WidgetsBindingObserver {
     if (_currentIncomingCallId == callId) return;
     _currentIncomingCallId = callId;
     _status = CallStatus.ringing;
+
+    // Ensure zero duplicates: cancel system heads-up notification and dismiss in-app popup banner
+    _systemNotifChannel.invokeMethod('cancelNotification', {'id': 9999}).catchError((_) {});
+    AppNotificationService.instance.dismissAll();
 
     _systemNotifChannel.invokeMethod('setLockscreenActive', {'active': true}).catchError((_) {});
 
@@ -907,42 +957,8 @@ class CallSessionController extends ChangeNotifier with WidgetsBindingObserver {
     _systemNotifChannel.setMethodCallHandler((call) async {
       if (call.method == 'onCallAction') {
         final args = call.arguments as Map?;
-        final callId = args?['callId'] as String?;
-        final action = args?['action'] as String?;
-        final isVideo = args?['isVideo'] == true;
-        final callerName = (args?['callerName'] as String?) ?? 'Panggilan';
-        final callerId = args?['callerId'] as String?;
-        final callerPhone = args?['callerPhone'] as String?;
-        final callerAvatar = (args?['avatarUrl'] as String?) ?? _resolveAvatar(callerId, callerPhone, callerName);
-        if (callId != null && callId.isNotEmpty) {
-          if (action == 'incoming_call') {
-            showIncomingCallScreen(
-              callId: callId,
-              callerName: callerName,
-              isVideo: isVideo,
-              callerId: callerId,
-              callerPhone: callerPhone,
-              avatarUrl: callerAvatar,
-            );
-          } else if (action == 'answer') {
-            await answerIncomingCall(
-              callId,
-              callerName: callerName,
-              isVideo: isVideo,
-              callerId: callerId,
-              callerPhone: callerPhone,
-              avatarUrl: callerAvatar,
-            );
-          } else if (action == 'decline') {
-            await declineIncomingCall(
-              callId,
-              callerName: callerName,
-              isVideo: isVideo,
-              callerId: callerId,
-              callerPhone: callerPhone,
-              avatarUrl: callerAvatar,
-            );
-          }
+        if (args != null) {
+          await handleCallPayload(args);
         }
       } else if (call.method == 'onNewMessage') {
         final args = call.arguments as Map?;
@@ -962,6 +978,8 @@ class CallSessionController extends ChangeNotifier with WidgetsBindingObserver {
     required bool isVideo,
     String? callerName,
   }) async {
+    _cancelRingingTimeoutTimer();
+    LajuSoundService.stopRingtone();
     _isActive = true;
     _handledCallIds.add(incomingCallId);
     _lastRingingCallId = incomingCallId;
@@ -1046,6 +1064,8 @@ class CallSessionController extends ChangeNotifier with WidgetsBindingObserver {
     String? callerPhone,
     String? avatarUrl,
   }) async {
+    _cancelRingingTimeoutTimer();
+    LajuSoundService.stopRingtone();
     // Immediately stop ringing, dismiss all banners/notifications, and flag session active
     _isActive = true;
     _handledCallIds.add(incomingCallId);
@@ -1134,6 +1154,7 @@ class CallSessionController extends ChangeNotifier with WidgetsBindingObserver {
     String? callerPhone,
     String? avatarUrl,
   }) async {
+    _cancelRingingTimeoutTimer();
     _isActive = false;
     _status = CallStatus.idle;
     _declinedCallId = incomingCallId;
@@ -1147,6 +1168,12 @@ class CallSessionController extends ChangeNotifier with WidgetsBindingObserver {
     _systemNotifChannel.invokeMethod('cancelAll').catchError((_) {});
     _systemNotifChannel.invokeMethod('setLockscreenActive', {'active': false}).catchError((_) {});
     AppNotificationService.instance.dismissAll();
+
+    // Immediately kill all call tones, ringtone, audio streams, and WebRTC
+    _stopCallAudio();
+    _playCallTone('stop');
+    LajuSoundService.stopRingtone();
+    WebRTCCallService.instance.dispose().catchError((_) {});
 
     final resolvedAvatar = avatarUrl ?? _resolveAvatar(callerId, callerPhone, callerName);
     final logId = (incomingCallId.isNotEmpty && !incomingCallId.startsWith('call-'))
@@ -1170,47 +1197,106 @@ class CallSessionController extends ChangeNotifier with WidgetsBindingObserver {
     notifyListeners();
   }
 
+  Future<void> handleCallPayload(Map<dynamic, dynamic> payload) async {
+    final callId = (payload['callId'] ?? payload['id']) as String?;
+    final isVideo = payload['isVideo'] == true;
+    final action = (payload['action'] as String?) ?? 'incoming_call';
+    final callerName = (payload['callerName'] as String?) ?? 'Panggilan';
+    final callerId = payload['callerId'] as String?;
+    final callerPhone = payload['callerPhone'] as String?;
+    final callerAvatar = (payload['avatarUrl'] as String?) ?? _resolveAvatar(callerId, callerPhone, callerName);
+
+    // If user is currently in another active call, reject incoming call as busy
+    if (_isActive && _status == CallStatus.connected) {
+      if (action == 'incoming_call' && callId != null && callId != _callId) {
+        try {
+          ApiClient.instance.post(ApiEndpoints.callReject(callId));
+        } catch (_) {}
+      }
+      return;
+    }
+
+    if (callId != null && callId.isNotEmpty) {
+      final isForeground = WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
+      final fromSystemIntent = payload['fromSystemIntent'] == true;
+
+      if (action == 'incoming_call' && isForeground && !fromSystemIntent) {
+        _lastRingingCallId = callId;
+        _lastRingingCallerName = callerName;
+        _lastRingingCallerId = callerId;
+        _lastRingingCallerPhone = callerPhone;
+        _lastRingingCallerAvatar = callerAvatar;
+        _lastRingingIsVideo = isVideo;
+        _status = CallStatus.ringing;
+
+        _startRingingTimeoutTimer(callId, callerName: callerName, isVideo: isVideo);
+
+        AppNotificationService.instance.showIncomingCall(
+          callerName: callerName,
+          isVideo: isVideo,
+          avatarUrl: callerAvatar,
+          onAccept: () {
+            _cancelRingingTimeoutTimer();
+            answerIncomingCall(
+              callId,
+              callerName: callerName,
+              isVideo: isVideo,
+              callerId: callerId,
+              callerPhone: callerPhone,
+              avatarUrl: callerAvatar,
+            );
+          },
+          onDecline: () {
+            _cancelRingingTimeoutTimer();
+            declineIncomingCall(
+              callId,
+              callerName: callerName,
+              isVideo: isVideo,
+              callerId: callerId,
+              callerPhone: callerPhone,
+              avatarUrl: callerAvatar,
+            );
+          },
+        );
+      } else if (action == 'incoming_call') {
+        _startRingingTimeoutTimer(callId, callerName: callerName, isVideo: isVideo);
+        showIncomingCallScreen(
+          callId: callId,
+          callerName: callerName,
+          isVideo: isVideo,
+          callerId: callerId,
+          callerPhone: callerPhone,
+          avatarUrl: callerAvatar,
+        );
+      } else if (action == 'answer') {
+        _cancelRingingTimeoutTimer();
+        await answerIncomingCall(
+          callId,
+          callerName: callerName,
+          isVideo: isVideo,
+          callerId: callerId,
+          callerPhone: callerPhone,
+          avatarUrl: callerAvatar,
+        );
+      } else if (action == 'decline') {
+        _cancelRingingTimeoutTimer();
+        await declineIncomingCall(
+          callId,
+          callerName: callerName,
+          isVideo: isVideo,
+          callerId: callerId,
+          callerPhone: callerPhone,
+          avatarUrl: callerAvatar,
+        );
+      }
+    }
+  }
+
   Future<void> checkLaunchPayload() async {
     try {
       final payload = await _systemNotifChannel.invokeMapMethod<String, dynamic>('getLaunchPayload');
-      if (payload != null && payload['type'] == 'call') {
-        final callId = payload['id'] as String?;
-        final isVideo = payload['isVideo'] == true;
-        final action = payload['action'] as String?;
-        final callerName = (payload['callerName'] as String?) ?? 'Panggilan';
-        final callerId = payload['callerId'] as String?;
-        final callerPhone = payload['callerPhone'] as String?;
-        final callerAvatar = (payload['avatarUrl'] as String?) ?? _resolveAvatar(callerId, callerPhone, callerName);
-        if (callId != null && callId.isNotEmpty) {
-          if (action == 'incoming_call') {
-            showIncomingCallScreen(
-              callId: callId,
-              callerName: callerName,
-              isVideo: isVideo,
-              callerId: callerId,
-              callerPhone: callerPhone,
-              avatarUrl: callerAvatar,
-            );
-          } else if (action == 'answer') {
-            await answerIncomingCall(
-              callId,
-              callerName: callerName,
-              isVideo: isVideo,
-              callerId: callerId,
-              callerPhone: callerPhone,
-              avatarUrl: callerAvatar,
-            );
-          } else if (action == 'decline') {
-            await declineIncomingCall(
-              callId,
-              callerName: callerName,
-              isVideo: isVideo,
-              callerId: callerId,
-              callerPhone: callerPhone,
-              avatarUrl: callerAvatar,
-            );
-          }
-        }
+      if (payload != null && (payload['type'] == 'call' || payload.containsKey('callId'))) {
+        await handleCallPayload(payload);
       }
     } catch (_) {}
   }

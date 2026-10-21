@@ -663,22 +663,34 @@ class ConversationService {
                   }
                   if (notifTitle.isEmpty) notifTitle = isGroup ? 'Group Chat' : 'Pesan Baru';
 
-                  String preview = (latest['ciphertext'] ?? '') as String;
+                  final rawCipher = (latest['ciphertext'] ?? '') as String;
+                  final rawMsgType = (latest['messageType'] as String?)?.toUpperCase();
+
+                  // Never show incoming message popup for call logs or system control messages
+                  if (rawMsgType == 'CONTROL' ||
+                      rawCipher.contains('"type":"call_log"') ||
+                      rawCipher.contains('"type": "call_log"') ||
+                      rawCipher.contains('"call_log"')) {
+                    continue;
+                  }
+
+                  String preview = rawCipher;
                   if (preview.startsWith('{') && (preview.contains('"media"') || preview.contains('"type"'))) {
                     try {
                       final parsed = jsonDecode(preview);
                       final msgType = parsed['type'] as String?;
                       final cap = (parsed['caption'] ?? '') as String;
-                      if (msgType == 'wallpaper_change') {
-                        final wpName = (parsed['wallpaperName'] ?? '') as String;
-                        preview = wpName == 'Default Polos'
-                            ? 'Menyetel wallpaper ke default'
-                            : 'Mengubah wallpaper ke "$wpName"';
+                      if (msgType == 'call_log' || msgType == 'wallpaper_change') {
+                        continue;
                       } else if (msgType == 'document') {
                         final fn = (parsed['fileName'] as String?) ?? 'Dokumen';
                         preview = cap.isNotEmpty ? cap : fn;
                       } else if (msgType == 'audio') {
                         preview = 'Pesan Suara';
+                      } else if (msgType == 'sticker') {
+                        preview = 'Stiker';
+                      } else if (msgType == 'location') {
+                        preview = (parsed['name'] as String?)?.isNotEmpty == true ? (parsed['name'] as String) : 'Berbagi Lokasi';
                       } else if (cap.isNotEmpty) {
                         preview = cap;
                       } else {

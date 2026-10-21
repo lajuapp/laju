@@ -71,10 +71,12 @@ import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.NetworkInterface
 import java.net.URL
+import android.app.KeyguardManager
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import androidx.core.app.NotificationCompat
+import androidx.core.app.Person
 import android.location.Location
 import android.location.LocationManager
 import android.location.LocationListener
@@ -111,8 +113,13 @@ class MainActivity : FlutterFragmentActivity() {
 
     private var aecEffect: AcousticEchoCanceler? = null
     private var nsEffect: NoiseSuppressor? = null
+    private val callToneLock = Any()
+    private var activeToneTrack: AudioTrack? = null
+    private var callToneThread: Thread? = null
     private var ringbackToneTrack: AudioTrack? = null
     @Volatile private var isPlayingCallTone = false
+    private val ringtoneLock = Any()
+    @Volatile private var isRingtonePlaying = false
 
     private val CAMERA_REQUEST_CODE = 1001
     private val GALLERY_REQUEST_CODE = 1002
@@ -150,14 +157,27 @@ class MainActivity : FlutterFragmentActivity() {
 
     override fun onCreate(savedInstanceState: android.os.Bundle?) {
         instance = this
+        if (intent?.getStringExtra("laju_type") == "call") {
+            enableShowWhenLocked()
+        }
         super.onCreate(savedInstanceState)
         createNotificationChannels()
+        try {
+            val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+            nm.cancel(LajuPushService.NOTIFICATION_ID_SYNC)
+            nm.cancel(9001)
+        } catch (_: Exception) {}
         handleIntent(intent)
     }
 
     override fun onResume() {
         super.onResume()
         isAppInForeground = true
+        try {
+            val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+            nm.cancel(LajuPushService.NOTIFICATION_ID_SYNC)
+            nm.cancel(9001)
+        } catch (_: Exception) {}
     }
 
     override fun onPause() {
@@ -191,10 +211,14 @@ class MainActivity : FlutterFragmentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        setIntent(intent)
+        if (intent.getStringExtra("laju_type") == "call") {
+            enableShowWhenLocked()
+        }
         handleIntent(intent)
     }
 
-    fun dispatchCallAction(callId: String, action: String, isVideo: Boolean = false, callerName: String = "Panggilan") {
+    fun dispatchCallAction(callId: String, action: String, isVideo: Boolean = false, callerName: String = "Panggilan", fromSystemIntent: Boolean = false) {
         try {
             val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
             nm.cancel(9999)
@@ -209,18 +233,19 @@ class MainActivity : FlutterFragmentActivity() {
                     "callId" to callId,
                     "action" to action,
                     "isVideo" to isVideo,
-                    "callerName" to callerName
+                    "callerName" to callerName,
+                    "fromSystemIntent" to fromSystemIntent
                 ))
             }
-        } else {
-            launchPayload = mapOf(
-                "type" to "call",
-                "id" to callId,
-                "action" to action,
-                "isVideo" to isVideo,
-                "callerName" to callerName
-            )
         }
+        launchPayload = mapOf(
+            "type" to "call",
+            "id" to callId,
+            "action" to action,
+            "isVideo" to isVideo,
+            "callerName" to callerName,
+            "fromSystemIntent" to fromSystemIntent
+        )
     }
 
     fun dispatchPushMessage(conversationId: String, senderName: String, preview: String) {
@@ -241,11 +266,14 @@ class MainActivity : FlutterFragmentActivity() {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
                     setShowWhenLocked(true)
                     setTurnScreenOn(true)
+                    val km = getSystemService(Context.KEYGUARD_SERVICE) as? KeyguardManager
+                    km?.requestDismissKeyguard(this, null)
                 } else {
                     @Suppress("DEPRECATION")
                     window.addFlags(
                         WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
                         WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
+                        WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD or
                         WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
                     )
                 }
@@ -264,6 +292,7 @@ class MainActivity : FlutterFragmentActivity() {
                     window.clearFlags(
                         WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
                         WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
+                        WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD or
                         WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
                     )
                 }
@@ -281,13 +310,10 @@ class MainActivity : FlutterFragmentActivity() {
 
         if (type == "call" && id != null) {
             enableShowWhenLocked()
-            if (action == "answer" || action == "decline" || action == "incoming_call") {
-                dispatchCallAction(id, action, isVideo, callerName)
-                return
-            }
-            launchPayload = mapOf("type" to type, "id" to id, "isVideo" to isVideo, "action" to action, "callerName" to callerName)
+            dispatchCallAction(id, action ?: "incoming_call", isVideo, callerName, fromSystemIntent = true)
+            return
         } else if (type != null && id != null) {
-            launchPayload = mapOf("type" to type, "id" to id, "isVideo" to isVideo, "action" to action)
+            launchPayload = mapOf("type" to type, "id" to id, "isVideo" to isVideo, "action" to action, "fromSystemIntent" to true)
         }
 
         // Handle Deep Link / App Link URIs (laju:// and https://laju.chat/u/...)
@@ -1351,10 +1377,12 @@ class MainActivity : FlutterFragmentActivity() {
         notificationMethodChannel?.setMethodCallHandler { call, result ->
             when (call.method) {
                 "showCallNotification" -> {
-                    val callId = call.argument<String>("callId") ?: ""
-                    val callerName = call.argument<String>("callerName") ?: "Kontak"
-                    val isVideo = call.argument<Boolean>("isVideo") ?: false
-                    showSystemCallNotification(callId, callerName, isVideo)
+                    if (!isAppInForeground) {
+                        val callId = call.argument<String>("callId") ?: ""
+                        val callerName = call.argument<String>("callerName") ?: "Kontak"
+                        val isVideo = call.argument<Boolean>("isVideo") ?: false
+                        showSystemCallNotification(callId, callerName, isVideo)
+                    }
                     result.success(true)
                 }
                 "setLockscreenActive" -> {
@@ -1441,6 +1469,28 @@ class MainActivity : FlutterFragmentActivity() {
                     }
                 }
                 else -> result.notImplemented()
+            }
+        }
+
+        // Flush any pending launch call action to Flutter
+        launchPayload?.let { payload ->
+            if (payload["type"] == "call") {
+                val callId = payload["id"] as? String ?: ""
+                val action = payload["action"] as? String ?: "incoming_call"
+                val isVideo = payload["isVideo"] as? Boolean ?: false
+                val callerName = payload["callerName"] as? String ?: "Panggilan"
+                val fromSystemIntent = payload["fromSystemIntent"] as? Boolean ?: false
+                if (callId.isNotEmpty()) {
+                    Handler(Looper.getMainLooper()).postDelayed({
+                        notificationMethodChannel?.invokeMethod("onCallAction", mapOf(
+                            "callId" to callId,
+                            "action" to action,
+                            "isVideo" to isVideo,
+                            "callerName" to callerName,
+                            "fromSystemIntent" to fromSystemIntent
+                        ))
+                    }, 500L)
+                }
             }
         }
 
@@ -1659,18 +1709,23 @@ class MainActivity : FlutterFragmentActivity() {
         }
     }
 
-    private fun stopCurrentRingtone() {
-        try {
-            currentSystemRingtone?.stop()
+    fun stopCurrentRingtone() {
+        isRingtonePlaying = false
+        synchronized(ringtoneLock) {
+            try {
+                currentSystemRingtone?.stop()
+            } catch (_: Exception) {}
             currentSystemRingtone = null
-            currentAudioTrack?.apply {
-                if (playState == AudioTrack.PLAYSTATE_PLAYING) {
-                    stop()
+            try {
+                currentAudioTrack?.apply {
+                    if (playState == AudioTrack.PLAYSTATE_PLAYING) {
+                        stop()
+                    }
+                    release()
                 }
-                release()
-            }
+            } catch (_: Exception) {}
             currentAudioTrack = null
-        } catch (_: Exception) {}
+        }
     }
 
     private fun triggerVibrate(mode: String) {
@@ -1707,9 +1762,10 @@ class MainActivity : FlutterFragmentActivity() {
     }
 
     private fun playSynthesizedRingtone(name: String) {
+        stopCurrentRingtone()
+        isRingtonePlaying = true
         Thread {
             try {
-                stopCurrentRingtone()
                 if (name.contains("Hening", ignoreCase = true) || name.contains("Mute", ignoreCase = true)) {
                     return@Thread
                 }
@@ -1720,8 +1776,20 @@ class MainActivity : FlutterFragmentActivity() {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                         ringtone?.isLooping = true
                     }
-                    ringtone?.play()
-                    currentSystemRingtone = ringtone
+                    synchronized(ringtoneLock) {
+                        if (!isRingtonePlaying) {
+                            try { ringtone?.stop() } catch (_: Exception) {}
+                            return@Thread
+                        }
+                        currentSystemRingtone = ringtone
+                        ringtone?.play()
+                    }
+
+                    // Strict safety auto-timeout: kill ringing after 40s automatically if not answered or dismissed
+                    Handler(Looper.getMainLooper()).postDelayed({
+                        stopCurrentRingtone()
+                    }, 40000L)
+
                     return@Thread
                 }
 
@@ -1737,8 +1805,14 @@ class MainActivity : FlutterFragmentActivity() {
                     else -> {
                         val notificationUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
                         val ringtone = RingtoneManager.getRingtone(applicationContext, notificationUri)
-                        ringtone?.play()
-                        currentSystemRingtone = ringtone
+                        synchronized(ringtoneLock) {
+                            if (!isRingtonePlaying) {
+                                try { ringtone?.stop() } catch (_: Exception) {}
+                                return@Thread
+                            }
+                            currentSystemRingtone = ringtone
+                            ringtone?.play()
+                        }
                         return@Thread
                     }
                 }
@@ -1774,13 +1848,21 @@ class MainActivity : FlutterFragmentActivity() {
                     )
                 }
 
-                currentAudioTrack = track
+                synchronized(ringtoneLock) {
+                    if (!isRingtonePlaying) {
+                        try { track.release() } catch (_: Exception) {}
+                        return@Thread
+                    }
+                    currentAudioTrack = track
+                }
                 track.write(pcmData, 0, pcmData.size)
                 track.play()
                 Thread.sleep((pcmData.size.toDouble() / sampleRate * 1000).toLong() + 100)
-                track.release()
-                if (currentAudioTrack === track) {
-                    currentAudioTrack = null
+                synchronized(ringtoneLock) {
+                    try { track.release() } catch (_: Exception) {}
+                    if (currentAudioTrack === track) {
+                        currentAudioTrack = null
+                    }
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -2474,21 +2556,32 @@ class MainActivity : FlutterFragmentActivity() {
         }
     }
 
-    private fun stopCallTone() {
+    fun stopCallTone() {
         isPlayingCallTone = false
-        try {
-            ringbackToneTrack?.apply {
-                if (playState == AudioTrack.PLAYSTATE_PLAYING) stop()
-                release()
-            }
+        synchronized(callToneLock) {
+            try {
+                activeToneTrack?.apply {
+                    if (playState == AudioTrack.PLAYSTATE_PLAYING) {
+                        pause()
+                        flush()
+                        stop()
+                    }
+                    release()
+                }
+            } catch (_: Exception) {}
+            activeToneTrack = null
             ringbackToneTrack = null
-        } catch (_: Exception) {}
+            try {
+                callToneThread?.interrupt()
+            } catch (_: Exception) {}
+            callToneThread = null
+        }
     }
 
     private fun startRingbackTone() {
         stopCallTone()
         isPlayingCallTone = true
-        Thread {
+        val thread = Thread {
             try {
                 val sampleRate = 16000
                 // Dual tone (440Hz + 480Hz) 1.8s tone, 2.5s pause
@@ -2501,7 +2594,7 @@ class MainActivity : FlutterFragmentActivity() {
                     samples[i] = (sample * 16000.0).toInt().toShort()
                 }
 
-                while (isPlayingCallTone) {
+                while (isPlayingCallTone && !Thread.currentThread().isInterrupted) {
                     val track = AudioTrack(
                         AudioManager.STREAM_VOICE_CALL,
                         sampleRate,
@@ -2510,37 +2603,65 @@ class MainActivity : FlutterFragmentActivity() {
                         samples.size * 2,
                         AudioTrack.MODE_STATIC
                     )
-                    ringbackToneTrack = track
+                    synchronized(callToneLock) {
+                        if (!isPlayingCallTone) {
+                            try { track.release() } catch (_: Exception) {}
+                            return@Thread
+                        }
+                        activeToneTrack = track
+                        ringbackToneTrack = track
+                    }
                     track.write(samples, 0, samples.size)
                     track.play()
 
                     val playTime = (durationSec * 1000).toLong()
                     val start = System.currentTimeMillis()
                     while (isPlayingCallTone && (System.currentTimeMillis() - start < playTime)) {
-                        Thread.sleep(100)
+                        Thread.sleep(50)
                     }
 
-                    track.release()
+                    synchronized(callToneLock) {
+                        try {
+                            if (track.playState == AudioTrack.PLAYSTATE_PLAYING) track.stop()
+                            track.release()
+                        } catch (_: Exception) {}
+                        if (activeToneTrack == track) activeToneTrack = null
+                        if (ringbackToneTrack == track) ringbackToneTrack = null
+                    }
+
                     if (!isPlayingCallTone) break
 
                     val pauseStart = System.currentTimeMillis()
                     while (isPlayingCallTone && (System.currentTimeMillis() - pauseStart < 2500)) {
-                        Thread.sleep(100)
+                        Thread.sleep(50)
                     }
                 }
+            } catch (_: InterruptedException) {
+                // Stopped cleanly
             } catch (e: Exception) {
                 e.printStackTrace()
+            } finally {
+                synchronized(callToneLock) {
+                    try {
+                        activeToneTrack?.release()
+                    } catch (_: Exception) {}
+                    activeToneTrack = null
+                    ringbackToneTrack = null
+                }
             }
-        }.start()
+        }
+        callToneThread = thread
+        thread.start()
     }
 
     private fun playBusyTone() {
         stopCallTone()
-        Thread {
+        isPlayingCallTone = true
+        val thread = Thread {
             try {
                 val sampleRate = 16000
                 // Busy tone (480Hz + 620Hz)
-                val durationSec = 0.4
+                val durationSec = 0.35
                 val numSamples = (sampleRate * durationSec).toInt()
                 val samples = ShortArray(numSamples)
                 for (i in 0 until numSamples) {
@@ -2550,6 +2671,7 @@ class MainActivity : FlutterFragmentActivity() {
                 }
 
                 for (cycle in 0..2) {
+                    if (!isPlayingCallTone || Thread.currentThread().isInterrupted) break
                     val track = AudioTrack(
                         AudioManager.STREAM_VOICE_CALL,
                         sampleRate,
@@ -2558,14 +2680,51 @@ class MainActivity : FlutterFragmentActivity() {
                         samples.size * 2,
                         AudioTrack.MODE_STATIC
                     )
+                    synchronized(callToneLock) {
+                        if (!isPlayingCallTone) {
+                            try { track.release() } catch (_: Exception) {}
+                            return@Thread
+                        }
+                        activeToneTrack = track
+                    }
                     track.write(samples, 0, samples.size)
                     track.play()
-                    Thread.sleep((durationSec * 1000).toLong())
-                    track.release()
-                    Thread.sleep(250)
+
+                    val start = System.currentTimeMillis()
+                    while (isPlayingCallTone && (System.currentTimeMillis() - start < (durationSec * 1000).toLong())) {
+                        Thread.sleep(50)
+                    }
+
+                    synchronized(callToneLock) {
+                        try {
+                            if (track.playState == AudioTrack.PLAYSTATE_PLAYING) track.stop()
+                            track.release()
+                        } catch (_: Exception) {}
+                        if (activeToneTrack == track) activeToneTrack = null
+                    }
+
+                    if (!isPlayingCallTone) break
+
+                    val pauseStart = System.currentTimeMillis()
+                    while (isPlayingCallTone && (System.currentTimeMillis() - pauseStart < 250)) {
+                        Thread.sleep(50)
+                    }
                 }
-            } catch (_: Exception) {}
-        }.start()
+            } catch (_: InterruptedException) {
+                // Stopped cleanly
+            } catch (_: Exception) {
+            } finally {
+                synchronized(callToneLock) {
+                    try {
+                        activeToneTrack?.release()
+                    } catch (_: Exception) {}
+                    activeToneTrack = null
+                    isPlayingCallTone = false
+                }
+            }
+        }
+        callToneThread = thread
+        thread.start()
     }
 
     private fun startRealtimeCallAudio(
@@ -2946,20 +3105,33 @@ class MainActivity : FlutterFragmentActivity() {
 
         val ringtoneUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
 
+        val callerPerson = Person.Builder()
+            .setName(callerName)
+            .setImportant(true)
+            .build()
+
         val builder = NotificationCompat.Builder(this, CHANNEL_ID_CALLS)
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle(callerName)
             .setContentText(if (isVideo) "Panggilan video masuk..." else "Panggilan suara masuk...")
+            .setColor(android.graphics.Color.parseColor("#00C896"))
+            .setColorized(true)
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_CALL)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setSound(ringtoneUri)
             .setVibrate(longArrayOf(0, 800, 400, 800, 400, 800))
             .setFullScreenIntent(incomingCallPendingIntent, true)
             .setContentIntent(incomingCallPendingIntent)
-            .setAutoCancel(true)
+            .setAutoCancel(false)
             .setOngoing(true)
-            .addAction(android.R.drawable.ic_menu_call, "Jawab", answerPendingIntent)
-            .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Tolak", declinePendingIntent)
+            .setStyle(
+                NotificationCompat.CallStyle.forIncomingCall(
+                    callerPerson,
+                    declinePendingIntent,
+                    answerPendingIntent
+                )
+            )
 
         nm.notify(9999, builder.build())
     }

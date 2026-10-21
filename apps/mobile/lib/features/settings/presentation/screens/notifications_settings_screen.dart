@@ -54,6 +54,7 @@ class _NotificationsSettingsScreenState extends State<NotificationsSettingsScree
   String _callVibrate = 'Default';
 
   bool _isLoading = true;
+  bool _isIgnoringBattery = true;
 
   // Available Ringtones List
   static const List<Map<String, String>> _availableRingtones = [
@@ -167,9 +168,19 @@ class _NotificationsSettingsScreenState extends State<NotificationsSettingsScree
 
         _isLoading = false;
       });
+      _checkBatteryStatus();
     } catch (_) {
       setState(() => _isLoading = false);
     }
+  }
+
+  Future<void> _checkBatteryStatus() async {
+    try {
+      final isIgnored = await PushNotificationService.instance.isIgnoringBatteryOptimizations();
+      if (mounted) {
+        setState(() => _isIgnoringBattery = isIgnored);
+      }
+    } catch (_) {}
   }
 
   Future<void> _saveBool(String key, bool value) async {
@@ -1464,6 +1475,98 @@ class _NotificationsSettingsScreenState extends State<NotificationsSettingsScree
                       );
                     },
                   ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 18),
+            _buildSectionHeader('LAYANAN LATAR BELAKANG & BATERAI', isDark),
+            const SizedBox(height: 8),
+            LajuGlassCard(
+              padding: const EdgeInsets.all(16),
+              borderRadius: 20,
+              blurSigma: 16,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: _isIgnoringBattery ? AppColors.primary.withOpacity(0.15) : Colors.amber.withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Icon(
+                          _isIgnoringBattery ? Icons.battery_charging_full_rounded : Icons.battery_alert_rounded,
+                          color: _isIgnoringBattery ? AppColors.primary : Colors.amber,
+                          size: 24,
+                        ),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Izin Latar Belakang (Baterai)',
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w700,
+                                color: isDark ? Colors.white : const Color(0xFF111827),
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              _isIgnoringBattery
+                                  ? 'Optimasi baterai telah dinonaktifkan (Optimal)'
+                                  : 'Optimasi baterai masih aktif (Panggilan bisa tertunda)',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                                color: _isIgnoringBattery
+                                    ? AppColors.primary
+                                    : (isDark ? Colors.white70 : const Color(0xFF6B7280)),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    'Agar ponsel dapat menerima panggilan dan pesan saat layar terkunci lama atau aplikasi ditutup, sistem membutuhkan izin berjalan tanpa pembatasan baterai.',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: isDark ? Colors.white60 : const Color(0xFF64748B),
+                      height: 1.4,
+                    ),
+                  ),
+                  if (!_isIgnoringBattery) ...[
+                    const SizedBox(height: 14),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.primary,
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                        ),
+                        icon: const Icon(Icons.security_update_good_rounded, size: 18),
+                        label: const Text(
+                          'Izinkan Berjalan di Latar Belakang',
+                          style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                        ),
+                        onPressed: () async {
+                          await PushNotificationService.instance.requestIgnoreBatteryOptimizations();
+                          await Future.delayed(const Duration(seconds: 1));
+                          _checkBatteryStatus();
+                        },
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),

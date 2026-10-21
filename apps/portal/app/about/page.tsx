@@ -81,82 +81,84 @@ export default function AboutPage() {
           </section>
 
           {/* Core Principles */}
-          <section className="pt-10 sm:pt-12 border-t border-[#EAE8DE] space-y-8">
-            <div className="max-w-4xl">
+          <section className="pt-12 sm:pt-16 border-t border-[#EAE8DE] text-left">
+            <div className="mb-10">
               <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
                 {t('about_principles_title')}
               </h2>
+              {t('about_principles_sub') && (
+                <p className="mt-1.5 text-xs sm:text-sm text-slate-600">
+                  {t('about_principles_sub')}
+                </p>
+              )}
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 sm:gap-8">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8 lg:gap-10 text-left">
               {/* Principle 1 */}
-              <div className="rounded-3xl bg-white border border-[#EAE8DE] p-7 sm:p-8 shadow-xs hover:border-stone-300 transition-all flex flex-col justify-between">
-                <div>
-                  <div className="h-11 w-11 rounded-2xl bg-[#0D382C]/10 text-[#0D382C] flex items-center justify-center mb-5">
-                    <ShieldCheck className="h-6 w-6 stroke-[1.75]" />
-                  </div>
-                  <h3 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight mb-2.5">
-                    {t('about_principle1_title')}
-                  </h3>
-                  <p className="text-sm sm:text-base text-slate-600 leading-relaxed">
-                    {t('about_principle1_desc')}
-                  </p>
+              <div className="space-y-3">
+                <div className="h-10 w-10 rounded-xl bg-[#0D382C]/8 flex items-center justify-center text-[#0D382C]">
+                  <ShieldCheck className="h-5 w-5" />
                 </div>
+                <h3 className="text-base font-bold text-slate-900">
+                  {t('about_principle1_title').replace(/^\d+\.\s*/, '')}
+                </h3>
+                <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
+                  {t('about_principle1_desc')}
+                </p>
               </div>
 
               {/* Principle 2 */}
-              <div className="rounded-3xl bg-white border border-[#EAE8DE] p-7 sm:p-8 shadow-xs hover:border-stone-300 transition-all flex flex-col justify-between">
-                <div>
-                  <div className="h-11 w-11 rounded-2xl bg-[#0D382C]/10 text-[#0D382C] flex items-center justify-center mb-5">
-                    <Compass className="h-6 w-6 stroke-[1.75]" />
-                  </div>
-                  <h3 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight mb-2.5">
-                    {t('about_principle2_title')}
-                  </h3>
-                  <p className="text-sm sm:text-base text-slate-600 leading-relaxed">
-                    {t('about_principle2_desc')}
-                  </p>
+              <div className="space-y-3">
+                <div className="h-10 w-10 rounded-xl bg-[#0D382C]/8 flex items-center justify-center text-[#0D382C]">
+                  <Compass className="h-5 w-5" />
                 </div>
+                <h3 className="text-base font-bold text-slate-900">
+                  {t('about_principle2_title').replace(/^\d+\.\s*/, '')}
+                </h3>
+                <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
+                  {t('about_principle2_desc')}
+                </p>
               </div>
 
               {/* Principle 3 */}
-              <div className="rounded-3xl bg-white border border-[#EAE8DE] p-7 sm:p-8 shadow-xs hover:border-stone-300 transition-all flex flex-col justify-between">
-                <div>
-                  <div className="h-11 w-11 rounded-2xl bg-[#0D382C]/10 text-[#0D382C] flex items-center justify-center mb-5">
-                    <HeartHandshake className="h-6 w-6 stroke-[1.75]" />
-                  </div>
-                  <h3 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight mb-2.5">
-                    {t('about_principle3_title')}
-                  </h3>
-                  <p className="text-sm sm:text-base text-slate-600 leading-relaxed">
-                    {t('about_principle3_desc')}
-                  </p>
+              <div className="space-y-3">
+                <div className="h-10 w-10 rounded-xl bg-[#0D382C]/8 flex items-center justify-center text-[#0D382C]">
+                  <HeartHandshake className="h-5 w-5" />
                 </div>
+                <h3 className="text-base font-bold text-slate-900">
+                  {t('about_principle3_title').replace(/^\d+\.\s*/, '')}
+                </h3>
+                <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
+                  {t('about_principle3_desc')}
+                </p>
               </div>
             </div>
           </section>
 
           {/* Open Source & GitHub Note */}
-          <section className="pt-8 border-t border-[#EAE8DE] pb-4">
-            <div className="rounded-3xl bg-white border border-[#EAE8DE] p-7 sm:p-9 shadow-xs flex flex-col md:flex-row md:items-center md:justify-between gap-6">
-              <p className="text-base sm:text-lg text-slate-700 leading-relaxed max-w-2xl">
-                {t('about_open_source_closing')}
-              </p>
-
-              <div className="shrink-0">
-                <a
-                  href="https://github.com/lajuapp/laju"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2.5 rounded-full bg-[#0D382C] px-6 py-3.5 text-xs sm:text-sm font-semibold text-white shadow-sm hover:bg-[#134E3E] transition-all hover:scale-[1.01] active:scale-[0.99]"
-                >
-                  <svg className="h-4 w-4 fill-current" viewBox="0 0 24 24">
-                    <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
-                  </svg>
-                  <span>{t('about_github_link_text')}</span>
-                  <ExternalLink className="h-3.5 w-3.5 opacity-80" />
-                </a>
+          <section className="pt-10 sm:pt-12 border-t border-[#EAE8DE] space-y-4 pb-8 text-left">
+            <h3 className="text-lg sm:text-xl font-bold text-slate-900 flex items-center gap-2.5">
+              <svg className="h-5 w-5 fill-[#0D382C]" viewBox="0 0 24 24">
+                <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+              </svg>
+              <span>{t('about_open_source_title')}</span>
+            </h3>
+            <p className="text-xs sm:text-sm text-slate-600 leading-relaxed max-w-4xl">
+              {t('about_open_source_closing')}
+            </p>
+            <div className="flex flex-wrap items-center gap-3 pt-1">
+              <div className="p-3 rounded-xl bg-white border border-stone-200 text-xs font-mono text-slate-800 font-semibold shadow-2xs">
+                github.com/lajuapp/laju
               </div>
+              <a
+                href="https://github.com/lajuapp/laju"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-4 py-2.5 rounded-xl bg-[#0D382C] text-white text-xs font-bold hover:bg-[#134E3E] transition-colors inline-flex items-center gap-1.5"
+              >
+                <span>{t('about_github_link_text')}</span>
+                <ExternalLink className="h-3.5 w-3.5" />
+              </a>
             </div>
           </section>
 

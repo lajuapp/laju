@@ -6,7 +6,8 @@ High-assurance secure communications platform consisting of:
 
 - Android mobile application — Flutter
 - Backend — NestJS Modular Monolith
-- Backoffice — Next.js
+- Backoffice — Next.js Administrative Console
+- Portal — Next.js Public Landing Page & APK Gateway
 - PostgreSQL
 - Redis
 - Gotify
@@ -37,7 +38,8 @@ secure-messenger/
 │   ├── api/
 │   ├── worker/
 │   ├── mobile/
-│   └── backoffice/
+│   ├── backoffice/
+│   └── portal/
 ├── packages/
 │   ├── contracts/
 │   ├── shared-types/

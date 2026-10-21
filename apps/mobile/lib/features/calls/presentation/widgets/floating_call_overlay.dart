@@ -395,64 +395,101 @@ class _FloatingCallOverlayState extends State<FloatingCallOverlay> with SingleTi
     final textPrimary = isDark ? Colors.white : AppColors.textPrimary;
     final textSecondary = isDark ? const Color(0xFF94A3B8) : AppColors.textSecondary;
 
-    return LajuGlassCard(
-      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
-      borderRadius: 24,
-      blurSigma: 24,
-      tintColor: isDark ? const Color(0xFF0F172A) : Colors.white,
-      borderColor: AppColors.primary.withValues(alpha: 0.35),
-      borderWidth: 1.5,
-      customShadow: [
-        BoxShadow(
-          color: AppColors.primary.withValues(alpha: 0.25),
-          blurRadius: 28,
-          spreadRadius: 2,
-          offset: const Offset(0, 8),
-        ),
-      ],
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // Header badge
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: AppColors.primary.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(8),
+    return Dismissible(
+      key: Key(item.id),
+      direction: DismissDirection.up,
+      onDismissed: (_) {
+        AppNotificationService.instance.dismiss();
+      },
+      child: LajuGlassCard(
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+        borderRadius: 24,
+        blurSigma: 24,
+        tintColor: isDark ? const Color(0xFF0F172A) : Colors.white,
+        borderColor: AppColors.primary.withValues(alpha: 0.35),
+        borderWidth: 1.5,
+        customShadow: [
+          BoxShadow(
+            color: AppColors.primary.withValues(alpha: 0.25),
+            blurRadius: 28,
+            spreadRadius: 2,
+            offset: const Offset(0, 8),
+          ),
+        ],
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Header badge + Abaikan (Ignore) button
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: AppColors.primary.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(item.icon, size: 13, color: AppColors.primary),
+                      const SizedBox(width: 4),
+                      Text(
+                        item.title.toUpperCase(),
+                        style: const TextStyle(
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 0.6,
+                          color: AppColors.primary,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-                child: Row(
+                Row(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(item.icon, size: 13, color: AppColors.primary),
-                    const SizedBox(width: 4),
                     Text(
-                      item.title.toUpperCase(),
-                      style: const TextStyle(
-                        fontSize: 10.5,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 0.6,
-                        color: AppColors.primary,
+                      'Berdering...',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: textSecondary,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    GestureDetector(
+                      onTap: () => AppNotificationService.instance.dismiss(),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.close_rounded, size: 13, color: textSecondary),
+                            const SizedBox(width: 3),
+                            Text(
+                              'Abaikan',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: textSecondary,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ],
                 ),
-              ),
-              Text(
-                'Berdering...',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: textSecondary,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
+              ],
+            ),
+            const SizedBox(height: 14),
 
-          // Caller info row (Tap to expand to full-screen incoming call UI)
-          GestureDetector(
+            // Caller info row (Tap to expand to full-screen incoming call UI)
+            GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTap: () {
               final lastCallId = CallSessionController.instance.lastRingingCallId;
@@ -604,6 +641,7 @@ class _FloatingCallOverlayState extends State<FloatingCallOverlay> with SingleTi
           ),
         ],
       ),
+    ),
     );
   }
 
