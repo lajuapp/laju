@@ -100,7 +100,7 @@ export function SmartRedirector({
         <div className="mt-8 space-y-3">
           <button
             onClick={handleManualOpen}
-            className="w-full flex items-center justify-center gap-2 rounded-2xl bg-emerald-600 py-4 px-6 text-sm font-bold text-white shadow-lg shadow-emerald-600/25 hover:bg-emerald-700 hover:shadow-emerald-600/35 hover:-translate-y-0.5 transition-all active:translate-y-0"
+            className="w-full flex items-center justify-center gap-2 rounded-2xl bg-laju-500 hover:bg-laju-600 py-4 px-6 text-sm font-bold text-slate-950 shadow-mint-glow hover:shadow-mint-glow-sm hover:-translate-y-0.5 transition-all active:translate-y-0"
           >
             <Smartphone className="h-4 w-4" />
             Buka di Aplikasi LAJU

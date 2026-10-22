@@ -33,7 +33,7 @@ the copyleft obligations of the GNU Affero General Public License, an official
 Commercial Enterprise License is available.
 
 For licensing inquiries and commercial agreements, contact:
-licensing@laju.chat
+hallo@laju.chat
 
 -------------------------------------------------------------------------------
 TRADEMARKS AND BRANDING

@@ -1,39 +1,54 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { useLanguage } from '@/context/LanguageContext';
 
 export function Footer() {
   const { t } = useLanguage();
 
   return (
-    <footer className="border-t border-[#EAE8DE] bg-[#F5F4EF] py-10 text-slate-600 text-xs">
+    <footer className="border-t border-slate-200 bg-white py-12 text-slate-600 text-xs">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="flex flex-col sm:flex-row items-center justify-between gap-6">
-          {/* Logo */}
-          <Link href="/" className="text-xl font-black tracking-tight text-slate-900 font-sans">
-            LAJU
+          {/* Logo & Brand */}
+          <Link href="/" className="flex items-center gap-2.5">
+            <div className="relative h-7 w-7 overflow-hidden rounded-lg bg-slate-900 p-0.5 shadow-xs">
+              <Image
+                src="/images/logo_icon.png"
+                alt="LAJU"
+                width={28}
+                height={28}
+                className="h-full w-full object-contain"
+              />
+            </div>
+            <span className="text-lg font-black tracking-tight text-slate-900 font-sans">
+              LAJU
+            </span>
           </Link>
 
           {/* Links */}
-          <div className="flex items-center gap-6 font-medium text-slate-600">
-            <Link href="/privacy" className="hover:text-slate-900 transition-colors">
+          <div className="flex flex-wrap items-center justify-center gap-6 font-medium text-slate-600">
+            <Link href="/privacy" className="hover:text-slate-950 transition-colors">
               {t('footer_privacy')}
             </Link>
-            <Link href="/terms" className="hover:text-slate-900 transition-colors">
+            <Link href="/terms" className="hover:text-slate-950 transition-colors">
               {t('footer_terms')}
             </Link>
-            <Link href="/help" className="hover:text-slate-900 transition-colors">
+            <Link href="/help" className="hover:text-slate-950 transition-colors">
               {t('footer_help')}
             </Link>
-            <Link href="/about" className="hover:text-slate-900 transition-colors">
+            <Link href="/about" className="hover:text-slate-950 transition-colors">
               {t('footer_about')}
+            </Link>
+            <Link href="/download" className="hover:text-slate-950 transition-colors">
+              {t('nav_download')}
             </Link>
             <a
               href="https://github.com/lajuapp/laju"
               target="_blank"
               rel="noopener noreferrer"
-              className="hover:text-slate-900 transition-colors flex items-center gap-1.5"
+              className="hover:text-slate-950 transition-colors flex items-center gap-1.5"
             >
               <span>{t('footer_github')}</span>
               <svg className="h-3.5 w-3.5 fill-current" viewBox="0 0 24 24">
@@ -43,7 +58,7 @@ export function Footer() {
           </div>
 
           {/* Copyright */}
-          <div className="text-slate-500 text-[11px]">
+          <div className="text-slate-500 text-[11px] text-center sm:text-right">
             {t('footer_copyright')}
           </div>
         </div>

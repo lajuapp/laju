@@ -2,9 +2,9 @@ import type { Metadata } from 'next';
 import { DownloadContent } from '@/components/download/DownloadContent';
 
 export const metadata: Metadata = {
-  title: 'Unduh LAJU untuk Android (.APK) | LAJU Secure Messenger',
+  title: 'Unduh LAJU untuk Android (.APK) | LAJU Messenger',
   description:
-    'Download aplikasi LAJU Messenger versi terbaru untuk Android secara langsung. Aman, cepat, dan terenkripsi.',
+    'Download aplikasi LAJU Messenger versi terbaru untuk Android. Nikmati obrolan aman, bebas iklan, dan privasi terjaga.',
 };
 
 export const dynamic = 'force-dynamic';

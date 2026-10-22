@@ -18,14 +18,14 @@ function getSafeAppUrl(): URL {
 const safeAppUrl = getSafeAppUrl();
 
 export const metadata: Metadata = {
-  title: 'LAJU Messenger | Chat Cepat, Ringan & Bebas Iklan',
+  title: 'LAJU Messenger | Ruang Obrolan Aman & Privasi Terjaga',
   description:
-    'Aplikasi pesan instan dan panggilan suara/video jernih. Super ringan di HP, hemat kuota, bebas iklan mengganggu, dan privasi kamu terjaga penuh.',
+    'Aplikasi pesan instan dan panggilan suara/video jernih dengan privasi penuh, terenkripsi end-to-end langsung dari HP kamu, bebas iklan, dan ringan.',
   metadataBase: safeAppUrl,
   openGraph: {
-    title: 'LAJU Messenger | Chat Cepat, Ringan & Bebas Iklan',
+    title: 'LAJU Messenger | Ruang Obrolan Aman & Privasi Terjaga',
     description:
-      'Aplikasi pesan instan dan panggilan suara/video jernih. Super ringan di HP, hemat kuota, dan bebas iklan mengganggu.',
+      'Aplikasi pesan instan dan panggilan suara/video jernih dengan privasi penuh, terenkripsi end-to-end langsung dari HP kamu, bebas iklan, dan ringan.',
     url: safeAppUrl.toString(),
     siteName: 'LAJU Messenger',
     locale: 'id_ID',
@@ -33,12 +33,12 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'LAJU Messenger | Chat Cepat, Ringan & Bebas Iklan',
+    title: 'LAJU Messenger | Ruang Obrolan Aman & Privasi Terjaga',
     description:
-      'Aplikasi pesan instan dan panggilan suara/video jernih. Super ringan di HP, hemat kuota, dan bebas iklan mengganggu.',
+      'Aplikasi pesan instan dan panggilan suara/video jernih dengan privasi penuh, terenkripsi end-to-end langsung dari HP kamu, bebas iklan, dan ringan.',
   },
   icons: {
-    icon: '/favicon.ico',
+    icon: '/images/logo_icon.png',
   },
 };
 
@@ -49,7 +49,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="id" className="scroll-smooth">
-      <body className="min-h-screen flex flex-col bg-[#F5F4EF] text-slate-900 antialiased selection:bg-pine-800 selection:text-white">
+      <body className="min-h-screen flex flex-col bg-[#F8FAFC] text-slate-900 antialiased selection:bg-laju-500 selection:text-slate-950">
         <LanguageProvider>
           <Navbar />
           <main className="flex-1">{children}</main>
