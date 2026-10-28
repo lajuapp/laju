@@ -96,6 +96,8 @@ class _ChatScreenState extends State<ChatScreen> {
     _scrollController.addListener(_onScroll);
     ChatWebSocketService.instance.connect();
     ConversationService.instance.currentActiveConversationId = _conversationId;
+    PushNotificationService.setActiveConversation(_conversationId);
+    PushNotificationService.cancelMessageNotification(_conversationId);
     ConversationService.instance.markConversationAsRead(_conversationId);
     final mem = ConversationService.instance.getMemoryMessages(_conversationId);
     _messages = mem != null ? List<MessageModel>.from(mem) : [];
@@ -191,6 +193,8 @@ class _ChatScreenState extends State<ChatScreen> {
           _conversationId = backendId;
         });
         ConversationService.instance.currentActiveConversationId = backendId;
+        PushNotificationService.setActiveConversation(backendId);
+        PushNotificationService.cancelMessageNotification(backendId);
         ConversationService.instance.markConversationAsRead(backendId);
         _loadMessagesFromApi();
       }

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/core.dart';
+import '../../features/conversations/domain/conversation_service.dart';
 
 class AppNavigation {
   static final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
@@ -95,6 +96,11 @@ class AppNotificationService extends ChangeNotifier {
     VoidCallback? onOpenChat,
     void Function(String replyText)? onQuickReply,
   }) async {
+    // 0. Do not display notification or play ringtone if the conversation is currently active on screen
+    if (ConversationService.instance.isConversationOpen(conversationId)) {
+      return;
+    }
+
     // 1. Play real ringtone and vibrate according to saved preferences
     await LajuSoundService.playIncomingNotification(isGroup: isGroup);
 

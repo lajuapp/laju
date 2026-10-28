@@ -226,6 +226,11 @@ export class MessagingService {
         }
       });
 
+      await tx.conversation.update({
+        where: { id: effectiveConversationId },
+        data: { updatedAt: new Date() }
+      });
+
       return message;
     });
 

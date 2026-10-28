@@ -67,6 +67,8 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
     _scrollController.addListener(_onScroll);
     ChatWebSocketService.instance.connect();
     ConversationService.instance.currentActiveConversationId = widget.groupId;
+    PushNotificationService.setActiveConversation(widget.groupId);
+    PushNotificationService.cancelMessageNotification(widget.groupId);
     ConversationService.instance.markConversationAsRead(widget.groupId);
     final mem = ConversationService.instance.getMemoryMessages(widget.groupId);
     if (mem != null) {

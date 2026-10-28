@@ -732,6 +732,27 @@ class LajuPushService : Service() {
                     val convId = obj.optString("conversationId", "")
                     val senderName = obj.optString("senderName", "Pesan Baru")
                     val preview = obj.optString("preview", "Pesan baru terenkripsi")
+
+                    val isActiveChat = MainActivity.isAppInForeground &&
+                        MainActivity.activeConversationId != null &&
+                        (MainActivity.activeConversationId == convId ||
+                         (senderUserId.isNotEmpty() && MainActivity.activeConversationId == "conv-$senderUserId"))
+
+                    if (isActiveChat) {
+                        // User is currently inside this chat detail:
+                        // Suppress system heads-up notification and ringtone completely; live update directly in Flutter
+                        MainActivity.instance?.dispatchPushMessage(convId, senderName, preview)
+                        return
+                    }
+
+                    if (MainActivity.isAppInForeground) {
+                        // App is active and open on another screen:
+                        // Dispatch to Flutter to display the smooth in-app floating banner (no duplicate Android heads-up notification!)
+                        MainActivity.instance?.dispatchPushMessage(convId, senderName, preview)
+                        return
+                    }
+
+                    // App is in background or device is locked: post native system notification
                     showMessageNotification(convId, senderName, preview)
                     MainActivity.instance?.dispatchPushMessage(convId, senderName, preview)
                 }

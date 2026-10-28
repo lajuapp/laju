@@ -111,7 +111,7 @@ class _HomeScreenState extends State<HomeScreen> {
       final apiConvs = ConversationService.instance.conversationsNotifier.value;
       if (apiConvs.isNotEmpty && !ConversationModel.areListsEqual(_conversations, apiConvs)) {
         setState(() {
-          _conversations = apiConvs;
+          _conversations = List<ConversationModel>.from(apiConvs);
         });
       }
     }

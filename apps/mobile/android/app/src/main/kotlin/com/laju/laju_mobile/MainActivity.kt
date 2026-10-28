@@ -132,10 +132,12 @@ class MainActivity : FlutterFragmentActivity() {
     private val STORAGE_PERMISSION_REQUEST_CODE = 1009
     private val VIDEO_CAMERA_REQUEST_CODE = 1010
     private val VIDEO_GALLERY_REQUEST_CODE = 1011
+    private val MEDIA_PERMISSION_REQUEST_CODE = 1012
 
     private var currentCameraCapturePath: String? = null
     private var pendingCameraResult: MethodChannel.Result? = null
     private var pendingMediaResult: MethodChannel.Result? = null
+    private var pendingMediaPermissionResult: MethodChannel.Result? = null
     private var pendingAudioPermissionResult: MethodChannel.Result? = null
     private var pendingCameraPermissionResult: MethodChannel.Result? = null
     private var pendingLocationPermissionResult: MethodChannel.Result? = null
@@ -153,6 +155,7 @@ class MainActivity : FlutterFragmentActivity() {
     companion object {
         var instance: MainActivity? = null
         var isAppInForeground: Boolean = false
+        var activeConversationId: String? = null
     }
 
     override fun onCreate(savedInstanceState: android.os.Bundle?) {
@@ -558,6 +561,143 @@ class MainActivity : FlutterFragmentActivity() {
                         } catch (e2: Exception) {
                             result.error("VIDEO_GALLERY_ERROR", e2.message, null)
                             pendingCameraResult = null
+                        }
+                    }
+                }
+                "hasMediaPermission" -> {
+                    val hasPerm = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_IMAGES) == PackageManager.PERMISSION_GRANTED ||
+                        ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_VIDEO) == PackageManager.PERMISSION_GRANTED
+                    } else {
+                        ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
+                    }
+                    result.success(hasPerm)
+                }
+                "requestMediaPermission" -> {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        val hasImages = ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_IMAGES) == PackageManager.PERMISSION_GRANTED
+                        val hasVideo = ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_VIDEO) == PackageManager.PERMISSION_GRANTED
+                        if (hasImages && hasVideo) {
+                            result.success(true)
+                        } else {
+                            pendingMediaPermissionResult = result
+                            ActivityCompat.requestPermissions(
+                                this,
+                                arrayOf(Manifest.permission.READ_MEDIA_IMAGES, Manifest.permission.READ_MEDIA_VIDEO),
+                                MEDIA_PERMISSION_REQUEST_CODE
+                            )
+                        }
+                    } else {
+                        val hasStorage = ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
+                        if (hasStorage) {
+                            result.success(true)
+                        } else {
+                            pendingMediaPermissionResult = result
+                            ActivityCompat.requestPermissions(
+                                this,
+                                arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE),
+                                MEDIA_PERMISSION_REQUEST_CODE
+                            )
+                        }
+                    }
+                }
+                "getRecentMedia" -> {
+                    val limit = call.argument<Int>("limit") ?: 60
+                    kotlin.concurrent.thread {
+                        try {
+                            val mediaList = mutableListOf<Map<String, Any?>>()
+                            val projection = arrayOf(
+                                MediaStore.Files.FileColumns._ID,
+                                MediaStore.Files.FileColumns.DATA,
+                                MediaStore.Files.FileColumns.MEDIA_TYPE,
+                                MediaStore.Files.FileColumns.MIME_TYPE,
+                                MediaStore.Video.VideoColumns.DURATION,
+                                MediaStore.Files.FileColumns.DATE_ADDED
+                            )
+                            val selection = "${MediaStore.Files.FileColumns.MEDIA_TYPE} = ? OR ${MediaStore.Files.FileColumns.MEDIA_TYPE} = ?"
+                            val selectionArgs = arrayOf(
+                                MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE.toString(),
+                                MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO.toString()
+                            )
+                            val sortOrder = "${MediaStore.Files.FileColumns.DATE_ADDED} DESC"
+                            val queryUri = MediaStore.Files.getContentUri("external")
+
+                            val cursor = contentResolver.query(
+                                queryUri,
+                                projection,
+                                selection,
+                                selectionArgs,
+                                sortOrder
+                            )
+
+                            cursor?.use { c ->
+                                val idCol = c.getColumnIndex(MediaStore.Files.FileColumns._ID)
+                                val dataCol = c.getColumnIndex(MediaStore.Files.FileColumns.DATA)
+                                val typeCol = c.getColumnIndex(MediaStore.Files.FileColumns.MEDIA_TYPE)
+                                val durCol = c.getColumnIndex(MediaStore.Video.VideoColumns.DURATION)
+                                val dateCol = c.getColumnIndex(MediaStore.Files.FileColumns.DATE_ADDED)
+                                val thumbCacheDir = File(externalCacheDir ?: cacheDir, "media_thumbs").apply { mkdirs() }
+
+                                var count = 0
+                                while (c.moveToNext() && count < limit) {
+                                    val id = if (idCol >= 0) c.getLong(idCol) else 0L
+                                    val path = if (dataCol >= 0) c.getString(dataCol) else null
+                                    val mediaType = if (typeCol >= 0) c.getInt(typeCol) else 0
+                                    val isVideo = (mediaType == MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO)
+                                    val duration = if (durCol >= 0 && isVideo) c.getLong(durCol) else 0L
+                                    val dateAdded = if (dateCol >= 0) c.getLong(dateCol) else 0L
+
+                                    if (!path.isNullOrEmpty() && java.io.File(path).exists()) {
+                                        var thumbPath: String? = null
+                                        if (isVideo && id > 0L) {
+                                            val thumbFile = File(thumbCacheDir, "vthumb_${id}.jpg")
+                                            if (thumbFile.exists() && thumbFile.length() > 0L) {
+                                                thumbPath = thumbFile.absolutePath
+                                            } else {
+                                                try {
+                                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                                                        val videoUri = android.content.ContentUris.withAppendedId(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, id)
+                                                        val bmp = contentResolver.loadThumbnail(videoUri, android.util.Size(320, 320), null)
+                                                        FileOutputStream(thumbFile).use { out ->
+                                                            bmp.compress(Bitmap.CompressFormat.JPEG, 75, out)
+                                                        }
+                                                        thumbPath = thumbFile.absolutePath
+                                                    } else {
+                                                        val retriever = android.media.MediaMetadataRetriever()
+                                                        retriever.setDataSource(path)
+                                                        val frame = retriever.frameAtTime
+                                                        if (frame != null) {
+                                                            FileOutputStream(thumbFile).use { out ->
+                                                                frame.compress(Bitmap.CompressFormat.JPEG, 75, out)
+                                                            }
+                                                            thumbPath = thumbFile.absolutePath
+                                                        }
+                                                        retriever.release()
+                                                    }
+                                                } catch (_: Exception) {}
+                                            }
+                                        }
+
+                                        mediaList.add(mapOf(
+                                            "id" to id.toString(),
+                                            "path" to path,
+                                            "thumbnailPath" to (thumbPath ?: path),
+                                            "isVideo" to isVideo,
+                                            "durationMs" to duration,
+                                            "dateAdded" to dateAdded
+                                        ))
+                                        count++
+                                    }
+                                }
+                            }
+
+                            runOnUiThread {
+                                result.success(mediaList)
+                            }
+                        } catch (e: Exception) {
+                            runOnUiThread {
+                                result.success(emptyList<Map<String, Any?>>())
+                            }
                         }
                     }
                 }
@@ -1398,7 +1538,24 @@ class MainActivity : FlutterFragmentActivity() {
                     val convId = call.argument<String>("conversationId") ?: ""
                     val title = call.argument<String>("title") ?: "Pesan Baru"
                     val message = call.argument<String>("message") ?: ""
-                    showSystemMessageNotification(convId, title, message)
+                    if (!isAppInForeground || (activeConversationId != null && activeConversationId != convId)) {
+                        showSystemMessageNotification(convId, title, message)
+                    }
+                    result.success(true)
+                }
+                "setActiveConversation" -> {
+                    val convId = call.argument<String>("conversationId")
+                    activeConversationId = if (convId.isNullOrEmpty()) null else convId
+                    result.success(true)
+                }
+                "cancelMessageNotification" -> {
+                    val convId = call.argument<String>("conversationId") ?: ""
+                    if (convId.isNotEmpty()) {
+                        try {
+                            val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+                            nm.cancel(convId.hashCode())
+                        } catch (_: Exception) {}
+                    }
                     result.success(true)
                 }
                 "cancelNotification" -> {
@@ -2204,6 +2361,10 @@ class MainActivity : FlutterFragmentActivity() {
             val granted = grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED
             pendingStoragePermissionResult?.success(granted)
             pendingStoragePermissionResult = null
+        } else if (requestCode == MEDIA_PERMISSION_REQUEST_CODE) {
+            val granted = grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED }
+            pendingMediaPermissionResult?.success(granted)
+            pendingMediaPermissionResult = null
         }
     }
 

@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import '../../../../core/core.dart';
 import 'status_view_screen.dart';
 import 'status_privacy_contact_picker_screen.dart';
+import 'video_status_composer_screen.dart';
 
 class CameraStatusScreen extends StatefulWidget {
   final bool isForChatAttachment;
@@ -75,10 +76,6 @@ class _CameraStatusScreenState extends State<CameraStatusScreen>
     if (widget.initialPhotoPath != null) {
       _capturedFilePath = widget.initialPhotoPath;
       _isCaptured = true;
-    } else {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _openSystemCamera();
-      });
     }
     _focusAnimController = AnimationController(
       vsync: this,
@@ -128,9 +125,38 @@ class _CameraStatusScreenState extends State<CameraStatusScreen>
         _capturedFilePath = path;
         _isCaptured = true;
       });
-    } else if (mounted && !_isCaptured) {
-      // If user cancelled camera and there is no captured photo to preview, return
-      Navigator.pop(context);
+    }
+  }
+
+  Future<void> _recordVideo() async {
+    HapticFeedback.heavyImpact();
+    final res = await DeviceMediaService.openVideoCamera();
+    if (res == null || !mounted) return;
+
+    if (res['error'] == 'DURATION_EXCEEDED') {
+      final sec = (res['durationSeconds'] as num?)?.toInt() ?? 60;
+      LajuToast.warning(context, 'Durasi video maksimal $sec detik');
+      return;
+    }
+
+    final path = res['path'] as String?;
+    final durationMs = (res['durationMs'] as num?)?.toInt() ?? 0;
+    final thumbPath = res['thumbnailPath'] as String?;
+
+    if (path != null && File(path).existsSync() && mounted) {
+      final result = await Navigator.push<StatusStoryItem>(
+        context,
+        MaterialPageRoute(
+          builder: (_) => VideoStatusComposerScreen(
+            videoPath: path,
+            durationMs: durationMs,
+            thumbnailPath: thumbPath,
+          ),
+        ),
+      );
+      if (result != null && mounted) {
+        Navigator.pop(context, result);
+      }
     }
   }
 
@@ -1041,9 +1067,10 @@ class _CameraStatusScreenState extends State<CameraStatusScreen>
                       ),
                     ),
 
-                    // Big Circular Camera Shutter Button
+                    // Big Circular Camera Shutter Button (Tap = Photo, Long Press = Video)
                     GestureDetector(
                       onTap: _takePicture,
+                      onLongPress: _recordVideo,
                       child: Container(
                         width: 80,
                         height: 80,
@@ -1079,7 +1106,18 @@ class _CameraStatusScreenState extends State<CameraStatusScreen>
                   ],
                 ),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 14),
+              const Text(
+                'Ketuk untuk foto, tahan untuk video',
+                style: TextStyle(
+                  color: Colors.white70,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                  shadows: [
+                    Shadow(color: Colors.black87, blurRadius: 4),
+                  ],
+                ),
+              ),
             ],
           ),
         ),

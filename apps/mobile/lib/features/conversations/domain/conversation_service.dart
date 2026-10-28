@@ -115,6 +115,17 @@ class ConversationService {
     };
   }
 
+  /// Sort conversations so pinned chats stay at top, followed by newest messages descending.
+  void _sortConversations(List<ConversationModel> list) {
+    list.sort((a, b) {
+      final aPin = a.isPinned == true;
+      final bPin = b.isPinned == true;
+      if (aPin && !bPin) return -1;
+      if (!aPin && bPin) return 1;
+      return b.lastMessageTime.compareTo(a.lastMessageTime);
+    });
+  }
+
   void _handleRealtimeNewMessage(String conversationId, MessageModel msg) {
     _seenMessageIds.add(msg.id);
 
@@ -135,11 +146,12 @@ class ConversationService {
     LocalDatabase.instance.upsertMessages(conversationId, [msg]).catchError((_) {});
     _realtimeMessageStreamController.add(msg);
 
-    if (inMemoryConversations != null) {
+    final list = inMemoryConversations ?? (conversationsNotifier.value.isNotEmpty ? List<ConversationModel>.from(conversationsNotifier.value) : null);
+    if (list != null) {
       final realId = resolveConversationId(conversationId);
-      final idx = inMemoryConversations!.indexWhere((c) => c.id == conversationId || c.id == realId);
+      final idx = list.indexWhere((c) => c.id == conversationId || c.id == realId);
       if (idx != -1) {
-        final conv = inMemoryConversations![idx];
+        final conv = list[idx];
         final isCurOpen = isConversationOpen(conv.id) || isConversationOpen(conversationId);
         int newUnread;
         if (isCurOpen || msg.isOutgoing) {
@@ -153,11 +165,44 @@ class ConversationService {
           lastMessage: msg.displaySnippet,
           lastMessageTime: msg.timestamp,
           unreadCount: newUnread,
+          isOutgoingLatest: msg.isOutgoing,
         );
-        inMemoryConversations![idx] = updated;
-        conversationsNotifier.value = List.from(inMemoryConversations!);
+        list[idx] = updated;
+        _sortConversations(list);
+        inMemoryConversations = list;
+        conversationsNotifier.value = List.unmodifiable(list);
         LocalDatabase.instance.upsertConversations([updated]).catchError((_) {});
+      } else {
+        fetchConversations();
       }
+    } else {
+      fetchConversations();
+    }
+  }
+
+  void _updateConversationSnippet(String conversationId, MessageModel msg) {
+    final list = inMemoryConversations ?? (conversationsNotifier.value.isNotEmpty ? List<ConversationModel>.from(conversationsNotifier.value) : null);
+    if (list != null) {
+      final realId = resolveConversationId(conversationId);
+      final idx = list.indexWhere((c) => c.id == conversationId || c.id == realId);
+      if (idx != -1) {
+        final conv = list[idx];
+        final updated = conv.copyWith(
+          lastMessage: msg.displaySnippet,
+          lastMessageTime: msg.timestamp,
+          isOutgoingLatest: true,
+          unreadCount: 0,
+        );
+        list[idx] = updated;
+        _sortConversations(list);
+        inMemoryConversations = list;
+        conversationsNotifier.value = List.unmodifiable(list);
+        LocalDatabase.instance.upsertConversations([updated]).catchError((_) {});
+      } else {
+        fetchConversations();
+      }
+    } else {
+      fetchConversations();
     }
   }
 
@@ -220,19 +265,60 @@ class ConversationService {
   }
 
   /// Current conversation screen open by user to prevent banner popup for active chat
-  String? currentActiveConversationId;
+  String? _currentActiveConversationId;
+  String? get currentActiveConversationId => _currentActiveConversationId;
+  set currentActiveConversationId(String? val) {
+    if (_currentActiveConversationId != val) {
+      _currentActiveConversationId = val;
+      PushNotificationService.setActiveConversation(val);
+      if (val != null && val.isNotEmpty) {
+        PushNotificationService.cancelMessageNotification(val);
+      }
+    }
+  }
 
   /// Check whether a conversation is currently open and visible on screen
   bool isConversationOpen(String conversationId) {
-    if (currentActiveConversationId == null || currentActiveConversationId!.isEmpty) {
+    if (_currentActiveConversationId == null || _currentActiveConversationId!.isEmpty) {
       return false;
     }
-    if (currentActiveConversationId == conversationId) return true;
-    final resolvedOpen = resolveConversationId(currentActiveConversationId!);
+    if (_currentActiveConversationId == conversationId) return true;
+    final resolvedOpen = resolveConversationId(_currentActiveConversationId!);
     final resolvedTarget = resolveConversationId(conversationId);
-    return resolvedOpen == resolvedTarget ||
+    if (resolvedOpen == resolvedTarget ||
         resolvedOpen == conversationId ||
-        currentActiveConversationId == resolvedTarget;
+        _currentActiveConversationId == resolvedTarget) {
+      return true;
+    }
+
+    // Check if open chat matches participant user ID in memory
+    final list = inMemoryConversations ?? conversationsNotifier.value;
+    for (final c in list) {
+      final isMatch = (c.id == conversationId || c.id == resolvedTarget);
+      if (isMatch) {
+        if (c.participantUserId != null && c.participantUserId!.isNotEmpty) {
+          if (_currentActiveConversationId == c.participantUserId ||
+              _currentActiveConversationId == 'conv-${c.participantUserId}' ||
+              resolvedOpen == c.participantUserId ||
+              resolvedOpen == 'conv-${c.participantUserId}') {
+            return true;
+          }
+        }
+      }
+      final isOpenMatch = (c.id == _currentActiveConversationId || c.id == resolvedOpen);
+      if (isOpenMatch) {
+        if (c.participantUserId != null && c.participantUserId!.isNotEmpty) {
+          if (conversationId == c.participantUserId ||
+              conversationId == 'conv-${c.participantUserId}' ||
+              resolvedTarget == c.participantUserId ||
+              resolvedTarget == 'conv-${c.participantUserId}') {
+            return true;
+          }
+        }
+      }
+    }
+
+    return false;
   }
 
   /// Mark all messages in a conversation as read: resets unread count to 0 locally & in cache
@@ -278,6 +364,11 @@ class ConversationService {
 
     // 2. Persist unread_count = 0 atomically in SQLite local database for all aliases
     await LocalDatabase.instance.resetUnreadCount(allIds);
+
+    // 3. Immediately dismiss/cancel system notifications for this conversation from the status bar
+    for (final id in allIds) {
+      PushNotificationService.cancelMessageNotification(id);
+    }
   }
 
   bool _isInitialSyncComplete = false;
@@ -484,18 +575,17 @@ class ConversationService {
 
   /// Updates local state of a conversation (pin, lock, archive, mute, read) and persists to SQLite and memory
   Future<void> updateConversationLocally(ConversationModel updated) async {
-    if (inMemoryConversations != null) {
-      final idx = inMemoryConversations!.indexWhere((c) => c.id == updated.id);
-      if (idx != -1) {
-        inMemoryConversations![idx] = updated;
-      } else {
-        inMemoryConversations!.add(updated);
-      }
+    final list = inMemoryConversations ?? (conversationsNotifier.value.isNotEmpty ? List<ConversationModel>.from(conversationsNotifier.value) : <ConversationModel>[]);
+    final idx = list.indexWhere((c) => c.id == updated.id);
+    if (idx != -1) {
+      list[idx] = updated;
     } else {
-      inMemoryConversations = [updated];
+      list.add(updated);
     }
+    _sortConversations(list);
+    inMemoryConversations = list;
     await LocalDatabase.instance.upsertConversations([updated]);
-    conversationsNotifier.value = List.from(inMemoryConversations!);
+    conversationsNotifier.value = List.unmodifiable(list);
   }
 
   /// Blocks a user locally and adds to blocked list
@@ -527,8 +617,9 @@ class ConversationService {
   Future<List<ConversationModel>> getConversationsFromCache() async {
     final cached = await LocalDatabase.instance.getConversations();
     if (cached.isNotEmpty) {
+      _sortConversations(cached);
       inMemoryConversations = cached;
-      conversationsNotifier.value = cached;
+      conversationsNotifier.value = List.unmodifiable(cached);
     }
     return cached;
   }
@@ -858,11 +949,22 @@ class ConversationService {
           final isCurOpen = isConversationOpen(convId);
           final unreadCount = (isCurOpen || isOutgoingLatest) ? 0 : (old?.unreadCount ?? 0);
 
+          DateTime effectiveMsgTime;
+          if (firstMsgMap != null && firstMsgMap['createdAt'] != null) {
+            effectiveMsgTime = DateHelper.parseUtc(firstMsgMap['createdAt']);
+          } else {
+            effectiveMsgTime = DateHelper.parseUtc(item['updatedAt'] ?? item['createdAt']);
+          }
+
+          if (old != null && old.lastMessageTime.isAfter(effectiveMsgTime)) {
+            effectiveMsgTime = old.lastMessageTime;
+          }
+
           return ConversationModel(
             id: convId,
             title: title,
             lastMessage: lastMsg,
-            lastMessageTime: DateHelper.parseUtc(item['updatedAt']),
+            lastMessageTime: effectiveMsgTime,
             unreadCount: unreadCount,
             isGroup: isGroup,
             isOnline: !isGroup && (item['isOnline'] == true),
@@ -880,6 +982,8 @@ class ConversationService {
             isOutgoingLatest: isOutgoingLatest,
           );
         }).toList();
+
+        _sortConversations(conversations);
 
         // Detect newly arrived messages and trigger native system notification
         if (inMemoryConversations != null && inMemoryConversations!.isNotEmpty) {
@@ -915,7 +1019,7 @@ class ConversationService {
         final hasChanged = !ConversationModel.areListsEqual(inMemoryConversations, conversations);
         if (hasChanged) {
           inMemoryConversations = conversations;
-          conversationsNotifier.value = conversations;
+          conversationsNotifier.value = List.unmodifiable(conversations);
           LocalDatabase.instance.upsertConversations(conversations);
         }
         return conversations;
@@ -1880,6 +1984,9 @@ class ConversationService {
           isMedia: isMedia,
         );
 
+        // Update conversation snippet in memory, re-sort list, and notify UI listeners
+        _updateConversationSnippet(realConvId, confirmedMsg);
+
         return confirmedMsg;
       }
     } catch (e) {
@@ -1887,7 +1994,7 @@ class ConversationService {
       LocalDatabase.instance.updateMessageStatus(id, MessageDeliveryStatus.failed);
     }
 
-    return MessageModel(
+    final failedMsg = MessageModel(
       id: id,
       clientMessageId: id,
       conversationId: conversationId,
@@ -1910,6 +2017,8 @@ class ConversationService {
       isOutgoing: true,
       status: MessageDeliveryStatus.failed,
     );
+    _updateConversationSnippet(conversationId, failedMsg);
+    return failedMsg;
   }
 
   /// Mark message as read on backend (Read Receipts / Blue Ticks)

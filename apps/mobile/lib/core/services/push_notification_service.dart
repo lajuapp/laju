@@ -44,6 +44,24 @@ class PushNotificationService {
     } catch (_) {}
   }
 
+  /// Sets the currently active conversation in native platform layer to suppress heads-up notifications
+  static Future<void> setActiveConversation(String? conversationId) async {
+    try {
+      await _systemNotifChannel.invokeMethod('setActiveConversation', {
+        'conversationId': conversationId,
+      });
+    } catch (_) {}
+  }
+
+  /// Dismisses/cancels the system notification for a specific conversation from the status bar
+  static Future<void> cancelMessageNotification(String conversationId) async {
+    try {
+      await _systemNotifChannel.invokeMethod('cancelMessageNotification', {
+        'conversationId': conversationId,
+      });
+    } catch (_) {}
+  }
+
   Future<void> init() async {
     try {
       final prefs = await SharedPreferences.getInstance();

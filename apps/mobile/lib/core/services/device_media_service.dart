@@ -31,6 +31,34 @@ class DeviceContactResult {
   });
 }
 
+class DeviceRecentMedia {
+  final String id;
+  final String path;
+  final String? thumbnailPath;
+  final bool isVideo;
+  final int durationMs;
+  final DateTime dateAdded;
+
+  const DeviceRecentMedia({
+    required this.id,
+    required this.path,
+    this.thumbnailPath,
+    required this.isVideo,
+    this.durationMs = 0,
+    required this.dateAdded,
+  });
+
+  String get effectiveDisplayPath => (thumbnailPath != null && thumbnailPath!.isNotEmpty) ? thumbnailPath! : path;
+
+  String get formattedDuration {
+    if (!isVideo || durationMs <= 0) return '';
+    final totalSeconds = (durationMs / 1000).round();
+    final minutes = totalSeconds ~/ 60;
+    final seconds = totalSeconds % 60;
+    return '$minutes:${seconds.toString().padLeft(2, '0')}';
+  }
+}
+
 class DeviceMediaService {
   static const MethodChannel _channel = MethodChannel('com.laju/camera');
 
@@ -80,6 +108,56 @@ class DeviceMediaService {
       return null;
     } finally {
       AppLockController.instance.markExternalIntentFinished();
+    }
+  }
+
+  /// Check whether app has permission to read media (images/videos)
+  static Future<bool> hasMediaPermission() async {
+    try {
+      final bool? res = await _channel.invokeMethod<bool>('hasMediaPermission');
+      return res ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Request permission to read media
+  static Future<bool> requestMediaPermission() async {
+    try {
+      AppLockController.instance.markExternalIntentStarted();
+      final bool? res = await _channel.invokeMethod<bool>('requestMediaPermission');
+      return res ?? false;
+    } catch (_) {
+      return false;
+    } finally {
+      AppLockController.instance.markExternalIntentFinished();
+    }
+  }
+
+  /// Retrieves recent photos and videos from device MediaStore for fast status/media picking.
+  static Future<List<DeviceRecentMedia>> getRecentMedia({int limit = 60}) async {
+    try {
+      final hasPerm = await hasMediaPermission();
+      if (!hasPerm) {
+        final granted = await requestMediaPermission();
+        if (!granted) return [];
+      }
+      final List? res = await _channel.invokeListMethod('getRecentMedia', {'limit': limit});
+      if (res == null) return [];
+      return res.map((item) {
+        final map = Map<String, dynamic>.from(item as Map);
+        final dateSec = (map['dateAdded'] as num?)?.toInt() ?? 0;
+        return DeviceRecentMedia(
+          id: map['id']?.toString() ?? '',
+          path: map['path']?.toString() ?? '',
+          thumbnailPath: map['thumbnailPath']?.toString(),
+          isVideo: map['isVideo'] == true,
+          durationMs: (map['durationMs'] as num?)?.toInt() ?? 0,
+          dateAdded: DateTime.fromMillisecondsSinceEpoch(dateSec * 1000),
+        );
+      }).toList();
+    } catch (_) {
+      return [];
     }
   }
 

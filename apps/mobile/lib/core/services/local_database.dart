@@ -169,12 +169,12 @@ class LocalDatabase {
 
   // ── Conversations ─────────────────────────────────────────────────────────
 
-  /// Returns all cached conversations ordered by last message time descending.
+  /// Returns all cached conversations ordered by pinned state and last message time descending.
   Future<List<ConversationModel>> getConversations() async {
     try {
       final rows = await _database.query(
         'conversations',
-        orderBy: 'last_message_time DESC',
+        orderBy: 'is_pinned DESC, last_message_time DESC',
       );
       return rows.map(_rowToConversation).toList();
     } catch (e) {
@@ -182,7 +182,7 @@ class LocalDatabase {
       try {
         await _database.execute('UPDATE conversations SET last_message = SUBSTR(last_message, 1, 300) WHERE LENGTH(last_message) > 500');
         await _database.execute('UPDATE conversations SET avatar_url = NULL WHERE avatar_url IS NOT NULL AND LENGTH(avatar_url) > 2000');
-        final rows = await _database.query('conversations', orderBy: 'last_message_time DESC');
+        final rows = await _database.query('conversations', orderBy: 'is_pinned DESC, last_message_time DESC');
         return rows.map(_rowToConversation).toList();
       } catch (_) {
         try {

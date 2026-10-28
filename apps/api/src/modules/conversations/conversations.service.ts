@@ -318,6 +318,7 @@ export class ConversationsService {
       where: {
         members: { some: { userId, leftAt: null } }
       },
+      orderBy: { updatedAt: 'desc' },
       include: {
         members: {
           where: { leftAt: null },
