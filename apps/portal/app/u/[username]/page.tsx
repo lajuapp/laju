@@ -31,7 +31,7 @@ export default function UserPage({ params }: UserPageProps) {
         type="user"
         code={params.username}
         title={username}
-        subtitle="Mulai obrolan terenkripsi atau panggilan langsung dengan pengguna ini di aplikasi LAJU."
+        subtitle={undefined}
       />
     </div>
   );

@@ -1788,48 +1788,31 @@ class MainActivity : FlutterFragmentActivity() {
                     try {
                         val urlStr = call.argument<String>("url")
                         if (!urlStr.isNullOrEmpty()) {
-                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(urlStr)).apply {
-                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            val uri = Uri.parse(urlStr)
+                            try {
+                                val intent = Intent(Intent.ACTION_VIEW, uri).apply {
+                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                }
+                                startActivity(intent)
+                                result.success(true)
+                            } catch (anfe: android.content.ActivityNotFoundException) {
+                                if (urlStr.startsWith("market://details?id=")) {
+                                    val pkg = uri.getQueryParameter("id") ?: packageName
+                                    val webUri = Uri.parse("https://play.google.com/store/apps/details?id=$pkg")
+                                    val webIntent = Intent(Intent.ACTION_VIEW, webUri).apply {
+                                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                    }
+                                    startActivity(webIntent)
+                                    result.success(true)
+                                } else {
+                                    result.error("OPEN_URL_ERROR", anfe.message, null)
+                                }
                             }
-                            startActivity(intent)
-                            result.success(true)
                         } else {
                             result.success(false)
                         }
                     } catch (e: Exception) {
                         result.error("OPEN_URL_ERROR", e.message, null)
-                    }
-                }
-                "getApkDownloadPath" -> {
-                    try {
-                        val updateFile = File(cacheDir, "laju_update.apk")
-                        result.success(updateFile.absolutePath)
-                    } catch (e: Exception) {
-                        result.error("PATH_ERROR", e.message, null)
-                    }
-                }
-                "installApk" -> {
-                    try {
-                        val filePath = call.argument<String>("filePath") ?: File(cacheDir, "laju_update.apk").absolutePath
-                        val file = File(filePath)
-                        if (!file.exists()) {
-                            result.error("FILE_NOT_FOUND", "APK file not found at $filePath", null)
-                        } else {
-                            val apkUri = FileProvider.getUriForFile(
-                                this@MainActivity,
-                                "${applicationContext.packageName}.fileprovider",
-                                file
-                            )
-                            val intent = Intent(Intent.ACTION_VIEW).apply {
-                                setDataAndType(apkUri, "application/vnd.android.package-archive")
-                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                            }
-                            startActivity(intent)
-                            result.success(true)
-                        }
-                    } catch (e: Exception) {
-                        result.error("INSTALL_ERROR", e.message, null)
                     }
                 }
                 "exportAccountReport" -> {

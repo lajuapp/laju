@@ -1,4 +1,6 @@
+import 'dart:io';
 import 'dart:ui' as ui;
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../localization/app_localization.dart';
 import '../services/app_update_controller.dart';
@@ -57,9 +59,9 @@ class _AppUpdateGateState extends State<AppUpdateGate> with WidgetsBindingObserv
             if (shouldShow)
               Positioned.fill(
                 child: PopScope(
-                  canPop: isOptional && !_updateCtrl.isDownloading,
+                  canPop: isOptional && !_updateCtrl.isOpeningStore,
                   onPopInvokedWithResult: (didPop, _) {
-                    if (!didPop && isOptional && !_updateCtrl.isDownloading) {
+                    if (!didPop && isOptional && !_updateCtrl.isOpeningStore) {
                       _updateCtrl.dismissOptionalUpdate();
                     }
                   },
@@ -82,14 +84,6 @@ class _AppUpdateOverlay extends StatelessWidget {
     required this.controller,
   });
 
-  String _formatFileSize(int? bytes) {
-    if (bytes == null || bytes <= 0) return '';
-    final mb = bytes / (1024 * 1024);
-    if (mb >= 1) return '${mb.toStringAsFixed(1)} MB';
-    final kb = bytes / 1024;
-    return '${kb.toStringAsFixed(0)} KB';
-  }
-
   @override
   Widget build(BuildContext context) {
     final isDark = ThemeModeController.instance.isDarkMode(context);
@@ -97,8 +91,7 @@ class _AppUpdateOverlay extends StatelessWidget {
     final config = controller.serverConfig;
     final isOptional = status == AppUpdateStatus.optionalUpdate;
     final isMaintenance = status == AppUpdateStatus.maintenance;
-    final isDownloading = controller.isDownloading;
-    final isDownloadComplete = controller.isDownloadComplete;
+    final isOpeningStore = controller.isOpeningStore;
 
     final accentColor = isMaintenance
         ? const Color(0xFFF59E0B) // Amber
@@ -106,7 +99,12 @@ class _AppUpdateOverlay extends StatelessWidget {
             ? AppColors.primary
             : const Color(0xFF06B6D4)); // Cyan
 
-    final fileSizeText = _formatFileSize(config?.apkSize);
+    // Adaptive store button label and icon
+    final isIos = !kIsWeb && Platform.isIOS;
+    final storeLabel = isIos
+        ? context.tr('updateBtnAppStore')
+        : context.tr('updateBtnPlayStore');
+    final storeIcon = Icons.open_in_new_rounded;
 
     // Theme adaptive colors
     final cardBg = isDark ? const Color(0xFF0E131F) : Colors.white;
@@ -116,11 +114,9 @@ class _AppUpdateOverlay extends StatelessWidget {
     final subCardBorder = isDark ? Colors.white.withValues(alpha: 0.08) : const Color(0xFFE2E8F0);
     final labelColor = isDark ? Colors.white.withValues(alpha: 0.5) : const Color(0xFF64748B);
     final valueColor = isDark ? Colors.white : const Color(0xFF0F172A);
-    final dividerColor = isDark ? Colors.white.withValues(alpha: 0.12) : const Color(0xFFCBD5E1);
     final releaseNotesBg = isDark ? Colors.black.withValues(alpha: 0.25) : const Color(0xFFF1F5F9);
     final releaseNotesBorder = isDark ? Colors.white.withValues(alpha: 0.06) : const Color(0xFFE2E8F0);
     final releaseNotesTextColor = isDark ? Colors.white.withValues(alpha: 0.85) : const Color(0xFF334155);
-    final progressTrackColor = isDark ? Colors.white.withValues(alpha: 0.1) : const Color(0xFFE2E8F0);
     final manualLinkColor = isDark ? Colors.white.withValues(alpha: 0.5) : const Color(0xFF64748B);
 
     return Scaffold(
@@ -131,7 +127,7 @@ class _AppUpdateOverlay extends StatelessWidget {
           // Frosted Backdrop Blur
           Positioned.fill(
             child: GestureDetector(
-              onTap: (isOptional && !isDownloading) ? controller.dismissOptionalUpdate : null,
+              onTap: (isOptional && !isOpeningStore) ? controller.dismissOptionalUpdate : null,
               behavior: HitTestBehavior.opaque,
               child: BackdropFilter(
                 filter: ui.ImageFilter.blur(sigmaX: 18, sigmaY: 18),
@@ -200,14 +196,10 @@ class _AppUpdateOverlay extends StatelessWidget {
                             child: Icon(
                               isMaintenance
                                   ? Icons.engineering_rounded
-                                  : (isDownloadComplete
-                                      ? Icons.check_circle_outline_rounded
-                                      : (isDownloading
-                                          ? Icons.downloading_rounded
-                                          : (isOptional
-                                              ? Icons.new_releases_rounded
-                                              : Icons.system_update_rounded))),
-                              color: isDownloadComplete ? AppColors.primary : accentColor,
+                                  : (isOptional
+                                      ? Icons.new_releases_rounded
+                                      : Icons.system_update_rounded),
+                              color: accentColor,
                               size: 38,
                             ),
                           ),
@@ -226,15 +218,11 @@ class _AppUpdateOverlay extends StatelessWidget {
                             child: Text(
                               isMaintenance
                                   ? context.tr('updateTagMaintenance')
-                                  : (isDownloadComplete
-                                      ? context.tr('updateTagReady')
-                                      : (isDownloading
-                                          ? context.tr('updateTagDownloading')
-                                          : (isOptional
-                                              ? context.tr('updateTagAvailable')
-                                              : context.tr('updateTagRequired')))),
+                                  : (isOptional
+                                      ? context.tr('updateTagAvailable')
+                                      : context.tr('updateTagRequired')),
                               style: TextStyle(
-                                color: isDownloadComplete ? AppColors.primary : accentColor,
+                                color: accentColor,
                                 fontSize: 11,
                                 fontWeight: FontWeight.w700,
                                 letterSpacing: 1.2,
@@ -247,13 +235,9 @@ class _AppUpdateOverlay extends StatelessWidget {
                           Text(
                             isMaintenance
                                 ? context.tr('updateTitleMaintenance')
-                                : (isDownloadComplete
-                                    ? context.tr('updateTitleReady')
-                                    : (isDownloading
-                                        ? context.tr('updateTitleDownloading')
-                                        : (isOptional
-                                            ? context.tr('updateTitleAvailable')
-                                            : context.tr('updateTitleRequired')))),
+                                : (isOptional
+                                    ? context.tr('updateTitleAvailable')
+                                    : context.tr('updateTitleRequired')),
                             textAlign: TextAlign.center,
                             style: TextStyle(
                               color: titleColor,
@@ -270,13 +254,9 @@ class _AppUpdateOverlay extends StatelessWidget {
                                 ? (config?.maintenanceMessage?.isNotEmpty == true
                                     ? config!.maintenanceMessage!
                                     : context.tr('updateDescMaintenanceDefault'))
-                                : (isDownloadComplete
-                                    ? context.tr('updateDescReady')
-                                    : (isDownloading
-                                        ? context.tr('updateDescDownloading')
-                                        : (isOptional
-                                            ? context.tr('updateDescAvailable')
-                                            : context.tr('updateDescRequired')))),
+                                : (isOptional
+                                    ? context.tr('updateDescStoreAvailable')
+                                    : context.tr('updateDescStoreRequired')),
                             textAlign: TextAlign.center,
                             style: TextStyle(
                               color: bodyColor,
@@ -286,10 +266,10 @@ class _AppUpdateOverlay extends StatelessWidget {
                           ),
                           const SizedBox(height: 20),
 
-                          // Version & Size Info Card (For Updates)
-                          if (!isMaintenance && !isDownloading) ...[
+                          // Version Info Card (For Updates)
+                          if (!isMaintenance) ...[
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
                               decoration: BoxDecoration(
                                 color: subCardBg,
                                 borderRadius: BorderRadius.circular(16),
@@ -343,7 +323,7 @@ class _AppUpdateOverlay extends StatelessWidget {
                                       ),
                                       const SizedBox(height: 3),
                                       Text(
-                                        'v${config?.latestAndroidVersion ?? "-"}',
+                                        'v${controller.targetVersion}',
                                         style: TextStyle(
                                           color: accentColor,
                                           fontSize: 14,
@@ -352,44 +332,13 @@ class _AppUpdateOverlay extends StatelessWidget {
                                       ),
                                     ],
                                   ),
-
-                                  // APK Size
-                                  if (fileSizeText.isNotEmpty) ...[
-                                    Container(
-                                      width: 1,
-                                      height: 26,
-                                      color: dividerColor,
-                                    ),
-                                    Column(
-                                      children: [
-                                        Text(
-                                          context.tr('updateApkSize'),
-                                          style: TextStyle(
-                                            color: labelColor,
-                                            fontSize: 11,
-                                            fontWeight: FontWeight.w500,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 3),
-                                        Text(
-                                          fileSizeText,
-                                          style: TextStyle(
-                                            color: valueColor,
-                                            fontSize: 13,
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ],
                                 ],
                               ),
                             ),
 
                             // Release Notes (if present)
                             if (config?.releaseNotes != null &&
-                                config!.releaseNotes!.trim().isNotEmpty &&
-                                !isDownloadComplete) ...[
+                                config!.releaseNotes!.trim().isNotEmpty) ...[
                               const SizedBox(height: 14),
                               Container(
                                 width: double.infinity,
@@ -441,84 +390,8 @@ class _AppUpdateOverlay extends StatelessWidget {
                             const SizedBox(height: 24),
                           ],
 
-                          // Progress Bar Card (During in-app OTA download)
-                          if (isDownloading) ...[
-                            Container(
-                              padding: const EdgeInsets.all(16),
-                              decoration: BoxDecoration(
-                                color: subCardBg,
-                                borderRadius: BorderRadius.circular(18),
-                                border: Border.all(
-                                  color: AppColors.primary.withValues(alpha: isDark ? 0.2 : 0.35),
-                                ),
-                              ),
-                              child: Column(
-                                children: [
-                                  Row(
-                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      Text(
-                                        context.tr('updateDownloadingApk'),
-                                        style: TextStyle(
-                                          color: isDark
-                                              ? Colors.white.withValues(alpha: 0.7)
-                                              : const Color(0xFF334155),
-                                          fontSize: 12.5,
-                                          fontWeight: FontWeight.w500,
-                                        ),
-                                      ),
-                                      Text(
-                                        '${(controller.downloadProgress * 100).toStringAsFixed(0)}%',
-                                        style: const TextStyle(
-                                          color: AppColors.primary,
-                                          fontSize: 15,
-                                          fontWeight: FontWeight.w800,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 10),
-                                  ClipRRect(
-                                    borderRadius: BorderRadius.circular(8),
-                                    child: LinearProgressIndicator(
-                                      value: controller.downloadProgress > 0
-                                          ? controller.downloadProgress
-                                          : null,
-                                      minHeight: 8,
-                                      backgroundColor: progressTrackColor,
-                                      valueColor: const AlwaysStoppedAnimation<Color>(
-                                        AppColors.primary,
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 8),
-                                  Row(
-                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      Text(
-                                        _formatFileSize(controller.downloadedBytes),
-                                        style: TextStyle(
-                                          color: labelColor,
-                                          fontSize: 11,
-                                        ),
-                                      ),
-                                      Text(
-                                        _formatFileSize(controller.totalBytes),
-                                        style: TextStyle(
-                                          color: labelColor,
-                                          fontSize: 11,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(height: 20),
-                          ],
-
-                          // Error Display (if download fails)
-                          if (controller.downloadError != null) ...[
+                          // Error Display (if store redirection fails)
+                          if (controller.storeError != null) ...[
                             Container(
                               width: double.infinity,
                               padding: const EdgeInsets.all(12),
@@ -536,7 +409,7 @@ class _AppUpdateOverlay extends StatelessWidget {
                                   const SizedBox(width: 8),
                                   Expanded(
                                     child: Text(
-                                      controller.downloadError!,
+                                      controller.storeError!,
                                       style: TextStyle(
                                         color: isDark ? Colors.white : const Color(0xFFB91C1C),
                                         fontSize: 12,
@@ -557,22 +430,6 @@ class _AppUpdateOverlay extends StatelessWidget {
                               isLoading: controller.isChecking,
                               onPressed: () => controller.checkForUpdates(),
                             ),
-                          ] else if (isDownloadComplete) ...[
-                            // Ready to install
-                            LajuButton(
-                              label: context.tr('updateInstallNow'),
-                              icon: Icons.install_mobile_rounded,
-                              variant: LajuButtonVariant.primary,
-                              onPressed: () => controller.installDownloadedApk(),
-                            ),
-                          ] else if (isDownloading) ...[
-                            // Downloading indicator
-                            LajuButton(
-                              label: '${context.tr('updateDownloadingBtn')} (${(controller.downloadProgress * 100).toStringAsFixed(0)}%)...',
-                              variant: LajuButtonVariant.secondary,
-                              isLoading: true,
-                              onPressed: null,
-                            ),
                           ] else if (isOptional) ...[
                             Row(
                               children: [
@@ -586,28 +443,30 @@ class _AppUpdateOverlay extends StatelessWidget {
                                 const SizedBox(width: 12),
                                 Expanded(
                                   child: LajuButton(
-                                    label: context.tr('updateBtn'),
-                                    icon: Icons.system_update_rounded,
+                                    label: storeLabel,
+                                    icon: storeIcon,
                                     variant: LajuButtonVariant.primary,
-                                    onPressed: () => controller.startInAppOtaUpdate(),
+                                    isLoading: isOpeningStore,
+                                    onPressed: () => controller.openStore(),
                                   ),
                                 ),
                               ],
                             ),
                           ] else ...[
-                            // Force Update
+                            // Force Update: Must go to Store
                             LajuButton(
-                              label: context.tr('updateNowBtn'),
-                              icon: Icons.system_update_rounded,
+                              label: storeLabel,
+                              icon: storeIcon,
                               variant: LajuButtonVariant.primary,
-                              onPressed: () => controller.startInAppOtaUpdate(),
+                              isLoading: isOpeningStore,
+                              onPressed: () => controller.openStore(),
                             ),
                             const SizedBox(height: 12),
-                            // Optional fallback to browser
+                            // Fallback to browser
                             GestureDetector(
-                              onTap: () => controller.openExternalBrowserDownload(),
+                              onTap: () => controller.openStore(forceWebFallback: true),
                               child: Text(
-                                context.tr('updateDownloadManualWeb'),
+                                context.tr('updateOpenStoreBrowser'),
                                 textAlign: TextAlign.center,
                                 style: TextStyle(
                                   color: manualLinkColor,

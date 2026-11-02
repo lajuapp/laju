@@ -1,43 +1,36 @@
 'use client';
 
 import { useLanguage } from '@/context/LanguageContext';
+import { Reveal } from './Reveal';
 
 export function DisappearingMessagesSection() {
   const { t } = useLanguage();
 
   return (
-    <section className="relative min-h-[520px] lg:min-h-[600px] flex items-center overflow-hidden text-white">
-      {/* Twilight Lake Background Photo */}
-      <img
-        src="/images/disappearing-lake.jpg"
-        alt="Ruang yang tetap privat di tepi danau senja"
-        className="absolute inset-0 w-full h-full object-cover object-[70%_center] lg:object-center"
-      />
+    <section className="bg-[#F5F4EF] px-4 py-14 sm:px-6 sm:py-20 lg:px-8 lg:py-24">
+      <Reveal className="relative mx-auto min-h-[540px] max-w-7xl overflow-hidden rounded-[2rem] border border-white/50 bg-slate-950 shadow-[0_30px_80px_-42px_rgba(15,23,42,0.5)] sm:min-h-[580px] sm:rounded-[2.5rem] lg:min-h-[600px]">
+        <img
+          src="/images/disappearing-lake.jpg"
+          alt="Ruang percakapan LAJU dengan pesan sementara di tepi danau senja"
+          className="absolute inset-0 h-full w-full object-cover object-[68%_center]"
+        />
+        <div className="disappear-image-wash absolute inset-0" />
 
-      {/* Dark gradient overlay to guarantee text legibility on the left side */}
-      <div className="absolute inset-0 bg-gradient-to-r from-slate-950/90 via-slate-950/60 to-transparent lg:w-3/5" />
-      <div className="absolute inset-0 bg-slate-950/25" />
-
-      <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-20 sm:py-28 w-full">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
-          
-          {/* Left Column: Headline and Philosophy (No chip badge) */}
-          <div className="lg:col-span-6 space-y-6 text-left max-w-xl">
-            <h2 className="text-3xl sm:text-4xl md:text-5xl font-black text-white tracking-tight leading-[1.1]">
+        <div className="relative z-10 mx-auto flex min-h-[540px] max-w-7xl items-end px-6 pb-9 pt-16 sm:min-h-[580px] sm:px-10 sm:pb-12 lg:min-h-[600px] lg:items-center lg:px-14 lg:py-16">
+          <div className="max-w-xl space-y-4 text-left sm:space-y-5">
+            <p className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-[#D3E8D9] sm:text-xs">
+              {t('disappear_tag')}
+            </p>
+            <h2 className="text-3xl font-black leading-[1.08] tracking-tight text-white sm:text-4xl lg:text-5xl">
               {t('disappear_title_line1')}<br />
-              <span className="text-laju-400">{t('disappear_title_line2')}</span>
+              <span className="text-[#B9DCC8]">{t('disappear_title_line2')}</span>
             </h2>
-
-            <p className="text-slate-200 text-base sm:text-lg leading-relaxed font-normal">
+            <p className="max-w-lg text-sm leading-relaxed text-white/80 sm:text-base sm:leading-7">
               {t('disappear_desc')}
             </p>
           </div>
-
-          {/* Right Column: Natural space showcasing the lake scenery */}
-          <div className="lg:col-span-6 hidden lg:block" />
-
         </div>
-      </div>
+      </Reveal>
     </section>
   );
 }

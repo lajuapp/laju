@@ -20,7 +20,7 @@ export default function TermsPage() {
   const { t } = useLanguage();
 
   return (
-    <div className="py-12 sm:py-20 bg-[#F8FAFC] min-h-screen">
+    <div className="py-12 sm:py-20 bg-[#F5F4EF] min-h-screen">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         
         {/* Hero Section of Terms Page */}
@@ -60,14 +60,14 @@ export default function TermsPage() {
             <div className="pt-4 flex flex-wrap items-center gap-4">
               <Link
                 href="/download"
-                className="flex items-center gap-2 rounded-full bg-laju-500 hover:bg-laju-600 px-6 py-3 text-xs sm:text-sm font-bold text-slate-950 shadow-mint-glow transition-all"
+                className="flex items-center gap-2 rounded-full bg-laju-500 hover:bg-laju-600 px-6 py-3 text-xs sm:text-sm font-bold text-white shadow-mint-glow transition-all"
               >
                 <Download className="h-4 w-4 stroke-[2.5]" />
                 <span>{t('terms_cta_download')}</span>
               </Link>
               <a
                 href="#rincian-ketentuan"
-                className="flex items-center gap-2 rounded-full border border-slate-300 bg-white px-5 py-3 text-xs sm:text-sm font-bold text-slate-700 hover:bg-slate-50 hover:text-slate-900 transition-all shadow-xs"
+                className="flex items-center gap-2 rounded-full border border-slate-300 bg-white px-5 py-3 text-xs sm:text-sm font-bold text-slate-700 hover:bg-[#F5F4EF] hover:text-slate-900 transition-all shadow-xs"
               >
                 <span>{t('terms_cta_details')}</span>
               </a>
@@ -76,7 +76,7 @@ export default function TermsPage() {
 
           {/* Right: Real Editorial Photo */}
           <div className="lg:col-span-5 flex justify-center items-center">
-            <div className="relative w-full max-w-md rounded-[2.5rem] overflow-hidden shadow-2xl border border-slate-200/90 bg-white group">
+            <div className="relative w-full max-w-md rounded-[2.5rem] overflow-hidden shadow-2xl border border-stone-200/80 bg-white group">
               <img
                 src="/images/security-notebook.jpg"
                 alt="LAJU Ketentuan Layanan yang Adil"
@@ -97,9 +97,9 @@ export default function TermsPage() {
         </div>
 
         {/* Detailed Legal & Terms Articles */}
-        <div id="rincian-ketentuan" className="w-full space-y-10 text-left pt-12 border-t border-slate-200">
+        <div id="rincian-ketentuan" className="w-full space-y-10 text-left pt-12 border-t border-[#EAE8DE]">
           
-          <div className="border-b border-slate-200 pb-6">
+          <div className="border-b border-[#EAE8DE] pb-6">
             <h2 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
               {t('terms_articles_title')}
             </h2>
@@ -110,7 +110,7 @@ export default function TermsPage() {
 
           <div className="space-y-12">
             {/* Section 1 */}
-            <section className="space-y-4 pb-8 border-b border-slate-200">
+            <section className="space-y-4 pb-8 border-b border-[#EAE8DE]">
               <h3 className="text-lg sm:text-xl font-bold text-slate-900 flex items-center gap-2.5">
                 <FileText className="h-5 w-5 text-laju-700" />
                 <span>{t('terms_sec1_title')}</span>
@@ -121,7 +121,7 @@ export default function TermsPage() {
             </section>
 
             {/* Section 2 */}
-            <section className="space-y-4 pb-8 border-b border-slate-200">
+            <section className="space-y-4 pb-8 border-b border-[#EAE8DE]">
               <h3 className="text-lg sm:text-xl font-bold text-slate-900 flex items-center gap-2.5">
                 <Key className="h-5 w-5 text-laju-700" />
                 <span>{t('terms_sec2_title')}</span>
@@ -132,7 +132,7 @@ export default function TermsPage() {
             </section>
 
             {/* Section 3 */}
-            <section className="space-y-4 pb-8 border-b border-slate-200">
+            <section className="space-y-4 pb-8 border-b border-[#EAE8DE]">
               <h3 className="text-lg sm:text-xl font-bold text-slate-900 flex items-center gap-2.5">
                 <Lock className="h-5 w-5 text-laju-700" />
                 <span>{t('terms_sec3_title')}</span>
@@ -143,7 +143,7 @@ export default function TermsPage() {
             </section>
 
             {/* Section 4 */}
-            <section className="space-y-4 pb-8 border-b border-slate-200">
+            <section className="space-y-4 pb-8 border-b border-[#EAE8DE]">
               <h3 className="text-lg sm:text-xl font-bold text-slate-900 flex items-center gap-2.5">
                 <AlertTriangle className="h-5 w-5 text-amber-600" />
                 <span>{t('terms_sec4_title')}</span>
@@ -154,7 +154,7 @@ export default function TermsPage() {
             </section>
 
             {/* Section 5 */}
-            <section className="space-y-4 pb-8 border-b border-slate-200">
+            <section className="space-y-4 pb-8 border-b border-[#EAE8DE]">
               <h3 className="text-lg sm:text-xl font-bold text-slate-900 flex items-center gap-2.5">
                 <Server className="h-5 w-5 text-laju-700" />
                 <span>{t('terms_sec5_title')}</span>
@@ -165,7 +165,7 @@ export default function TermsPage() {
             </section>
 
             {/* Section 6 */}
-            <section className="space-y-4 pb-8 border-b border-slate-200">
+            <section className="space-y-4 pb-8 border-b border-[#EAE8DE]">
               <h3 className="text-lg sm:text-xl font-bold text-slate-900 flex items-center gap-2.5">
                 <ShieldCheck className="h-5 w-5 text-laju-700" />
                 <span>{t('terms_sec6_title')}</span>
@@ -185,7 +185,7 @@ export default function TermsPage() {
                 {t('terms_sec7_body')}
               </p>
               <div className="flex items-center gap-3 pt-1">
-                <div className="px-4 py-2.5 rounded-xl bg-white border border-slate-200 text-xs font-mono text-slate-800 font-semibold">
+                <div className="px-4 py-2.5 rounded-xl bg-white border border-[#EAE8DE] text-xs font-mono text-slate-800 font-semibold">
                   support@laju.chat
                 </div>
                 <a

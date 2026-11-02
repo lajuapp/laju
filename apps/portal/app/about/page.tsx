@@ -7,7 +7,7 @@ export default function AboutPage() {
   const { t } = useLanguage();
 
   return (
-    <div className="py-12 sm:py-20 bg-[#F8FAFC] min-h-screen">
+    <div className="py-12 sm:py-20 bg-[#F5F4EF] min-h-screen">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         
         {/* Editorial Header (No chip badge) */}
@@ -23,7 +23,7 @@ export default function AboutPage() {
 
         {/* Atmospheric Scenery Image */}
         <figure className="mb-14 sm:mb-20">
-          <div className="relative w-full rounded-[2rem] sm:rounded-[2.5rem] overflow-hidden shadow-2xl border border-slate-200/90 bg-white">
+          <div className="relative w-full rounded-[2rem] sm:rounded-[2.5rem] overflow-hidden shadow-2xl border border-stone-200/80 bg-white">
             <img
               src="/images/disappearing-lake.jpg"
               alt="LAJU - Ruang percakapan yang tenang"
@@ -39,7 +39,7 @@ export default function AboutPage() {
         <article className="space-y-12 sm:space-y-16 text-left max-w-4xl">
           
           {/* Section 1 */}
-          <section className="space-y-4 pb-10 border-b border-slate-200">
+          <section className="space-y-4 pb-10 border-b border-[#EAE8DE]">
             <h2 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
               {t('about_section1_title')}
             </h2>
@@ -50,7 +50,7 @@ export default function AboutPage() {
           </section>
 
           {/* Section 2 */}
-          <section className="space-y-4 pb-10 border-b border-slate-200">
+          <section className="space-y-4 pb-10 border-b border-[#EAE8DE]">
             <h2 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
               {t('about_section2_title')}
             </h2>
@@ -61,7 +61,7 @@ export default function AboutPage() {
           </section>
 
           {/* Core Principles */}
-          <section className="space-y-6 pb-10 border-b border-slate-200 text-left">
+          <section className="space-y-6 pb-10 border-b border-[#EAE8DE] text-left">
             <div>
               <h2 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
                 {t('about_principles_title')}
@@ -108,7 +108,7 @@ export default function AboutPage() {
                 href="https://github.com/lajuapp/laju"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 rounded-full bg-laju-500 hover:bg-laju-600 px-6 py-3 text-xs sm:text-sm font-bold text-slate-950 shadow-mint-glow transition-all active:scale-95"
+                className="inline-flex items-center gap-2 rounded-full bg-laju-500 hover:bg-laju-600 px-6 py-3 text-xs sm:text-sm font-bold text-white shadow-mint-glow transition-all active:scale-95"
               >
                 <span>{t('about_github_link_text')}</span>
                 <ExternalLink className="h-4 w-4" />

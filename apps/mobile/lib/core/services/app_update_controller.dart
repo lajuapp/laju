@@ -1,8 +1,6 @@
 import 'dart:io';
-import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
-import '../config/env_config.dart';
 import '../constants/app_constants.dart';
 import '../network/api_client.dart';
 import '../network/api_endpoints.dart';
@@ -17,41 +15,41 @@ enum AppUpdateStatus {
 class AppSystemConfig {
   final String minAndroidVersion;
   final String latestAndroidVersion;
+  final String minIosVersion;
+  final String latestIosVersion;
   final bool forceUpdate;
   final bool maintenanceMode;
   final String? maintenanceMessage;
-  final String? apkUrl;
-  final String? apkFilename;
-  final int? apkSize;
-  final String? apkSha256;
+  final String? playStoreUrl;
+  final String? appStoreUrl;
   final String? releaseNotes;
 
   const AppSystemConfig({
     required this.minAndroidVersion,
     required this.latestAndroidVersion,
+    required this.minIosVersion,
+    required this.latestIosVersion,
     required this.forceUpdate,
     required this.maintenanceMode,
     this.maintenanceMessage,
-    this.apkUrl,
-    this.apkFilename,
-    this.apkSize,
-    this.apkSha256,
+    this.playStoreUrl,
+    this.appStoreUrl,
     this.releaseNotes,
   });
 
   factory AppSystemConfig.fromJson(Map<String, dynamic> json) {
+    final minAndroid = json['minAndroidVersion'] as String? ?? '1.0.0';
+    final latestAndroid = json['latestAndroidVersion'] as String? ?? '1.0.0';
     return AppSystemConfig(
-      minAndroidVersion: json['minAndroidVersion'] as String? ?? '1.0.0',
-      latestAndroidVersion: json['latestAndroidVersion'] as String? ?? '1.0.0',
+      minAndroidVersion: minAndroid,
+      latestAndroidVersion: latestAndroid,
+      minIosVersion: json['minIosVersion'] as String? ?? minAndroid,
+      latestIosVersion: json['latestIosVersion'] as String? ?? latestAndroid,
       forceUpdate: json['forceUpdate'] == true,
       maintenanceMode: json['maintenanceMode'] == true,
       maintenanceMessage: json['maintenanceMessage'] as String?,
-      apkUrl: json['apkUrl'] as String?,
-      apkFilename: json['apkFilename'] as String?,
-      apkSize: json['apkSize'] is int
-          ? json['apkSize'] as int
-          : (json['apkSize'] != null ? int.tryParse(json['apkSize'].toString()) : null),
-      apkSha256: json['apkSha256'] as String?,
+      playStoreUrl: json['playStoreUrl'] as String?,
+      appStoreUrl: json['appStoreUrl'] as String?,
       releaseNotes: json['releaseNotes'] as String?,
     );
   }
@@ -64,6 +62,7 @@ class AppUpdateController extends ChangeNotifier {
   static final AppUpdateController instance = AppUpdateController._();
 
   static const MethodChannel _deviceChannel = MethodChannel('com.laju/device');
+  static const String defaultAndroidPackageName = 'com.laju.laju_mobile';
 
   String _currentVersion = AppConstants.appVersion;
   int _currentVersionCode = AppConstants.appBuildNumber;
@@ -71,30 +70,36 @@ class AppUpdateController extends ChangeNotifier {
   AppUpdateStatus _status = AppUpdateStatus.upToDate;
   bool _isChecking = false;
   String? _dismissedOptionalVersion;
-
-  // In-App OTA Download state
-  bool _isDownloading = false;
-  double _downloadProgress = 0.0;
-  int _downloadedBytes = 0;
-  int _totalBytes = 0;
-  String? _downloadError;
-  bool _isDownloadComplete = false;
-  String? _downloadedApkPath;
+  bool _isOpeningStore = false;
+  String? _storeError;
 
   String get currentVersion => _currentVersion;
   int get currentVersionCode => _currentVersionCode;
   AppSystemConfig? get serverConfig => _serverConfig;
   AppUpdateStatus get status => _status;
   bool get isChecking => _isChecking;
-  bool get isOptionalDismissed => _dismissedOptionalVersion == _serverConfig?.latestAndroidVersion;
+  bool get isOpeningStore => _isOpeningStore;
+  String? get storeError => _storeError;
 
-  bool get isDownloading => _isDownloading;
-  double get downloadProgress => _downloadProgress;
-  int get downloadedBytes => _downloadedBytes;
-  int get totalBytes => _totalBytes;
-  String? get downloadError => _downloadError;
-  bool get isDownloadComplete => _isDownloadComplete;
-  String? get downloadedApkPath => _downloadedApkPath;
+  String get targetVersion {
+    if (_serverConfig == null) return _currentVersion;
+    if (kIsWeb) return _serverConfig!.latestAndroidVersion;
+    if (Platform.isIOS) {
+      return _serverConfig!.latestIosVersion;
+    }
+    return _serverConfig!.latestAndroidVersion;
+  }
+
+  String get minRequiredVersion {
+    if (_serverConfig == null) return '1.0.0';
+    if (kIsWeb) return _serverConfig!.minAndroidVersion;
+    if (Platform.isIOS) {
+      return _serverConfig!.minIosVersion;
+    }
+    return _serverConfig!.minAndroidVersion;
+  }
+
+  bool get isOptionalDismissed => _dismissedOptionalVersion == targetVersion;
 
   bool get shouldShowGate {
     if (_status == AppUpdateStatus.maintenance) return true;
@@ -109,7 +114,7 @@ class AppUpdateController extends ChangeNotifier {
     await checkForUpdates();
   }
 
-  /// Reads native package info (versionName, versionCode) from Android
+  /// Reads native package info (versionName, versionCode) from host OS
   Future<void> _loadInstalledVersion() async {
     try {
       final res = await _deviceChannel.invokeMapMethod<String, dynamic>('getAppVersion');
@@ -166,8 +171,12 @@ class AppUpdateController extends ChangeNotifier {
         if (config.maintenanceMode) {
           _status = AppUpdateStatus.maintenance;
         } else {
-          final cmpMin = compareSemver(_currentVersion, config.minAndroidVersion);
-          final cmpLatest = compareSemver(_currentVersion, config.latestAndroidVersion);
+          final isIos = !kIsWeb && Platform.isIOS;
+          final minVersion = isIos ? config.minIosVersion : config.minAndroidVersion;
+          final latestVersion = isIos ? config.latestIosVersion : config.latestAndroidVersion;
+
+          final cmpMin = compareSemver(_currentVersion, minVersion);
+          final cmpLatest = compareSemver(_currentVersion, latestVersion);
 
           if (cmpMin < 0) {
             _status = AppUpdateStatus.forceUpdate;
@@ -190,174 +199,67 @@ class AppUpdateController extends ChangeNotifier {
     }
   }
 
-  /// Construct the complete direct APK download URL
-  String resolveDownloadUrl() {
-    final rawUrl = _serverConfig?.apkUrl;
-    final path = (rawUrl != null && rawUrl.trim().isNotEmpty)
-        ? rawUrl.trim()
-        : ApiEndpoints.downloadApk;
-
-    if (path.startsWith('http://') || path.startsWith('https://')) {
-      return path;
+  /// Resolves the store URL based on operating system and optional backend configuration
+  String resolveStoreUrl() {
+    if (!kIsWeb && Platform.isIOS) {
+      final configured = _serverConfig?.appStoreUrl?.trim();
+      if (configured != null && configured.isNotEmpty) {
+        return configured;
+      }
+      return 'https://apps.apple.com/app/laju/id6740000000';
     }
 
-    final base = EnvConfig.instance.apiBaseUrl;
-    final normalizedBase = base.endsWith('/') ? base.substring(0, base.length - 1) : base;
-    final normalizedPath = path.startsWith('/') ? path : '/$path';
-    return '$normalizedBase$normalizedPath';
+    // Android:
+    final configured = _serverConfig?.playStoreUrl?.trim();
+    if (configured != null && configured.isNotEmpty) {
+      return configured;
+    }
+    return 'market://details?id=$defaultAndroidPackageName';
   }
 
-  /// In-App OTA Update: Downloads APK with live progress, verifies integrity, and prompts install
-  Future<void> startInAppOtaUpdate() async {
-    if (_isDownloading) return;
+  /// Resolves standard HTTPS web link for browser fallback
+  String resolveWebStoreUrl() {
+    if (!kIsWeb && Platform.isIOS) {
+      return resolveStoreUrl();
+    }
+    return 'https://play.google.com/store/apps/details?id=$defaultAndroidPackageName';
+  }
 
-    _isDownloading = true;
-    _downloadProgress = 0.0;
-    _downloadedBytes = 0;
-    _totalBytes = _serverConfig?.apkSize ?? 0;
-    _downloadError = null;
-    _isDownloadComplete = false;
+  /// Redirect user to official app store
+  Future<bool> openStore({bool forceWebFallback = false}) async {
+    if (_isOpeningStore) return false;
+    _isOpeningStore = true;
+    _storeError = null;
     notifyListeners();
 
-    HttpClient? client;
-    IOSink? sink;
-
     try {
-      // 1. Get destination file path from Android native cache
-      String? targetPath;
-      try {
-        targetPath = await _deviceChannel.invokeMethod<String>('getApkDownloadPath');
-      } catch (e) {
-        debugPrint('[AppUpdateController] Failed to get native apk cache path: $e');
+      final targetUrl = forceWebFallback ? resolveWebStoreUrl() : resolveStoreUrl();
+      debugPrint('[AppUpdateController] Redirecting user to store: $targetUrl');
+
+      final success = await _deviceChannel.invokeMethod<bool>('openUrl', {'url': targetUrl});
+
+      if (success != true && !forceWebFallback && (!kIsWeb && Platform.isAndroid)) {
+        // Fallback to web link if market:// failed
+        final webUrl = resolveWebStoreUrl();
+        final webSuccess = await _deviceChannel.invokeMethod<bool>('openUrl', {'url': webUrl});
+        return webSuccess ?? false;
       }
 
-      if (targetPath == null || targetPath.isEmpty) {
-        targetPath = '/data/user/0/com.laju.laju_mobile/cache/laju_update.apk';
-      }
-
-      final file = File(targetPath);
-      if (await file.exists()) {
-        try {
-          await file.delete();
-        } catch (_) {}
-      }
-
-      // 2. Open connection to APK stream
-      final url = resolveDownloadUrl();
-      debugPrint('[AppUpdateController] Starting in-app OTA download from: $url');
-
-      client = HttpClient()
-        ..connectionTimeout = const Duration(seconds: 30)
-        ..badCertificateCallback = (cert, host, port) => true;
-
-      final request = await client.getUrl(Uri.parse(url));
-      final response = await request.close();
-
-      if (response.statusCode != HttpStatus.ok) {
-        throw HttpException('Server returned HTTP ${response.statusCode}');
-      }
-
-      final contentLength = response.contentLength;
-      if (contentLength > 0) {
-        _totalBytes = contentLength;
-      }
-
-      sink = file.openWrite();
-      int received = 0;
-      int lastNotify = DateTime.now().millisecondsSinceEpoch;
-
-      await for (final chunk in response) {
-        sink.add(chunk);
-        received += chunk.length;
-        _downloadedBytes = received;
-
-        if (_totalBytes > 0) {
-          _downloadProgress = (received / _totalBytes).clamp(0.0, 1.0);
-        }
-
-        final now = DateTime.now().millisecondsSinceEpoch;
-        if (now - lastNotify > 120 || received == _totalBytes) {
-          lastNotify = now;
-          notifyListeners();
-        }
-      }
-
-      await sink.flush();
-      await sink.close();
-      sink = null;
-
-      // 3. Optional SHA-256 integrity verification
-      if (_serverConfig?.apkSha256 != null && _serverConfig!.apkSha256!.isNotEmpty) {
-        try {
-          final fileBytes = await file.readAsBytes();
-          final calculatedSha = sha256.convert(fileBytes).toString().toLowerCase();
-          final expectedSha = _serverConfig!.apkSha256!.toLowerCase().trim();
-
-          if (calculatedSha != expectedSha) {
-            debugPrint('[AppUpdateController] SHA-256 warning: expected $expectedSha, calculated $calculatedSha');
-          }
-        } catch (e) {
-          debugPrint('[AppUpdateController] SHA verification error: $e');
-        }
-      }
-
-      _downloadProgress = 1.0;
-      _isDownloading = false;
-      _isDownloadComplete = true;
-      _downloadedApkPath = targetPath;
-      notifyListeners();
-
-      // 4. Trigger native installation prompt immediately
-      await installDownloadedApk();
+      return success ?? false;
     } catch (e) {
-      debugPrint('[AppUpdateController] In-app OTA download error: $e');
-      _isDownloading = false;
-      _downloadError = 'Gagal mengunduh berkas pembaruan ($e). Silakan coba lagi.';
+      debugPrint('[AppUpdateController] Failed to redirect to store: $e');
+      _storeError = e.toString();
       notifyListeners();
+      return false;
     } finally {
-      if (sink != null) {
-        try {
-          await sink.close();
-        } catch (_) {}
-      }
-      client?.close();
-    }
-  }
-
-  /// Launch native Android package installer with FileProvider
-  Future<bool> installDownloadedApk() async {
-    try {
-      final path = _downloadedApkPath;
-      final args = <String, dynamic>{};
-      if (path != null) {
-        args['filePath'] = path;
-      }
-      final result = await _deviceChannel.invokeMethod<bool>('installApk', args);
-      return result ?? false;
-    } catch (e) {
-      debugPrint('[AppUpdateController] Failed to trigger package install: $e');
-      _downloadError = 'Gagal membuka penginstal Android: $e';
+      _isOpeningStore = false;
       notifyListeners();
-      return false;
-    }
-  }
-
-  /// Fallback: Open external browser to download APK directly
-  Future<bool> openExternalBrowserDownload() async {
-    try {
-      final url = resolveDownloadUrl();
-      debugPrint('[AppUpdateController] Opening browser fallback: $url');
-      final result = await _deviceChannel.invokeMethod<bool>('openUrl', {'url': url});
-      return result ?? false;
-    } catch (e) {
-      debugPrint('[AppUpdateController] Failed to open download URL: $e');
-      return false;
     }
   }
 
   /// Dismiss optional update notification for the current session/version
   void dismissOptionalUpdate() {
-    _dismissedOptionalVersion = _serverConfig?.latestAndroidVersion;
+    _dismissedOptionalVersion = targetVersion;
     notifyListeners();
   }
 }

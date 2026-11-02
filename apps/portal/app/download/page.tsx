@@ -2,9 +2,9 @@ import type { Metadata } from 'next';
 import { DownloadContent } from '@/components/download/DownloadContent';
 
 export const metadata: Metadata = {
-  title: 'Unduh LAJU untuk Android (.APK) | LAJU Messenger',
+  title: 'Unduh LAJU Messenger | Resmi di Google Play & App Store',
   description:
-    'Download aplikasi LAJU Messenger versi terbaru untuk Android. Nikmati obrolan aman, bebas iklan, dan privasi terjaga.',
+    'Download aplikasi LAJU Messenger versi terbaru resmi dari Google Play Store dan Apple App Store. Nikmati obrolan aman, bebas iklan, dan privasi terjaga tanpa nomor telepon.',
 };
 
 export const dynamic = 'force-dynamic';
@@ -25,36 +25,48 @@ async function getLatestAppConfig() {
   return null;
 }
 
-function formatFileSize(bytes?: number | null) {
-  if (!bytes) return null;
-  const mb = bytes / (1024 * 1024);
-  if (mb >= 1) return `${mb.toFixed(1)} MB`;
-  const kb = bytes / 1024;
-  return `${kb.toFixed(0)} KB`;
+function resolvePlayStoreWebUrl(rawUrl?: string | null): string {
+  const defaultUrl = 'https://play.google.com/store/apps/details?id=com.laju.laju_mobile';
+  if (!rawUrl || !rawUrl.trim()) return defaultUrl;
+
+  const trimmed = rawUrl.trim();
+  if (trimmed.startsWith('market://details?id=')) {
+    const pkg = trimmed.replace('market://details?id=', '').split('&')[0];
+    return `https://play.google.com/store/apps/details?id=${pkg}`;
+  }
+  if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+    return trimmed;
+  }
+  return defaultUrl;
+}
+
+function resolveAppStoreWebUrl(rawUrl?: string | null): string {
+  const defaultUrl = 'https://apps.apple.com/app/laju/id6740000000';
+  if (!rawUrl || !rawUrl.trim()) return defaultUrl;
+
+  const trimmed = rawUrl.trim();
+  if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+    return trimmed;
+  }
+  return defaultUrl;
 }
 
 export default async function DownloadPage() {
   const config = await getLatestAppConfig();
-  const rawPublicUrl = (process.env.NEXT_PUBLIC_API_URL || 'https://api.laju.chat').trim();
-  const publicApiUrl = rawPublicUrl.startsWith('http://') || rawPublicUrl.startsWith('https://')
-    ? rawPublicUrl.replace(/\/+$/, '')
-    : `https://${rawPublicUrl.replace(/\/+$/, '')}`;
 
-  const version = config?.latestAndroidVersion || '1.0.0';
-  const sizeText = formatFileSize(config?.apkSize);
-  const sha256 = config?.apkSha256;
+  const androidVersion = config?.latestAndroidVersion || '1.0.0';
+  const iosVersion = config?.latestIosVersion || config?.latestAndroidVersion || '1.0.0';
   const releaseNotes = config?.releaseNotes;
-  const apkDownloadUrl = config?.apkUrl
-    ? `${publicApiUrl}${config.apkUrl}`
-    : `${publicApiUrl}/admin/app-config/download-apk`;
+  const playStoreUrl = resolvePlayStoreWebUrl(config?.playStoreUrl);
+  const appStoreUrl = resolveAppStoreWebUrl(config?.appStoreUrl);
 
   return (
     <DownloadContent
-      version={version}
-      sizeText={sizeText}
-      sha256={sha256}
+      androidVersion={androidVersion}
+      iosVersion={iosVersion}
+      playStoreUrl={playStoreUrl}
+      appStoreUrl={appStoreUrl}
       releaseNotes={releaseNotes}
-      apkDownloadUrl={apkDownloadUrl}
     />
   );
 }

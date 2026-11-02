@@ -3,57 +3,58 @@
 import Link from 'next/link';
 import { Smartphone, ChevronRight } from 'lucide-react';
 import { useLanguage } from '@/context/LanguageContext';
+import { Reveal } from './Reveal';
 
 export function DownloadCTA() {
   const { t } = useLanguage();
 
   return (
-    <section className="py-20 sm:py-28 bg-[#F8FAFC] border-t border-slate-200 relative overflow-hidden">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-16 items-center">
-          
-          {/* Left Column: Copy & Actions (No chip badge) */}
-          <div className="lg:col-span-5 space-y-6 text-left">
-            <h2 className="text-3xl sm:text-4xl md:text-5xl font-black text-slate-900 tracking-tight leading-[1.1]">
-              {t('cta_title_line1')}<br />
-              <span className="text-laju-700">{t('cta_title_line2')}</span>
-            </h2>
+    <section className="relative isolate overflow-hidden bg-[#0D382C] py-16 text-white sm:py-20 lg:py-24">
+      <div aria-hidden="true" className="pointer-events-none absolute -right-36 -top-44 h-[32rem] w-[32rem] rounded-full bg-[#6F987F]/20 blur-3xl" />
+      <div aria-hidden="true" className="pointer-events-none absolute -bottom-56 left-[18%] h-[28rem] w-[28rem] rounded-full bg-[#B9DCC8]/[0.08] blur-3xl" />
 
-            <p className="text-slate-600 text-base sm:text-lg leading-relaxed font-normal">
-              {t('cta_subtitle_line1')}<br />
-              {t('cta_subtitle_line2')}
+      <div className="relative mx-auto max-w-7xl px-5 sm:px-8 lg:px-8">
+        <div className="grid grid-cols-1 items-center gap-10 lg:grid-cols-12 lg:gap-12">
+          <Reveal direction="left" className="space-y-5 text-left sm:space-y-6 lg:col-span-6">
+            <p className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-[#B9DCC8] sm:text-xs">
+              {t('cta_tag')}
+            </p>
+            <h2 className="text-3xl font-black leading-[1.08] tracking-tight text-white sm:text-4xl lg:text-5xl">
+              {t('cta_title_line1')}<br />
+              <span className="text-[#B9DCC8]">{t('cta_title_line2')}</span>
+            </h2>
+            <p className="max-w-lg text-sm leading-relaxed text-white/75 sm:text-base sm:leading-7">
+              {t('cta_subtitle_line1')} {t('cta_subtitle_line2')}
             </p>
 
-            <div className="pt-2 flex flex-wrap items-center gap-4">
+            <div className="flex flex-wrap items-center gap-3 pt-1 sm:gap-4">
               <Link
                 href="/download"
-                className="flex items-center gap-2.5 rounded-full bg-laju-500 hover:bg-laju-600 px-7 py-3.5 text-sm font-bold text-slate-950 shadow-mint-glow hover:shadow-mint-glow-sm transition-all active:scale-95"
+                className="group inline-flex min-h-12 items-center gap-2.5 rounded-full bg-[#F5F4EF] px-6 py-3 text-sm font-bold text-[#0D382C] shadow-[0_12px_30px_-12px_rgba(0,0,0,0.55)] transition-all duration-300 hover:-translate-y-0.5 hover:bg-white sm:px-7"
               >
                 <Smartphone className="h-4 w-4 stroke-[2.5]" />
                 <span>{t('cta_download_btn')}</span>
               </Link>
-
               <a
                 href="#fitur"
-                className="flex items-center gap-2 rounded-full border border-slate-300 bg-white px-6 py-3.5 text-sm font-bold text-slate-700 hover:text-slate-950 hover:bg-slate-50 transition-all shadow-xs"
+                className="group inline-flex min-h-12 items-center gap-2 rounded-full border border-white/25 px-5 py-3 text-sm font-bold text-white/90 transition-all hover:border-white/60 hover:bg-white/10 hover:text-white"
               >
                 <span>{t('cta_monitor_btn')}</span>
-                <ChevronRight className="h-4 w-4" />
+                <ChevronRight className="h-4 w-4 transition-transform duration-300 group-hover:translate-x-1" />
               </a>
             </div>
-          </div>
+          </Reveal>
 
-          {/* Right Column: Real Laptop + Smartphone Workspace Photo */}
-          <div className="lg:col-span-7 flex justify-center items-center">
-            <div className="relative w-full rounded-[2.5rem] overflow-hidden shadow-2xl border border-slate-200/90 bg-white">
+          <Reveal direction="right" delay={130} className="lg:col-span-6">
+            <div className="landing-image-frame group relative aspect-[16/10] overflow-hidden rounded-[1.75rem] border border-white/15 bg-white/5 shadow-[0_32px_80px_-38px_rgba(0,0,0,0.7)] sm:rounded-[2rem]">
               <img
                 src="/images/cta-devices.jpg"
                 alt="LAJU di Berbagai Perangkat"
-                className="w-full h-auto object-cover transform hover:scale-[1.01] transition-transform duration-500 ease-out"
+                className="h-full w-full object-cover transition-transform duration-700 ease-out group-hover:scale-[1.025]"
               />
+              <div className="pointer-events-none absolute inset-0 ring-1 ring-inset ring-white/10" />
             </div>
-          </div>
-
+          </Reveal>
         </div>
       </div>
     </section>

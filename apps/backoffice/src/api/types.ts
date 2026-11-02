@@ -309,6 +309,10 @@ export interface AppSystemConfig {
   id: string;
   minAndroidVersion: string;
   latestAndroidVersion: string;
+  minIosVersion?: string | null;
+  latestIosVersion?: string | null;
+  playStoreUrl?: string | null;
+  appStoreUrl?: string | null;
   forceUpdate: boolean;
   maintenanceMode: boolean;
   maintenanceMessage?: string | null;

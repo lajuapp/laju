@@ -24,7 +24,7 @@ export function Navbar() {
   }, []);
 
   return (
-    <header className="sticky top-0 z-50 w-full bg-[#F8FAFC]/90 backdrop-blur-md border-b border-slate-200/60 transition-all">
+    <header className="sticky top-0 z-50 w-full bg-[#F5F4EF]/90 backdrop-blur-md border-b border-[#EAE8DE]/80 transition-all">
       <div className="mx-auto flex h-20 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
         {/* Brand Logo */}
         <Link href="/" className="flex items-center gap-3 group">
@@ -84,7 +84,7 @@ export function Navbar() {
             <button
               type="button"
               onClick={() => setLangMenuOpen(!langMenuOpen)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-xs font-bold text-slate-800 transition-all shadow-xs"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#EAE8DE] bg-white hover:bg-[#F5F4EF] text-xs font-bold text-slate-800 transition-all shadow-xs"
               aria-label="Pilih Bahasa"
             >
               <Globe className="h-3.5 w-3.5 text-slate-500" />
@@ -93,7 +93,7 @@ export function Navbar() {
             </button>
 
             {langMenuOpen && (
-              <div className="absolute right-0 mt-2 w-44 rounded-2xl bg-white p-1.5 shadow-xl border border-slate-200 z-50 text-xs animate-in fade-in zoom-in-95 duration-100">
+              <div className="absolute right-0 mt-2 w-44 rounded-2xl bg-white p-1.5 shadow-xl border border-[#EAE8DE] z-50 text-xs animate-in fade-in zoom-in-95 duration-100">
                 {supportedLocales.map((item) => (
                   <button
                     key={item.code}
@@ -103,7 +103,7 @@ export function Navbar() {
                       setLangMenuOpen(false);
                     }}
                     className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-left transition-colors font-medium ${
-                      locale === item.code ? 'bg-laju-50 text-laju-800 font-bold' : 'text-slate-700 hover:bg-slate-100'
+                      locale === item.code ? 'bg-laju-50 text-laju-800 font-bold' : 'text-slate-700 hover:bg-[#EAE8DE]'
                     }`}
                   >
                     <span className="flex items-center gap-2">
@@ -119,7 +119,7 @@ export function Navbar() {
           {/* Unduh Action Button */}
           <Link
             href="/download"
-            className="flex items-center gap-1.5 rounded-full bg-laju-500 hover:bg-laju-600 px-4 sm:px-5 py-2 text-xs sm:text-sm font-bold text-slate-950 shadow-mint-glow-sm hover:shadow-mint-glow transition-all active:scale-95"
+            className="flex items-center gap-1.5 rounded-full bg-laju-500 hover:bg-laju-600 px-4 sm:px-5 py-2 text-xs sm:text-sm font-bold text-white shadow-mint-glow-sm hover:shadow-mint-glow transition-all active:scale-95"
           >
             <Download className="h-3.5 w-3.5 stroke-[2.5]" />
             <span>{t('nav_download')}</span>

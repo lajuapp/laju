@@ -65,8 +65,8 @@ export default async function JoinPage({ params }: JoinPageProps) {
       <SmartRedirector
         type="group"
         code={params.code}
-        title={info?.title || 'Undangan Grup LAJU'}
-        subtitle={info?.description || 'Ketuk tombol di bawah untuk bergabung langsung ke obrolan grup ini.'}
+        title={info?.title || ''}
+        subtitle={info?.description || undefined}
         memberCount={info?.memberCount}
         avatarUrl={info?.avatarUrl}
       />

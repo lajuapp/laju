@@ -28,21 +28,25 @@ void main() {
     test('parses json correctly with default values', () {
       final json = {
         'minAndroidVersion': '1.0.1',
-        'latestAndroidVersion': '1.0.1',
+        'latestAndroidVersion': '1.0.2',
+        'minIosVersion': '1.0.0',
+        'latestIosVersion': '1.0.2',
         'forceUpdate': false,
         'maintenanceMode': false,
-        'apkUrl': '/admin/app-config/download-apk',
-        'apkSize': 1234567,
+        'playStoreUrl': 'market://details?id=com.laju.laju_mobile',
+        'appStoreUrl': 'https://apps.apple.com/app/laju/id6740000000',
         'releaseNotes': 'Perbaikan performa dan keamanan.',
       };
 
       final config = AppSystemConfig.fromJson(json);
       expect(config.minAndroidVersion, '1.0.1');
-      expect(config.latestAndroidVersion, '1.0.1');
+      expect(config.latestAndroidVersion, '1.0.2');
+      expect(config.minIosVersion, '1.0.0');
+      expect(config.latestIosVersion, '1.0.2');
       expect(config.forceUpdate, false);
       expect(config.maintenanceMode, false);
-      expect(config.apkUrl, '/admin/app-config/download-apk');
-      expect(config.apkSize, 1234567);
+      expect(config.playStoreUrl, 'market://details?id=com.laju.laju_mobile');
+      expect(config.appStoreUrl, 'https://apps.apple.com/app/laju/id6740000000');
       expect(config.releaseNotes, 'Perbaikan performa dan keamanan.');
     });
   });

@@ -111,7 +111,6 @@ class ApiEndpoints {
 
   // App System Config & Update
   static const String publicAppConfig = '/admin/app-config/public';
-  static const String downloadApk = '/admin/app-config/download-apk';
 }
 
 

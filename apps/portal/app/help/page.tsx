@@ -1,102 +1,42 @@
 'use client';
 
-import { 
-  Headphones, 
-  HelpCircle, 
-  MessageSquare, 
-  Key, 
-  CheckCircle2, 
-  Mail, 
-  Smartphone, 
-  Clock, 
-  Wifi, 
-  Send 
-} from 'lucide-react';
+import { HelpCircle, MessageSquare, Key, Mail, Smartphone, Clock, Wifi, Send } from 'lucide-react';
+import { EditorialPageHero } from '@/components/EditorialPageHero';
 import { useLanguage } from '@/context/LanguageContext';
 
 export default function HelpPage() {
   const { t } = useLanguage();
 
   return (
-    <div className="py-12 sm:py-20 bg-[#F8FAFC] min-h-screen">
+    <div className="py-12 sm:py-20 bg-[#F5F4EF] min-h-screen">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         
-        {/* Hero Section of Help Page (No chip badge) */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-16 items-center mb-16 sm:mb-24">
-          
-          {/* Left: Copy */}
-          <div className="lg:col-span-7 space-y-6 text-left">
-            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-black text-slate-900 tracking-tight leading-[1.08]">
-              {t('help_hero_title_line1')}<br />
-              <span className="text-laju-700">{t('help_hero_title_line2')}</span>
-            </h1>
-
-            <p className="text-slate-600 text-base sm:text-lg leading-relaxed font-normal max-w-2xl">
-              {t('help_hero_desc')}
-            </p>
-
-            {/* Core Support Guarantees */}
-            <div className="pt-2 grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs font-semibold text-slate-700">
-              <div className="flex items-center gap-2.5">
-                <CheckCircle2 className="h-4 w-4 text-laju-600 shrink-0" />
-                <span>{t('help_guarantee1')}</span>
-              </div>
-              <div className="flex items-center gap-2.5">
-                <CheckCircle2 className="h-4 w-4 text-laju-600 shrink-0" />
-                <span>{t('help_guarantee2')}</span>
-              </div>
-              <div className="flex items-center gap-2.5">
-                <CheckCircle2 className="h-4 w-4 text-laju-600 shrink-0" />
-                <span>{t('help_guarantee3')}</span>
-              </div>
-              <div className="flex items-center gap-2.5">
-                <CheckCircle2 className="h-4 w-4 text-laju-600 shrink-0" />
-                <span>{t('help_guarantee4')}</span>
-              </div>
-            </div>
-
-            <div className="pt-4 flex flex-wrap items-center gap-4">
-              <a
-                href="mailto:support@laju.chat"
-                className="flex items-center gap-2 rounded-full bg-laju-500 hover:bg-laju-600 px-6 py-3 text-xs sm:text-sm font-bold text-slate-950 shadow-mint-glow transition-all"
-              >
-                <Mail className="h-4 w-4" />
-                <span>{t('help_cta_contact')}</span>
-              </a>
-              <a
-                href="#rincian-faq"
-                className="flex items-center gap-2 rounded-full border border-slate-300 bg-white px-5 py-3 text-xs sm:text-sm font-bold text-slate-700 hover:bg-slate-50 hover:text-slate-900 transition-all shadow-xs"
-              >
-                <span>{t('help_cta_faq')}</span>
-              </a>
-            </div>
-          </div>
-
-          {/* Right: User Support Artwork */}
-          <div className="lg:col-span-5 flex justify-center items-center">
-            <div className="relative w-full max-w-md rounded-[2.5rem] overflow-hidden shadow-2xl border border-slate-200/90 bg-white group">
-              <img
-                src="/images/bantuan-support.jpg"
-                alt="LAJU Bantuan dan Dukungan Pelanggan"
-                className="w-full h-auto object-cover transform group-hover:scale-[1.02] transition-transform duration-500 ease-out"
-              />
-              <div className="absolute bottom-4 inset-x-4 p-3.5 rounded-2xl bg-black/50 backdrop-blur-md border border-white/10 text-white text-xs flex items-center justify-between shadow-lg">
-                <div className="flex items-center gap-2">
-                  <Headphones className="h-4 w-4 text-laju-400 shrink-0" />
-                  <span className="font-semibold text-[11px] truncate">{t('help_image_badge_title')}</span>
-                </div>
-                <span className="text-[10px] uppercase font-bold text-emerald-300 bg-emerald-500/20 px-2 py-0.5 rounded-full shrink-0">
-                  {t('help_status_active')}
-                </span>
-              </div>
-            </div>
-          </div>
-
-        </div>
+        <EditorialPageHero
+          titleLine1={t('help_hero_title_line1')}
+          titleLine2={t('help_hero_title_line2')}
+          description={t('help_hero_desc')}
+          guarantees={[t('help_guarantee1'), t('help_guarantee2'), t('help_guarantee3'), t('help_guarantee4')]}
+          image="/images/bantuan-support.jpg"
+          imageAlt="LAJU Bantuan dan Dukungan Pelanggan"
+        >
+          <a
+            href="mailto:support@laju.chat"
+            className="group inline-flex min-h-12 items-center gap-2 rounded-full bg-[#0D382C] px-6 py-3 text-xs font-bold text-white shadow-[0_12px_28px_-10px_rgba(13,56,44,0.45)] transition-all duration-300 hover:-translate-y-0.5 hover:bg-[#134E3E] sm:text-sm"
+          >
+            <Mail className="h-4 w-4" />
+            <span>{t('help_cta_contact')}</span>
+          </a>
+          <a
+            href="#rincian-faq"
+            className="inline-flex min-h-12 items-center gap-2 rounded-full border border-[#D8D6CC] bg-white/70 px-5 py-3 text-xs font-bold text-slate-700 transition-all duration-300 hover:-translate-y-0.5 hover:border-[#0D382C]/30 hover:bg-white sm:text-sm"
+          >
+            <span>{t('help_cta_faq')}</span>
+          </a>
+        </EditorialPageHero>
 
         {/* Detailed FAQ */}
-        <div id="rincian-faq" className="w-full space-y-8 text-left pt-12 border-t border-slate-200">
-          <div className="border-b border-slate-200 pb-6">
+        <div id="rincian-faq" className="mx-auto w-full max-w-5xl space-y-10 border-t border-[#EAE8DE] pt-12 text-left">
+          <div className="border-b border-[#EAE8DE] pb-6">
             <h2 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
               {t('help_articles_title')}
             </h2>
@@ -105,7 +45,7 @@ export default function HelpPage() {
             </p>
           </div>
 
-          <div className="divide-y divide-slate-200/80">
+          <div className="divide-y divide-[#EAE8DE]">
             {/* FAQ 1 */}
             <div className="py-7 first:pt-0 space-y-3">
               <h3 className="text-base sm:text-lg font-bold text-slate-900">
@@ -162,18 +102,18 @@ export default function HelpPage() {
           </div>
 
           {/* Contact Box */}
-          <div className="mt-12 p-8 rounded-3xl bg-slate-900 text-white text-left shadow-lg">
+          <div className="rounded-3xl border border-white/10 bg-[#0D382C] p-7 text-left text-white shadow-[0_24px_60px_-36px_rgba(13,56,44,0.65)] sm:p-8">
             <h3 className="text-xl font-bold mb-2">{t('help_contact_box_title')}</h3>
-            <p className="text-sm text-slate-300 leading-relaxed mb-6 max-w-xl">
+            <p className="mb-6 max-w-xl text-sm leading-relaxed text-white/70">
               {t('help_contact_box_desc')}
             </p>
             <div className="flex flex-wrap items-center gap-4">
-              <div className="px-4 py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-sm font-mono text-emerald-400 font-bold">
+              <div className="rounded-xl border border-white/15 bg-white/[0.07] px-4 py-2.5 font-mono text-sm font-bold text-[#B9DCC8]">
                 support@laju.chat
               </div>
               <a
                 href="mailto:support@laju.chat"
-                className="inline-flex items-center gap-2 rounded-xl bg-laju-500 hover:bg-laju-600 px-5 py-2.5 text-xs sm:text-sm font-bold text-slate-950 transition-all shadow-mint-glow"
+                className="inline-flex items-center gap-2 rounded-xl bg-[#F5F4EF] px-5 py-2.5 text-xs font-bold text-[#0D382C] transition-all hover:-translate-y-0.5 hover:bg-white sm:text-sm"
               >
                 <Mail className="h-4 w-4" />
                 <span>{t('help_send_email_btn')}</span>

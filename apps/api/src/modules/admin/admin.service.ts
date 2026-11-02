@@ -1666,6 +1666,10 @@ export class AdminService {
           id: 'global',
           minAndroidVersion: '1.0.0',
           latestAndroidVersion: '1.0.0',
+          minIosVersion: '1.0.0',
+          latestIosVersion: '1.0.0',
+          playStoreUrl: 'market://details?id=com.laju.laju_mobile',
+          appStoreUrl: 'https://apps.apple.com/app/laju/id6740000000',
           forceUpdate: false,
           maintenanceMode: false,
           maintenanceMessage: 'Sistem sedang dalam pemeliharaan berkala. Silakan coba kembali beberapa saat lagi.'

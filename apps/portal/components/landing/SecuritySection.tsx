@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { Lock, EyeOff, ShieldAlert, Trash2, ChevronRight } from 'lucide-react';
 import { useLanguage } from '@/context/LanguageContext';
+import { Reveal } from './Reveal';
 
 export function SecuritySection() {
   const { t } = useLanguage();
@@ -13,7 +14,7 @@ export function SecuritySection() {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-16 items-center">
           
           {/* Left Column: Copy & Link (No chip badge) */}
-          <div className="lg:col-span-5 space-y-6 text-left">
+          <Reveal direction="left" className="lg:col-span-5 space-y-6 text-left">
             <h2 className="text-3xl sm:text-4xl md:text-5xl font-black text-white tracking-tight leading-[1.1]">
               {t('sec_title_line1')}<br />
               <span className="text-laju-400">{t('sec_title_line2')}</span>
@@ -26,16 +27,16 @@ export function SecuritySection() {
             <div className="pt-2">
               <Link
                 href="/privacy"
-                className="inline-flex items-center gap-2 rounded-full bg-laju-500 hover:bg-laju-600 px-6 py-3.5 text-xs sm:text-sm font-bold text-slate-950 shadow-mint-glow transition-all active:scale-95"
+                className="inline-flex items-center gap-2 rounded-full bg-laju-500 hover:bg-laju-600 px-6 py-3.5 text-xs sm:text-sm font-bold text-white shadow-mint-glow transition-all active:scale-95"
               >
                 <span>{t('sec_cta')}</span>
                 <ChevronRight className="h-4 w-4 stroke-[2.5]" />
               </Link>
             </div>
-          </div>
+          </Reveal>
 
           {/* Right Column: Real Notebook Photo + 4 Dark Cards */}
-          <div className="lg:col-span-7 relative">
+          <Reveal direction="right" delay={120} className="lg:col-span-7 relative">
             <div className="rounded-[2.5rem] overflow-hidden shadow-2xl border border-slate-700/80 relative min-h-[460px] sm:min-h-[500px] flex items-center justify-end p-5 sm:p-8">
               {/* Background Notebook Photo */}
               <img
@@ -50,7 +51,7 @@ export function SecuritySection() {
               {/* 4 Sleek Dark Cards */}
               <div className="relative z-10 w-full max-w-xs sm:max-w-sm space-y-3">
                 {/* Card 1 */}
-                <div className="p-4 rounded-2xl bg-[#131B22]/90 backdrop-blur-md border border-white/10 flex items-center gap-3.5 text-left shadow-lg hover:bg-[#131B22] transition-colors">
+                <div className="security-proof-card p-4 rounded-2xl bg-[#131B22]/90 backdrop-blur-md border border-white/10 flex items-center gap-3.5 text-left shadow-lg hover:bg-[#131B22]">
                   <div className="p-2.5 rounded-xl bg-laju-500/15 text-laju-400 shrink-0">
                     <Lock className="h-5 w-5" />
                   </div>
@@ -61,7 +62,7 @@ export function SecuritySection() {
                 </div>
 
                 {/* Card 2 */}
-                <div className="p-4 rounded-2xl bg-[#131B22]/90 backdrop-blur-md border border-white/10 flex items-center gap-3.5 text-left shadow-lg hover:bg-[#131B22] transition-colors">
+                <div className="security-proof-card p-4 rounded-2xl bg-[#131B22]/90 backdrop-blur-md border border-white/10 flex items-center gap-3.5 text-left shadow-lg hover:bg-[#131B22]">
                   <div className="p-2.5 rounded-xl bg-laju-500/15 text-laju-400 shrink-0">
                     <EyeOff className="h-5 w-5" />
                   </div>
@@ -72,7 +73,7 @@ export function SecuritySection() {
                 </div>
 
                 {/* Card 3 */}
-                <div className="p-4 rounded-2xl bg-[#131B22]/90 backdrop-blur-md border border-white/10 flex items-center gap-3.5 text-left shadow-lg hover:bg-[#131B22] transition-colors">
+                <div className="security-proof-card p-4 rounded-2xl bg-[#131B22]/90 backdrop-blur-md border border-white/10 flex items-center gap-3.5 text-left shadow-lg hover:bg-[#131B22]">
                   <div className="p-2.5 rounded-xl bg-laju-500/15 text-laju-400 shrink-0">
                     <ShieldAlert className="h-5 w-5" />
                   </div>
@@ -83,7 +84,7 @@ export function SecuritySection() {
                 </div>
 
                 {/* Card 4 */}
-                <div className="p-4 rounded-2xl bg-[#131B22]/90 backdrop-blur-md border border-white/10 flex items-center gap-3.5 text-left shadow-lg hover:bg-[#131B22] transition-colors">
+                <div className="security-proof-card p-4 rounded-2xl bg-[#131B22]/90 backdrop-blur-md border border-white/10 flex items-center gap-3.5 text-left shadow-lg hover:bg-[#131B22]">
                   <div className="p-2.5 rounded-xl bg-red-500/15 text-red-400 shrink-0">
                     <Trash2 className="h-5 w-5" />
                   </div>
@@ -95,7 +96,7 @@ export function SecuritySection() {
               </div>
 
             </div>
-          </div>
+          </Reveal>
 
         </div>
       </div>

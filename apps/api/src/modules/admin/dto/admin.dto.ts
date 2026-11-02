@@ -361,6 +361,22 @@ export class UpdateAppConfigDto {
   @IsOptional()
   latestAndroidVersion?: string;
 
+  @IsString()
+  @IsOptional()
+  minIosVersion?: string;
+
+  @IsString()
+  @IsOptional()
+  latestIosVersion?: string;
+
+  @IsString()
+  @IsOptional()
+  playStoreUrl?: string;
+
+  @IsString()
+  @IsOptional()
+  appStoreUrl?: string;
+
   @IsBoolean()
   @IsOptional()
   forceUpdate?: boolean;

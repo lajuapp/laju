@@ -8,7 +8,7 @@ export function Footer() {
   const { t } = useLanguage();
 
   return (
-    <footer className="border-t border-slate-200 bg-white py-12 text-slate-600 text-xs">
+    <footer className="border-t border-[#EAE8DE] bg-white py-12 text-slate-600 text-xs">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="flex flex-col sm:flex-row items-center justify-between gap-6">
           {/* Logo & Brand */}

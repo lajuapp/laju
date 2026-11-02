@@ -13,6 +13,8 @@ import {
   Download,
   Hash,
   FileCheck,
+  ExternalLink,
+  Globe,
 } from 'lucide-react';
 import { useAppConfig, useUpdateAppConfig, useUploadApk } from '../hooks/useAppConfig';
 import { Button } from '../components/ui/Button';
@@ -20,8 +22,12 @@ import { Input } from '../components/ui/Input';
 import { Badge } from '../components/ui/Badge';
 
 const appConfigSchema = z.object({
-  minAndroidVersion: z.string().min(1, 'Minimum version cannot be empty'),
-  latestAndroidVersion: z.string().min(1, 'Latest version cannot be empty'),
+  minAndroidVersion: z.string().min(1, 'Minimum Android version cannot be empty'),
+  latestAndroidVersion: z.string().min(1, 'Latest Android version cannot be empty'),
+  minIosVersion: z.string().optional(),
+  latestIosVersion: z.string().optional(),
+  playStoreUrl: z.string().optional(),
+  appStoreUrl: z.string().optional(),
   forceUpdate: z.boolean().default(false),
   maintenanceMode: z.boolean().default(false),
   maintenanceMessage: z.string().optional(),
@@ -37,7 +43,7 @@ export function AppVersionPage() {
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // APK Upload States
+  // APK Upload States (for internal sideloading & testing)
   const [selectedApkFile, setSelectedApkFile] = useState<File | null>(null);
   const [apkVersionInput, setApkVersionInput] = useState<string>('');
   const [apkMinVersionInput, setApkMinVersionInput] = useState<string>('');
@@ -58,6 +64,10 @@ export function AppVersionPage() {
     defaultValues: {
       minAndroidVersion: '1.0.0',
       latestAndroidVersion: '1.0.0',
+      minIosVersion: '1.0.0',
+      latestIosVersion: '1.0.0',
+      playStoreUrl: '',
+      appStoreUrl: '',
       forceUpdate: false,
       maintenanceMode: false,
       maintenanceMessage: '',
@@ -69,6 +79,10 @@ export function AppVersionPage() {
       reset({
         minAndroidVersion: config.minAndroidVersion || '1.0.0',
         latestAndroidVersion: config.latestAndroidVersion || '1.0.0',
+        minIosVersion: config.minIosVersion || config.minAndroidVersion || '1.0.0',
+        latestIosVersion: config.latestIosVersion || config.latestAndroidVersion || '1.0.0',
+        playStoreUrl: config.playStoreUrl || '',
+        appStoreUrl: config.appStoreUrl || '',
         forceUpdate: config.forceUpdate || false,
         maintenanceMode: config.maintenanceMode || false,
         maintenanceMessage: config.maintenanceMessage || '',
@@ -91,7 +105,7 @@ export function AppVersionPage() {
       setErrorMessage(null);
       setSuccessMessage(null);
       await updateConfig.mutateAsync(data);
-      setSuccessMessage('Application version configuration saved successfully');
+      setSuccessMessage('Store links and version policies saved successfully');
       setTimeout(() => setSuccessMessage(null), 4000);
     } catch (err: any) {
       setErrorMessage(
@@ -137,7 +151,7 @@ export function AppVersionPage() {
         },
       });
 
-      setApkUploadSuccess(res.message || 'APK file successfully uploaded and released!');
+      setApkUploadSuccess(res.message || 'APK file successfully uploaded and recorded for test sideloading!');
       setSelectedApkFile(null);
       setUploadProgress(0);
       setTimeout(() => setApkUploadSuccess(null), 6000);
@@ -167,10 +181,10 @@ export function AppVersionPage() {
       {/* Header */}
       <div>
         <h1 className="text-xl font-extrabold tracking-tight text-neutral-900">
-          App Versioning & Package Distribution
+          App Versioning & Store Distribution
         </h1>
         <p className="text-xs text-neutral-500 mt-1">
-          Upload mobile APK binaries directly, manage release version numbers, and oversee system maintenance modes.
+          Configure official Google Play Store and Apple App Store redirection URLs, manage client minimum/latest versions, and enforce maintenance windows.
         </p>
       </div>
 
@@ -188,278 +202,135 @@ export function AppVersionPage() {
         </div>
       )}
 
-      {/* SECTION 1: UPLOAD APK */}
-      <div className="bg-white rounded-2xl border border-neutral-200/80 shadow-xs p-6 space-y-6">
-        <div className="flex items-center justify-between border-b border-neutral-100 pb-3">
-          <div className="flex items-center gap-2.5">
-            <UploadCloud className="w-5 h-5 text-brand-600" />
-            <h2 className="text-xs font-bold text-neutral-900 uppercase tracking-wider">
-              Android APK Binary Distribution
-            </h2>
-          </div>
-          {config?.apkFilename && (
-            <Badge variant="success">APK Ready for Download</Badge>
-          )}
-        </div>
-
-        {/* Current Active APK Info Card */}
-        {config?.apkFilename ? (
-          <div className="p-4 rounded-xl bg-neutral-50/80 border border-neutral-200/70 space-y-3">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <div className="p-2.5 rounded-xl bg-brand-500/10 text-brand-600">
-                  <FileArchive className="w-6 h-6" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-bold text-neutral-900">
-                      {config.apkFilename}
-                    </span>
-                    <Badge variant="brand">v{config.latestAndroidVersion}</Badge>
-                  </div>
-                  <div className="text-[11px] text-neutral-500 mt-0.5 flex flex-wrap gap-2">
-                    <span>Size: {formatFileSize(config.apkSize)}</span>
-                    <span>•</span>
-                    <span>Updated: {new Date(config.updatedAt).toLocaleDateString('en-US')}</span>
-                  </div>
-                </div>
-              </div>
-
-              <a
-                href={downloadApkUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-neutral-200 text-xs font-semibold text-neutral-700 hover:bg-neutral-50 shadow-xs transition-colors"
-              >
-                <Download className="w-3.5 h-3.5 text-brand-600" />
-                <span>Download File</span>
-              </a>
-            </div>
-
-            {config.apkSha256 && (
-              <div className="text-[10px] font-mono text-neutral-400 bg-white/80 p-2 rounded-lg border border-neutral-200/50 flex items-center gap-1.5 overflow-hidden">
-                <Hash className="w-3 h-3 text-neutral-400 shrink-0" />
-                <span className="text-neutral-500 font-semibold shrink-0">SHA-256:</span>
-                <span className="truncate">{config.apkSha256}</span>
-              </div>
-            )}
-
-            {config.releaseNotes && (
-              <div className="text-xs text-neutral-600 bg-white/80 p-2.5 rounded-lg border border-neutral-200/50">
-                <span className="font-semibold text-neutral-700 block mb-0.5">Release Notes:</span>
-                <p className="whitespace-pre-wrap">{config.releaseNotes}</p>
-              </div>
-            )}
-          </div>
-        ) : (
-          <div className="p-4 rounded-xl bg-amber-50/70 border border-amber-200/70 text-amber-800 text-xs flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
-            <span>No APK file uploaded yet. Upload your first release binary using the form below.</span>
-          </div>
-        )}
-
-        {/* Upload Form */}
-        <form onSubmit={handleUploadApkSubmit} className="space-y-4 pt-2">
-          {apkUploadSuccess && (
-            <div className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex items-center gap-2.5">
-              <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
-              <span className="font-semibold">{apkUploadSuccess}</span>
-            </div>
-          )}
-
-          {apkUploadError && (
-            <div className="p-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center gap-2.5">
-              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
-              <span className="font-semibold">{apkUploadError}</span>
-            </div>
-          )}
-
-          <div className="border-2 border-dashed border-neutral-200 hover:border-brand-500 rounded-2xl p-6 text-center transition-colors bg-neutral-50/50">
-            <input
-              type="file"
-              id="apk-file-input"
-              accept=".apk"
-              onChange={handleFileChange}
-              className="hidden"
-            />
-            <label htmlFor="apk-file-input" className="cursor-pointer block">
-              <div className="flex justify-center mb-2">
-                <div className="p-3 rounded-2xl bg-brand-50 text-brand-600">
-                  <FileCheck className="w-8 h-8" />
-                </div>
-              </div>
-              {selectedApkFile ? (
-                <div>
-                  <p className="text-xs font-bold text-neutral-900">{selectedApkFile.name}</p>
-                  <p className="text-[11px] text-brand-600 font-semibold mt-0.5">
-                    {formatFileSize(selectedApkFile.size)} • Ready to upload
-                  </p>
-                  <p className="text-[10px] text-neutral-400 mt-1">Click to change file</p>
-                </div>
-              ) : (
-                <div>
-                  <p className="text-xs font-bold text-neutral-900">
-                    Select or drag Android APK (.apk) file here
-                  </p>
-                  <p className="text-[11px] text-neutral-400 mt-1">
-                    Maximum file size up to 500 MB (Streaming multipart)
-                  </p>
-                </div>
-              )}
-            </label>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-[11px] font-bold text-neutral-700 mb-1 uppercase tracking-wider">
-                New Release Version
-              </label>
-              <Input
-                placeholder="e.g. 1.0.1"
-                value={apkVersionInput}
-                onChange={(e) => setApkVersionInput(e.target.value)}
-              />
-              <p className="text-[10px] text-neutral-400 mt-1">
-                Will be recorded as the latest Android client version
-              </p>
-            </div>
-
-            <div>
-              <label className="block text-[11px] font-bold text-neutral-700 mb-1 uppercase tracking-wider">
-                Minimum Supported Version
-              </label>
-              <Input
-                placeholder="e.g. 1.0.0"
-                value={apkMinVersionInput}
-                onChange={(e) => setApkMinVersionInput(e.target.value)}
-              />
-              <p className="text-[10px] text-neutral-400 mt-1">
-                Lowest version permitted to access network endpoints
-              </p>
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-[11px] font-bold text-neutral-700 mb-1 uppercase tracking-wider">
-              Release Notes
-            </label>
-            <textarea
-              rows={2}
-              placeholder="Summary of new features or security updates in this release..."
-              value={apkReleaseNotes}
-              onChange={(e) => setApkReleaseNotes(e.target.value)}
-              className="w-full text-xs rounded-xl border border-neutral-200 px-3 py-2 text-neutral-900 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-900/10 focus:border-neutral-900 transition-all resize-none"
-            />
-          </div>
-
-          <div>
-            <label className="flex items-start gap-3 p-3 rounded-xl bg-neutral-50/70 border border-neutral-200/60 cursor-pointer hover:bg-neutral-50 transition-colors">
-              <input
-                type="checkbox"
-                checked={apkForceUpdate}
-                onChange={(e) => setApkForceUpdate(e.target.checked)}
-                className="rounded border-neutral-300 text-neutral-900 focus:ring-neutral-900 h-4 w-4 mt-0.5"
-              />
-              <div>
-                <p className="text-xs font-bold text-neutral-900">
-                  Enforce Immediate Update (Force Update)
-                </p>
-                <p className="text-[11px] text-neutral-500 mt-0.5">
-                  Clients on older versions cannot proceed until downloading this update.
-                </p>
-              </div>
-            </label>
-          </div>
-
-          {/* Upload Progress Indicator */}
-          {isUploadingApk && (
-            <div className="space-y-1.5 p-3.5 rounded-2xl bg-brand-50 border border-brand-200 shadow-xs">
-              <div className="flex justify-between items-center text-xs font-bold text-brand-900">
-                <span className="flex items-center gap-1.5">
-                  <UploadCloud className="w-4 h-4 text-brand-600 animate-pulse" />
-                  Uploading APK binary to server...
-                </span>
-                <span className="font-mono text-xs bg-white px-2 py-0.5 rounded-full border border-brand-200 text-brand-800">
-                  {uploadProgress}%
-                </span>
-              </div>
-              <div className="w-full bg-brand-200/60 rounded-full h-2.5 overflow-hidden">
-                <div
-                  className="bg-brand-600 h-2.5 rounded-full transition-all duration-200 ease-out"
-                  style={{ width: `${Math.max(uploadProgress, 2)}%` }}
-                />
-              </div>
-              <p className="text-[10px] text-brand-700">
-                Direct binary streaming without browser memory buffering. Please keep this tab open.
-              </p>
-            </div>
-          )}
-
-          <div className="flex justify-end pt-2">
-            <Button
-              type="submit"
-              variant="primary"
-              icon={<UploadCloud className="w-4 h-4" />}
-              isLoading={isUploadingApk}
-              disabled={!selectedApkFile || isUploadingApk}
-            >
-              {isUploadingApk ? `Uploading (${uploadProgress}%)...` : 'Upload & Publish APK'}
-            </Button>
-          </div>
-        </form>
-      </div>
-
-      {/* SECTION 2: CONFIGURATION & MAINTENANCE */}
+      {/* SECTION 1: OFFICIAL STORE REDIRECTION & VERSION POLICIES */}
       {isLoading ? (
         <div className="bg-white rounded-2xl border border-neutral-200/80 p-8 text-center text-xs text-neutral-400">
           Loading system configuration...
         </div>
       ) : (
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-          {/* Card: Version Policy */}
+          {/* Card: Official Store URLs */}
+          <div className="bg-white rounded-2xl border border-neutral-200/80 shadow-xs p-6 space-y-5">
+            <div className="flex items-center gap-2.5 border-b border-neutral-100 pb-3">
+              <Globe className="w-4 h-4 text-brand-600" />
+              <h2 className="text-xs font-bold text-neutral-900 uppercase tracking-wider">
+                Official App Store Redirection Links
+              </h2>
+            </div>
+
+            <p className="text-xs text-neutral-500">
+              When an update is detected, mobile clients will display an update reminder with a direct button that redirects users to these store URLs. If left empty, default store package identifiers will be used.
+            </p>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-[11px] font-bold text-neutral-700 mb-1 uppercase tracking-wider">
+                  Google Play Store URL / Intent
+                </label>
+                <Input
+                  {...register('playStoreUrl')}
+                  placeholder="market://details?id=com.laju.laju_mobile (Default)"
+                />
+                <p className="text-[10px] text-neutral-400 mt-1">
+                  Default: <code className="bg-neutral-100 px-1 py-0.5 rounded text-neutral-600">market://details?id=com.laju.laju_mobile</code> (opens Google Play app directly, falls back to web)
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-neutral-700 mb-1 uppercase tracking-wider">
+                  Apple App Store URL
+                </label>
+                <Input
+                  {...register('appStoreUrl')}
+                  placeholder="https://apps.apple.com/app/laju/id... (Default)"
+                />
+                <p className="text-[10px] text-neutral-400 mt-1">
+                  iOS client will redirect users directly to this Apple App Store link.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Card: Version Policy & Enforcement */}
           <div className="bg-white rounded-2xl border border-neutral-200/80 shadow-xs p-6 space-y-5">
             <div className="flex items-center gap-2.5 border-b border-neutral-100 pb-3">
               <Smartphone className="w-4 h-4 text-brand-600" />
               <h2 className="text-xs font-bold text-neutral-900 uppercase tracking-wider">
-                Version Policy & Enforcement
+                Version Enforcement Policy
               </h2>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-[11px] font-bold text-neutral-700 mb-1 uppercase tracking-wider">
-                  Latest Version
-                </label>
-                <Input
-                  {...register('latestAndroidVersion')}
-                  placeholder="e.g. 1.0.1"
-                />
-                {errors.latestAndroidVersion && (
-                  <p className="text-[10px] text-rose-500 mt-1">{errors.latestAndroidVersion.message}</p>
-                )}
-                <p className="text-[10px] text-neutral-400 mt-1">
-                  Target client version currently offered to users
-                </p>
-              </div>
+            {/* Android Version Controls */}
+            <div>
+              <h3 className="text-xs font-bold text-neutral-800 mb-2">Android Version Targets</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[11px] font-bold text-neutral-700 mb-1 uppercase tracking-wider">
+                    Latest Android Version
+                  </label>
+                  <Input
+                    {...register('latestAndroidVersion')}
+                    placeholder="e.g. 1.0.12"
+                  />
+                  {errors.latestAndroidVersion && (
+                    <p className="text-[10px] text-rose-500 mt-1">{errors.latestAndroidVersion.message}</p>
+                  )}
+                  <p className="text-[10px] text-neutral-400 mt-1">
+                    Users on older versions will see the update reminder prompt
+                  </p>
+                </div>
 
-              <div>
-                <label className="block text-[11px] font-bold text-neutral-700 mb-1 uppercase tracking-wider">
-                  Minimum Supported Version
-                </label>
-                <Input
-                  {...register('minAndroidVersion')}
-                  placeholder="e.g. 1.0.0"
-                />
-                {errors.minAndroidVersion && (
-                  <p className="text-[10px] text-rose-500 mt-1">{errors.minAndroidVersion.message}</p>
-                )}
-                <p className="text-[10px] text-neutral-400 mt-1">
-                  Clients below this version will be blocked from authenticating
-                </p>
+                <div>
+                  <label className="block text-[11px] font-bold text-neutral-700 mb-1 uppercase tracking-wider">
+                    Minimum Supported Android Version
+                  </label>
+                  <Input
+                    {...register('minAndroidVersion')}
+                    placeholder="e.g. 1.0.0"
+                  />
+                  {errors.minAndroidVersion && (
+                    <p className="text-[10px] text-rose-500 mt-1">{errors.minAndroidVersion.message}</p>
+                  )}
+                  <p className="text-[10px] text-neutral-400 mt-1">
+                    Clients below this version will be blocked by Mandatory Force Update
+                  </p>
+                </div>
               </div>
             </div>
 
-            <div>
+            {/* iOS Version Controls */}
+            <div className="pt-2 border-t border-neutral-100">
+              <h3 className="text-xs font-bold text-neutral-800 mb-2">iOS Version Targets</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[11px] font-bold text-neutral-700 mb-1 uppercase tracking-wider">
+                    Latest iOS Version
+                  </label>
+                  <Input
+                    {...register('latestIosVersion')}
+                    placeholder="e.g. 1.0.12"
+                  />
+                  <p className="text-[10px] text-neutral-400 mt-1">
+                    Target iOS release version currently offered to users
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-neutral-700 mb-1 uppercase tracking-wider">
+                    Minimum Supported iOS Version
+                  </label>
+                  <Input
+                    {...register('minIosVersion')}
+                    placeholder="e.g. 1.0.0"
+                  />
+                  <p className="text-[10px] text-neutral-400 mt-1">
+                    iOS clients below this version will be blocked by Mandatory Force Update
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="pt-2 border-t border-neutral-100">
               <label className="flex items-start gap-3 p-3 rounded-xl bg-neutral-50/70 border border-neutral-200/60 cursor-pointer hover:bg-neutral-50 transition-colors">
                 <input
                   type="checkbox"
@@ -468,10 +339,10 @@ export function AppVersionPage() {
                 />
                 <div>
                   <p className="text-xs font-bold text-neutral-900">
-                    Enforce Mandatory Update (Force Update)
+                    Enforce Mandatory Update (Force Update for all older builds)
                   </p>
                   <p className="text-[11px] text-neutral-500 mt-0.5">
-                    When active, users running older builds will be required to update before accessing conversations.
+                    When active, users running any version lower than the Latest Version will not have the "Later" option and must update via the store to proceed.
                   </p>
                 </div>
               </label>
@@ -527,12 +398,197 @@ export function AppVersionPage() {
                 icon={<Save className="w-4 h-4" />}
                 isLoading={updateConfig.isPending}
               >
-                Save Policies & Maintenance
+                Save Store Settings & Policies
               </Button>
             </div>
           </div>
         </form>
       )}
+
+      {/* SECTION 2: INTERNAL TESTING & DIRECT APK SIDELOADING (OPTIONAL / DEV) */}
+      <div className="bg-white rounded-2xl border border-neutral-200/80 shadow-xs p-6 space-y-6">
+        <div className="flex items-center justify-between border-b border-neutral-100 pb-3">
+          <div className="flex items-center gap-2.5">
+            <UploadCloud className="w-5 h-5 text-neutral-600" />
+            <div>
+              <h2 className="text-xs font-bold text-neutral-900 uppercase tracking-wider">
+                Internal Testing & Direct APK Sideloading (Dev / QA)
+              </h2>
+              <p className="text-[11px] text-neutral-400">
+                Optional tool for uploading test APK builds to object storage for development sideloading.
+              </p>
+            </div>
+          </div>
+          {config?.apkFilename && (
+            <Badge variant="neutral">Test APK Active</Badge>
+          )}
+        </div>
+
+        {/* Current Active APK Info Card */}
+        {config?.apkFilename ? (
+          <div className="p-4 rounded-xl bg-neutral-50/80 border border-neutral-200/70 space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-xl bg-neutral-200 text-neutral-700">
+                  <FileArchive className="w-6 h-6" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-neutral-900">
+                      {config.apkFilename}
+                    </span>
+                    <Badge variant="brand">v{config.latestAndroidVersion}</Badge>
+                  </div>
+                  <div className="text-[11px] text-neutral-500 mt-0.5 flex flex-wrap gap-2">
+                    <span>Size: {formatFileSize(config.apkSize)}</span>
+                    <span>•</span>
+                    <span>Updated: {new Date(config.updatedAt).toLocaleDateString('en-US')}</span>
+                  </div>
+                </div>
+              </div>
+
+              <a
+                href={downloadApkUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-neutral-200 text-xs font-semibold text-neutral-700 hover:bg-neutral-50 shadow-xs transition-colors"
+              >
+                <Download className="w-3.5 h-3.5 text-neutral-600" />
+                <span>Download Test File</span>
+              </a>
+            </div>
+
+            {config.apkSha256 && (
+              <div className="text-[10px] font-mono text-neutral-400 bg-white/80 p-2 rounded-lg border border-neutral-200/50 flex items-center gap-1.5 overflow-hidden">
+                <Hash className="w-3 h-3 text-neutral-400 shrink-0" />
+                <span className="text-neutral-500 font-semibold shrink-0">SHA-256:</span>
+                <span className="truncate">{config.apkSha256}</span>
+              </div>
+            )}
+
+            {config.releaseNotes && (
+              <div className="text-xs text-neutral-600 bg-white/80 p-2.5 rounded-lg border border-neutral-200/50">
+                <span className="font-semibold text-neutral-700 block mb-0.5">Release Notes:</span>
+                <p className="whitespace-pre-wrap">{config.releaseNotes}</p>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="p-4 rounded-xl bg-neutral-50 border border-neutral-200 text-neutral-600 text-xs flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-neutral-400 shrink-0" />
+            <span>No test APK uploaded yet. If needed for testing, you can upload a direct binary below.</span>
+          </div>
+        )}
+
+        {/* Upload Form */}
+        <form onSubmit={handleUploadApkSubmit} className="space-y-4 pt-2">
+          {apkUploadSuccess && (
+            <div className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex items-center gap-2.5">
+              <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span className="font-semibold">{apkUploadSuccess}</span>
+            </div>
+          )}
+
+          {apkUploadError && (
+            <div className="p-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center gap-2.5">
+              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+              <span className="font-semibold">{apkUploadError}</span>
+            </div>
+          )}
+
+          <div className="border-2 border-dashed border-neutral-200 hover:border-neutral-400 rounded-2xl p-6 text-center transition-colors bg-neutral-50/50">
+            <input
+              type="file"
+              id="apk-file-input"
+              accept=".apk"
+              onChange={handleFileChange}
+              className="hidden"
+            />
+            <label htmlFor="apk-file-input" className="cursor-pointer block">
+              <div className="flex justify-center mb-2">
+                <div className="p-3 rounded-2xl bg-neutral-100 text-neutral-600">
+                  <FileCheck className="w-8 h-8" />
+                </div>
+              </div>
+              {selectedApkFile ? (
+                <div>
+                  <p className="text-xs font-bold text-neutral-900">{selectedApkFile.name}</p>
+                  <p className="text-[11px] text-neutral-600 font-semibold mt-0.5">
+                    {formatFileSize(selectedApkFile.size)} • Ready to upload
+                  </p>
+                  <p className="text-[10px] text-neutral-400 mt-1">Click to change file</p>
+                </div>
+              ) : (
+                <div>
+                  <p className="text-xs font-bold text-neutral-900">
+                    Select Android APK (.apk) file for internal testing
+                  </p>
+                  <p className="text-[11px] text-neutral-400 mt-1">
+                    Maximum file size up to 500 MB (Streaming multipart)
+                  </p>
+                </div>
+              )}
+            </label>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-[11px] font-bold text-neutral-700 mb-1 uppercase tracking-wider">
+                Test Release Version
+              </label>
+              <Input
+                placeholder="e.g. 1.0.12"
+                value={apkVersionInput}
+                onChange={(e) => setApkVersionInput(e.target.value)}
+              />
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-bold text-neutral-700 mb-1 uppercase tracking-wider">
+                Release Notes
+              </label>
+              <Input
+                placeholder="e.g. Internal QA test build"
+                value={apkReleaseNotes}
+                onChange={(e) => setApkReleaseNotes(e.target.value)}
+              />
+            </div>
+          </div>
+
+          {/* Upload Progress Indicator */}
+          {isUploadingApk && (
+            <div className="space-y-1.5 p-3.5 rounded-2xl bg-neutral-100 border border-neutral-200 shadow-xs">
+              <div className="flex justify-between items-center text-xs font-bold text-neutral-900">
+                <span className="flex items-center gap-1.5">
+                  <UploadCloud className="w-4 h-4 text-neutral-600 animate-pulse" />
+                  Uploading test APK binary to server...
+                </span>
+                <span className="font-mono text-xs bg-white px-2 py-0.5 rounded-full border border-neutral-200 text-neutral-800">
+                  {uploadProgress}%
+                </span>
+              </div>
+              <div className="w-full bg-neutral-200 rounded-full h-2.5 overflow-hidden">
+                <div
+                  className="bg-neutral-800 h-2.5 rounded-full transition-all duration-200 ease-out"
+                  style={{ width: `${Math.max(uploadProgress, 2)}%` }}
+                />
+              </div>
+            </div>
+          )}
+
+          <div className="flex justify-end pt-2">
+            <Button
+              type="submit"
+              variant="secondary"
+              icon={<UploadCloud className="w-4 h-4" />}
+              isLoading={isUploadingApk}
+              disabled={!selectedApkFile || isUploadingApk}
+            >
+              {isUploadingApk ? `Uploading (${uploadProgress}%)...` : 'Upload Test APK'}
+            </Button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }

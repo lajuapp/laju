@@ -49,7 +49,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="id" className="scroll-smooth">
-      <body className="min-h-screen flex flex-col bg-[#F8FAFC] text-slate-900 antialiased selection:bg-laju-500 selection:text-slate-950">
+      <body className="min-h-screen flex flex-col bg-[#F5F4EF] text-slate-900 antialiased selection:bg-laju-500 selection:text-white">
         <LanguageProvider>
           <Navbar />
           <main className="flex-1">{children}</main>
