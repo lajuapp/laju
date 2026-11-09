@@ -1,0 +1,6 @@
+# Example key.properties for Android release signing
+# Place your actual key.properties in apps/mobile/android/ (already gitignored)
+storePassword=your-store-password
+keyPassword=your-key-password
+keyAlias=laju-upload
+storeFile=upload-keystore.jks
