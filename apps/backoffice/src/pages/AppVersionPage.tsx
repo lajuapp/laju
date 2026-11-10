@@ -229,10 +229,10 @@ export function AppVersionPage() {
                 </label>
                 <Input
                   {...register('playStoreUrl')}
-                  placeholder="market://details?id=com.laju.laju_mobile (Default)"
+                  placeholder="market://details?id=com.laju.mobile (Default)"
                 />
                 <p className="text-[10px] text-neutral-400 mt-1">
-                  Default: <code className="bg-neutral-100 px-1 py-0.5 rounded text-neutral-600">market://details?id=com.laju.laju_mobile</code> (opens Google Play app directly, falls back to web)
+                  Default: <code className="bg-neutral-100 px-1 py-0.5 rounded text-neutral-600">market://details?id=com.laju.mobile</code> (opens Google Play app directly, falls back to web)
                 </p>
               </div>
 

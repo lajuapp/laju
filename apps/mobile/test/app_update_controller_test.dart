@@ -33,7 +33,7 @@ void main() {
         'latestIosVersion': '1.0.2',
         'forceUpdate': false,
         'maintenanceMode': false,
-        'playStoreUrl': 'market://details?id=com.laju.laju_mobile',
+        'playStoreUrl': 'market://details?id=com.laju.mobile',
         'appStoreUrl': 'https://apps.apple.com/app/laju/id6740000000',
         'releaseNotes': 'Perbaikan performa dan keamanan.',
       };
@@ -45,7 +45,7 @@ void main() {
       expect(config.latestIosVersion, '1.0.2');
       expect(config.forceUpdate, false);
       expect(config.maintenanceMode, false);
-      expect(config.playStoreUrl, 'market://details?id=com.laju.laju_mobile');
+      expect(config.playStoreUrl, 'market://details?id=com.laju.mobile');
       expect(config.appStoreUrl, 'https://apps.apple.com/app/laju/id6740000000');
       expect(config.releaseNotes, 'Perbaikan performa dan keamanan.');
     });

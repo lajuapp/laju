@@ -30,7 +30,7 @@ export function SmartRedirector({
   const cleanCode = encodeURIComponent(code);
   const path = type === 'group' ? `join/${cleanCode}` : type === 'user' ? `u/${cleanCode}` : `call/${cleanCode}`;
   const customScheme = `laju://${path}`;
-  const androidIntent = `intent://${path}#Intent;scheme=laju;package=com.laju.laju_mobile;end`;
+  const androidIntent = `intent://${path}#Intent;scheme=laju;package=com.laju.mobile;end`;
 
   useEffect(() => {
     // Detect platform

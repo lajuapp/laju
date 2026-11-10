@@ -1,4 +1,4 @@
-package com.laju.laju_mobile
+package com.laju.mobile
 
 import android.Manifest
 import android.app.Activity

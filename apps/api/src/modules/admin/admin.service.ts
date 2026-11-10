@@ -1668,7 +1668,7 @@ export class AdminService {
           latestAndroidVersion: '1.0.0',
           minIosVersion: '1.0.0',
           latestIosVersion: '1.0.0',
-          playStoreUrl: 'market://details?id=com.laju.laju_mobile',
+          playStoreUrl: 'market://details?id=com.laju.mobile',
           appStoreUrl: 'https://apps.apple.com/app/laju/id6740000000',
           forceUpdate: false,
           maintenanceMode: false,

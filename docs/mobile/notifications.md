@@ -55,7 +55,7 @@ The server automatically scans and replays all missed high-priority events:
 
 ## 3. Android Native Service: `LajuPushService.kt`
 
-On Android, background execution is orchestrated by a dedicated native service (`apps/mobile/android/app/src/main/kotlin/com/laju/laju_mobile/LajuPushService.kt`):
+On Android, background execution is orchestrated by a dedicated native service (`apps/mobile/android/app/src/main/kotlin/com/laju/mobile/LajuPushService.kt`):
 
 ### A. Silent Background Execution vs Foreground Contract
 - **Contract Fulfillment**: On Android 8.0+ (Oreo), `startForegroundService` is called to comply with OS requirements, using a low-priority silent channel (`laju_sync`, notification ID `9001`).

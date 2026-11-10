@@ -62,7 +62,7 @@ class AppUpdateController extends ChangeNotifier {
   static final AppUpdateController instance = AppUpdateController._();
 
   static const MethodChannel _deviceChannel = MethodChannel('com.laju/device');
-  static const String defaultAndroidPackageName = 'com.laju.laju_mobile';
+  static const String defaultAndroidPackageName = 'com.laju.mobile';
 
   String _currentVersion = AppConstants.appVersion;
   int _currentVersionCode = AppConstants.appBuildNumber;

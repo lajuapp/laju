@@ -26,7 +26,7 @@ async function getLatestAppConfig() {
 }
 
 function resolvePlayStoreWebUrl(rawUrl?: string | null): string {
-  const defaultUrl = 'https://play.google.com/store/apps/details?id=com.laju.laju_mobile';
+  const defaultUrl = 'https://play.google.com/store/apps/details?id=com.laju.mobile';
   if (!rawUrl || !rawUrl.trim()) return defaultUrl;
 
   const trimmed = rawUrl.trim();

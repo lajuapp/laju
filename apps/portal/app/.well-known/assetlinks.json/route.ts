@@ -13,7 +13,7 @@ export async function GET() {
       relation: ['delegate_permission/common.handle_all_urls'],
       target: {
         namespace: 'android_app',
-        package_name: 'com.laju.laju_mobile',
+        package_name: 'com.laju.mobile',
         sha256_cert_fingerprints: sha256Fingerprints,
       },
     },

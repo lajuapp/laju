@@ -42,7 +42,7 @@ The response provides:
 ## 3. One-Click In-App OTA Installer
 
 Instead of redirecting users to open external web browsers:
-1. **Direct Download**: The client downloads the `.apk` directly to app-specific external cache storage (`Android/data/com.laju.laju_mobile/cache`).
+1. **Direct Download**: The client downloads the `.apk` directly to app-specific external cache storage (`Android/data/com.laju.mobile/cache`).
 2. **Live Progress**: A real-time download progress bar with speed and transferred MB is displayed in-app.
 3. **SHA-256 Verification**: Upon completion, the client computes the file hash and verifies it against `apkSha256` to prevent corrupted or tampered installations.
 4. **Android FileProvider Execution**: The native package installer is invoked via `FileProvider` with `FLAG_GRANT_READ_URI_PERMISSION`:
