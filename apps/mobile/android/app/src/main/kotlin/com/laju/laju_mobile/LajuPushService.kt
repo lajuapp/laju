@@ -883,9 +883,8 @@ class LajuPushService : Service() {
         val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
 
         val intent = Intent(this, MainActivity::class.java).apply {
-            action = Intent.ACTION_MAIN
-            addCategory(Intent.CATEGORY_LAUNCHER)
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            action = Intent.ACTION_VIEW
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
             putExtra("laju_type", "chat")
             putExtra("laju_id", conversationId)
         }
@@ -916,9 +915,8 @@ class LajuPushService : Service() {
         val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
 
         val intent = Intent(this, MainActivity::class.java).apply {
-            action = Intent.ACTION_MAIN
-            addCategory(Intent.CATEGORY_LAUNCHER)
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            action = Intent.ACTION_VIEW
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
             putExtra("laju_type", "announcement")
         }
         val pendingIntent = PendingIntent.getActivity(

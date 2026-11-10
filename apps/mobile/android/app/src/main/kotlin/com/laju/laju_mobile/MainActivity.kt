@@ -315,6 +315,15 @@ class MainActivity : FlutterFragmentActivity() {
             enableShowWhenLocked()
             dispatchCallAction(id, action ?: "incoming_call", isVideo, callerName, fromSystemIntent = true)
             return
+        } else if (type == "chat" && id != null) {
+            launchPayload = mapOf("type" to "chat", "id" to id, "fromSystemIntent" to true)
+            if (notificationMethodChannel != null) {
+                runOnUiThread {
+                    notificationMethodChannel?.invokeMethod("onOpenChat", mapOf(
+                        "conversationId" to id
+                    ))
+                }
+            }
         } else if (type != null && id != null) {
             launchPayload = mapOf("type" to type, "id" to id, "isVideo" to isVideo, "action" to action, "fromSystemIntent" to true)
         }
@@ -1576,9 +1585,20 @@ class MainActivity : FlutterFragmentActivity() {
                     result.success(true)
                 }
                 "getLaunchPayload" -> {
-                    val payload = launchPayload
-                    launchPayload = null
-                    result.success(payload)
+                    val requestedType = call.argument<String>("type")
+                    if (requestedType != null) {
+                        if (launchPayload?.get("type") == requestedType) {
+                            val payload = launchPayload
+                            launchPayload = null
+                            result.success(payload)
+                        } else {
+                            result.success(null)
+                        }
+                    } else {
+                        val payload = launchPayload
+                        launchPayload = null
+                        result.success(payload)
+                    }
                 }
                 "startBackgroundService" -> {
                     val baseUrl = call.argument<String>("baseUrl") ?: ""
@@ -3284,9 +3304,8 @@ class MainActivity : FlutterFragmentActivity() {
         val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
 
         val intent = Intent(this, MainActivity::class.java).apply {
-            action = Intent.ACTION_MAIN
-            addCategory(Intent.CATEGORY_LAUNCHER)
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            action = Intent.ACTION_VIEW
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
             putExtra("laju_type", "chat")
             putExtra("laju_id", conversationId)
         }

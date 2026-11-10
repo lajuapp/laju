@@ -77,9 +77,12 @@ class PushNotificationService {
         await prefs.setString(_kPushToken, _pushToken);
       }
 
-      // Sync with backend if authenticated
+      // Sync with backend asynchronously in background without blocking runApp()
       if (ApiClient.instance.authToken != null) {
-        await syncPushTokenToBackend();
+        syncPushTokenToBackend().catchError((e) {
+          debugPrint('[PushNotificationService] Background syncPushToken error: $e');
+          return false;
+        });
       }
     } catch (e) {
       debugPrint('[PushNotificationService] init error: $e');

@@ -1294,7 +1294,10 @@ class CallSessionController extends ChangeNotifier with WidgetsBindingObserver {
 
   Future<void> checkLaunchPayload() async {
     try {
-      final payload = await _systemNotifChannel.invokeMapMethod<String, dynamic>('getLaunchPayload');
+      final payload = await _systemNotifChannel.invokeMapMethod<String, dynamic>(
+        'getLaunchPayload',
+        {'type': 'call'},
+      );
       if (payload != null && (payload['type'] == 'call' || payload.containsKey('callId'))) {
         await handleCallPayload(payload);
       }

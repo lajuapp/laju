@@ -1275,6 +1275,7 @@ class AuthController extends ChangeNotifier {
         return _currentUser;
       } else if (response.statusCode == 401 || response.statusCode == 404) {
         debugPrint('[AuthController] fetchProfileAsync: rejected by server (${response.statusCode})');
+        logout();
         return null;
       }
     } catch (e) {
@@ -1313,19 +1314,28 @@ class AuthController extends ChangeNotifier {
             userId: userId,
           );
 
-          // Verify token and account validity with backend
-          final userProfile = await fetchProfileAsync();
-          if (userProfile == null) {
-            // User does not exist or token expired/invalidated
-            debugPrint('[AuthController] Stored session invalid on server, logging out');
-            logout();
-            return;
-          }
+          // Restore cached user profile immediately so UI displays instantly without network wait
+          final cachedUsername = prefs.getString('laju_username') ?? '';
+          _currentUser = AuthUser(
+            id: userId,
+            username: cachedUsername.isNotEmpty ? cachedUsername : 'User',
+            phoneNumber: phone,
+            email: email,
+            twoFactorEnabled: prefs.getBool('laju_2fa') ?? false,
+            avatarUrl: prefs.getString('laju_avatar_url'),
+          );
+          _isAuthenticated = true;
+
+          // Asynchronously verify session & refresh profile with backend without blocking app startup
+          fetchProfileAsync().then((profile) {
+            if (profile != null) {
+              _currentUser = profile;
+              notifyListeners();
+            }
+          }).catchError((_) {});
 
           _refreshDeviceInBackground();
 
-          _currentUser = userProfile;
-          await AccountController.instance.init();
           if (email != null && email.isNotEmpty) {
             AccountController.instance.updateEmail(email);
           }
@@ -1333,7 +1343,6 @@ class AuthController extends ChangeNotifier {
             AccountController.instance.updatePhoneNumber(phone);
           }
 
-          _isAuthenticated = true;
           PushNotificationService.instance.syncPushTokenToBackend();
           notifyListeners();
         } else {

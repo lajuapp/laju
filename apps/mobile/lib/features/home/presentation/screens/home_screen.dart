@@ -32,7 +32,7 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   int _currentBottomNavIndex = 0;
   String _selectedFilter = 'All';
   bool _isSearchExpanded = false;
@@ -44,10 +44,15 @@ class _HomeScreenState extends State<HomeScreen> {
 
   List<Map<String, dynamic>> _callLogs = [];
   Timer? _conversationsSyncTimer;
+  static const _systemNotifChannel = MethodChannel('com.laju/system_notifications');
+  String? _pendingOpenConversationId;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    AppLockController.instance.addListener(_onAppLockStateChanged);
+    _initNotificationChannelListener();
     _currentBottomNavIndex = HomeScreen.activeTabNotifier.value;
     HomeScreen.activeTabNotifier.addListener(_onTabChanged);
     ConversationService.instance.conversationsNotifier.addListener(_onConversationsSync);
@@ -59,13 +64,100 @@ class _HomeScreenState extends State<HomeScreen> {
     _checkDeepLinkPayload();
   }
 
+  void _initNotificationChannelListener() {
+    _systemNotifChannel.setMethodCallHandler((call) async {
+      if (call.method == 'onOpenChat') {
+        final args = call.arguments as Map?;
+        final convId = args?['conversationId'] as String?;
+        if (convId != null && convId.isNotEmpty) {
+          _navigateToConversation(convId);
+        }
+      }
+    });
+  }
+
+  void _onAppLockStateChanged() {
+    if (!AppLockController.instance.isCurrentlyLocked && _pendingOpenConversationId != null) {
+      final id = _pendingOpenConversationId!;
+      _pendingOpenConversationId = null;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _navigateToConversation(id);
+      });
+    }
+  }
+
+  void _navigateToConversation(String conversationId) async {
+    if (!mounted || conversationId.isEmpty) return;
+
+    if (AppLockController.instance.isCurrentlyLocked) {
+      _pendingOpenConversationId = conversationId;
+      return;
+    }
+
+    ConversationModel? targetConv;
+    try {
+      targetConv = _conversations.firstWhere((c) => c.id == conversationId);
+    } catch (_) {
+      try {
+        final localConvs = await LocalDatabase.instance.getConversations();
+        targetConv = localConvs.firstWhere((c) => c.id == conversationId);
+      } catch (_) {}
+    }
+
+    if (!mounted) return;
+
+    if (targetConv != null && targetConv.isGroup) {
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => GroupChatScreen(
+            groupId: targetConv!.id,
+            groupName: targetConv.title,
+            avatarUrl: targetConv.avatarUrl,
+          ),
+        ),
+      );
+    } else {
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => ChatScreen(
+            conversationId: targetConv?.id ?? conversationId,
+            title: targetConv?.title ?? 'Chat',
+            isGroup: targetConv?.isGroup ?? false,
+            avatarUrl: targetConv?.avatarUrl,
+            contactUserId: targetConv?.participantUserId,
+            contactPhone: targetConv?.participantPhone,
+            contactAbout: targetConv?.participantAbout,
+            contactTrustScore: targetConv?.participantTrustScore,
+          ),
+        ),
+      );
+    }
+
+    ConversationService.instance.markConversationAsRead(conversationId);
+    _loadConversations();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _checkDeepLinkPayload();
+    }
+  }
+
   void _checkDeepLinkPayload() {
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       try {
-        const channel = MethodChannel('com.laju/system_notifications');
-        final payload = await channel.invokeMapMethod<String, dynamic>('getLaunchPayload');
+        final payload = await _systemNotifChannel.invokeMapMethod<String, dynamic>('getLaunchPayload');
         if (payload != null && mounted) {
-          if (payload['type'] == 'contact') {
+          final type = payload['type'];
+          if (type == 'chat') {
+            final convId = (payload['id'] as String?)?.trim() ?? '';
+            if (convId.isNotEmpty) {
+              _navigateToConversation(convId);
+            }
+          } else if (type == 'contact') {
             final username = (payload['username'] as String?)?.trim() ?? '';
             if (username.isNotEmpty) {
               Navigator.push(
@@ -73,7 +165,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 MaterialPageRoute(builder: (context) => NewChatScreen(initialSearchQuery: username)),
               );
             }
-          } else if (payload['type'] == 'call' || payload.containsKey('callId')) {
+          } else if (type == 'call' || payload.containsKey('callId')) {
             CallSessionController.instance.handleCallPayload(payload);
           }
         }
@@ -280,6 +372,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    AppLockController.instance.removeListener(_onAppLockStateChanged);
     _conversationsSyncTimer?.cancel();
     ConversationService.instance.conversationsNotifier.removeListener(_onConversationsSync);
     CallSessionController.instance.removeListener(_onCallSessionChanged);

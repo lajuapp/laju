@@ -108,10 +108,13 @@ class AppUpdateController extends ChangeNotifier {
     return false;
   }
 
-  /// Initialize controller: fetch native installed version and check backend config
+  /// Initialize controller: fetch native installed version and trigger backend config check in background
   Future<void> init() async {
     await _loadInstalledVersion();
-    await checkForUpdates();
+    // Non-blocking: check for updates asynchronously so app startup is instant
+    checkForUpdates().catchError((e) {
+      debugPrint('[AppUpdateController] Background check error: $e');
+    });
   }
 
   /// Reads native package info (versionName, versionCode) from host OS
