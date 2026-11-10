@@ -78,18 +78,23 @@ export class DevicesController {
     const channel = `user:${userId}`;
     const globalChannel = 'announcements:global';
     const redisService = this.devicesService.getRedisService();
-    const subscriber = this.devicesService.getRedisSubscriber();
 
-    const onMessage = (chan: string, msg: string) => {
-      if (chan === channel || chan === globalChannel) {
+    const onPushMessage = (msg: string) => {
+      if (!res.writableEnded) {
         res.write(`data: ${msg}\n\n`);
       }
     };
 
-    if (subscriber && redisService) {
-      await redisService.subscribeChannel(channel);
-      await redisService.subscribeChannel(globalChannel);
-      subscriber.on('message', onMessage);
+    let unsubUser: (() => void) | undefined;
+    let unsubGlobal: (() => void) | undefined;
+
+    if (redisService) {
+      try {
+        unsubUser = await redisService.subscribe(channel, onPushMessage);
+        unsubGlobal = await redisService.subscribe(globalChannel, onPushMessage);
+      } catch (err: any) {
+        // Log non-fatal subscription error
+      }
     }
 
     // Replay any active ringing call, missed calls, or unread messages missed while offline/in Doze
@@ -113,11 +118,8 @@ export class DevicesController {
 
     req.on('close', () => {
       clearInterval(heartbeat);
-      if (subscriber && redisService) {
-        subscriber.removeListener('message', onMessage);
-        redisService.unsubscribeChannel(channel).catch(() => {});
-        redisService.unsubscribeChannel(globalChannel).catch(() => {});
-      }
+      unsubUser?.();
+      unsubGlobal?.();
       res.end();
     });
   }
